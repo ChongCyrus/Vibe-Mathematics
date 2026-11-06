@@ -144,16 +144,25 @@ try {
   const fbArgs = { op: 'add', category: 'test-office', route: 'fixture', phenomenon: 'run 50 的作者归属', impact: '读者要能知道是谁写的', action: '记 null 或成员 id' }
   const fbArgsMember = Object.assign({}, fbArgs, { category: 'test-member' })
   const fbOffice = await callJSON(a, 'vibe_v5_feedback', fbArgs, { kernel: kA })
-  ok(fbOffice.parsed && fbOffice.parsed.ok === true, 'the office-side feedback call succeeded', fbOffice)
+  // ── OLD INTENT (F-32, run 50): a feedback row must never carry the TOOL NAME as its author; with no `member` the
+  // honest answer was then `owner:null`. NEW SEMANTICS (RUN 249 / F-04, measured on the 69th real-machine run):
+  // `rec-10`/`rec-14` came back with owner/writer/by ALL null — a card nobody authored cannot be routed back — so the
+  // face now REFUSES a write it cannot attribute. SAME THING PROVEN: "a tool name is never an author" plus "the author is
+  // a real member or the row is not filed" (the old pin proved it by asserting null; the new one by asserting the named
+  // refusal and that exactly ONE attributed row landed).
+  ok(fbOffice.parsed && fbOffice.parsed.ok === false && fbOffice.parsed.code === 'VMU_INVALID_ARGUMENT',
+    'a call with NO member is REFUSED by name (RUN 249 / F-04: no more null-author rows)', fbOffice.parsed)
+  ok(fbOffice.parsed && /no author/.test(String(fbOffice.parsed.message)) && /member/.test(String(fbOffice.parsed.hint)),
+    'the refusal names the missing author and the reachable repair (`member`)', fbOffice.parsed && fbOffice.parsed.hint)
   const fbMember = await callJSON(a, 'vibe_v5_feedback', Object.assign({}, fbArgsMember, { member: 'r-a' }), { kernel: kA })
   ok(fbMember.parsed && fbMember.parsed.ok === true, 'the member-side call succeeded', fbMember)
   await sleep(40)
   const listed = kA.records.list({ track: 'feedback', limit: 0 })
   const heads = Array.isArray(listed) ? listed : (Array.isArray(listed && listed.items) ? listed.items : [])
-  const latest = heads.slice(-2)
-  ok(latest.length === 2, 'the two rows are in the ledger', latest.length)
-  ok(latest.length === 2 && latest[0].owner === null, 'a call without `member` records NO author (null, not the tool name)', latest[0] && latest[0].owner)
-  ok(latest.length === 2 && latest[1].owner === 'r-a', 'a call WITH `member` records that member', latest[1] && latest[1].owner)
+  const latest = heads.slice(-1)
+  ok(latest.length === 1, 'exactly ONE row landed (the refused call filed nothing)', heads.length)
+  ok(latest.length === 1 && latest[0].owner === 'r-a', 'the row records the REAL member', latest[0] && latest[0].owner)
+  ok(latest.length === 1 && latest[0].owner !== 'vibe_v5_feedback', 'and never the tool name (F-32 still holds)', latest[0] && latest[0].owner)
 
   // ── ⑥ F-33 — a truncated board line says it is an excerpt and names the whole record ────────────────────
   const longBody = '整数 n 的三次方减 n 恒为六的倍数：因为 n^3-n=(n-1)n(n+1) 是连续三个整数之积，必有一项被 3 整除、必有一项为偶数，故乘积被 6 整除；这个结论在本轮用普通数学证明，不依赖形式化工具，也不依赖任何未登记的外部结论，边界条件 n=0 与 n=-1 也成立，因为零与负数的情形同样落入连续三个整数之积的结构。'

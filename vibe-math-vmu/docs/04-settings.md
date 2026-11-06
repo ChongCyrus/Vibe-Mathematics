@@ -348,6 +348,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.memoryCeilingMb` | number | `0` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 内存上限（MB）；0＝只提醒"压力明显增大"而不给数字 |
 | `vmu.turn.selfCheck` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
 | `vmu.turn.replyCatalogue` | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
+| `vmu.turn.replyLimitChars` | number | `2000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | 回合回复正文被回执原样保留的字符上限（默认 2000，允许 500–200000）；超出部分是**截断**而不是丢弃——全文写进 `Members/<member>/Turns/<turn>.md`，回执带 `replyFullPath`/`replyFullSha256`/`replyFullBytes`；调大它会让每回合回执变大，慎用 |
 | `vmu.turn.unknownReplyFieldMode` | enum | `ignore-named` | `ignore-named`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。 |
 | `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
 | `vmu.blueprint.staleAfterMs` | number | `2592000000` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | 蓝图「按时更新」窗口（毫秒）：现行版超过这个年龄即逾期（提示，不是拒绝；默认 30 天；最小 0＝任何年龄都算逾期，便于演练） |
@@ -1570,7 +1571,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1167** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1168** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1683,7 +1684,7 @@ vmu.packs.active: [v5r]
 | `vmu.tools.*` | 3 |
 | `vmu.topology.*` | 12 |
 | `vmu.trust.*` | 16 |
-| `vmu.turn.*` | 36 |
+| `vmu.turn.*` | 37 |
 | `vmu.tx.*` | 6 |
 | `vmu.v3.*` | 19 |
 | `vmu.v5r.*` | 1 |

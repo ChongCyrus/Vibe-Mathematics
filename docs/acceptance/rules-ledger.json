@@ -1107,7 +1107,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::开始前的治理动作都被具名拒"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`at` ⇒ `state:\"scheduled\"`、`scheduledFor`、到点前动作被具名拒"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::`at` ⇒ `state:\"scheduled\"`、`scheduledFor`、到点前动作被具名拒",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 chair 召集 m1 开放并预约 m2 进入 scheduled"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
@@ -1130,7 +1131,8 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"scheduled\",\"to\":\"waiting\""
       ],
-      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
+      "note": "第 69 次真机未单独观测到 waiting 阶段（m1 直接 open、m2 停在 scheduled 到点前只允许座位登记）——未观测，不是已验证；G-1…G-4 见 §346.6。"
     },
     {
       "id": "E3",
@@ -1149,7 +1151,8 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::enforced on BOTH doors",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"caller\":\"r-acad\",\"seat\":\"chair\",\"enforced\":true"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"caller\":\"r-acad\",\"seat\":\"chair\",\"enforced\":true",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 非主席召集被具名拒并点名 chair 席"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
       "next": ""
@@ -1171,7 +1174,8 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"forced\":true",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::vmu.meetings.closeRequiresChair=true: closing is an academician"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::vmu.meetings.closeRequiresChair=true: closing is an academician",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 close 回执 state closed 且 archived 为真"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
       "next": ""
@@ -1192,7 +1196,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::发言延长"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_vmu_meeting{action:\"extendlimit\",actor:\"r-acad\",id:\"m1\",ms:60000}` ⇒ `ok:true`，回执读 `wallLimitMs`/`extendedMs`"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_vmu_meeting{action:\"extendlimit\",actor:\"r-acad\",id:\"m1\",ms:60000}` ⇒ `ok:true`，回执读 `wallLimitMs`/`extendedMs`",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 extendlimit 把墙钟上界从 1800000 抬到 2400000"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
@@ -1339,7 +1344,7 @@
       ],
       "ruleText": "会议中各成员可执行命令或工具按会议类型（如学术交流、任务安排策划（一起策划）与分配、辩论会议、结题会议、...）和成员身份会有差异。",
       "next": "",
-      "note": "r122a：meeting_round 回 narrowing type/narrowed/expected（§217.4）",
+      "note": "r122a：meeting_round 回 narrowing type/narrowed/expected（§217.4） 第 69 次真机未触达类型收窄（无辩论会可开，G-1）——只有机制读数（`narrowing` 字段存在），不是已验证。",
       "auditDispute": {
         "acknowledged": true,
         "at": "RUN 237",
@@ -1403,7 +1408,8 @@
         "vibe-math-vmu/kernel/meeting.js::'an invitation needs a non-empty why'"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::回执 note 明说「邀请**不**改法定人数」"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::回执 note 明说「邀请**不**改法定人数」",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 邀请回执 order 是回读队列"
       ],
       "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。"
     },
@@ -1424,7 +1430,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::按数组顺序批量"
       ],
       "live": [
-        "tests/vmu-run242-order-write.test.mjs::a minutes row of kind `floor-order` carries the order in force"
+        "tests/vmu-run242-order-write.test.mjs::a minutes row of kind `floor-order` carries the order in force",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 服务会议上 hands 被拒并点名只属原语会议面"
       ],
       "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。",
       "next": "端到端测试已就位（tests/vmu-run242-order-write.test.mjs）。余下可选：真机 §2 里让主席显式 order 一次并抄 before/after（run 65 未做，属真机覆盖面而不是实现缺口）。",
@@ -1451,7 +1458,8 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"round\":\"g1\",\"spoke\":true",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 单次发言版群聊同轮第二次被拒"
       ],
       "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。"
     },
@@ -1471,7 +1479,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::poll_open"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"maxChoices\":1"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"maxChoices\":1",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 投票板 min_votes 生效并回读 rules.minVotes"
       ],
       "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。"
     },
@@ -1549,7 +1558,8 @@
         "vibe-math-vmu/packs/v5r/verification-gates.js::SUBJECT_FORMS"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`declaredProofRef` 指向真实文件"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::`declaredProofRef` 指向真实文件",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 辩论对象带 draft 卡被具名拒"
       ],
       "ruleText": "院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。"
     },
@@ -1573,7 +1583,8 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`voteFloor.effective:3`、`unanimity.met:false`",
-        "tests/vmu-run141-quorum-gate.test.mjs::signed by 2 of the 3"
+        "tests/vmu-run141-quorum-gate.test.mjs::signed by 2 of the 3",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 法定人数下限读数是三"
       ],
       "ruleText": "辩论、结题表决的人数至少为某一定数量，这个数量取用户设置的数量和“院士+常驻研究员”数量的最小值。",
       "note": "L47 的 m 由 kernel.meetings.quorum() 单一来源计算；此前的缺口是它只被「读」不被「执行」：floor.satisfiedBy 结构性恒 false（主席不能交裁决、却被算进分母），回执却写 ok:true。现在 vibe_v5_verdict_final 在裁决这一步执行它：签署人数 = 交来裁决的成员 ∪ 签字的主席，低于 m ⇒ 具名拒 VMU_MEETING_QUORUM_LOST（message 给 N/M、L47 与设置键；hint 给 vibe_v5_verdict_ask 与 partial:true+why）；主席故意的例外必须 partial:true+why，并记在 floor.gate.escapedBy（例外留在记录上，不静默）。会议关闭（close）不读票数——回执 closureReading/closureVoteNote 把「关会」与「表决达标」分开说，tests/vmu-run141 §6 钉住。"
@@ -1598,7 +1609,7 @@
       ],
       "ruleText": "对于lean已经通过的但是布尔概率还非1的命题，辩论时主要是辩论lean代码中对命题的描述、定义是否符合原意。",
       "next": "已由 r132 全证（Lean 已过 + p=0.9 的裁决汇总被 FIDELITY_ASK_REQUIRED 具名拒，hint 指辩论裁定）；后续轮次只做回归。",
-      "note": "闸在裁决汇总面（verdict_final），不在 fidelity_conclude：Lean 通过 + 一致性裁定 ⇒ p=1 是 C10 的正路（r132 回执 p1Written:true）。",
+      "note": "闸在裁决汇总面（verdict_final），不在 fidelity_conclude：Lean 通过 + 一致性裁定 ⇒ p=1 是 C10 的正路（r132 回执 p1Written:true）。 第 69 次真机未触达 fidelity_conclude（无完稿卡/无 passed Lean 作业，G-2）——仍未验证。",
       "auditDispute": {
         "acknowledged": true,
         "at": "RUN 237",
@@ -1685,7 +1696,8 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`verdict_final` ⇒ 均值 `0.65`、`decided:false,estimate:true`、`floor.minVotes:3`"
       ],
-      "ruleText": "机制：待辩论会议结束，v5r框架请刚刚各个辩论的各个成员给出最终裁决“布尔概率（[0,1]），理由，...”，若它们给出的布尔概率全部一致为1（或一致为0）则最终该命题的布尔概率为1（或0），否则取平均值。并发通知告诉该命题卡的持有者“由于...，该命题最终布尔概率裁定为...，故请把相应命题卡的布尔概率改为该概率值”。"
+      "ruleText": "机制：待辩论会议结束，v5r框架请刚刚各个辩论的各个成员给出最终裁决“布尔概率（[0,1]），理由，...”，若它们给出的布尔概率全部一致为1（或一致为0）则最终该命题的布尔概率为1（或0），否则取平均值。并发通知告诉该命题卡的持有者“由于...，该命题最终布尔概率裁定为...，故请把相应命题卡的布尔概率改为该概率值”。",
+      "note": "第 69 次真机未触达汇总/平均/通知持卡人分支（零提交先给 `VMU_RULING_NO_SUBMISSIONS`，G-3；本轮记 `真机69 零提交先给 NO_SUBMISSIONS 而汇总分支未触达`）——不是已验证。"
     },
     {
       "id": "E29",
@@ -2110,7 +2122,7 @@
       ],
       "text": "会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。",
       "next": "",
-      "note": "r124a：types 读面读回六型 + 目录来源",
+      "note": "r124a：types 读面读回六型 + 目录来源 第 69 次真机未触达辩论类型（无「证明已完成」对象，G-1）——类型目录读数 6/6 已验，辩论类型本身未验。",
       "rule": "47"
     },
     {
@@ -2149,7 +2161,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::debate`（须 `subject`）"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::a debate meeting needs a subject: the object of the debate"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::a debate meeting needs a subject: the object of the debate",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 辩论对象带 draft 卡被具名拒"
       ],
       "next": "",
       "text": "关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。",

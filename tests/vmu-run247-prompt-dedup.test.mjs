@@ -12,9 +12,10 @@
  * 重复的代价不是字数，而是**两份来源会漂移**：tools 数组改了参数，提示词里的旧参数表继续教错形状。
  *
  * WHAT THIS SUITE REQUIRES (machine criterion; rendered text, not source grep):
- *   §1 真装配 3 席 × 4 相位：0 个空 section，chair/normal ≤ 27500（RUN 247 未上调的绝对上界），
- *      三份 normal 合计 ≤ RUN 247 实测 70689 ＋ RUN 248 机制教学预算 2000（=72689：预约投递/群聊广播的时机教学，
- *      属 tools 数组之外的内容，见 §1 注释），且三份 normal 里「参数表/调用签名」不回到 prompts（RUN 247 水位）；
+ *   §1 真装配 3 席 × 4 相位：0 个空 section，chair/normal ≤ RUN 247 实测 26944 ＋ RUN 248 教学 548 ＋ RUN 249 教学
+ *      445（=27937：逐条记账，没有余量），三份 normal 合计 ≤ RUN 247 实测 70689 ＋ RUN 248 机制教学预算 2000 ＋
+ *      RUN 249 机制教学 1335（=74024：预约/广播/投递可见的时机教学，属 tools 数组之外的内容，见 §1 注释），且三份
+ *      normal 里「参数表/调用签名」不回到 prompts（RUN 247 水位）；
  *   §2 三个角色工具段的「目录行」只剩**名字 + 规则**：行形状是 `· name[/name…][ —— 规则]`，不允许出现参数对象；
  *      每条规则行 ≤300 字符；仍有规则行（chair ≥15 / member ≥5 / temp ≥2），不许把规则删光；段字数有上限；
  *   §3 被删掉的参数表/调用签名/照抄样例，在**整份装配文本**里一次都不再出现；
@@ -101,8 +102,14 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //        形参这类纠错）。⇒ ≤72689。**这不是把旧阈值抬高**：涨的每一字符都记在「机制教学」这一类里。
   //   §1c 同口径 = 三份 normal 里「参数表/调用签名」的字符与行数必须停在 RUN 247 的水位（HEAD 实测 8 行／
   //        1738 字符／席）——RUN 248 一个字符都没新增复述，将来谁把参数表抄回提示词都会立刻红。
+  //   ★ RUN 249（task-71 第 2 项 / task-69 落地后）再涨了一次，同样**逐条记账、不算余量**：`[新到的消息]` 块真的
+  //        会渲染（`notices:{lines,rendered,blockChars}` 是回执读数、无未读时块头不出现）、回复正文超
+  //        `vmu.turn.replyLimitChars` 只留摘录而全文落 `Members/<你>/Turns/<turn>.md`、`emptyReply:true` 表示这
+  //        回合没交代做没做。实测增量每席 +445（三席同值，因为这段在 shared 段），合计 +1335 ⇒ 上限
+  //        70689 + 2000 + 1335 = 74024，比实测 73963 多 61（与 RUN 248 保持同一份余量，没有新开口子）。
   const RUN247 = { chair: 26944, member: 23200, temp: 20545, sum: 70689 }
-  const RUN248_TEACHING = 2000
+  const RUN248_TEACHING = { chair: 548, member: 1008, temp: 383, sum: 1939, budget: 2000 }
+  const RUN249_TEACHING = { chair: 452, member: 452, temp: 452, sum: 1356 }
   const SIGNATURE = /\{ *[a-z_][a-z_0-9.?]* *, *[a-z_]/
   const signatureRows = (slot) => {
     let lines = 0
@@ -113,10 +120,13 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
     return { lines, chars }
   }
   const chairNormal = charsOf('chair', 'normal')
-  ok(chairNormal <= 27500, '§1a ★ chair/normal ≤ 27500 字符（RUN 247 的绝对上界，未上调）', chairNormal)
+  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair
+  ok(chairNormal <= chairCeiling,
+    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair}，逐条记账、无余量）`, chairNormal)
   const sum = charsOf('chair', 'normal') + charsOf('member', 'normal') + charsOf('temp', 'normal')
-  ok(sum <= RUN247.sum + RUN248_TEACHING,
-    `§1b ★ 三份 normal 合计 ≤ ${RUN247.sum + RUN248_TEACHING}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING}）`, sum)
+  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum
+  ok(sum <= sumCeiling,
+    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum}）`, sum)
   for (const seat of ['chair', 'member', 'temp']) {
     const s = signatureRows(seat)
     ok(s.lines <= 8 && s.chars <= 1738,

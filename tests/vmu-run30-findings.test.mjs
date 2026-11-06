@@ -115,45 +115,48 @@ const b = await boot({ root, packs: ['v5r'] })
 const kernel = b.handle.kernel
 for (const id of ['acad-01', 'res-01', 'res-02']) await kernel.members.hire({ id, slot: id === 'acad-01' ? 'chair' : 'member' })
 
-// ④ THE MAIL DISCLOSES THE OBJECT IT WAS ASKED ABOUT ───────────────────────────────────────────────────────────────
+// ④ AN OBJECT NOBODY CAN CHECK IS REFUSED BEFORE ANY MAIL EXISTS ────────────────────────────────────────────────────
 {
-  // A meeting that declared NO debate subject: this is the shape where the ask face cannot tell a legal one-line
-  // proposition from a typo (the documented, test-pinned allowance) — so the MAIL has to say so.
+  // ── OLD INTENT (RUN 30 §④): a meeting that declared NO debate subject accepted an unregistered one-line object as
+  // `propositionKind:"unverified"` and the MAIL had to disclose 「尚未在命题库登记」 so the member knew the target was not
+  // on the propositions track. MEASURED ON THE 69TH REAL MACHINE (RUN 249 / A, rec-3): `vibe_v5_verdict_ask` with
+  // `p-rulecheck-不存在` returned `ok:true`, `propositionKind:"unverified"` and delivered mail while its own description
+  // promised `VMU_ASK_UNKNOWN_PROPOSITION`. NEW SEMANTICS: the ask is REFUSED by name and NO mail is delivered — the
+  // disclosure moved from inside the mail to the refusal itself. SAME THING PROVEN: the caller learns the object is not
+  // on the propositions track, and (stronger than before) every member is spared a request for a ruling on a target that
+  // cannot be aggregated; a REGISTERED card still gets no disclaimer and still reaches the members.
   const convened = await call(b, 'vibe_v5_meeting', { agenda: '验收 run30 ④', type: 'ordinary', member: 'acad-01' })
   const mid = R(convened).meeting
   ok(typeof mid === 'string' && mid.length > 0, '④ a meeting was convened (no debate subject declared)', { meeting: mid, code: R(convened).code })
   for (const m of ['acad-01', 'res-01', 'res-02']) await call(b, 'vibe_vmu_meeting', { action: 'attend', id: mid, member: m })
   await call(b, 'vibe_vmu_meeting', { action: 'speak', id: mid, member: 'res-01', text: 'one-line target' })
+  const inboxBefore = R(await call(b, 'vibe_v5_inbox', { member: 'res-01', status: 'all' }))
+  const rowsBefore = Array.isArray(inboxBefore.rows) ? inboxBefore.rows.length : -1
+  ok(rowsBefore >= 1, '④ precondition: the member already has mail (the convening invitation), so "no new mail" is measurable', { rows: rowsBefore })
 
-  const asked = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-typo-30' }))
-  ok(asked.ok === true && asked.propositionKind === 'unverified',
-    '④ an unregistered one-line object is still accepted (the documented v5r allowance) and labelled `unverified`', { ok: asked.ok, kind: asked.propositionKind, code: asked.code })
-  ok(typeof asked.propositionClause === 'string' && asked.propositionClause.includes('尚未在命题库登记'),
-    '④ the receipt carries the exact clause the members were sent (`propositionClause`)', { clause: String(asked.propositionClause || '').slice(0, 200) })
-  ok(asked.mail && typeof asked.mail.text === 'string' && asked.mail.text.includes('尚未在命题库登记') && asked.mail.text.includes(asked.propositionClause),
-    '④ ★ the MAIL body discloses that the object is NOT on the propositions track — the member reads the same fact the receipt records', { tail: String(asked.mail && asked.mail.text || '').slice(0, 240) })
-  // The mailbox face lists ROWS (id/from/subject/kind — "rows carry NO body: triage is not reading"), and reading a
-  // message is `action:"open"`. Both are asserted: the clause must survive into the body the member actually opens.
-  const inbox = R(await call(b, 'vibe_v5_inbox', { member: 'res-01', status: 'all' }))
-  const box = Array.isArray(inbox.rows) ? inbox.rows : []
-  ok(box.length > 0 && box.some((e) => String((e && e.subject) || '').includes('尚未在命题库登记')),
-    '④ the delivered copy really carries the clause (read back from the member mailbox INDEX, not from the ask receipt)',
-    { count: box.length, status: inbox.status, asked: { delivered: asked.delivered, failed: asked.failed, deliveredCount: asked.deliveredCount } })
-  // RUN 223 A: the convene path now delivers a meeting-invitation mail per non-chair member, so the box's FIRST row
-  // is no longer necessarily the nudge under test. Pick the row that carries the clause instead of trusting order.
-  const target = box.find((e) => String((e && e.subject) || '').includes('尚未在命题库登记'))
-  const opened = target ? R(await call(b, 'vibe_v5_inbox', { member: 'res-01', action: 'open', id: target.id })) : {}
-  // The pack face answers { ok, message, … } — the BODY lives on `message` (list rows carry id/subject/kind only).
-  const body = String((opened && opened.message && (opened.message.text || opened.message.body)) || '')
-  ok(body.includes('尚未在命题库登记'),
-    '④ ★ the OPENED mail BODY carries it too — the clause is in the message, not only in the subject line', { body: body.slice(0, 240), openedKeys: Object.keys(opened || {}), boxIds: box.map((e) => e && e.id) })
+  const refused = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-typo-30' }))
+  ok(refused.ok === false && refused.code === 'VMU_ASK_UNKNOWN_PROPOSITION',
+    '④ an unregistered one-line object is REFUSED by name — the face no longer mails every member about a target it cannot check', { ok: refused.ok, code: refused.code })
+  ok(typeof refused.message === 'string' && refused.message.includes('p-typo-30') && refused.message.includes('NO debate subject'),
+    '④ the refusal carries the fact the old mail disclaimer carried: the object is not a card, not a file, and this meeting declared NO debate subject', { message: String(refused.message || '').slice(0, 240) })
+  ok(typeof refused.hint === 'string' && /record the proposition first/.test(refused.hint) && /FILE/.test(refused.hint),
+    '④ ★ the hint names the reachable repairs (record the card first / the meeting object / a FILE reference), so the refusal is a next move, not a dead end', { hint: String(refused.hint || '').slice(0, 260) })
 
-  // …and a REGISTERED card needs no disclaimer: the clause is derived from the lookup, not pasted into every mail.
+  const inboxAfter = R(await call(b, 'vibe_v5_inbox', { member: 'res-01', status: 'all' }))
+  const rowsAfter = Array.isArray(inboxAfter.rows) ? inboxAfter.rows.length : -1
+  const carriesClause = (Array.isArray(inboxAfter.rows) ? inboxAfter.rows : []).some((e) => String((e && e.subject) || '').includes('尚未在命题库登记'))
+  ok(rowsAfter === rowsBefore,
+    '④ ★ NOTHING was mailed: the member mailbox row count is unchanged by the refused ask (old intent: the member must not be asked to rule on an uncheckable object)', { before: rowsBefore, after: rowsAfter })
+  ok(!carriesClause,
+    '④ ★ and no row carries the old 「尚未在命题库登记」 disclaimer — the disclosure is the refusal now, so it cannot be mistaken for a mail that was sent', { carriesClause })
+
+  // …and a REGISTERED card needs no disclaimer and is still accepted + mailed: the fix is a refusal of the uncheckable
+  // shape, not a slogan or a blanket closure of the face.
   const card = R(await call(b, 'vibe_v5_record_proposition', { track: 'propositions', statement: 'p-r30 is one thing', value: 'objects', motive: 'run30 ④', p: 0.5, member: 'res-01' }))
   ok(card.ok === true && typeof card.recordId === 'string', '④ setup: a card was recorded', { ok: card.ok, recordId: card.recordId, code: card.code })
   const askedCard = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: card.recordId }))
   ok(askedCard.ok === true && askedCard.propositionKind === 'card' && askedCard.propositionClause === null,
-    '④ a card the library HOLDS gets NO disclaimer (clause null) — the disclosure follows the provenance', { kind: askedCard.propositionKind, clause: askedCard.propositionClause, code: askedCard.code })
+    '④ a card the library HOLDS is still accepted with NO disclaimer (clause null) — the check follows the provenance, and the refusals above did not narrow the legal shapes', { kind: askedCard.propositionKind, clause: askedCard.propositionClause, code: askedCard.code })
   ok(askedCard.mail && !String(askedCard.mail.text || '').includes('尚未在命题库登记'),
     '④ ★ the card mail carries no "not registered" clause — the fix is a disclosure, not a slogan', { tail: String(askedCard.mail && askedCard.mail.text || '').slice(-180) })
 }

@@ -255,6 +255,67 @@ try {
     ok(says(memberMeeting, '【主席发言·') && says(memberMeeting, '不用轮询'),
       '§6k ·6 a member in session knows a chair push will arrive by itself, as a notice line')
   }
+  // ── §7 ·7 RUN 249: TWO MEASURED MIS-TEACHINGS RETIRED (hands on a service meeting; a boolean formal_agenda) ──
+  // The 69th live run hit both: L39 called hands {op:"list"} on a SERVICE meeting and got
+  // VMU_REGISTRY_BOUNDARY (hands is the PRIMITIVE floor; a service floor is a QUEUE), and P-04 passed
+  // formal_agenda:true and got a declaration with formalAgendaItems:null. Both sentences are now taught the
+  // other way, and both are pinned in the SOURCE and in the REAL assembled chair meeting prompt.
+  {
+    console.log('§7 ·7 the two measured mis-teachings are retired in the prompts')
+    ok(says(blocksBSource, 'VMU_REGISTRY_BOUNDARY') && says(blocksBSource, '只写内核**原语会**的楼层'),
+      '§7a ·7 action:"hands" is named as primitive-only, with the refusal code it really returns')
+    ok(says(blocksBSource, '把人按序排进队列用') && says(blocksBSource, '只是**模式名**'),
+      '§7b ·7 the queue doors are invite/order, and the flow MODE named hands is untangled from the ACTION')
+    ok(says(blocksBSource, 'formalAgendaItems:null') && says(blocksBSource, '才逐条落库'),
+      '§7c ·7 a boolean formal_agenda only declares; items require an array')
+    const b = await boot(await mkRoot())
+    await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
+    await b.K.members.hire({ id: 'r-1', slot: 'member' })
+    const opened = await b.K.meetings.open({ type: 'debate', chair: 'r-acad', materials: '确认命题; 分配复核', members: ['r-1'], roster: ['r-1'], actor: 'r-acad' })
+    const meetingId = String(opened && (opened.meeting === undefined || opened.meeting === null ? '' : opened.meeting))
+    ok(meetingId !== '', '§7d ·7 a meeting was opened for the meeting-phase prompt', opened && opened.code)
+    const chairMeeting = await seatPrompt(b.K, 'r-acad', 'meeting', { meeting: meetingId })
+    ok(says(chairMeeting, 'VMU_REGISTRY_BOUNDARY') && says(chairMeeting, '把人按序排进队列用'),
+      '§7e ·7 the assembled chair meeting prompt tells the chair the queue doors (not hands)')
+    ok(says(chairMeeting, 'formalAgendaItems:null') && says(chairMeeting, '才逐条落库'),
+      '§7f ·7 and that items need an array, not a boolean')
+  }
+
+  // ── §8 ·8 RUN 249 (task-69): DELIVERY IS OBSERVABLE — THE BLOCK REALLY RENDERS, AND THE RECEIPT OUTLIVES THE REPLY ──
+  // The 69th live run filed F-11 (7 unread mails, yet the `[新到的消息]` block never rendered), F-02 (a 7 328-char reply
+  // was cut to a 2 000-char excerpt — and the excerpt was all the office ever read) and F-01 (`status:"applied"` on a
+  // reply whose whole body was `{"solved":false}`). task-69 wired the block into the turn prompt and added the readings,
+  // so the prompt must name the SWITCHES a seat can check: `notices.rendered` (was the block really rendered for me this
+  // turn), the archive path+hash of the full reply, and `emptyReply` (this turn did not say what was done). Every string
+  // pinned below is one the code really emits; none of it is a paraphrase of an intention.
+  {
+    console.log('§8 ·8 the delivery readings a seat can check are taught (block rendered, full reply, empty reply)')
+    ok(says(blocksBSource, 'rendered') && says(blocksBSource, 'blockChars') && says(blocksBSource, '装配回执的 `notices`'),
+      '§8a ·8 the assembly reading is named exactly as the turn receipt emits it')
+    ok(says(blocksBSource, '不出现块头') && says(blocksBSource, '通知丢了'),
+      '§8b ·8 "no header" is taught as "no message", not as "the notice was lost"')
+    ok(says(blocksBSource, 'vmu.turn.replyLimitChars') && says(blocksBSource, 'replyTruncated:true'),
+      '§8c ·8 the reply limit is named with its setting key and the truncation flag')
+    ok(says(blocksBSource, 'replyFullPath') && says(blocksBSource, 'replyFullSha256'),
+      '§8d ·8 the full reply is a file with a path and a hash, not a promise')
+    ok(says(blocksBSource, 'emptyReply:true'), '§8e ·8 an empty reply is taught as a failure to report, not a success')
+    ok(says(blocksBSource, 'notifyRows') && says(blocksBSource, 'notifyFailed'),
+      '§8f ·8 the chair sees the kernel delivery arrays on the appointment receipt')
+
+    // …and the assembled prompts carry it (source truth is not prompt truth).
+    const b = await boot(await mkRoot())
+    await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
+    await b.K.members.hire({ id: 'r-1', slot: 'member' })
+    const normal = await seatPrompt(b.K, 'r-1', 'normal')
+    ok(says(normal, '装配回执的 `notices`') && says(normal, 'emptyReply:true'),
+      '§8g ·8 every round teaches the two readings that decide "did I hear" and "did I say anything"')
+    const opened = await b.K.meetings.open({ type: 'debate', chair: 'r-acad', materials: '确认命题; 分配复核', members: ['r-1'], roster: ['r-1'], actor: 'r-acad' })
+    const meetingId = String(opened && (opened.meeting === undefined || opened.meeting === null ? '' : opened.meeting))
+    ok(meetingId !== '', '§8h ·8 a meeting was opened for the chair meeting prompt', opened && opened.code)
+    const chairMeeting = await seatPrompt(b.K, 'r-acad', 'meeting', { meeting: meetingId })
+    ok(says(chairMeeting, 'notifyRows') && says(chairMeeting, 'notifyFailed'),
+      '§8i ·8 the chair\'s assembled prompt names the delivery arrays to repair from')
+  }
 } finally {
   for (const root of roots) { try { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) } catch {} }
   console.log('')

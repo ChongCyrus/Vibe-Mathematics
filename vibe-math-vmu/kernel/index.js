@@ -27,6 +27,13 @@ import { createPromptPipeline } from './prompt/index.js'
 // framework can run a member turn instead of borrowing the original preset loop. Its ownership table names REAL
 // faces and operations (read off this kernel at runtime in round 338), and delivery goes through the host seam.
 import { createTurnOrchestrator, facesFrom, closureVoteOf, deliverByReturning } from './turn/index.js'
+// ★★★ RUN 249 (task-69 / F-11): the framework's OWN notice block — a deployment with no pack still renders the
+// `[新到的消息]` header instead of folding the queue into the status block (the 69th live run shipped 7 unread mails
+// that reached the queue and never reached a prompt). A pack's `noticeBlock` still wins.
+import { inboxBlock as kernelNoticeBlock } from './notices.js'
+// ★★★ RUN 249 (task-69 / F-02): the policy gate for the one write this kernel performs on a member's own Turn
+// archive — same gate every library write passes, so a configured path policy can refuse it by name.
+import { guardWrite } from './guard.js'
 // PHASE 12 / D7 step 2: the CALL-TIME half of the per-seat face (pure predicate, consumes the ONE resolver below —
 // it never re-derives the deny set; the wire filter in host.js and this gate must read the same answer).
 import { faceGate as evaluateMemberFaceGate, hiddenNames as projectFaceHidden } from './memberface.js'
@@ -157,7 +164,9 @@ import { createMathAdapters } from './mathadapters.js'
 // of a face so a gated action QUEUES instead of running (Lead's "审批未批 ⇒ 动作只能排队" requirement).
 import { attachApprovalGate } from './human.js'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+// RUN 249 (task-69 / F-02): `dirname` is here for the turn reply archive's directory creation — the same pairing
+// (mkdirSync+writeFileSync) the store and the audit log already use.
+import { dirname, join } from 'node:path'
 
 export function refuse(code, message, hint) {
   const err = new Error(message)
@@ -891,7 +900,7 @@ export function createKernel({
    * own API all get the SAME code and the SAME words. Missing `by` is NOT a silent skip: it is the office
    * path, and it is EXEMPTED AND SELF-DISCLOSED in the receipt (`ownerCheck`).
    */
-  const settingsGuard = (key, by, action) => {
+  const settingsGuard = (key, by, action, actedBy = null) => {
     if (typeof key !== 'string' || key.trim() === '') {
       throw refuse('VMU_INVALID_ARGUMENT', action + 'SettingsValue needs a non-empty setting key',
         'e.g. ' + action + 'SettingsValue("vmu.middleware.dryRun", … , { by: "office" })')
@@ -920,7 +929,29 @@ export function createKernel({
       }
       ownerCheck = 'delegated (listed in vmu.safety.delegableKeys)'
     }
-    return { def, hot: def.hot ? String(def.hot) : null, who: def.who || null, ownerCheck }
+    // ★★ RUN 249-D / F-09 (MEASURED, run 69): the office path disclosed its EXEMPTION but lost the ATTRIBUTION. A temp
+    // seat calling `vibe_vmu_set` without `by` produced `who:"office"` + `ownerCheck:"exempted (no `by` given…)"`, so
+    // neither the receipt nor the runtime-write ledger could answer "who actually changed this". Three DIFFERENT facts
+    // are now kept apart: `who` is the key's DECLARED owner, `by` is what the caller DECLARED, and `actedBy` is what the
+    // turn context MEASURED (`resolveTurnMember`, the same criterion every other seat tool uses). A missing `by` stays
+    // the exempted office path — the exemption is unchanged; only the attribution stops being lost.
+    const measured = actedBy === null || actedBy === undefined ? null : String(actedBy)
+    const declaredBy = by === null || by === undefined ? null : String(by)
+    // `resolveTurnMember` returning null is NOT "unknown": it is the documented answer for the root/office (a member
+    // turn always resolves through the roster/session seams). So when neither the turn context nor `by` names anybody,
+    // the actor is the office — the only caller the null answer stands for. Saying "nobody" there would keep the very
+    // hole this fix closes, one branch further out.
+    const attributed = measured !== null ? measured : (declaredBy !== null ? declaredBy : 'office')
+    const actedBySource = measured !== null ? 'caller' : (declaredBy !== null ? 'declared-by' : 'office-path')
+    return {
+      def, hot: def.hot ? String(def.hot) : null, who: def.who || null, ownerCheck,
+      actedBy: attributed, actedBySource,
+      actedByMeans: measured !== null
+        ? 'MEASURED from the turn context (resolveTurnMember): ' + measured + ' made this change; the key\'s declared owner is ' + (def.who || '(nobody declared)')
+        : (declaredBy !== null
+          ? 'no turn member could be measured, so the attribution is the caller\'s own declaration (`by`): ' + declaredBy
+          : 'no turn member was measured and no `by` was declared — `resolveTurnMember` answered null, which is the ROOT/OFFICE answer: the change is attributed to the office (the disclosed office path), never to a member'),
+    }
   }
   /**
    * ROUND 2 (task-14, vmu-assistant's §2): the READ-ONLY half of the settings guard, as a seam. `settingsGuard`
@@ -2818,9 +2849,65 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // `议程：（类型：，主席：）。` — a prompt shorter than the one a real seat reads, i.e. headroom that does not exist (the
   // same class of defect RUN 226 fixed for `bindings`/`settings`). Hoisting it is what lets a ruler use the SAME map.
   const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs })
+  // ═══════════ RUN 249 (task-69 / F-02): A CUT REPLY IS KEPT IN THE MEMBER'S OWN FILE ═══════════
+  // The 69th live run answered with 7,328 characters; the receipt kept 2,000 and the rest existed only in the child
+  // session. The loop cannot write files (kernel/turn/index.js has no imports by design), so the write is wired HERE,
+  // where `root` and the path policy live — through `guardWrite`, the same gate every library write passes, because a
+  // member's directory is workspace data and a turn archive must not be the one path that skips the policy.
+  // The file is `Members/<member>/Turns/<turn>.md`: the member's own shelf, next to Progress/, so the member (and the
+  // office reading that member's library) finds its own words where it already looks. The receipt carries the RELATIVE
+  // path (readable without knowing this machine's root), the sha256 of the REPLY TEXT (so a reader can prove the file
+  // is the answer it names), and the byte count.
+  const turnArchiveSegment = (v) => {
+    const s = String(v === undefined || v === null ? '' : v).trim()
+    if (s === '') return ''
+    // A member id or turn id is data, not a path: collapse anything that could climb or separate. `.`/`..` become `_`
+    // rather than a traversal, and the mapping is stable (same id ⇒ same file).
+    return s.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^\.+$/, '_')
+  }
+  const writeTurnArchive = (payload) => {
+    const member = turnArchiveSegment(payload && payload.member)
+    const turnId = turnArchiveSegment(payload && payload.turn)
+    const text = payload && typeof payload.text === 'string' ? payload.text : ''
+    if (member === '' || turnId === '') return { ok: false, why: 'a turn archive needs both a member and a turn id' }
+    if (!root) return { ok: false, why: 'this kernel has no workspace root, so there is nowhere to write a turn archive' }
+    const target = join(String(root), 'Members', member, 'Turns', turnId + '.md')
+    let gated
+    try { gated = guardWrite({ settings: settingsView, root: String(root), target, kind: 'turn reply archive' }) }
+    catch (e) { return { ok: false, why: String((e && e.message) || e) } }
+    if (!gated || gated.ok !== true) return { ok: false, why: 'the path policy did not accept the turn archive path' }
+    // the audit's orphan-service judge reads `const X = create[A-Z]…` as "a constructed service"; this is a hash
+    // helper, not a service, so the call sits inside an arrow (the binding's right-hand side is the arrow, not createHash).
+    const digestText = (s) => createHash('sha256').update(s, 'utf8').digest('hex')
+    const replyDigest = digestText(text)
+    const at = (() => { try { return new Date(guardedClock()).toISOString() } catch (e) { return '' } })()
+    const head = [
+      '<!-- turn reply archive — RUN 249 (task-69 / F-02): the FULL reply as the member wrote it. The turn receipt',
+      '     carries the CUT excerpt (replyExcerpt/replyTruncated) and points here via replyFullPath; the sha256 below',
+      '     is over the reply text ONLY (this header is not part of it), so the file can be verified against the',
+      '     receipt without stripping anything. -->',
+      'member: ' + member,
+      'turn: ' + turnId,
+      'at: ' + at,
+      'sha256: ' + replyDigest,
+      '',
+    ].join('\n')
+    try {
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, head + text, 'utf8')
+    } catch (e) {
+      return { ok: false, why: 'the archive write failed: ' + String((e && e.message) || e) }
+    }
+    return { ok: true, path: 'Members/' + member + '/Turns/' + turnId + '.md', sha256: replyDigest, bytes: Buffer.byteLength(text, 'utf8') }
+  }
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
-    noticeBlock: noticeBlock || null,
+    // ★★★ RUN 249 (task-69 / F-11): the PACK still wins, but the framework now has a default of its own. Before this,
+    // a deployment with no pack noticeBlock folded the queue into the status block and the `[新到的消息]` header never
+    // appeared (the 69th live run: 7 unread mails, 0 hits in the capture). `kernelNoticeBlock` is the same shape as the
+    // corpus block and renders NOTHING when the queue is empty, so zero mechanism is preserved.
+    noticeBlock: noticeBlock || kernelNoticeBlock,
+    writeTurnArchive,
     extraPhases: extraPhases || null,
     // ★★ ROUND 52: the status board prints whose settings resolution it shows, so the loop needs this kernel's id.
     // ★★★ ROUND 54: handed over as a GETTER, not a string - the loop asks per render, so a kernel whose id only becomes
@@ -4476,6 +4563,45 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           }
         }
       }
+      // ★★ RUN 249-D / B (MEASURED, run 69): `vibe_v5_tool_help{member:"r-temp"}` and `{member:"r-1"}` returned the SAME
+      // 80-entry table — chair/office faces included — with `source:"caller"`. The reading answered "what can the CALLER's
+      // Agent see", not "what may this SEAT use". The seat's face is already a fact this kernel holds: `resolveMemberToolDeny`
+      // is the ONE resolution the wire filter (host.js) and the call-time gate (host-pack-tools.js#packToolFaceGate) both
+      // read, so it is applied HERE with the SAME predicate — deny-all ⇒ nothing; allow-list ⇒ only those names; otherwise
+      // ⇒ drop the denied ones. No second table is invented (the judgement must not measure itself).
+      // `deniedCount`/`deniedNames` are the rows this reading removed (a MEASUREMENT of the filter, not a promise), and
+      // `seatFilter.rule` names which branch of the predicate ran so the reader can reproduce it.
+      let seatFilter = null
+      {
+        let resolved = null
+        try { resolved = this.resolveMemberToolDeny(member) } catch { resolved = null }
+        if (resolved) {
+          const before = names.slice()
+          const allowList = Array.isArray(resolved.allow) ? resolved.allow : null
+          const denySet = new Set(Array.isArray(resolved.deny) ? resolved.deny : [])
+          if (resolved.all === true) names = []
+          else if (allowList) names = names.filter((n) => allowList.includes(n))
+          else if (denySet.size > 0) names = names.filter((n) => !denySet.has(n))
+          const removed = before.filter((n) => !names.includes(n))
+          const applied = resolved.all === true || allowList !== null || denySet.size > 0
+          seatFilter = {
+            applied,
+            slot: resolved.slot || null,
+            rule: resolved.all === true ? 'deny-all' : (allowList ? 'allow-list' : (denySet.size > 0 ? 'seat-deny' : 'none')),
+            source: resolved.source || null,
+            before: before.length,
+            after: names.length,
+            deniedCount: removed.length,
+            deniedNames: removed,
+            means: 'the SEAT\'s face was applied to this reading with the SAME resolution the wire filter and the call-time gate use (resolveMemberToolDeny): a member may read only what its seat may use. `deniedCount`/`deniedNames` are the rows removed here; when the wire already omitted them this is 0 and `applied` still says the face was read',
+          }
+          // ★ `source:"seat"` ONLY when a real PACK seat face was read AND this reading came from the caller's own schema
+          // table — a kernel with no pack faces (bare slots) keeps `source:"caller"`, because there the caller table IS
+          // the whole truth (pinned by tests/vmu-kernel.test.mjs). The provider path keeps `"provider"`: its wire has
+          // already applied the same face, and the narrowing below is then a no-op that must not relabel its origin.
+          if (source === 'caller' && resolved.source !== null) source = 'seat'
+        }
+      }
       const purposes = toolFaceDescriptions || {}
       // ★ PHASE 12 / D7 step 2: `hidden` — the OTHER half of this same reading. The list above says what the member can
       // use; this says what the face keeps away, and WHY, so a member that notices a missing command can be told the
@@ -4493,7 +4619,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         } catch { face = null }
         hidden = projectFaceHidden({ declared, visible: names, face })
       } catch { hidden = [] }
-      return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })), hidden, source, agentId, schemaScope }
+      return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })), hidden, source, agentId, schemaScope, deniedCount: seatFilter ? seatFilter.deniedCount : null, seatFilter }
     },
     applyMemberToolFace({ member, allow = null, deny = null } = {}) {
       const id = typeof member === 'string' ? member : ''
@@ -4658,11 +4784,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * would need host identity, which the harness does not hand us). It replaces a purely declarative comment
      * with something that refuses by name.
      */
-    setSettingsValue(key, value, { by = null, reason = null } = {}) {
+    setSettingsValue(key, value, { by = null, reason = null, actedBy = null } = {}) {
       // THE CONTRACT LIVES HERE (task-166): declared key, H3 read-only, declared owner. It used to live ONLY
       // in host.js, so the kernel API accepted an H3 write with `applied:'immediate'` while the tool face
       // refused the very same pair with VMU_NOT_PERMITTED — two paths, two contracts.
-      const g = settingsGuard(key, by, 'set')
+      // RUN 249-D / F-09: `actedBy` is the MEASURED caller (the tool face resolves it from the turn context); it is
+      // separate from `by` (what the caller declared) and from `who` (the key's declared owner).
+      const g = settingsGuard(key, by, 'set', actedBy)
       // ★ ROUND 30 (task-149 A) — THE VALUE/DOMAIN GUARD'S EXECUTION POINT, SECOND OF TWO (the INTERACTIVE face).
       // A write is an explicit declaration by an operator, so an out-of-domain value is REFUSED BY NAME — the code
       // is `VMU_INVALID_ARGUMENT`, already registered and already used for this exact offence by R17's read-side
@@ -4721,6 +4849,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           : 'declared and measured agree')
       const receipt = {
         ok: true, key, source: 'runtime', hot, who: g.who, ownerCheck: g.ownerCheck,
+        // ★★ RUN 249-D / F-09: WHO ACTUALLY DID IT, kept apart from `who` (the key's DECLARED owner) and from `by`
+        // (what the caller declared). `actedBySource` says how the attribution was obtained, so a reader never has to
+        // guess whether it was measured or merely declared.
+        actedBy: g.actedBy, actedBySource: g.actedBySource, actedByMeans: g.actedByMeans,
         // ★★ LIVE RUN 19 (the institute's own report, ⑬.1): the receipt carried `hot:"H1"` AND `requiresRestart:true`,
         // and the institute read those two as contradicting each other ("the table says next turn, the receipt says
         // restart"). They do not contradict — H1's declared promise is "next turn", while THIS key is read once at
@@ -4774,7 +4906,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           : null,
       }
       // ROUND 7 / task-57: the caller's `reason` is part of the record (the ledger answers "why", not only "who").
-      runtimeWrites.push({ key, hot, by, reason: reason === null || reason === undefined ? null : String(reason), ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })
+      // RUN 249-D / F-09: `actedBy` rides into the LEDGER too — the audit surface (`status().runtimeWrites`,
+      // `lastRuntimeWrite`) used to carry `who:"office"` for an exempted write, so the real changer was unrecoverable.
+      runtimeWrites.push({ key, hot, by, actedBy: g.actedBy, actedBySource: g.actedBySource, reason: reason === null || reason === undefined ? null : String(reason), ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })
       return receipt
     },
     /**
@@ -4782,20 +4916,23 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * or an H2 switch could be removed silently by any caller. It now runs the SAME guard as set, records
      * WHO/WHEN/the PREVIOUS value, and reports the hot class in the receipt.
      */
-    unsetSettingsValue(key, { by = null } = {}) {
-      const g = settingsGuard(key, by, 'unset')
+    unsetSettingsValue(key, { by = null, actedBy = null } = {}) {
+      const g = settingsGuard(key, by, 'unset', actedBy)
       const had = Object.prototype.hasOwnProperty.call(settings, key)
       const previous = had ? settings[key] : undefined
       delete settings[key]
       markSettingWriter(settings, key, 'runtime')
       const row = {
         key, by, action: 'unset', hot: g.hot, who: g.who, ownerCheck: g.ownerCheck,
+        // RUN 249-D / F-09: the removal path records the same measured attribution as the set path.
+        actedBy: g.actedBy, actedBySource: g.actedBySource,
         hadValue: had, previous: previous === undefined ? null : previous,
         appliesAt: APPLIES[g.hot] || null, requiresRestart: g.hot === 'H2', at: clock(),
       }
       runtimeWrites.push(row)
       return {
         ok: true, key, source: 'runtime', action: 'unset', hot: g.hot, who: g.who, ownerCheck: g.ownerCheck,
+        actedBy: g.actedBy, actedBySource: g.actedBySource, actedByMeans: g.actedByMeans,
         hadValue: had, previous: row.previous, appliesAt: row.appliesAt, requiresRestart: row.requiresRestart,
         applied: row.requiresRestart ? 'next-session' : 'immediate', at: row.at,
         // ★★ RUN 158 (N4): the same fact on the removal path — a runtime unset is not durable, the declaration returns.

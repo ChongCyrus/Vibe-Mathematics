@@ -83,9 +83,16 @@ ok(spoke0 && Array.isArray(spoke0.spokeBy) && spoke0.spokeBy.length === 0,
   '① nobody has spoken yet — so a speech-derived ask would be empty (the state the old code could not tell apart)',
   { spokeBy: spoke0 && spoke0.spokeBy })
 
+// RUN 249 / A: the ask face now REFUSES a proposition it cannot check, so the fixture must REGISTER the card
+// first through the public path — a real ask is about a proposition the library holds. The assertions below are
+// unchanged: this section is still about WHO gets asked, not about what can be asked.
+const cardRec = await call(b, 'vibe_v5_record_proposition', { statement: 'R19 名册即辩论（待裁决命题）', value: 'objects', motive: 'R19 问名册', p: 0.5, member: 'r-chair' })
+const propId = cardRec.parsed && cardRec.parsed.recordId
+ok(typeof propId === 'string' && propId !== '', 'setup: the proposition card was REGISTERED through the public face (the ask needs a checkable object)', cardRec.parsed && { code: cardRec.parsed.code })
+
 // ── ② THE ROSTER IS THE DEBATE ───────────────────────────────────────────────────────────────────────────────
 console.log('=== 2. THE ASK NAMES BOTH MEMBERS EVEN THOUGH NOBODY SPOKE ===')
-const asked = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-demo' })
+const asked = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: propId })
 const ap = asked.parsed || {}
 ok(ap.ok === true && Array.isArray(ap.asked) && ap.asked.length === 2 && ap.asked.includes('r-1') && ap.asked.includes('r-2'),
   '② BOTH non-chair members are asked (the roster, not the speaker list)', { asked: ap.asked, code: ap.code })
@@ -114,7 +121,7 @@ ok(typeof ap.partialAskMeans === 'string' && ap.partialAskMeans.includes('every 
 
 // ── ⑤ ONE REACHABLE + ONE UNREACHABLE ──────────────────────────────────────────────────────────────────────
 console.log('=== 5. PARTIAL DELIVERY IS NAMED, NOT AVERAGED WITH SUCCESS ===')
-const partial = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-demo', members: ['r-1', 'ghost-9'] })
+const partial = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: propId, members: ['r-1', 'ghost-9'] })
 const pp = partial.parsed || {}
 const ghostFailed = Array.isArray(pp.failed) ? pp.failed.filter((f) => String(f.to) === 'ghost-9') : []
 ok(pp.ok === true && pp.deliveredCount === 1 && pp.failedCount === 1 && pp.partialAsk === true,
@@ -128,7 +135,7 @@ ok(typeof pp.partialAskMeans === 'string' && pp.partialAskMeans.includes('reache
 
 // ── ⑥ NOTHING DELIVERED IS A NAMED REFUSAL ────────────────────────────────────────────────────────────────
 console.log('=== 6. AN ASK THAT REACHED NOBODY IS REFUSED BY NAME ===')
-const none = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-demo', members: ['ghost-1', 'ghost-2'] })
+const none = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: propId, members: ['ghost-1', 'ghost-2'] })
 const np = none.parsed || {}
 ok(np.ok === false && np.code === 'VMU_ASK_NOTHING_DELIVERED',
   '⑥ zero delivered is `VMU_ASK_NOTHING_DELIVERED`, not `ok:true` with an empty list',
@@ -138,7 +145,7 @@ ok(typeof np.hint === 'string' && np.hint.includes('members:['),
 
 // ── ⑦ ONLY THE CHAIR SIGNS ────────────────────────────────────────────────────────────────────────────────
 console.log('=== 7. THE ASK IS A CHAIR ACT ===')
-const notChair = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-demo', member: 'r-1' })
+const notChair = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: propId, member: 'r-1' })
 const nc = notChair.parsed || {}
 ok(nc.ok === false && nc.code === 'VMU_NOT_PERMITTED' && String(nc.message || '').includes('r-chair'),
   '⑦ a member cannot ask on the chair\'s behalf, and the refusal names who CAN', { code: nc.code, message: String(nc.message || '').slice(0, 160) })
@@ -149,6 +156,21 @@ const noProp = await call(b, 'vibe_v5_verdict_ask', { meeting: mid })
 const npr = noProp.parsed || {}
 ok(npr.ok === false && npr.code === 'VMU_INVALID_ARGUMENT',
   '⑧ asking for "the probability" without naming the proposition is refused by name', { code: npr.code })
+
+// ── ⑨ RUN 249 / A: AN UNCHECKABLE NAME IS A NAMED REFUSAL, NOT A MAILSHOT ─────────────────────────────────
+console.log('=== 9. AN UNCHECKABLE PROPOSITION IS REFUSED AND NOTHING IS MAILED ===')
+const inboxBefore = kernel.mailbox.list('r-2', { status: 'all' }).count
+const unknown = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-rulecheck-不存在' })
+const up = unknown.parsed || {}
+ok(up.ok === false && up.code === 'VMU_ASK_UNKNOWN_PROPOSITION',
+  '⑨ ★ an unregistered free string is REFUSED by name (the old face answered ok:true and mailed every member)',
+  { ok: up.ok, code: up.code, message: String(up.message || '').slice(0, 200) })
+ok(String(up.message || '').includes('p-rulecheck-不存在'),
+  '⑨ the refusal names the object it could not check (so the chair can fix the id, not guess)', { message: String(up.message || '').slice(0, 200) })
+const inboxAfter = kernel.mailbox.list('r-2', { status: 'all' }).count
+ok(inboxAfter === inboxBefore,
+  '⑨ ★★ NOTHING was mailed by the refused ask (the member inbox count is unchanged) — the measured defect delivered where it could not check',
+  { before: inboxBefore, after: inboxAfter })
 
 console.log('\n=== VMU MEETING ASK: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { for (const f of failures) console.error('  - ' + f); process.exit(1) }

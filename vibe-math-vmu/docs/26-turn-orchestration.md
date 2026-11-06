@@ -4578,3 +4578,38 @@ coverage debt 由各自 `--write` 收口）。
 契约；写成「你会收到通知」既不告诉成员在哪看，也不告诉他不 ack 会怎样。另一条：反转旧裁决时必须同时消掉它当初的
 理由（这里是 reindex 的草案对账），否则提示词里的新规则会被下一个人当成没根据的措辞改回去。下一块候选：把投递行的
 `{id}` 渲染成可直接照抄的 ack 调用（现在行里写「mailbox ack {id}」，而 ack 门在 `vibe_vmu_mailbox` 面，提示词只能桥接）。
+
+### ROUND 249 —— 第 69 次真机：**先证构建，再谈投递**；提示词只改它教错的两句
+
+用户口径：第 69 次真机（`D:/_tmp/slv-phase5/`）跑通了主流程（四席激活、6 个成员回合含 1 个 wait 唤醒回合、结题 PDF 真出来），但产出 4 条提示词/规则缺陷 ＋ 1 条流程教训；lead 把它拆成 task-71（提示词/文档/台账，本轮）与 task-69/72/73（投递渲染、简报文本、构建自证）。本轮只做**本车道**：不跑全量 T1、不 commit。
+
+**一、F-00 先记一笔（本轮最重要的方法论教训）。** 真机上两项机制零命中——`[新到的消息]` 块全库 0 命中（F-11）、`m2` 的 10 085 字符回执里 `notified|notify` 0 命中（F-10）——但工作树里两块都在（`vibe-math-vmu/kernel/notices.js:19` 的 `INBOX_HEADER`、`:28` 的 `inboxBlock(notices)`、`kernel/meetings.js:4400-4421`、`tools/meeting.js:466`）。根因是造 tarball 的 `slv-p13-cc.ps1:211` 用 `git archive HEAD`，而 RUN 248 的改动还在未提交工作树里：**构建里根本没有那两项机制**。教训：真机结论必须带 **build 自证**（`git rev-parse HEAD` ＋ 包内关键串 grep 断言）；没有自证的「未命中」只能记「未观测」，不能记「不存在」。
+
+**二、提示词改了两句——都改在「它教错的地方」，不是加长。**
+1. `formal_agenda`（真机 P-04）：传 `true` 时回执只有 `formalAgendaDeclared:true`、`formalAgendaItems:null` ＋ `formalAgendaItemsWhy`（原文「a boolean cannot carry items」），谁都读不到条目。chair 会中手册 ① 现在教：**要条目就给数组** `["条目", {title:"条目2", kind:"review"}]`，数组才逐条落库（`formalAgendaItems` 读得到）；`true` 只是声明。
+2. `action:"hands"`（真机 L39 = 缺陷 C）：服务会议上 `hands { op:"list" }` ⇒ `VMU_REGISTRY_BOUNDARY`——`hands` 的 grant/revoke/clear/list 只写内核**原语会**的楼层，服务会议的楼层是**队列**。chair 会中手册 ④ 现在教：看队列用 `order`（不带 `members` 只读）、重排也用它（带 `members` 且 `by`=你自己、非出席者具名拒）、把人按序排进队列用 `invite`（`member` 一人或 `members` 数组，`why` 必填）；并把 `flow` 的**模式名** `hands` 与 `action:"hands"` 明确拆开（同名，不同面）。
+
+**三、真装配数字（同尺 `scripts/sim/audit/prompt-sections.mjs`，12 份）。** chair normal 27 492 / meeting **30 897** / checkpoint 27 083 / verify 31 044；member 24 208 / 24 775 / 23 799 / 27 341；temp 20 928 / 21 939 / 20 519 / 24 698；合计 **304 723**。chair normal 未变（两句都只在 `phase=meeting` 的手册里渲染，普通回合零注入——这正是「时机」该有的样子）。两句源码共 586 字符（P-04 238 ＋ hands 348）。
+
+**四、预算。** `audit-prompt-budget --check` ⇒ **PASS**（1 条既有 `SEAT_PROMPT_OVER_T99`：chair/meeting 33 363 vs t99 30 000；cap **36 500 未上调**；tools 48 个 / 33 469 / 最大 2 988）。
+
+**五、守门（新增 §7 ·7，6 条）。** `tests/vmu-run239-prompts.test.mjs` 新增：
+- §7a 源码里 `VMU_REGISTRY_BOUNDARY` ＋「只写内核**原语会**的楼层」在位（引的是真码 `tools/meeting.js:1033-1035` 的拒绝原文）；
+- §7b「把人按序排进队列用」＋「只是**模式名**」在位（队列门是 invite/order，同名手不是一回事）；
+- §7c `formalAgendaItems:null` ＋「才逐条落库」在位（布尔只声明、数组才有条目）；
+- §7d–§7f **真装配**：开一场会后 chair meeting prompt 里同时出现 `VMU_REGISTRY_BOUNDARY`/「把人按序排进队列用」与 `formalAgendaItems:null`/「才逐条落库」。
+重跑相关 pin：`vmu-run239-prompts` **65/0**、`vmu-run247-prompt-dedup` **74/0**（两句都在 meeting 相位，普通回合总量与参数复述计数零变化）、`vmu-run150-verdict-channel` **73/0**（新增句子里的教学形状只用已声明形参）。
+
+**六、门禁（收口时一次跑完）。** `regen-all --check` **17/17 in sync**、`check-docs` **PASS**、`check-rules-coverage --check` **PASS**（DONE 92 / PARTIAL 1=C10、anchors 93/93）、`audit-prompt-budget --check` PASS、prompt 三套 pin 全绿。
+
+**七、文档账。** 本卷记 ROUND 249；`docs/acceptance/phase12-v5r-rules-conformance.md` 记 **§346**（F-00 单列、F-01…F-11、A–D、P-01…P-05、G-1…G-4、实测、遗留）；`vibe-math-vmu/docs/18-command-and-protocol-reference.md` §6.5 增一行「回合通知块取 mailbox 行失败」——它是**审计事件** `mailbox/notice-lines-failed`（带原始 code/message），不是错误码、不升级引擎不可用。
+
+**八、教训与下一块。**
+- 「未观测」与「不存在」之间隔着一条 build 自证；真机报告不写 build 就像回执不写 id。
+- 提示词的职责不是把机制再讲一遍，而是指出**这个面不干那件事**以及**该去哪**：`hands` 的教训不是「别举手」，是「服务会议的楼层是队列，队列门是 order/invite」。
+- 下一块候选（等 task-69 落地后）：把「投递可见」写进三步结算——`[新到的消息]` 块 → `vibe_v5_inbox {action:"open"}` → `vibe_v5_meeting {op:"attend"}` → `vibe_vmu_mailbox {action:"ack"}`，并按 notice-lane 的**最终**实现字符串写（不按愿望写）；另：F-10 的 pack 回执透传三键、缺陷 B 的 `tool_help` 席位面。
+
+**九、task-69 交付后补记（第 2 项：投递可见）。** notice-lane（task-69）completed 之后按它**最终的实现字符串**写，不按愿望写：`[新到的消息]` 块头（`kernel/notices.js:19` `INBOX_HEADER`、`:28` `inboxBlock(notices)`，空输入渲染空串）、装配回执的 `notices` 三读数（`lines`／`rendered`／`blockChars`，`kernel/turn/index.js:2309`）、`vmu.turn.replyLimitChars`（默认 2000）与全文落 `Members/<member>/Turns/<turn>.md` ＋ `replyFullPath`／`replyFullSha256`／`replyFullBytes`、`replyBytes`／`emptyReply`（F-01）、预约回执的内核投递三数组 `notified`／`notifyRows`／`notifyFailed`。落点是**既有段**、不新增 section：`v5r-turn-channels`（shared，order 834，所有席×所有相位）＋445 字符承载「块会渲染、也能核对」「回执里的证据比正文活得久」；chair「召集与预约（非会议回合）」＋144 字符承载投递三数组（只在 `phase=meeting`）。一处教训：初稿把读数写成 `notices:{lines,rendered,blockChars}`，**撞了** `vmu-run247-prompt-dedup` §1c 的「参数表/调用签名」形状而红——改成 `notices` 里 `lines`／`rendered`／`blockChars` 后回到 8 行/1738 字符；同口径判据抓的正是「又用花括号复述参数表」。守门新增 **§8 ·8**（9 条，源码 6 + 真装配 3）⇒ `vmu-run239-prompts` **74/0**；`vmu-run247-prompt-dedup` **74/0**（§1a/§1b 逐条记账：`RUN247 70 689` ＋ `RUN248 教学 2 000` ＋ `RUN249 教学 1 356`，实测三份 normal **73 984**、余 61）；`vmu-run150-verdict-channel` **73/0**；`vmu-run248-notice-delivery` **117/0**。真装配终值：chair 27 944 / 31 493 / 27 535 / 31 496；member 24 660 / 25 227 / 24 251 / 27 793；temp 21 380 / 22 391 / 20 971 / 25 150；合计 **310 291**。预算 `audit-prompt-budget --check` **PASS**（chair/meeting **33 959** vs cap 36 500；member/verify 27 437；temp/verify 24 796；tools mean 由别人车道压回 **698**）。
+
+**十、文档账补记（state-lane / task-72 之后）。** `vibe-math-vmu/docs/18-command-and-protocol-reference.md`：§2.2 `vibe_vmu_set` 回执补 `actedBy`／`actedBySource`（`caller`｜`declared-by`｜`office-path`）／`actedByMeans`（`who` 是声明所有者、`actedBy` 是实际动手的人；`who:"office"` ＋ `ownerCheck:"exempted (no by)"` 旧读数不变）；新增 §2.11 `vibe_vmu_human`（`recover` 回执的 `rosterIntact` 组／`ledgerIntact` 组／`needsHuman` 组，语义「`ok:false` 不再等于人丢了」、记录 id `recovery-rec-<n>` ＋ `idSpace:"recovery"`）与 §2.12 `vibe_vmu_tools`（`source:"seat"`、`deniedCount`、`seatFilter{slot,rule,before,after,deniedNames}`，三席实测 48/27/8）。`docs/03` 本轮无新增码，未动。
+

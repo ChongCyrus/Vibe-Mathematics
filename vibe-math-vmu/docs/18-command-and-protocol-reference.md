@@ -110,7 +110,8 @@
 
 ### 2.2 `vibe_vmu_set` ✓
 - **参数**：`key`（string，**必填**，必须已在 `04-§11` 登记）｜`value`（string；按声明类型解析：`boolean`／`natural`／`positiveInteger`／`stringList`／`objectList`（后两类要求 **JSON**）／字符串）。
-- **返回**：`{ ok:true, key, value(parsed), hot, who, appliesFrom, source, note }`；`appliesFrom` 逐字映射：`H0 → immediately`｜`H1 → next turn`｜`H2 → next session (restart required)`。
+- **返回**：`{ ok:true, key, value(parsed), hot, who, ownerCheck, by, actedBy, actedBySource, actedByMeans, reason, requiresRestart, appliesFrom, source, note }`；`appliesFrom` 逐字映射：`H0 → immediately`｜`H1 → next turn`｜`H2 → next session (restart required)`。
+  ★ **归属读数（RUN 249-D / F-09，第 69 次真机）**：`who` 是**键的声明所有者**，`actedBy` 是**实际动手的人**——两者不再混为一谈。`actedBySource` 说明这份归属是怎么来的：`caller`（从回合上下文**实测**）｜`declared-by`（调用方自己声明了 `by`）｜`office-path`（既没实测也没声明，走 office 路径，回执以 `ownerCheck` **具名披露**该豁免）。`actedByMeans` 是一句人读解释。**`who:"office"` ＋ `ownerCheck:"exempted (no by)"` 这个旧读数不变**，变的是「真实改动人现在可审计」。移除设置（`action` 面之外的 `kernel.unsetSettingsValue(key)`）的回执带同族字段（`action:"unset"`），工具面只暴露 `set`。
 - **错误码**：`VMU_INVALID_ARGUMENT`（未声明键／`value` 非合法 JSON）｜**`VMU_NOT_PERMITTED`（H3 只读键，框架所有）**｜`VMU_PACK_CONFLICT`（底层写入拒绝）。
 - **幂等**：✗（写操作）。**前置**：键必须登记；H0 立即生效、H1 下一回合、H2 下一会话。
 - **可照抄**：`{"name":"vibe_vmu_set","arguments":{"key":"vmu.core.enabled","value":"true"}}`
@@ -189,6 +190,28 @@
 - **幂等**：`probe/receipt` ✓；`run/install` ✗（`run` 有内容寻址去重）。
 - **反模式**：✗ 期望"没有引擎也能算"（会 `VMU_ENGINE_UNAVAILABLE`）｜✗ 把 `install` 当无副作用操作。
 
+### 2.11 `vibe_vmu_human` ✓（恢复动词 `recover` 的回执）
+- **出现条件**：`vmu.human.*`／`vmu.resume.*` 任一声明（与 §1 总表同一行真源）。
+- **`recover` 回执**：除既有的 `ok`／`id`／`idSpace`／`at`／`reason`／`storeAttached`／`steps`／`wrote`／`unhydrated`／`interrupted`／`readBack` 之外，RUN 249-D / F-06 起新增三组读数：
+  - **人**：`rosterIntact`（布尔，**只回答「有没有人丢了」**）＋ `rosterMeasured`／`rosterLive`／`rosterDurable`／`rosterMissingLive`／`rosterKeptLive` ＋ `rosterIntactMeans`。`rosterMeasured:false` 时那句话明说「这是**没得比较**，不是全员健在」——读不到名册与名册完好是两件事。
+  - **账本**：`ledgerIntact`（逐 key 布尔）＋ `ledgerIntactKeys{intact,broken}` ＋ `ledgerIntactMeans`（`broken` 里就是「耐久值没被应用上」的 key；这是账本事实，不是名册事实）。
+  - **要人**：`needsHuman:[{step, code, why, keys?}]` ＋ `needsHumanMeans` ＋ `failedSteps`（`keys` 只在 `ledgers`/`readback` 两类 step 上出现）。
+- **语义（重要）**：`ok:false` **不再等于「人丢了」**——它表示「有 step 没成功」，逐条待办在 `needsHuman`；人丢没丢看 `rosterIntact`，账本回来没有看 `ledgerIntact`。干净恢复是 `ok:true` ＋ `needsHuman:[]`。
+- **记录 id**：`recovery-rec-<n>`，并带 `idSpace:"recovery"`（与命题卡 `rec-<n>` 分属两个命名空间，不再撞名；计数器耐久，重启后也不会 mint 出重复 id）。
+- **可照抄**：`{"name":"vibe_vmu_human","arguments":{"action":"recover","reason":"restart after deploy"}}`
+- **反模式**：✗ 看到 `ok:false` 就说「名册丢了」（先读 `rosterIntact`）｜✗ 把 `needsHuman` 当告警日志读（它是逐条待办）｜✗ 用 `rec-<n>` 前缀猜这是不是命题卡（看 `idSpace`）。
+
+### 2.12 `vibe_vmu_tools` ✓（席位工具面自查；pack 侧别名 `vibe_v5_tool_help`）
+- **参数**：`member`（string，**必填**：要看**哪个席位**的工具面）。
+- **返回**：`{ ok:true, member, count, tools:[{name, purpose}], hidden, source, agentId, schemaScope, deniedCount, seatFilter }`。
+- **RUN 249-D / B（第 69 次真机实测）**：`{member:"r-temp"}` 与 `{member:"r-1"}` 曾经返回**同一张 80 项表**、`source:"caller"`——那次读的是**调用方 Agent** 能看到什么，不是「该席位能用什么」。现在按**与 wire 层同一份**席位面收窄（`packs/v5r/seat-faces.js#SEAT_TOOL_FACES`，经 `resolveMemberToolDeny`——wire 过滤与调用时闸门读的正是这一处，这里不另造第二张表）：
+  - `source:"seat"`：当真有 pack 席位面被读、且这次读数来自调用方自己的 schema 表时才改这个标签；裸槽（无 pack 面）仍是 `"caller"`（那里调用方表就是全部事实），provider 路径仍是 `"provider"`（它的 wire 已收窄，这里是幂等的、不改来源标签）。
+  - `seatFilter: { applied, slot, rule, source, before, after, deniedCount, deniedNames, means }`：`rule` 是实际跑到的分支（`deny-all`／`allow-list`／`seat-deny`／`none`），`before`/`after`/`deniedNames` 是**测量值**（不是承诺），`means` 说明用的是同一个判定。
+  - `deniedCount`：这次读数被滤掉的行数（wire 已经省略时是 0，而 `seatFilter.applied` 仍说明「面被读过」）。
+  - `hidden`：被面挡掉的名字与**理由**（D7 可发现性：席位发现某命令不见了，能读到为什么）。
+  - 三席实测：**48 / 27 / 8**（chair / member / temp）。
+- **可照抄**：`{"name":"vibe_vmu_tools","arguments":{"member":"r-temp"}}`
+- **反模式**：✗ 把 `count` 当「席位能用多少工具」而不读 `seatFilter`/`hidden`（`count` 只是这次读数）｜✗ 拿 `source:"caller"` 的表给某席位下「他能用什么」的结论（那读的是调用方的表）。
 ---
 
 ## 3. 计划工具面 ✗（**未实现；名称即"计划"**）
@@ -346,6 +369,7 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 工具调用超每回合上限 | deny ＋ 说明已用/上限 | `VMU_RESOURCE_BUDGET` |
 | 脚本超时 | 硬失败 | `VMU_JOB_TIMEOUT` |
 | 内核被禁用 | 任何服务请求被具名拒 | `VMU_STATE`（"the kernel is disabled"） |
+| 回合通知块取 mailbox 行失败（`kernel/index.js#noticeSource`） | **只记审计事件** `mailbox/notice-lines-failed`（带 `code`、`member`、`message`），回合照跑、不阻塞、不升级 `VMU_ENGINE_UNAVAILABLE` | 审计事件**不是**错误码（工具回执里不会出现）；原始 `code` 多为 `VMU_MAILBOX_NOTICE_FAILED`（`03-§8` 已登记） |
 
 ---
 

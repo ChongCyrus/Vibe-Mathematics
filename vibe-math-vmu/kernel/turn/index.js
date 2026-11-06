@@ -1682,6 +1682,51 @@ const isoStampOf = (v) => {
   return new Date().toISOString()
 }
 
+/**
+ * ★★★ RUN 249 (task-69 / F-02): THE REPLY BOUND IS CONFIGURABLE, AND A CUT IS NO LONGER A LOSS.
+ *
+ * The 69th live run answered with 7,328 characters and the receipt kept 2,000 of them: the member's evidence table was
+ * swallowed, and the only copy lived in the child session. Two things were wrong and both are fixed here:
+ *   · the bound was a literal inside `runFrom`, so a deployment could not widen it without editing the kernel — it is
+ *     now read from `vmu.turn.replyLimitChars` (the framework's own default stays 2000: raising the DEFAULT would blow
+ *     the prompt budget, which is a deployment decision, not a framework one);
+ *   · a cut had no route back to the full text — when `writeTurnArchive` is wired the FULL reply is written to the
+ *     member's own file and the receipt names it (`replyFullPath` + `replyFullSha256`).
+ * The floor is 500 because anything smaller cuts a JSON object before it can be read; an unusable value (text, 0,
+ * negative) falls back to the default rather than to a bound nobody declared.
+ */
+const REPLY_EXCERPT_DEFAULT = 2000
+const REPLY_EXCERPT_FLOOR = 500
+const replyLimitOf = (settings) => {
+  const raw = settings && typeof settings === 'object' ? settings['vmu.turn.replyLimitChars'] : undefined
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= REPLY_EXCERPT_FLOOR ? Math.floor(n) : REPLY_EXCERPT_DEFAULT
+}
+
+/**
+ * ★★★ RUN 249 (task-69 / F-01): "APPLIED" IS NOT THE SAME AS "DID SOMETHING".
+ *
+ * The 69th live run's first turn came back `status:"applied"` while the member had replied `{"solved":false}` — i.e.
+ * it answered "not solved" and wrote nothing, and the office could not tell that from "the member did not work". The
+ * receipt now says both facts by name: `replyBytes` (how much the member actually wrote, in UTF-8 bytes) and
+ * `emptyReply` (the reply carried no applicable CONTENT: no value except the reserved binding key, and every value it
+ * did carry is a no-op — false/null/empty string/empty list/empty object). A boolean-only answer is exactly that case,
+ * so `{"solved":false}` is now visible as an empty reply instead of hiding behind `applied`.
+ */
+const REPLY_RESERVED_KEYS = Object.freeze(['meeting'])
+const replyValueEmpty = (v) => {
+  if (v === undefined || v === null || v === false || v === '') return true
+  if (Array.isArray(v)) return v.length === 0
+  if (typeof v === 'object') return Object.keys(v).length === 0
+  return false
+}
+const replyIsEmpty = (reply) => {
+  if (!reply || typeof reply !== 'object' || Array.isArray(reply)) return true
+  const keys = Object.keys(reply).filter((k) => !REPLY_RESERVED_KEYS.includes(k))
+  return keys.length === 0 || keys.every((k) => replyValueEmpty(reply[k]))
+}
+const EMPTY_REPLY_MEANS = 'emptyReply is about the CONTENT of the answer, not about whether the turn ran: true means the member replied without a single applicable value (every value beside the reserved binding key is false/null/empty) — an answer like {"solved":false} reads as "nothing was done", and replyBytes says how much text carried it. false means the reply carried content; it says nothing about whether the outcome was good'
+
 export function createTurnOrchestrator({
   // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
   // which is this preset's stated design: "default zero mechanism, mechanisms provided as packs".
@@ -1708,6 +1753,13 @@ export function createTurnOrchestrator({
   // Lean face's `takeNoticesFor(member)`) feed the SAME one-shot channel, so an announcement really reaches the
   // member's next prompt. Absent ⇒ nothing is added (the loop's own behaviour is unchanged, byte for byte).
   noticeSource = null,
+  // ★★★ RUN 249 (task-69 / F-02): WHERE A CUT REPLY GOES INSTEAD OF DYING. Called ONLY when the reply exceeds
+  // `vmu.turn.replyLimitChars`: `({ member, turn, text, at }) => ({ ok:true, path, sha256, bytes })`, and the receipt
+  // names the file. Absent ⇒ nothing is written and the receipt says so by name (the historical behaviour: the
+  // remainder stays in the member's own session) — no silent claim that the full text was kept.
+  // The loop has NO imports (dependency-free by design), so the write itself is the KERNEL's business: this seam is how
+  // a file lands on disk without the loop learning about `node:fs`.
+  writeTurnArchive = null,
   // ★ G7 ④: the HOST-side member tool-call index (kernel records name/phase/ok at the tool hooks). The step receipt
   // carries a BOUNDED SUMMARY so the root can see what the member actually called; full receipts never travel here.
   memberToolCalls = null, clearMemberToolCalls = null,
@@ -2029,6 +2081,10 @@ export function createTurnOrchestrator({
       if (typeof patch.settledBy === 'string') next.settledBy = patch.settledBy
       if (Array.isArray(patch.fields)) next.fields = patch.fields.slice()
       if (typeof patch.source === 'string') next.source = patch.source
+      // ★★★ RUN 249 (task-69 / F-01): the settled row carries the two readings that tell "applied" from "did
+      // something" — how many bytes the member wrote, and whether the answer held any applicable value at all.
+      if (typeof patch.emptyReply === 'boolean') next.emptyReply = patch.emptyReply
+      if (Number.isFinite(patch.replyBytes)) next.replyBytes = Math.floor(patch.replyBytes)
       if (typeof patch.code === 'string' && patch.code !== '' && !next.codes.includes(patch.code)) next.codes = next.codes.concat([patch.code])
       if (Array.isArray(patch.executed)) {
         next.executed = patch.executed.map((e) => {
@@ -2245,7 +2301,12 @@ export function createTurnOrchestrator({
       : (typeof turn.nextStep === 'string' && turn.nextStep.trim() !== '' ? turn.nextStep.trim() : '')
     if (instruction) withVisible += '\n\n【本轮指令】' + instruction.slice(0, 4000)
     return { ok: true, text: withVisible, sources: out.sources || [], truncation: out.truncation || null,
-      instructionDelivered: instruction !== '' }
+      instructionDelivered: instruction !== '',
+      // ★★★ RUN 249 (task-69 / F-11): THE RECEIPT SAYS WHAT THE NOTICE CHANNEL DID. The 69th live run had 7 unread
+      // mails and the office could only find out that the block never rendered by grepping the capture. The assembly
+      // now reports the count it drained, whether a block was rendered, and its characters — so "delivered to the
+      // queue" and "reached the prompt" are two separately readable facts.
+      notices: { lines: pendingNotices.length, rendered: noticeText !== '', blockChars: noticeText.length } }
   }
 
   /**
@@ -3635,11 +3696,12 @@ export function createTurnOrchestrator({
           turn: turn.id,
           member: turn.member || null,
           lateAnswerNotApplied: true,
-          // the same 2000-character excerpt limit the settled path uses (kept as a literal here: the settled
-          // path's constant is declared further down and a `const` read before its line is a TDZ crash, not a clamp)
-          replyExcerpt: String(raw || '').slice(0, 2000),
+          // the same excerpt limit the settled path uses (read through the one helper: the settled path's constant is
+          // declared further down and a `const` read before its line is a TDZ crash, not a clamp)
+          replyExcerpt: String(raw || '').slice(0, replyLimitOf(settings)),
           replyLength: String(raw || '').length,
-          replyExcerptLimitChars: 2000,
+          replyBytes: Buffer.byteLength(String(raw === undefined || raw === null ? '' : raw), 'utf8'),
+          replyExcerptLimitChars: replyLimitOf(settings),
           message: 'this turn was closed as abandoned before its delivery returned, so the answer that has just arrived was NOT applied: the ledger row stays `abandoned` and no record was written',
           hint: 'the member DID work - its own session may have run tools this kernel cannot see (read the record tracks). Run the turn again with `vibe_vmu_turn { op:"step" }` if this answer matters.',
           means: 'lateAnswerNotApplied is about the LOOP, not about the member: the turn was released, then the seam returned. Applying it after the release is what made the two faces disagree (row abandoned, records written).'
@@ -3715,7 +3777,7 @@ export function createTurnOrchestrator({
           // ★ E12 / task-19: the turn-level reading of the binding, beside the one on `memberPrompt` — a caller that
           // reads only the top level must not have to open the prompt object to learn which meeting it is answering.
           meeting: (raw && typeof raw.meeting === 'string' && raw.meeting !== '' ? raw.meeting : (turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null)),
-          assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true,
+          assembled: { chars: asm.text.length, sources: asm.sources.length, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true,
           delivery: deliveryOf(Object.assign({}, raw, { deliveryPath: (raw && raw.deliveryPath) || 'caller' })),
           fields: [], executed: [], skipped: [], refused: [],
           attribution: Object.assign({}, lastAttribution) }
@@ -3733,17 +3795,43 @@ export function createTurnOrchestrator({
       //   · parse WORKED  -> the receipt carries a bounded `replyExcerpt`, so the office can see the sentence the member
       //     actually wrote next to the fields it produced. A receipt is not a log file: the bound is the same 2000 the
       //     existing refusal diagnostics use.
-      const REPLY_EXCERPT_MAX = 2000
+      // ★★★ RUN 249 (task-69 / F-02): the bound is the DEPLOYMENT's now (`vmu.turn.replyLimitChars`, default 2000 —
+      // the framework's default does not move, because widening it by default would spend prompt budget nobody asked
+      // for). The rest of this comment is the ROUND 67 rule, unchanged: a cut declares itself and names where the
+      // remainder lives.
+      const REPLY_EXCERPT_MAX = replyLimitOf(settings)
       const rawText = String(raw === undefined || raw === null ? '' : raw)
       // ★ ROUND 67 / F-57 (live run 66): a bound that is not DECLARED is a silent cut. The office read a 2,679-character
       // reply, saw the excerpt end mid-object, and had to infer both that it was cut and that the rest existed — while
       // `replyLength` alone does not say which. So the bound declares itself (`replyTruncated`, `replyLimitChars`) and,
-      // when it cuts, names where the remainder lives: this kernel keeps only the excerpt, the rest stays with the
-      // member's own session (`delivery.childId` / `lastAttribution.memberSessions` on the status face).
+      // when it cuts, names where the remainder lives. RUN 249: "lives in the child session" was the whole truth when
+      // there was no way to copy it; when a `writeTurnArchive` seam is wired the FULL text is written to the member's
+      // own file and the receipt names that file, so a cut is a pointer rather than a loss.
+      const replyBytes = Buffer.byteLength(rawText, 'utf8')
       const replyTruncated = rawText.length > REPLY_EXCERPT_MAX
+      let replyArchive = null
+      if (replyTruncated) {
+        if (typeof writeTurnArchive === 'function') {
+          try {
+            replyArchive = writeTurnArchive({ member: String(attributedTo || turn.member || ''), turn: turn && turn.id ? String(turn.id) : '', text: rawText, at: isoStampOf(clock()) })
+            if (!replyArchive || replyArchive.ok !== true) {
+              replyArchive = { ok: false, why: (replyArchive && (replyArchive.why || replyArchive.message)) ? String(replyArchive.why || replyArchive.message) : 'the archive seam refused without a reason' }
+            }
+          } catch (e) {
+            replyArchive = { ok: false, why: String((e && e.message) || e) }
+          }
+        } else {
+          replyArchive = { ok: false, why: 'no writeTurnArchive seam is wired into this turn loop, so this kernel cannot copy the remainder; it stays in the member\'s own session (receipt `delivery.childId`)' }
+        }
+      }
       const replyExcerptMeans = replyTruncated
-        ? 'the reply as the member wrote it, CUT at replyLimitChars (' + REPLY_EXCERPT_MAX + ') — replyTruncated is true and replyLength is the FULL length. This kernel does not keep the remainder: it stays in that member\'s own session (receipt `delivery.childId`, also `vibe_vmu_turn {op:"status"}` → lastAttribution.memberSessions), which this kernel does not copy'
+        ? (replyArchive && replyArchive.ok === true
+            ? 'the reply as the member wrote it, CUT at replyLimitChars (' + REPLY_EXCERPT_MAX + ') — replyTruncated is true and replyLength is the FULL length. The remainder is NOT lost: this kernel wrote the FULL reply to replyFullPath (sha256 replyFullSha256, replyFullBytes bytes) — read that file for the part the excerpt cut'
+            : 'the reply as the member wrote it, CUT at replyLimitChars (' + REPLY_EXCERPT_MAX + ') — replyTruncated is true and replyLength is the FULL length. The remainder was NOT archived: ' + String((replyArchive && replyArchive.why) || 'the archive seam gave no reason') + '. It stays in that member\'s own session (receipt `delivery.childId`, also `vibe_vmu_turn {op:"status"}` → lastAttribution.memberSessions), which this kernel did not copy')
         : 'the reply as the member wrote it, complete (replyTruncated is false, so replyLength equals the excerpt length); `fields` below is what the framework could use from it, so a field missing here is visible as prose instead of silently absent'
+      const replyArchiveFields = replyArchive && replyArchive.ok === true
+        ? { replyFullPath: String(replyArchive.path), replyFullSha256: String(replyArchive.sha256), replyFullBytes: Number(replyArchive.bytes) }
+        : {}
       let parsed
       try {
         parsed = replyFromChannels(raw, attributedTo || turn.member)
@@ -3758,13 +3846,19 @@ export function createTurnOrchestrator({
             code: e && e.code ? String(e.code) : null,
             message: e && e.message ? String(e.message).slice(0, 400) : String(e),
             replyLength: rawText.length,
+            replyBytes,
             replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX),
             replyTruncated,
             replyLimitChars: REPLY_EXCERPT_MAX,
+            ...replyArchiveFields,
             sideEffectsUnverified: true,
             means: 'the member ANSWERED (this text is what it wrote) and the reply could not be parsed into the declared shape, so the REPLY was not applied. This is NOT a silent member and NOT a delivery failure — and it is NOT a claim that nothing happened: a tool the child session ran is not visible from this kernel (read the record tracks to settle it)' }
         } catch { /* diagnostics must not replace the refusal */ }
         try { if (e && typeof e === 'object') e.delivery = deliveryFromAttribution() } catch { /* the failure itself must not be masked by its own diagnostics */ }
+        // ★★★ RUN 249 / F-02: a reply that could not be PARSED still has a full copy when the archive seam is wired —
+        // the office must not have to lose the member's words because the shape was wrong. The path travels on the
+        // refusal, not only on the success receipt.
+        try { if (e && typeof e === 'object' && replyArchive && replyArchive.ok === true) { e.replyFullPath = replyArchiveFields.replyFullPath; e.replyFullSha256 = replyArchiveFields.replyFullSha256; e.replyFullBytes = replyArchiveFields.replyFullBytes } } catch { /* same rule */ }
         throw e
       }
       // ★★★★★★★ ROUND 39 (live run 39 / F-11) — THE SIDE-EFFECT DISCLOSURE BELONGED TO EVERY APPLY-REFUSAL, NOT TO ONE CODE.
@@ -3805,9 +3899,16 @@ export function createTurnOrchestrator({
         try { rememberSettledTurn(turn, { fields: [], source: null }) } catch { /* the ledger must never replace the refusal */ }
         throw e
       }
-      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
+      // ★★★ RUN 249 (task-69 / F-01): the receipt says how much the member wrote and whether it answered with ANY
+      // applicable value. `status:"applied"` alone could not distinguish "worked but wrote nothing" from "did not work":
+      // `{"solved":false}` is applied, 17 bytes, and empty. Both readings now travel, and the ledger row carries them
+      // too, so `op:"status"` can be read without the run's own session.
+      const emptyReply = replyIsEmpty(parsed && parsed.reply)
+      try { noteTurnReceipt(turn, { emptyReply, replyBytes }) } catch { /* the ledger must never replace the receipt */ }
+      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
         replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
-        replyTruncated, replyLimitChars: REPLY_EXCERPT_MAX, replyExcerptMeans, ...tail }
+        replyTruncated, replyLimitChars: REPLY_EXCERPT_MAX, replyExcerptMeans,
+        replyBytes, emptyReply, emptyReplyMeans: EMPTY_REPLY_MEANS, ...replyArchiveFields, ...tail }
     } finally {
       // ★ RUN 245 (audit round 12 H3): same rule as the lock — a late turn clears only its own slot.
       if (inFlightTurn === turn) inFlightTurn = null

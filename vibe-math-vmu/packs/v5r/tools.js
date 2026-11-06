@@ -900,8 +900,26 @@ function feedbackBodyAction(args = {}) {
   if (FEEDBACK_OP_WORDS.indexOf(legacy) !== -1) return ''
   return legacy
 }
-function toolFeedback(args = {}, { kernel } = {}) {
+function toolFeedback(args = {}, { kernel, callerMember } = {}) {
   const records = recordsOf(kernel)
+  // ★★★ RUN 249 (F-04, MEASURED on the 69th real-machine run): `rec-10`/`rec-14` were feedback rows whose `owner`,
+  // `writer` and `by` were ALL null — the face wrote a card it could not attribute. The RUN 50 (F-32) reasoning still
+  // holds (a TOOL name is not an author, so never write "vibe_v5_feedback"), but silence is not the honest answer
+  // either: a row nobody authored cannot be routed back to its author, and "who said this" is the whole point of a
+  // feedback ledger. The author is knowable twice over — the caller names `member`, and a member turn's call context
+  // carries `callerMember` (host-pack-tools.js resolves it) — so the ONE honest shape is: resolve it, and when BOTH
+  // are empty REFUSE BY NAME instead of filing an unattributable row.
+  const authorOf = () => {
+    const named = has(args.member) ? str(args.member).trim() : ''
+    const caller = typeof callerMember === 'string' ? callerMember.trim() : ''
+    const author = named !== '' ? named : caller
+    if (author === '') {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'feedback ' + (has(args.op) ? str(args.op) : 'add/update') + ' has no author: neither `member` nor the call context names one — this face no longer files a card whose owner/writer/by would all be null',
+        'pass member:"<your member id>" (e.g. member:"r-1"); a feedback card records WHO filed it, and a row nobody authored cannot be routed back. The member turn\'s own call context supplies it automatically — only a call made outside a member turn has to say it (RUN 249 / F-04)')
+    }
+    return author
+  }
   const op = has(args.op) ? str(args.op) : (FEEDBACK_OP_WORDS.indexOf(str(args.action).trim()) !== -1 ? str(args.action).trim() : '')
   if (op !== 'add' && op !== 'update' && op !== 'list') {
     throw refuse('VMU_INVALID_ARGUMENT', 'feedback needs op=add|update|list', 'pass op:"add" / "update" / "list" — the `action` key is the BODY field (what you recommend), not the operation')
@@ -938,14 +956,16 @@ function toolFeedback(args = {}, { kernel } = {}) {
     const body = ['category：' + str(args.category), 'route：' + str(args.route), 'context：' + str(args.context),
       'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'recommendation：' + bodyAction,
       'assessment：' + str(args.assessment)].filter((l) => !l.endsWith('：')).join('\n')
-    const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: str(args.member) || null /* ★ LIVE RUN 50 (F-32): a tool name is not an author. The office-side call carried no member, and the ledger recorded owner:"vibe_v5_feedback" while a member-side call recorded the member id - two answers to "who wrote this" from one tool. Null + the ledger's own bySource is the honest answer; the caller can pass member to say who it is. */ })
+    const author = authorOf()
+    const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: author })
     return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: 'open' }
   }
   if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'feedback update needs id', 'pass id:"<feedback record id>"')
   const body = ['status：' + (has(args.status) ? str(args.status) : 'closed'), 'outcome：' + str(args.outcome), 'note：' + str(args.note)]
     .filter((l) => !l.endsWith('：')).join('\n')
+  const author = authorOf()
   const written = records.put({ id: str(args.id), track: 'feedback', kind: 'feedback', title: str(args.id), body,
-    settled: has(args.status) && str(args.status) === 'closed', by: str(args.member) || null /* ★ LIVE RUN 50 (F-32): a tool name is not an author. The office-side call carried no member, and the ledger recorded owner:"vibe_v5_feedback" while a member-side call recorded the member id - two answers to "who wrote this" from one tool. Null + the ledger's own bySource is the honest answer; the caller can pass member to say who it is. */ })
+    settled: has(args.status) && str(args.status) === 'closed', by: author })
   return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: has(args.status) ? str(args.status) : 'closed' }
 }
 
@@ -1905,12 +1925,31 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
   // whole — and `kit/handlers.js#mergeEcho` now states the merge facts to seat-facing callers. Kept as history so a
   // future reader does not re-derive why one path supersedes and the card tools put.
   const nextBody = out.join(NL)
+  // ★★★ RUN 249 (F-05): a settlement's AUTHOR is a person. Source words are NEVER names: "argument"/"caller"/"unknown"
+  // describe where a value came from, and writing one into `by` made the ledger attribute a card to a metaphor (the
+  // measured run-21 row read writer:"argument", by:"argument"). Resolution order, each step honest about its source:
+  //   ① the named/call-context member from the write (a real actor)  → writerSource:"field-argument"
+  //   ② the RULING's own signer (`debate_ruling.by`, printed by vibe_v5_verdict_final's correction.call) → "debate-ruling"
+  //   ③ nobody knowable → null, and the receipt SAYS the writer is unknown; `records.supersede` with a null `by`
+  //      PRESERVES whatever author the row already had (kernel/records.js:1249-1251), so null never overwrites a name.
+  const SOURCE_WORD = /^(argument|caller|unknown|field-argument|field-argument[^ ]*)$/i
+  const byGiven = has(by) ? str(by).trim() : ''
+  const rulingBy = (ruling && typeof ruling === 'object' && ruling.by !== undefined && ruling.by !== null) ? str(ruling.by).trim() : ''
+  const writer = byGiven !== '' && !SOURCE_WORD.test(byGiven) ? byGiven
+    : ((rulingBy !== '' && !SOURCE_WORD.test(rulingBy)) ? rulingBy : null)
+  const writerSource = writer === null ? 'unknown'
+    : (byGiven !== '' && !SOURCE_WORD.test(byGiven) ? 'field-argument' : 'debate-ruling')
+  const writerSourceMeans = writer === null
+    ? 'no author was nameable for this settlement: neither the write nor the ruling named a member, so `writer` is null ON PURPOSE and the row keeps whatever author it already had (a null `by` never overwrites a name) — a settlement is about the RULED VALUE, not about inventing an author'
+    : (writerSource === 'field-argument'
+      ? 'the write named the settlement\'s author (`member` or the member turn\'s own call context)'
+      : 'the write named no author, so the settlement is attributed to the person who SIGNED the ruling (`debate_ruling.by`) — a chair\'s ruling is the act being recorded')
   const reason = 'rule L53 ruling settlement: p set to ' + String(value)
     + (droppedEarlierRuling ? '; the earlier debateRuling row was replaced' : '')
   let wrote = null
   let mode = 'supersede'
   if (records && typeof records.supersede === 'function') {
-    wrote = records.supersede({ id, reason, by: has(by) ? str(by) : 'argument', body: nextBody })
+    wrote = records.supersede({ id, reason, by: writer, body: nextBody })
   } else {
     // A records face without `supersede` still gets the patch, but the receipt then SAYS the row was re-put.
     mode = 'put-fallback'
@@ -1919,15 +1958,21 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
       title: str(row.title) || fallbackTitle || id,
       body: nextBody,
       settled: value === 1 || value === 0,
-      by, bySource: 'argument',
+      by: writer, bySource: writerSource,
     })
   }
   return {
     ok: true, track, kind, recordId: (wrote && wrote.id) || id, rev: (wrote && wrote.rev) || null, id,
     settled: true, p: value, ruling: rulingRow, rulingReplaced: droppedEarlierRuling,
+    // ★★★ RUN 249 (F-05): WHO this settlement attributed the row to, and WHERE that name came from. A source word is
+    // never reported as an author: `writer:null` + `writerSource:"unknown"` is the honest answer when nobody was nameable.
+    writer, writerSource, writerSourceMeans,
     settlement: {
       patch: true,
       mode,
+      // ★★★ RUN 249 (F-05): the AUTHOR of this settlement travels inside `settlement` as well as at the top level, because
+      // the card receipt merges only this block — a writer the caller cannot read is a writer it cannot audit.
+      writer, writerSource, writerSourceMeans,
       wrote: p1Evidence !== null ? ['p', 'debateRuling', 'p1Evidence'] : ['p', 'debateRuling'],
       p1Evidence: p1Evidence !== null ? String(p1Evidence) : null,
       p1EvidenceLine: p1Evidence !== null,
@@ -1961,7 +2006,14 @@ function gatedCardHandler(toolName) {
     const records = recordsOf(kernel)
     const track = has(args.track) ? str(args.track) : cardTrackOf(toolName)
     const cardId = has(args.id) ? str(args.id) : null
-    const by = has(args.member) ? str(args.member) : null
+    // ★★★ RUN 249 (F-05, MEASURED on the 69th real-machine run): `expand rec-21` came back with writer/by == "argument"
+    // — a FIELD-SOURCE word had been written into the AUTHOR column. The settlement used to fall back to the literal
+    // string "argument" whenever the call named no member, so the ledger said a card was written by a word that means
+    // "this value came from the arguments". Who wrote a row is a PERSON (or unknown), never a source label. The caller is
+    // knowable from the call context (`ctx.callerMember`, resolved by host-pack-tools.js), so resolve it here and let
+    // settleRulingOnCard fall back to the RULING's own signer (a chair's debate_ruling carries `by`) before giving up.
+    const by = has(args.member) ? str(args.member)
+      : ((typeof ctx.callerMember === 'string' && ctx.callerMember.trim() !== '') ? ctx.callerMember.trim() : null)
     // ★ WAVE 2 (audit C5): `p` is the card's CONCLUSION and must be a LITERAL JSON number — `Number(args.p)` turned
     // "0.6", true and "" into plausible values, so the caller could not tell whether the face read its estimate or
     // invented one.
@@ -2395,25 +2447,62 @@ function gatedCardHandler(toolName) {
           + '), which this settlement did not write and may not change — a settlement rewrites only the `p` line and the ruling row'
         : null)
       : "rule L14 locks a card whose proof is registered complete — but this card’s OWN `proof_ref` does not resolve inside the library (" + proofStateDowngraded.reason + "), and locking it would make that pointer uncorrectable. The declaration is recorded AS WRITTEN and the LOCK IS DEFERRED: write the file (or point at a record id) and REGISTER THE CARD AGAIN — the records face mints a NEW row per write, so \"re-register\" means filing a new card, never editing this row's pointer — or correct the pointer in a fresh write before filing: this card stays writable until a pointer that really resolves lands"
+    // ★★★ RUN 249 (F-06 / 缺陷 D, MEASURED on the 69th real-machine run): a card written with `proof_state:"draft"` came
+    // back `proofGate:{locked:true, why:"the declared proof is registered complete…"}`, while the same receipt carried
+    // `proofLockDeferred:"pointer:missing"`. The gate asserted a registration that had not happened. Rule L14
+    // 「登记即定稿」 locks a COMPLETE registration, so the gate is a DOUBLE condition — the declared state must BE
+    // complete AND its pointer must not have failed to resolve — and every answer now carries a machine-readable
+    // `reason` plus the state of the pointer this call actually read (`proofRefState`: resolved|missing|absent|unknown,
+    // where `unknown` is the read-back case: a settlement does not re-resolve anything).
+    const declaredProofRefWord = (() => {
+      if (has(args.proof_ref)) return str(args.proof_ref).trim()
+      const p = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload) ? args.payload : null
+      return p && p.proofRef !== undefined && p.proofRef !== null ? str(p.proofRef).trim() : ''
+    })()
+    const proofRefStateOut = settlementReadback !== null
+      ? (settlementReadback.proofState === null || settlementReadback.proofState !== PROOF_STATE_COMPLETE
+        ? 'absent'
+        : (settlementReadback.proofLockDeferred === true ? 'missing' : 'unknown'))
+      : (declaredProofStateFolded !== PROOF_STATE_COMPLETE
+        ? 'absent'
+        : (proofStateDowngraded !== null ? 'missing' : (declaredProofRefWord !== '' ? 'resolved' : 'absent')))
     const proofGateOut = settlementReadback !== null
       ? (settlementReadback.proofState === null
         ? null
         : (settlementReadback.proofLockDeferred === true
-          ? { locked: false,
+          ? { locked: false, reason: 'read-back-deferred', proofRefState: 'missing',
               why: 'READ BACK from the stored row: it is declared complete but its lock is DEFERRED (' + String(settlementReadback.proofLockDeferredReason || 'reason unreadable') + '); this settlement changed neither',
               nextMove: 'the card is still writable: write the file the pointer names and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
               means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' }
-          : { locked: true, why: 'READ BACK from the stored row: declared complete and the lock is on; this settlement changed only `p` and the ruling row',
-              nextMove: null, means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' }))
-      : (proofStateDowngraded === null
-        ? (declaredProofState === ''
-          ? null
-          : { locked: true, why: 'the declared proof is registered complete and its own `proof_ref` resolves inside the library', nextMove: null,
-              means: 'locked:true means the LOCK is on this row; a later write cannot re-point it - file a new card to change the proof' })
-        : { locked: false,
-            why: 'the card is filed AS DECLARED, but its own `proof_ref` does not resolve inside the library (' + String(proofStateDowngraded.reason) + '): rule L14 will not lock a pointer that could never be corrected',
-            nextMove: 'write the file into the library (or point at a record id) and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
-            means: 'read proofGate.locked, not `ok`, to answer "is this card locked": `ok:true` only says the card was filed' })
+          : (settlementReadback.proofState !== PROOF_STATE_COMPLETE
+            ? { locked: false, reason: 'read-back-not-complete', proofRefState: 'absent',
+                why: 'READ BACK from the stored row: it is declared "' + String(settlementReadback.proofState) + '", NOT complete, so rule L14 does not lock it; this settlement changed only `p` and the ruling row',
+                nextMove: null,
+                means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; only a COMPLETE registration is locked' }
+            : { locked: true, reason: 'read-back-complete', proofRefState: 'unknown',
+                why: 'READ BACK from the stored row: declared complete and the lock is on; this settlement changed only `p` and the ruling row',
+                nextMove: null, means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' })))
+      : (declaredProofState === ''
+        ? null
+        : (declaredProofStateFolded !== PROOF_STATE_COMPLETE
+          ? { locked: false,
+              reason: declaredProofStateFolded === 'draft' ? 'declared-draft' : 'declared-not-complete',
+              proofRefState: 'absent',
+              why: 'this write declares the proof as "' + declaredProofState + '", NOT complete: rule L14 (「登记即定稿」) locks only a COMPLETE registration, so this card stays writable',
+              nextMove: null,
+              means: 'read proofGate.locked, not `ok`, to answer "is this card locked": a draft (or any non-complete state) is NOT locked — a receipt that says locked:true beside proof_state:"draft" would report a registration that never happened' }
+          : (proofStateDowngraded === null
+            ? { locked: true, reason: 'complete-and-resolved',
+                proofRefState: declaredProofRefWord !== '' ? 'resolved' : 'absent',
+                why: declaredProofRefWord !== ''
+                  ? 'the declared proof is complete and its own `proof_ref` resolves inside the library'
+                  : 'the declared proof is complete and NO `proof_ref` was declared — the registration itself (with the Lean/conformance evidence this write carried) is what rule L14 locks',
+                nextMove: null,
+                means: 'locked:true means the LOCK is on this row; a later write cannot re-point it - file a new card to change the proof' }
+            : { locked: false, reason: 'complete-but-pointer-unresolved', proofRefState: 'missing',
+                why: 'the card is filed AS DECLARED (complete), but its own `proof_ref` does not resolve inside the library (' + String(proofStateDowngraded.reason) + '): rule L14 will not lock a pointer that could never be corrected',
+                nextMove: 'write the file into the library (or point at a record id) and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
+                means: 'read proofGate.locked, not `ok`, to answer "is this card locked": `ok:true` only says the card was filed' })))
     // ★★★ RUN 224 (run 59 / FEEDBACK58 1.2, MEASURED): run 59 settled a card at p=1 whose `proof_ref` pointed at a file that
     // does not exist (`nope-r222.md`). Every field was true and every one of them was about something else: the receipt said
     // `p1Evidence:"debate-unanimous"` (a DEBATE happened) and `settled:true` (the p line was written), while the card itself
@@ -2443,6 +2532,9 @@ function gatedCardHandler(toolName) {
       // true, and the receipt still read like "rule L14's lock is on". `ok` answers "was the card filed"; nothing answered
       // "is it locked". This block answers exactly that, in one value, and names the one move that can lock it.
       proofGate: proofGateOut,
+      // ★★★ RUN 249 (F-06/D): the state of the pointer the gate actually read, next to the gate — so "is it locked"
+      // and "was there a pointer to lock it against" are both readable from one receipt (resolved|missing|absent|unknown).
+      proofRefState: proofRefStateOut,
       proofStateEvidence: settlementReadback === null ? proofStateEvidence : null,
       proofStateEvidenceMeans: settlementReadback === null ? undefined
         : 'null ON PURPOSE: a settlement verifies nothing, so there is no evidence block for THIS call to report - the card\'s own proof lines are unchanged (see settlement.preserved) and were read back into proofState/proofGate',
@@ -3417,8 +3509,16 @@ function propositionOf(kernel, view, meeting, propositionId) {
       'proposition "' + id + '" names nothing this debate is about: meeting ' + str(meeting) + ' declared its debate object as "' + declared + '", ' + (recordsReadable ? 'the library holds no card "' + id + '"' : 'the records face could not be read here so no card could be found for "' + id + '"') + ', and the name is not a file reference — the members would be asked to rule on an object nobody debated',
       'pass proposition_id:"' + declared + '" (the object this meeting was convened to debate), or record the card first with vibe_v5_record_proposition and pass its id; if the debate object really is a FILE, pass its path / file name (e.g. "docs/proof.md", "main.lean") — v5r allows that and the receipt then says propositionKind:"file-ref"')
   }
-  return { kind: 'unverified', verified: false,
-    why: (recordsReadable ? 'no card with this id exists' : 'the records face was not readable, so no card could be looked up') + ' and meeting ' + str(meeting) + ' declared NO debate subject, so this face cannot tell a one-line proposition (「一句话命题」) from a typo — it sent the ask and records that limit here; note that a one-line proposition is NOT a legal debate object (the debate-subject gate refuses it by name VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF), and this ask is only about the string that was named' }
+  // ★★★ RUN 249 (缺陷 A, MEASURED on the 69th real-machine run): a call asking about `p-rulecheck-不存在` came back
+  // `ok:true, propositionKind:"unverified"` and DELIVERED the mail to ["r-1","r-2"] — while this face's own description
+  // promised the ask would be refused. Every member was asked to rule on an object the library does not hold, the
+  // meeting never declared, and no file backs; the verdicts could never be aggregated into anything. The honest shape is
+  // ONE behaviour and ONE description: a name this face cannot check is REFUSED BY NAME. A one-line proposition is not a
+  // legal debate object either (the debate-subject gate refuses it as VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF), so there is
+  // no legal caller this refusal could cost — only an ask that should never have gone out.
+  throw refuse('VMU_ASK_UNKNOWN_PROPOSITION',
+    'proposition "' + id + '" names nothing this face can check: ' + (recordsReadable ? 'no card with this id exists' : 'the records face was not readable, so no card could be looked up') + ', the name is not a file reference, and meeting ' + str(meeting) + ' declared ' + (declared === null ? 'NO debate subject' : 'a different one ("' + declared + '")') + ' — asking the members to rule on it would collect verdicts for a target nobody can aggregate',
+    'three reachable repairs: ① record the proposition first (vibe_v5_record_proposition) and pass the id it returns; ② pass proposition_id:"' + (declared === null ? '<the object this debate was convened to debate>' : declared) + '" — the object the meeting was convened to debate; ③ if the debate object really is a FILE, pass its path or file name (e.g. "docs/proof.md", "main.lean") — v5r allows that shape and the receipt then says propositionKind:"file-ref". A free one-line string carries no proof carrier and is NOT a legal debate object (the debate-subject gate refuses it by name VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF), so this face refuses the ask instead of mailing every member about a target it could not check (RUN 249 / A)')
 }
 
 /**
@@ -5870,7 +5970,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
           let ledger = null
           try { ledger = got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null } catch (e) { ledger = null }
           if (!ledger) {
-            return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, engine: null, means: 'no compile is on file for this paper (the `paper` track holds no `paper-pdf` row named after this paper id or target); `final` compiles, `compile` re-typesets an already-finalized paper — and a paper whose `final` reported a PDF but whose ledger row is missing is a named gap, not an empty one' } }
+            return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, engine: null,
+              // ★★★ RUN 249 (F-08): no ledger row ⇒ NO record can name the file on disk. Stated as a field (not silence)
+              // so a reader never has to infer "recordId:null" means "the file exists but no row wrote it".
+              diskFileFromRecord: null, diskFileBytes: null,
+              diskFileFromRecordMeans: 'there is NO compile ledger row, so no record can name the file on disk: `produced:false` is the honest answer, and a paper whose `final` reported a PDF while this row is missing is a named gap, not an empty one',
+              means: 'no compile is on file for this paper (the `paper` track holds no `paper-pdf` row named after this paper id or target); `final` compiles, `compile` re-typesets an already-finalized paper — and a paper whose `final` reported a PDF but whose ledger row is missing is a named gap, not an empty one' } }
           }
           const stateBody = got && got.state ? got.state : null
           const finalPdfRecordId = stateBody && stateBody.finalPdfRecordId !== undefined ? stateBody.finalPdfRecordId : null
@@ -5889,6 +5994,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
             pdfPath: ledger.pdfPath === undefined ? null : ledger.pdfPath,
             pdfBytes: ledger.pdfBytes === undefined ? null : ledger.pdfBytes,
             engine: ledger.engine === undefined ? null : ledger.engine,
+            // ★★★ RUN 249 (F-08, MEASURED on the 69th real-machine run): `final` recorded 69,726 B (rec-31) while the
+            // newest `compile` recorded 69,725 B (rec-32) and `compiledAfterFinal:true` — two numbers, and NO field said
+            // which RECORD the file now on disk came from. `recordId` was the newest compile row, but a reader holding
+            // "final says 69726, compile says 69725" could not answer "so which record wrote the file I can open". This
+            // field answers exactly that, by name; `compiledAfterFinal` then says whether that row is the finalisation's.
+            diskFileFromRecord: ledger.id === undefined ? null : ledger.id,
+            diskFileBytes: ledger.pdfBytes === undefined ? null : ledger.pdfBytes,
+            diskFileFromRecordMeans: 'the file ON DISK was typeset by ' + String(ledger.id === undefined ? 'a ledger row whose id is unreadable' : ledger.id) + ' (' + String(ledger.pdfBytes === undefined ? 'bytes unreadable' : ledger.pdfBytes) + ' bytes); the FINALISATION recorded ' + String(finalPdfRecordId === null ? 'no compile row' : finalPdfRecordId) + ' (' + String(finalPdfBytes === null ? 'bytes unreadable' : finalPdfBytes) + ' bytes) — `compiledAfterFinal` says whether those are the same compile, so read this field, not `finalPdfBytes`, to answer "which record put the file I can open on disk"',
             tried: Array.isArray(ledger.tried) ? ledger.tried : [],
             finalPdfRecordId,
             finalPdfBytes,
@@ -6540,8 +6653,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_feedback',
-    description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact and the recommendation (pass `recommendation`, or the legacy body key `action` when its value is not an op word) — plus assessment on the interpersonal route; op=update closes with status/outcome/note; op=list returns the open items. ★ `op` is the OPERATION; the recommendation is the FIFTH BODY FIELD, stored on the card as `recommendation：` (the legacy INPUT key `action` still works — it is only refused when its value is just an op word). Passing action:"add" is refused by name `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`, because a receipt that stores the operation verb as the recommendation loses the one thing the form asks for.',
-    parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, member: { type: 'string' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, recommendation: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
+    description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact plus the recommendation (`recommendation`; the legacy body key `action` counts unless it is an op word) and an assessment on the interpersonal route; op=update closes with status/outcome/note; op=list lists open items. ★ EVERY write needs an AUTHOR: pass `member`; a write that names nobody is REFUSED `VMU_INVALID_ARGUMENT` (RUN 249 / F-04). ★ `op` is the OPERATION; the recommendation is the FIFTH BODY FIELD, stored on the card as `recommendation：` (the legacy INPUT key `action` still works — it is only refused when its value is just an op word). Passing action:"add" is refused by name `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`, because that stores the operation verb as the recommendation.',
+    parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, member: { type: 'string', description: 'WHO files this feedback (your member id). REQUIRED for op=add/update in practice: a member turn\'s call context supplies it, and a write that names nobody is refused by name (RUN 249 / F-04) — never silently filed with a null author.' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, recommendation: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
     handler: toolFeedback,
   },
   {
@@ -6617,7 +6730,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verdict_ask',
-    description: '★ ASK THE DEBATING MEMBERS FOR THEIR FINAL RULING (the CHAIR asks; this is the FIRST half of the rule: 「待辩论会议结束，v5r框架请各个辩论的各个成员给出最终裁决」). One mailbox message per DEBATING member asking for 「布尔概率（[0,1]）+ 理由」 on ONE proposition. meeting + proposition_id REQUIRED. ★ WHO COUNTS AS DEBATING IS THE MEETING\'S ROSTER PLUS ANYONE ON SPEECH RECORD — `askedSource` names which set was used ("roster+speech" | "roster" | "spokeBy" | "minutes" | "members") and `askedWhy` says why: a seated member who never spoke still owes a ruling, while a meeting with no roster must still reach the people who did speak. `members` is an explicit OVERRIDE that REPLACES the population (`askedSource:"members"`), not a widening. ★ THE SEAT COUNT RECONCILES OR IT IS NOT A COUNT: `rosterCount` includes the chair seat, which is NOT in `asked`, so the receipt also carries `excluded:[{member, why}]`, `rosterCountMeans` and `accounting` — asked + excluded = the members the meeting named. ★ THE PROPOSITION IS CHECKED, NOT MERELY REQUIRED: `proposition_id` must be a card the library holds (`propositionKind:"card"`), a FILE REFERENCE (`propositionKind:"file-ref"` with `fileChecked:false`), or the object this meeting was convened to debate (`propositionKind:"meeting-subject"`); anything else is REFUSED as `VMU_ASK_UNKNOWN_PROPOSITION`, and when nothing is declared the receipt says `propositionKind:"unverified"` + `propositionWhy`. ★ THE MAIL IS GENERATED FROM THE MEETING STATE: `meetingState`/`meetingStateMeans`/`closurePhase` carry what `meetingView` reports and the closure clause inside `mail.text` is derived from it; an unreadable state makes the mail say 状态不可读 instead of asserting a closure. Asking is not ruling: the ruling is vibe_v5_verdict_final. Refused by name: no chair to sign, a non-chair caller, no mailbox face, and a meeting with no roster AND no speech on record.',
+    description: '★ ASK THE DEBATING MEMBERS FOR THEIR FINAL RULING (the CHAIR asks; this is the FIRST half of the rule: 「待辩论会议结束，v5r框架请各个辩论的各个成员给出最终裁决」). One mailbox message per DEBATING member asking for 「布尔概率（[0,1]）+ 理由」 on ONE proposition. meeting + proposition_id REQUIRED. ★ WHO COUNTS AS DEBATING IS THE MEETING\'S ROSTER PLUS ANYONE ON SPEECH RECORD — `askedSource` names which set was used ("roster+speech" | "roster" | "spokeBy" | "minutes" | "members") and `askedWhy` says why: a seated non-speaker still owes a ruling; a meeting with no roster still reaches those who spoke. `members` is an explicit OVERRIDE that REPLACES the population (`askedSource:"members"`), not a widening. ★ THE SEAT COUNT RECONCILES OR IT IS NOT A COUNT: `rosterCount` includes the chair seat, which is NOT in `asked`, so the receipt also carries `excluded:[{member, why}]`, `rosterCountMeans` and `accounting` — asked + excluded = the members the meeting named. ★ THE PROPOSITION IS CHECKED, NOT MERELY REQUIRED: `proposition_id` must be a card the library holds (`propositionKind:"card"`), a FILE REFERENCE (`propositionKind:"file-ref"` with `fileChecked:false`), or the object this meeting was convened to debate (`propositionKind:"meeting-subject"`); ANYTHING ELSE IS REFUSED by name `VMU_ASK_UNKNOWN_PROPOSITION` — free one-line strings included, and a meeting with no declared subject; the hint names three reachable repairs: record the card, pass the subject, or pass a file ref. ★ THE MAIL IS GENERATED FROM THE MEETING STATE: `meetingState`/`meetingStateMeans`/`closurePhase` carry what `meetingView` reports and the closure clause inside `mail.text` is derived from it; an unreadable state makes the mail say 状态不可读 instead of asserting a closure. Asking is not ruling: the ruling is vibe_v5_verdict_final. Refused by name: no chair to sign, a non-chair caller, no mailbox face, and a meeting with no roster AND no speech on record.',
     parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, members: { type: 'array' }, member: { type: 'string' }, why: { type: 'string' } },
     handler: toolVerdictAsk,
   },
@@ -6635,7 +6748,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_blueprint',
-    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision — and a DRAFT OWNS ITS OWN md FILE: pass `text` and the kernel materializes Shared/Drafts/<stem>-r<N>.md atomically (receipt writtenBy:"kernel-materialized"), or pass `mdPath` naming a draft md you wrote with the fs tool (its bytes become the row prose and its sha256 is indexed; a file that is not on disk is refused by name VMU_PACK_V5R_BLUEPRINT_MD_MISSING, and a plain markdown file is accepted as itself); `draft` OPTIONAL names which OPEN draft of this path the text continues — omit it and the open draft is continued, or a new revision is started when none is open; a draft is never in force, and `adopt` promotes the DRAFT FILE bytes to the canonical path after checking they are still the bytes the row indexed (a changed draft is refused by name VMU_PACK_V5R_BLUEPRINT_MD_DRIFT; a canonical file a member already wrote with exactly those bytes is verified, not rewritten); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one; "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (reported in bodyPrefixDropped), and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft, and then nothing was compared. A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues. Every change is one record row (who proposed, who adopted, when, fingerprint), and the rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
+    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision — and a DRAFT OWNS ITS OWN md FILE: pass `text` and the kernel writes Shared/Drafts/<stem>-r<N>.md (receipt writtenBy:"kernel-materialized"), or pass `mdPath` naming a draft md you wrote with the fs tool (its bytes become the row prose, sha256 indexed; a missing file is refused VMU_PACK_V5R_BLUEPRINT_MD_MISSING; plain markdown accepted); `draft` OPTIONAL names which OPEN draft of this path the text continues — omit it and the open draft is continued, or a new revision is started when none is open; a draft is never in force, and `adopt` promotes the DRAFT FILE bytes to the canonical path after checking they are still the bytes the row indexed (a changed draft is refused by name VMU_PACK_V5R_BLUEPRINT_MD_DRIFT; a canonical file a member already wrote with exactly those bytes is verified, not rewritten); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one; "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (reported in bodyPrefixDropped), and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft, and then nothing was compared. A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues. Every change is one record row (who proposed, who adopted, when, fingerprint), and the rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
     parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' },
       // ★★★ RUN 248-M2: a DRAFT revision owns a real md file (task-64). `mdPath` lets the MEMBER be its writer.
       mdPath: { type: 'string', description: 'OPTIONAL: the draft md YOU wrote with the fs tool, as a workspace relative path (e.g. Members/<seat>/Drafts/<slug>-r<N>.md). The kernel reads it back, records its sha256 on the draft row, and the row text becomes the file prose — the file and the index cannot diverge. OMIT it and the kernel materializes the draft itself at Shared/Drafts/<stem>-r<N>.md (receipt: writtenBy:"kernel-materialized"). A path that is NOT on disk is refused by name (VMU_PACK_V5R_BLUEPRINT_MD_MISSING) with the reachable fix: write the file first with the fs tool, then propose again with the same mdPath. Refused by name too: an empty file.' },

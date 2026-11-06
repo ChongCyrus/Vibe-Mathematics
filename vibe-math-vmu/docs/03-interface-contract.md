@@ -430,6 +430,7 @@
 | **R2 · `VMU_MAILBOX_DELIVERY_FAILED`** | 投递失败 ⇒ **不 ack**，留在待投递（缺 `deliver` 缝时也走此路） | 私信 `flush()` | ✅（须给**原始错误**与重试口径） |
 | **R2 · `VMU_MAILBOX_ANCHOR_DANGLING`** | 引用已 ack 后删除的正文（只留 `{id,from,at,kind,bytes}`） | 私信 | ✅（须给**悬空引用 id**） |
 | **R2 · `VMU_MAILBOX_CAP_REACHED`** | ack 台账/待投递触界（`vmu.mailbox.ackedLedgerCap`／`digestMax`） | 私信 | ✅（须给**丢弃/滞留条数**） |
+| **R2 · `VMU_MAILBOX_NOTICE_FAILED`** | 取回合通知块 mailbox 行失败（日志 `type:"mailbox/notice-lines-failed"` 带原始 `code`/`message`）—— **只记审计、回合照跑**，不升级 `VMU_ENGINE_UNAVAILABLE` | 回合装配（`kernel/index.js#noticeSource` 的 `mailbox.noticeLines(...)` 调用点） | ✅（须给**原始 code 与 message**） |
 | **R2 · `VMU_PANEL_UNKNOWN_FIELD`** | 写入面板的字段不在固定集合（`overall｜subgoal｜plan｜status｜subtasks`） | 面板（`kernel/panel.js`） | ✅（须给**允许字段**） |
 | **R2 · `VMU_PANEL_TIME_KEY`** | 调用方试图自带时间戳（时间由注入时钟决定） | 面板 | ✅（须说明**时钟归属**） |
 | **R2 · `VMU_PANEL_NO_SUCH_MEMBER`** | 面板目标成员不存在 | 面板 | ✅（须给**下一步**） |
@@ -1235,8 +1236,8 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **500** 个码，**逐行**给出状态 ✓：其中 **461** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
-> **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
+> 手写表登记 **501** 个码，**逐行**给出状态 ✓：其中 **461** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> **40** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
 
@@ -1444,6 +1445,7 @@
 | `VMU_MAILBOX_ANCHOR_DANGLING` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_MAILBOX_CAP_REACHED` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_MAILBOX_DELIVERY_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
+| `VMU_MAILBOX_NOTICE_FAILED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MAILBOX_NO_SUCH_ENTRY` | **已实现 ✓** | `vibe-math-vmu/kernel/mailbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_MAILBOX_NO_SUCH_RECIPIENT` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/mailbox.js`、`vibe-math-vmu/kernel/reporttransport.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_ADAPTER_OP_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js` | 代码里有该码字符串 ✓ |
@@ -1743,7 +1745,7 @@
 | `VMU_WORKFLOW_WIP_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/board.js` | 代码里有该码字符串 ✓ |
 | `VMU_WRITE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js` | 代码里有该码字符串 ✓ |
 
-提案码（39）：VMU_AUCTION_MIN_BIDS、VMU_AWARD_RATIONALE_REQUIRED、VMU_BALLOT_FROZEN、VMU_BALLOT_SECRECY_LOCKED、VMU_CHAT_CAP_REACHED、VMU_CONTROL_SCOPE_UNKNOWN、VMU_DEGRADED、VMU_FORMAL_LIBRARY_NOT_INDEXED、VMU_FORMAL_SKELETON_UNAVAILABLE、VMU_MATH_ARTIFACT_TOO_LARGE、VMU_MATH_ASSUMPTION_CONFLICT、VMU_MATH_CACHE_CORRUPT、VMU_MATH_INTERVAL_EMPTY、VMU_MATH_JOB_INVALID_STATE、VMU_MATH_JOB_PERSIST_FAILED、VMU_MATH_NONCONVERGENT、VMU_MATH_PRECISION_LOST、VMU_MATH_RESIDUAL_TOO_LARGE、VMU_MATH_SINGULAR_MATRIX、VMU_MEETING_ORDER_DENIED、VMU_MEETING_UNANSWERED_POLICY、VMU_NAME_CONFLICT、VMU_PACK_KERNEL_OVERRIDE_REFUSED、VMU_PANEL_NO_SUCH_MEMBER、VMU_PARAM_DEPRECATED、VMU_PARAM_REMOVED、VMU_PROXY_CHAIN_TOO_DEEP、VMU_PROXY_NOT_ALLOWED、VMU_RECOUNT_MISMATCH、VMU_RECOUNT_SCOPE_DENIED、VMU_RECUSAL_REQUIRED、VMU_REF_DANGLING、VMU_REOPEN_FLOOR_NOT_MET、VMU_REOPEN_WRONG_INITIATOR、VMU_SCHEDULER_ACTION_FORBIDDEN、VMU_SCHEDULER_TRIGGER_LIMIT、VMU_VETO_NOT_ALLOWED、VMU_WORKFLOW_CHECKPOINT_MISSING、VMU_WORKFLOW_RACI_MISSING_OWNER
+提案码（40）：VMU_AUCTION_MIN_BIDS、VMU_AWARD_RATIONALE_REQUIRED、VMU_BALLOT_FROZEN、VMU_BALLOT_SECRECY_LOCKED、VMU_CHAT_CAP_REACHED、VMU_CONTROL_SCOPE_UNKNOWN、VMU_DEGRADED、VMU_FORMAL_LIBRARY_NOT_INDEXED、VMU_FORMAL_SKELETON_UNAVAILABLE、VMU_MAILBOX_NOTICE_FAILED、VMU_MATH_ARTIFACT_TOO_LARGE、VMU_MATH_ASSUMPTION_CONFLICT、VMU_MATH_CACHE_CORRUPT、VMU_MATH_INTERVAL_EMPTY、VMU_MATH_JOB_INVALID_STATE、VMU_MATH_JOB_PERSIST_FAILED、VMU_MATH_NONCONVERGENT、VMU_MATH_PRECISION_LOST、VMU_MATH_RESIDUAL_TOO_LARGE、VMU_MATH_SINGULAR_MATRIX、VMU_MEETING_ORDER_DENIED、VMU_MEETING_UNANSWERED_POLICY、VMU_NAME_CONFLICT、VMU_PACK_KERNEL_OVERRIDE_REFUSED、VMU_PANEL_NO_SUCH_MEMBER、VMU_PARAM_DEPRECATED、VMU_PARAM_REMOVED、VMU_PROXY_CHAIN_TOO_DEEP、VMU_PROXY_NOT_ALLOWED、VMU_RECOUNT_MISMATCH、VMU_RECOUNT_SCOPE_DENIED、VMU_RECUSAL_REQUIRED、VMU_REF_DANGLING、VMU_REOPEN_FLOOR_NOT_MET、VMU_REOPEN_WRONG_INITIATOR、VMU_SCHEDULER_ACTION_FORBIDDEN、VMU_SCHEDULER_TRIGGER_LIMIT、VMU_VETO_NOT_ALLOWED、VMU_WORKFLOW_CHECKPOINT_MISSING、VMU_WORKFLOW_RACI_MISSING_OWNER
 
 <!-- PLANNED-CODES:END -->
 

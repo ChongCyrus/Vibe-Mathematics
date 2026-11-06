@@ -169,6 +169,10 @@ const EXPECT = {
   reviewers: G('ok 或 object', '实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
   'meetings-defaults': G('EXPECT_NA', 'R21 拆出（纯数据：WIRED_KEYS／UNWIRED_REASONS／reasonFor／DEFAULTS，无 `status()`、无 `create*` 工厂 ⇒ 不适用 ✓）—— 行为由 vmu-meetings／vmu-meeting-parity／vmu-meeting-domain 套件覆盖 ✓'),
+  // RUN 249 (task-69 F-11): the framework now ships its OWN notice block, because the 69th live run had 7 unread mails
+  // and a capture where `[新到的消息]` never appeared - the block only rendered when a PACK supplied one. Same category
+  // as `receiptbounds` / `reportfeedback`: pure functions, NO `create*` factory and NO `status()`, nothing to probe.
+  notices: G('EXPECT_NA', 'RUN 249/task-69 F-11 新增的框架渲染模块（**无 `create*` 工厂、无 `status()`** ⇒ 矩阵不适用 ✓）：导出 `INBOX_HEADER` 与 `inboxBlock(notices)`，**空输入渲染空串**（零机制保留）；pack 的 `noticeBlock` 仍优先（内核只在没有 pack 块时兜底）；行为由 `tests/vmu-run249-notice-and-reply.test.mjs` 钉住 ✓'),
   // Round 48: the instant normaliser became a shared kernel tool and therefore a new file the matrix sees. It is
   // a PURE FUNCTION module - no factory, no service, nothing to probe - so it is registered as not-applicable for
   // the same measured reason as `guard` rather than given an invented expectation. It exists because compliance

@@ -210,6 +210,14 @@ const CORE_DEFS = Object.freeze([
   // ROUND 367: the pointer-propagation contract has its own switch, exactly as the original gates it. Off means the
   // section is not included at all (zero injection), never a "disabled" notice - see docs/26 section 3.14.
   { key: 'vmu.turn.replyCatalogue', type: 'enum', domain: ['compact', 'full'], def: 'compact', hot: HOT.H2, who: 'office', doc: 'which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full' },
+  // RUN 249 (task-69 F-02, declared by task-75): the reply excerpt bound used to be a hardcoded 2000 in the turn loop. The
+  // 69th live run replied with 7,328 characters, the receipt kept 2,000 of them, and the rest existed ONLY in the member's
+  // own child session - a reader of the receipt could not tell that a remainder existed, let alone where it was. The bound
+  // is now a declared deployment knob: the DEFAULT STAYS 2000 and is not raised (raising it enlarges every receipt); a
+  // deployment may widen or tighten it inside [500, 200000]. Truncation never discards: when a reply is cut, the FULL text
+  // is written to `Members/<member>/Turns/<turn>.md` and the receipt carries replyFullPath / replyFullSha256 / replyFullBytes.
+  // Reader: kernel/turn/index.js `replyLimitOf(settings)` (absent/invalid value falls back to the default 2000).
+  { key: 'vmu.turn.replyLimitChars', type: 'number', def: 2000, min: 500, max: 200000, hot: HOT.H1, who: 'office', doc: '回合回复正文被回执原样保留的字符上限（默认 2000，允许 500–200000）；超出部分是**截断**而不是丢弃——全文写进 `Members/<member>/Turns/<turn>.md`，回执带 `replyFullPath`/`replyFullSha256`/`replyFullBytes`；调大它会让每回合回执变大，慎用' },
   { key: 'vmu.turn.unknownReplyFieldMode', type: 'enum', domain: ['ignore-named', 'refuse'], def: 'ignore-named', hot: HOT.H1, who: 'office', doc: 'PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。' },
   { key: 'vmu.turn.protocolPath', type: 'string', def: 'Shared/Protocol.md', hot: HOT.H2, who: 'office', doc: 'protocol path named by the compact reply catalogue (relative to the session working directory)' },
   // ★ B4 (2026-10-29): the blueprint's 「按时更新」 window. It used to be a pack CONSTANT (30 days), which made the rule

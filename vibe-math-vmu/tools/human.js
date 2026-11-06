@@ -413,6 +413,26 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
             out.nothingToRestore = report.nothingToRestore
             out.nothingToRestoreMeans = report.nothingToRestoreMeans
           }
+          // ★★ RUN 249-D (FEEDBACK69 F-06, MEASURED on run 69): a recovery answered `ok:false, failedSteps:["ledgers","readback"]`
+          // while every seat was live. The report already separates the two facts (`rosterIntact` is about SEATS,
+          // `ledgerIntact` about LEDGERS), but a reader who only sees the face had to dig into `recovery.*` to learn that
+          // nobody was lost — and "the recovery did not fully succeed" reads as "somebody is gone". These three readings
+          // (plus their Means, and `rosterMeasured`, without which `rosterIntact` could be a CLAIM rather than a
+          // measurement) are promoted to the receipt top level for that reason only. Nothing else about this face moves:
+          // the values are the report's own objects, so the two places cannot disagree.
+          if (report.rosterIntact !== undefined) {
+            out.rosterIntact = report.rosterIntact
+            out.rosterMeasured = report.rosterMeasured
+            out.rosterIntactMeans = report.rosterIntactMeans
+          }
+          if (report.ledgerIntact !== undefined) {
+            out.ledgerIntact = report.ledgerIntact
+            out.ledgerIntactMeans = report.ledgerIntactMeans
+          }
+          if (report.needsHuman !== undefined) {
+            out.needsHuman = report.needsHuman
+            out.needsHumanMeans = report.needsHumanMeans
+          }
           if (report.ok === false) {
             const bad = (Array.isArray(report.steps) ? report.steps : []).filter((s) => s && s.ok === false)
             out.code = report.code || (bad[0] && bad[0].code) || 'VMU_STATE'

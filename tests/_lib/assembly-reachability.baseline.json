@@ -87,6 +87,7 @@
     "vibe-math-vmu/kernel/metrics.js",
     "vibe-math-vmu/kernel/migration.js",
     "vibe-math-vmu/kernel/minutes.js",
+    "vibe-math-vmu/kernel/notices.js",
     "vibe-math-vmu/kernel/notify.js",
     "vibe-math-vmu/kernel/pack.js",
     "vibe-math-vmu/kernel/panel.js",

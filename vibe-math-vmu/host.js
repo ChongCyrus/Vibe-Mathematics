@@ -848,7 +848,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('set') && typeof assertDeclared === 'function') {
     specs.push({
       name: TOOL_NAMES.set,
-      description: '改一个 vmu 设置。未声明的键一律具名拒；回执含热改等级与可改者。★ 调用方可给 `by`／`reason` 声明**真实归属**（给了 `by` ⇒ 走声明所有者的真检查；不给 ⇒ office 路径，回执以 `ownerCheck` **具名披露**该豁免）。',
+      description: '改一个 vmu 设置。未声明的键一律具名拒；回执含热改等级与可改者。★ 调用方可给 `by`／`reason` 声明**真实归属**（给了 `by` ⇒ 走声明所有者的真检查；不给 ⇒ office 路径，回执以 `ownerCheck` **具名披露**该豁免）。★ 回执另给 `actedBy`（从回合上下文实测的真实调用者，office 路径也一样）与 `actedBySource`：`who` 是键的声明所有者，`actedBy` 是实际动手的人，两者不再混为一谈。',
       parameters: {
         key: param('string', '设置键，必须已在 docs/04 §11 登记', { required: true }),
         value: param('string', '新值（按声明的类型解析：布尔/数字/JSON 数组或对象/字符串）'),
@@ -861,7 +861,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         by: param('string', '谁在改（可选）。给了就走声明所有者的真检查；不给＝office 路径（回执具名披露豁免）'),
         reason: param('string', '为什么改（可选）。进运行期写入台账，便于审计追问'),
       },
-      run: async ({ key, value, by, reason } = {}) => {
+      run: async ({ key, value, by, reason } = {}, exec = null) => {
         try {
           assertDeclared(key)
         } catch (e) {
@@ -878,12 +878,20 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           else if (t === 'natural' || t === 'positiveInteger') parsed = Number(value)
           else if (t === 'stringList' || t === 'objectList') { try { parsed = JSON.parse(value) } catch { return refused('VMU_INVALID_ARGUMENT', 'value must be JSON for ' + t) } }
         }
+        // ★★ RUN 249-D / F-09 (MEASURED, run 69): the office path (no `by`) disclosed its EXEMPTION but lost the
+        // ATTRIBUTION — a temp seat's write came back `who:"office"`, `ownerCheck:"exempted (no `by` given…)"`, and
+        // neither the receipt nor the runtime-write ledger named the member that actually made it. The turn context is
+        // measured here with the SAME criterion every other seat tool uses (`resolveTurnMember`), and handed to the
+        // kernel as `actedBy`: a MEASURED fact, kept apart from `who` (the key's declared owner) and from `by` (what the
+        // caller declared). Nothing about the owner check changes — a missing `by` is still the exempted office path.
+        let actedBy = null
+        try { actedBy = resolveTurnMember(kernel, exec) } catch { actedBy = null }
         let setReceipt = null
         try {
           // ROUND 7 / task-57: pass the caller's attribution THROUGH to the one owner-check implementation. `by`
           // absent stays the office path (unchanged, disclosed); `by` present makes the declared-owner check real.
           // `reason` rides along so the runtime-write ledger can answer "why", not only "who".
-          setReceipt = kernel.setSettingsValue(key, parsed, { by: by === undefined ? null : by, reason: reason === undefined ? null : reason })
+          setReceipt = kernel.setSettingsValue(key, parsed, { by: by === undefined ? null : by, reason: reason === undefined ? null : reason, actedBy })
         } catch (e) {
           // The kernel's code and words are preserved (it used to be flattened into VMU_PACK_CONFLICT, which
           // hid the H3/unknown-key/owner refusals behind a code that meant something else).
@@ -923,6 +931,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           // ROUND 7 / task-57: the attribution the CALLER declared travels back on the receipt (null when it declared
           // none - which is the disclosed office path, not a silent bypass).
           by: by === undefined ? null : by,
+          // ★★ RUN 249-D / F-09: the MEASURED actor, copied from the kernel receipt (the kernel is the one place that
+          // decides how attribution is obtained — this face must not invent a second answer). `actedBySource` says
+          // whether it was measured (`caller`) or merely declared (`declared-by`), and `actedByMeans` glosses it.
+          actedBy: setReceipt ? setReceipt.actedBy : null,
+          actedBySource: setReceipt ? setReceipt.actedBySource : null,
+          actedByMeans: setReceipt ? setReceipt.actedByMeans : null,
           reason: reason === undefined ? null : reason,
           requiresRestart: setReceipt ? setReceipt.requiresRestart === true : false,
           appliesAt,

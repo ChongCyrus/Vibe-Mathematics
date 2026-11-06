@@ -305,18 +305,26 @@ const asCard = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid2, propositi
 ok(asCard.ok === true && asCard.propositionKind === 'card' && asCard.propositionVerified === true && asCard.fileChecked === null,
   '③ a card the library HOLDS is accepted as `card` and marked verified — the ruling has a target list now', { kind: asCard.propositionKind, verified: asCard.propositionVerified })
 
-console.log('=== 3c. WHEN NOTHING IS DECLARED, THE FACE SAYS IT CANNOT TELL (instead of refusing a legal shape) ===')
+console.log('=== 3c. WHEN NOTHING IS DECLARED, A FREE ONE-LINE STRING IS REFUSED BY NAME (a target nobody can aggregate is not an ask) ===')
 const convened3 = await call(b, 'vibe_v5_meeting', { agenda: '普通会议', member: 'acad-01' })
 const mid3 = R(convened3).meeting
 for (const m of ['acad-01', 'res-01', 'res-02']) await call(b, 'vibe_vmu_meeting', { action: 'attend', id: mid3, member: m })
 const ordinaryView = kernel.meetings.meetingView({ meeting: mid3 })
 ok(ordinaryView.subject === null || ordinaryView.subject === undefined,
-  '3c. this meeting really declared NO debate object (so the ambiguity below is real)', { subject: ordinaryView.subject })
-const unverified = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid3, proposition_id: 'p-demo' }))
-ok(unverified.ok === true && unverified.propositionKind === 'unverified' && unverified.propositionVerified === false,
-  '③ with nothing declared, a one-line proposition is still accepted — it is a LEGAL v5r debate object — and labelled `unverified`', { kind: unverified.propositionKind, ok: unverified.ok })
-ok(typeof unverified.propositionWhy === 'string' && unverified.propositionWhy.includes('一句话命题'),
-  '③ `propositionWhy` says the face cannot tell a one-line proposition from a typo (the limit is disclosed, not hidden)', { why: String(unverified.propositionWhy || '').slice(0, 220) })
+  '3c. this meeting really declared NO debate object (so the case below is the real one)', { subject: ordinaryView.subject })
+// ── OLD INTENT (RUN 29 §3c): the face used to ACCEPT the unregistered one-line string, label it `unverified` and mail
+// every member, disclosing in `propositionWhy` that it could not tell a proposition from a typo. MEASURED ON THE 69TH
+// REAL MACHINE (RUN 249 / A, rec-3): the description promised `VMU_ASK_UNKNOWN_PROPOSITION` while the face answered
+// `ok:true` and DELIVERED mail — the copy and the behaviour disagreed. NEW SEMANTICS: the face refuses by name and mails
+// nothing. SAME THING PROVEN: the reader still learns the face could not check the object (that is now the refusal
+// message), and learns it BEFORE mail exists instead of after it was sent.
+const refusedDemo = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid3, proposition_id: 'p-demo' }))
+ok(refusedDemo.ok === false && refusedDemo.code === 'VMU_ASK_UNKNOWN_PROPOSITION',
+  '③ with nothing declared, a free one-line string is REFUSED by name (no verdicts are collected for a target nobody can aggregate)', { ok: refusedDemo.ok, code: refusedDemo.code })
+ok(typeof refusedDemo.message === 'string' && refusedDemo.message.includes('p-demo') && /no card/.test(refusedDemo.message),
+  '③ the refusal names the object it could not check, and says which lookup failed (the fact the old `propositionWhy` carried)', { message: String(refusedDemo.message || '').slice(0, 220) })
+ok(typeof refusedDemo.hint === 'string' && /record the proposition first/.test(refusedDemo.hint) && /FILE/.test(refusedDemo.hint) && /debate was convened to debate/.test(refusedDemo.hint),
+  '③ the hint reaches all three legal shapes (record the card / the object this debate was convened to debate / a FILE reference), so the refusal is actionable', { hint: String(refusedDemo.hint || '').slice(0, 260) })
 
 // ── ④ THE DEAD `askedWhy` BRANCHES ──────────────────────────────────────────────────────────────────────────────────
 console.log('=== 4. `askedWhy` NOW BRANCHES ON THE VALUES THE CODE ACTUALLY ASSIGNS ===')
@@ -354,7 +362,9 @@ ok(askBody.includes("source === 'minutes'") && codeOnly(askSource).includes("'ro
 // ── ⑤ THE DECLARATION PROMISES EXACTLY WHAT THE RECEIPT PUBLISHES ──────────────────────────────────────────────────
 console.log('=== 5. THE DESCRIPTION NAMES EVERY FIELD AND REFUSAL THIS FACE NOW PRODUCES ===')
 const desc = String((askSpec && askSpec.description) || '')
-const promised = ['propositionKind', 'file-ref', 'fileChecked:false', 'meeting-subject', 'unverified', 'propositionWhy',
+// ★ RUN 249 / A: `unverified` and the `propositionWhy` promise are GONE with the behaviour they described — the
+// description now promises the REFUSAL and the repairs instead, and this list pins that swap.
+const promised = ['propositionKind', 'file-ref', 'fileChecked:false', 'meeting-subject', 'free one-line string', 'three reachable repairs',
   'VMU_ASK_UNKNOWN_PROPOSITION', 'excluded', 'rosterCountMeans', 'accounting', 'meetingState', 'meetingStateMeans',
   'closurePhase', '状态不可读', 'mail.text', '`askedWhy` says why']
 const missingFromDesc = promised.filter((field) => !desc.includes(field))

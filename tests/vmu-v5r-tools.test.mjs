@@ -322,9 +322,14 @@ try {
   const fbMissing = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'add', category: '协作' })
   ok(fbMissing.parsed && fbMissing.parsed.ok === false && fbMissing.parsed.code === 'VMU_INVALID_ARGUMENT',
     'feedback: 反 — a bare add is refused by name (category/route/phenomenon/impact/action required)', fbMissing.parsed)
-  const fbAdd = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'add', category: '协作', route: 'process', phenomenon: '分派信息不足', impact: '返工', action: '分派时写验收标准' })
+  // ★ RUN 249 / F-04: a feedback write must name its AUTHOR — the office-side call that filed the measured null-author
+  // rows is refused by name, and the attributed call is the one that lands.
+  const fbNoAuthor = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'add', category: '协作', route: 'process', phenomenon: 'p', impact: 'i', action: 'a' })
+  ok(fbNoAuthor.parsed && fbNoAuthor.parsed.ok === false && fbNoAuthor.parsed.code === 'VMU_INVALID_ARGUMENT' && /no author/.test(String(fbNoAuthor.parsed.message)),
+    'feedback: 反 — a write that names no author is refused by name (RUN 249 / F-04)', fbNoAuthor.parsed && { code: fbNoAuthor.parsed.code, message: fbNoAuthor.parsed.message })
+  const fbAdd = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'add', member: 'r-1', category: '协作', route: 'process', phenomenon: '分派信息不足', impact: '返工', action: '分派时写验收标准' })
   ok(fbAdd.parsed && fbAdd.parsed.ok === true && fbAdd.parsed.status === 'open', 'feedback: 正 — a feedback record lands on the feedback track', fbAdd.parsed)
-  const fbInter = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'add', category: '人际', route: 'interpersonal', phenomenon: 'x', impact: 'y', action: 'z' })
+  const fbInter = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'add', member: 'r-1', category: '人际', route: 'interpersonal', phenomenon: 'x', impact: 'y', action: 'z' })
   ok(fbInter.parsed && fbInter.parsed.ok === false && /assessment/.test(String(fbInter.parsed.message)),
     'feedback: 反 — the interpersonal route without assessment is refused by name', fbInter.parsed)
   const fbList = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'list' })

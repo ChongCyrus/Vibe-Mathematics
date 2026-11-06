@@ -79,8 +79,10 @@ try {
   ok(typeof rep0.parsed.counts.feedback.open === 'number' && rep0.parsed.counts.feedback.open === 0,
     'report: an empty ledger counts zero open (the baseline the next case moves)', rep0.parsed.counts.feedback)
 
-  const fbA = await receipt(b, 'vibe_v5_feedback', { op: 'add', category: '协作', route: 'process', phenomenon: '分派缺验收标准', impact: '返工', action: '分派时写验收' })
-  const fbB = await receipt(b, 'vibe_v5_feedback', { op: 'add', category: '工具', route: 'tooling', phenomenon: '坐标脚本临时写', impact: '无法复算', action: '走归档' })
+  // ★ RUN 249 / F-04: a feedback write must have an AUTHOR; the member is named here (the office-side call that filed
+  // the measured null-author rows is REFUSED now, and that refusal is pinned in vmu-run50-readbacks §5).
+  const fbA = await receipt(b, 'vibe_v5_feedback', { op: 'add', member: 'r-1', category: '协作', route: 'process', phenomenon: '分派缺验收标准', impact: '返工', action: '分派时写验收' })
+  const fbB = await receipt(b, 'vibe_v5_feedback', { op: 'add', member: 'r-2', category: '工具', route: 'tooling', phenomenon: '坐标脚本临时写', impact: '无法复算', action: '走归档' })
   ok(fbA.parsed && fbA.parsed.ok === true && !!fbA.parsed.recordId && fbB.parsed && fbB.parsed.ok === true && !!fbB.parsed.recordId,
     'precondition: TWO feedback cards land (so every() below is over a non-empty set)', [fbA.parsed && fbA.parsed.recordId, fbB.parsed && fbB.parsed.recordId])
 
@@ -96,7 +98,7 @@ try {
   ok(JSON.stringify(ov1.parsed.feedback) === JSON.stringify(fb1) || (ov1.parsed.feedback.open === fb1.open && ov1.parsed.feedback.closed === fb1.closed && ov1.parsed.feedback.total === fb1.total),
     '★★ the report and the overview print identical counts for the same ledger', { report: fb1, overview: ov1.parsed.feedback })
 
-  const updated = await receipt(b, 'vibe_v5_feedback', { op: 'update', id: fbA.parsed.recordId, status: 'closed', outcome: '已改分派模板' })
+  const updated = await receipt(b, 'vibe_v5_feedback', { op: 'update', member: 'r-1', id: fbA.parsed.recordId, status: 'closed', outcome: '已改分派模板' })
   ok(updated.parsed && updated.parsed.ok === true, 'precondition: the close is accepted', updated.parsed)
   const rep2 = await receipt(b, 'vibe_v5_report', {})
   const fb2 = rep2.parsed.counts.feedback

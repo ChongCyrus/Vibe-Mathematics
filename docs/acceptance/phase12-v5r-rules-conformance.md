@@ -17523,3 +17523,71 @@ String(said).trim() !== ''`）给每个在席成员（除主席）投一条 `cha
 4. **`alreadyWritten:true` 只在字节完全相等时成立**：成员手写的 canonical 若头/格式不同仍走内核重写（`copiedFrom`
    非 null）。这正确但是「成员写了文件仍被重写」的观感来源，值得在回执 `means` 里说得更直白（现已在 `md.means`）。
 5. **C10（Lean 归档）仍 PARTIAL**：本轮未改变它——归档读面仍需带 Lean 的部署；D2 已随三通道落地转 DONE（见台账）。
+
+## §346 `346` RUN 249 —— 第 69 次真机：先证构建（F-00），再谈「投递的最后一公里」与夹具缺口
+
+**346.1 这一轮验证的是什么（先把口径钉住）。**
+第 69 次真机（`D:/_tmp/slv-phase5/`，报告 `SIM-REPORT69.md` + 反馈 `FEEDBACK69.md`）不是「功能覆盖率」验收，而是把 `v5r-运行规则.md`（工作区 63 行）里**已经实现过**的规则再走一遍真会话，看「规则文本 → 提示词 → 工具回执」三段是否自洽。构建 `013b4c65`（tarball `dsh-vibe-math-2.8.5.tgz`，7.09 MB，v5r pack 29 个 `.js`）；dsh `0.2.1-rc.3`；provider `dsh-opencode-go@0.1.21`；模型 `deepseek-v4.1-flash`；墙钟 22.7 min；token 曲线终点 **14 798 550**（out 44 643 / in 163 705）；`llm/retry` 0 条；四席 `r-acad`(chair)/`r-1`(member)/`r-2`(member)/`r-temp`(temp)，成员回合 `t-1`…`t-6`（`t-6` 是 wait 唤醒产生的真回合）。产出：机制/读数缺陷 **F-01…F-11**、成员自报 **A–D**、规则/简报文本 **P-01…P-05**、夹具缺口 **G-1…G-4**。
+
+**346.2 F-00 ——「构建里没有」不是「实现里没有」（本轮最重要的一条）。**
+现象：真机上两项机制**零命中**——`[新到的消息]` 块全库（5 个会话 + 工作区 + `state.json` + audit）**0 命中**（F-11）；`m2` 的 10 085 字符回执里 `notified|notify` **0 命中**（F-10）。而工作树里两块都在：`vibe-math-vmu/kernel/notices.js:19`（块头 `INBOX_HEADER`）与 `:28`（`inboxBlock(notices)`）；`vibe-math-vmu/kernel/meetings.js:4400-4421` 与 `vibe-math-vmu/tools/meeting.js:466`（`notified`/`notifyRows`/`notifyFailed`）。
+根因：造 tarball 的是 `slv-p13-cc.ps1:211` 的 `git archive HEAD`，而 RUN 248 的改动还在**未提交工作树**里 ⇒ `git archive HEAD` 只取已提交树，两项机制「在构建里不存在」。任何「真机里没跑出来 ⇒ 机制没实现」的结论，在这里都会把**未观测**误记成**不存在**。
+教训（已入卷）：**真机结论必须带 build 自证**——记录 `git rev-parse HEAD`，并对包内关键串做断言（`tar -xO` 后 grep `[新到的消息]`、`meeting-appointment`、`notified` 等）。没有自证的「未命中」只能写「未观测」。
+处置：F-11 由 task-69 真修（把 notice 行接进每回合提示，而不是把未渲染说成「设计如此」）；F-10 归 RUN 249 的 pack 回执透传（服务面回执没透出内核已有的三键）。两者**不因 F-00 而免责**：F-00 只说明「本轮不能据此判定它们坏」，不能说明它们好。
+
+**346.3 F-01…F-11（机制/读数）。**
+- **F-01（中）** 主席 `t-1` 回执 `status:"applied"`、`fields:["solved"]`，但成员只回 `{"solved":false}`，所办分不清「做了没写」还是「没做」⇒ 回执加 `replyBytes` 与 `emptyReply:true`（task-69）。
+- **F-02（高）** `t-2` 正文被 2000 字符截断（`replyLength:7328`、`replyTruncated:true`、`replyLimitChars:2000`），全文只活在子会话；`t-3` 只有 500 字 notes，`t-4`/`t-5` 连摘要都没有 ⇒ 成员证据在架构上流不出去。修法：`replyLimitChars` 可配 + 全文落 `Members/<id>/Turns/<turn>.md` + 回执 `replyFullPath`+sha（task-69）。
+- **F-03（部署）** `pwsh` 后端起不来：`sandbox mode "workspace-write" is requested but no sandbox backend is usable on this host … Runner failure: windows-acl-run: --temp is not an existing directory: C:\Users\admin\AppData\Local\Temp\1\dsh-JeDFZT` ⇒ 磁盘字节数测不了，只能给回执 `pdfBytes`（会话开头两条 pwsh 成功，中途退化）。
+- **F-04（机制）** feedback 行丢作者：`rec-10`/`rec-14` 的 `owner:null, writer:null, by:null`（`vibe_v5_feedback op:"add"` 缺 `member` 不拒），同轨 `rec-17` 是 `owner:"r-2"`。
+- **F-05（机制）** `expand rec-21` ⇒ `owner:"r-1", writer:"argument", by:"argument", rev:2`：结算写入把**字段来源词**塞进人名槽（创建回执三名都是 `r-1`）。
+- **F-06（机制）** `recover` ⇒ `{ok:false, code:"VMU_STATE", message:"the recovery did not fully succeed: ledgers, readback (VMU_RESUME_READBACK_DRIFT)", failedSteps:["ledgers","readback"]}`；`unhydrated` 有 meetings（`VMU_RESUME_RESTORE_CONFLICT`「already holds 2 live meeting(s)」）/ballotbox(1)/chat(4)；`readBack.drift` 命中 `resume`、`meetings`，`writesBetween:190`；`keptLive:[]` 但名册四席全 live（建议把 `rosterIntact` 单列）。
+- **F-07（机制）** `recovery.id:"rec-2"` 与命题卡 `rec-2` 撞名（建议 recovery 用独立前缀或 `idSpace`）。
+- **F-08（读数）** `final` ⇒ `pdfBytes:69726`/`rec-31`；随后 `compile` ⇒ `pdfBytes:69725`/`rec-32`；`status.pdfCompiled` 同时给两数 + `compiledAfterFinal:true`（建议直接给「磁盘现文件＝rec-32」）。
+- **F-09（机制）** 成员自报（未复验）：temp 席位调 `vibe_vmu_set` 改 `vmu.math.maxParallel` 成功，回执 `who:office`、`ownerCheck exempted(no by)` ⇒ 审计记不到真实改动人。
+- **F-10（中）** 服务面 `vibe_v5_meeting` 回执**不透出** `notified`/`notifyRows`/`notifyFailed`：`m2` 的 10 085 字符回执 0 命中，而内核已有读数（另见 F-00：本条需在含三键的构建上复验）。修法：pack 回执透传三键（RUN 249 范围）。
+- **F-11（高）** 真机有 7 封未读邮件，回合提示的 `[新到的消息]` 块却从未渲染：`vibe-math-vmu/packs/v5r/notices.js:102` 的块头与 `:105-108` 的 `inboxBlock()`（RUN 249/task-69 起框架侧另有 `kernel/notices.js` 的同形默认渲染，pack 的 `noticeBlock` 仍优先） 需要 loop 传入 notices，而 turn loop 没接 ⇒ 行进了邮箱、没进提示。已派 task-69（真修「最后一公里」，并在 4b preflight 加「有未读行时命中块头 / 无未读 0 命中」）。
+
+**346.4 A–D（成员自报，其中 C 已由本轮提示词收口）。**
+- **A** `vibe_v5_verdict_ask` 把不存在的 `p-rulecheck-不存在` 传给 `m1`，成员说明写「会具名拒 `VMU_ASK_UNKNOWN_PROPOSITION`」，实际 `ok:true`、`propositionKind:"unverified"`、mail 已投递 `delivered:["r-1","r-2"]` ⇒ 机制侧待收（提示词侧不再教「随便写个命题 id」）。
+- **B** `tool_help{member:"r-temp"}` 与 `{member:"r-1"}` 返回同一张 80 项表、`source:"caller"` ⇒ 席位面不可自查（机制）。
+- **C** 服务会议上 `hands { op:"list" }` ⇒ `VMU_REGISTRY_BOUNDARY`（`hands` 只写内核**原语会**的楼层；服务会议的楼层是**队列**）⇒ **本轮提示词已收口**：chair 会中手册 ④ 明写「不是服务会议的门」，并改教 `order`（不带 `members` 只读 / 带 `members` 重排且 `by`=你自己）与 `invite{members:[…]}`；同时把 `flow` 的**模式名** `hands` 与 `action:"hands"` 拆开。
+- **D** `proof_state:"draft"` 的 `rec-2` 回执 `proofState:"draft"`，却给 `proofGate:{locked:true, why:"the declared proof is registered complete and its own proofRef resolves inside the library"}` ⇒ 机制把**没发生的证据**写成发生。
+
+**346.5 P-01…P-05（规则/简报文本）。** P-01 表格落哪个通道没规定（实测：正文被切 2000 / 正文没进回执 / 写进 `rec-18`）；P-02 任务书 3.2「一回合写两次 progress」与纪律「一回合一行」冲突且未标故意负例（实测 `VMU_TURN_DUPLICATE_SKIPPED`）；P-03 `proof_ref:"Members/r-1/Propos/placeholder-69.md"` 不存在却第 5 步拿它当辩论对象（辩论闸只核 `proofRef + proofState:"complete"` ⇒ 放行，`subjectGate.proofBasis:"declaration-only"`、`proofChecked:false`）；**P-04** `formal_agenda:true` 只落声明（`formalAgendaItems:null`、`formalAgendaItemsWhy` 点名「a boolean cannot carry items」）⇒ **本轮提示词已收口**：要条目就传数组 `["条目", {title:"条目2", kind:"review"}]`；P-05 L27/L28 的「三通道」「状态版四项」与实现不一一对应（私信实测落成信箱投递 `via:"mailbox"`；面板五字段 vs `record_progress{track:"state"}` 强制 progress/obstacles/next/help）。
+
+**346.6 G-1…G-4（夹具缺口，全部高）。**
+- **G-1** L34/L44-45 的「会议类型收窄 / 辩论会」测不到：本所没有「证明已完成」的辩论对象，`subject` 带 draft 卡一律 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF` ⇒ 夹具要预置 `proofState:"complete"` 且 `proofRef` 真实存在的引理卡。
+- **G-2** L49 `fidelity_conclude` 不可达：没有完稿卡、没有 passed Lean 作业（环境 Lean 4.34.0 在 `D:\.elan\bin\lean.EXE`，无从指向）。
+- **G-3** L53 后半（汇总/平均/通知持卡人/回写概率）未实测：`m1` 零提交被 `VMU_RULING_NO_SUBMISSIONS` 拒，`m3` 只有一致=1 ⇒ 夹具要一张真命题卡 + 两席分别交 **1** 与 **0.4** 触发 average 分支，再补一致=1 的 unanimity 分支。
+- **G-4** 预约投递与主席广播本轮 **0 可测**，根因是 F-00（构建取 `git archive HEAD`，RUN 248 当时未提交）⇒ 修法见 task-73「构建自证」。
+
+**346.7 本轮提示词侧收口（只有两句，都在 chair 会中手册里）。**
+- `formal_agenda`：`["条目", {title:"条目2", kind:"review"}]` 这样传**数组**才逐条落库（`formalAgendaItems` 读得到）；传 `true` 只是**声明**（`formalAgendaDeclared:true`、`formalAgendaItems:null` ＋ `formalAgendaItemsWhy`）。
+- `action:"hands"`：真机第 69 次（L39）在服务会议上被具名拒 `VMU_REGISTRY_BOUNDARY`——`hands` 的 grant/revoke/clear/list 只写内核**原语会**的楼层，服务会议的楼层是**队列**：看队列用 `order`（不带 `members` 只读）、重排也用它（带 `members` 且 `by`=你自己）、把人按序排进队列用 `invite`（`member` 一人或 `members` 数组）；`flow` 里的 `hands` 只是**模式名**。
+- 守门：`tests/vmu-run239-prompts.test.mjs` 新增 **§7 ·7**（源码 3 条 + 真装配 3 条，含开会后的 chair meeting prompt）⇒ **65 passed, 0 failed**。
+
+**346.7b 第 2 项：task-69 交付后的「投递可见」教学（补记；346.8 的数字是补记前的快照）。**
+- 口径：第 2 项只在 notice-lane（task-69）**completed** 之后写，按它的**最终实现字符串**写（块头 `INBOX_HEADER`、`inboxBlock(notices)`、回执 `notices` 的 `lines`/`rendered`/`blockChars`、`vmu.turn.replyLimitChars`、`replyFullPath`/`replyFullSha256`/`replyFullBytes`、`replyBytes`/`emptyReply`、预约回执的 `notified`/`notifyRows`/`notifyFailed`）。
+- 落点：**不新增 section**（避免装配与段数 pin 漂移）。① `v5r-turn-channels` 共享段（order 834，所有席×所有相位都渲染）追加「块会渲染、也能核对」与「回执里的证据比正文活得久」两句（+445 字符，三席同值）；② chair「召集与预约（非会议回合）」段追加内核投递三数组（`notifyFailed` 里的人才是要补发的，别把「约过」当「通知到」）（+144 字符，只在 `phase=meeting` 渲染）。
+- 一处必须记的细节：初稿把读数写成 `notices:{lines,rendered,blockChars}`，**撞了** `tests/vmu-run247-prompt-dedup.test.mjs` §1c 的「参数表/调用签名」形状 `SIGNATURE=/\{ *[a-z_][a-z_0-9.?]* *, *[a-z_]/`（member/temp normal 被顶到 9 行/2692 字符而红）。改成 `notices` 里 `lines`／`rendered`／`blockChars`（+7 字符）后回到 8 行/1738 字符——**同口径判据是有效的，它抓到的正是「又用花括号复述参数表」**。
+- 守门：`tests/vmu-run239-prompts.test.mjs` 新增 **§8 ·8**（9 条）= 源码 5 条（渲染读数、无未读＝无消息而非丢通知、`vmu.turn.replyLimitChars`+`replyTruncated:true`、`replyFullPath`+`replyFullSha256`、`emptyReply:true`、`notifyRows`+`notifyFailed`）＋ 真装配 3 条（member/normal 同时含装配读数与 `emptyReply:true`、chair/meeting 含 `notifyRows`/`notifyFailed`）＋ 开会夹具 1 条 ⇒ **74 passed, 0 failed**（65+9）。
+- 复验：`vmu-run247-prompt-dedup` **74/0**（§1a/§1b 改为逐条记账：`RUN247 70689` ＋ `RUN248 教学 2000` ＋ `RUN249 教学 1356`；实测三份 normal **73 984**，余 61 与上一轮同量）；`vmu-run150-verdict-channel` **73/0**；`vmu-run248-notice-delivery` **117/0**（含 4b：有未读命中 `[新到的消息]`、无未读 0 命中）；`audit-prompt-budget --check` **PASS**（member/verify **27 437**、temp/verify **24 796**、chair/meeting **33 959** vs cap **36 500**；tools mean 已回 **698**）；`check-rule-parity` **PASS 0 problem**、`--selftest` **12/12**；`check-docs` **PASS**。
+- 真装配终值（同尺 12 份）：chair 27 944 / **31 493** / 27 535 / 31 496；member 24 660 / 25 227 / 24 251 / 27 793；temp 21 380 / 22 391 / 20 971 / 25 150；合计 **310 291**；三份 normal 合计 **73 984**。
+- 唯一未绿是 `regen-all --check` 的 **counts** 项（五车道落盘后 `update-doc-counts --write` 一次性收口；此刻派生 JOBS 775 / suites 695 / probes 80、shipped `tests/*.mjs` 393），按 lead 口径**不在中间反复 --write**。
+
+**346.8 实测（本机，RUN 249 收口时）。**
+- 真装配（同尺 `scripts/sim/audit/prompt-sections.mjs`，12 份）：chair normal **27 492** / meeting **30 897** / checkpoint **27 083** / verify **31 044**；member 24 208 / 24 775 / 23 799 / 27 341；temp 20 928 / 21 939 / 20 519 / 24 698；**合计 304 723**。两句源码共 586 字符（P-04 238 + C 348）。
+- `node scripts/audit-prompt-budget.mjs --check` ⇒ **PASS**（1 条既有 `SEAT_PROMPT_OVER_T99`：chair/meeting **33 363** vs t99 30 000，cap **36 500** 未动；tools 48 个 / 33 469 / 最大 2 988）。
+- `node tests/vmu-run239-prompts.test.mjs` ⇒ **65 passed, 0 failed**；`node tests/vmu-run247-prompt-dedup.test.mjs` ⇒ **74 passed, 0 failed**；`node tests/vmu-run150-verdict-channel.test.mjs` ⇒ **73 passed, 0 failed**。
+- `node scripts/regen-all.mjs --check` ⇒ 17/17 in sync；`node scripts/check-docs.mjs` ⇒ PASS；`node scripts/check-rules-coverage.mjs --check` ⇒ PASS（DONE 92 / PARTIAL 1 = C10，anchors 93/93）。
+- 台账落点（第 69 次真机的 live 证据）：**E1**（chair 召集 m1 开放并预约 m2 进入 scheduled）、**E3**（非主席召集被拒并点名 chair 席）、**E4**（`close` 回执 `state:"closed"`、`archived:true`）、**E5**（`extendlimit` 把 `wallLimitMs` 从 1800000 抬到 2400000）、**E15**（邀请回执 `order` 是回读队列）、**E16**（服务会议上 `hands` 被拒并点名只属原语会议面）、**E18**（投票板 `min_votes` 生效并回读 `rules.minVotes`）、**E22/E35**（辩论对象带 draft 卡被具名拒）、**E23**（法定人数下限读数是三）、**E17**（单次发言版群聊同轮第二次被拒）。**未触达**的写进 note 而不是 live：E12/E33（G-1）、E24（G-2）、E28（G-3）、E2（等待阶段未单独触发）。**C10 仍 PARTIAL**（无 Lean 部署）。
+
+**台账证据锚点（第 69 次真机；`check-rules-coverage` 以正则解析证据，故这一段只用无元字符的纯文本）。**
+真机69 chair 召集 m1 开放并预约 m2 进入 scheduled；真机69 非主席召集被具名拒并点名 chair 席；真机69 close 回执 state closed 且 archived 为真；真机69 extendlimit 把墙钟上界从 1800000 抬到 2400000；真机69 邀请回执 order 是回读队列；真机69 服务会议上 hands 被拒并点名只属原语会议面；真机69 投票板 min_votes 生效并回读 rules.minVotes；真机69 辩论对象带 draft 卡被具名拒；真机69 法定人数下限读数是三；真机69 单次发言版群聊同轮第二次被拒；真机69 零提交先给 NO_SUBMISSIONS 而汇总分支未触达。
+
+**346.9 遗留。**
+1. F-10/F-11 需要**含修复的构建**复验（task-69 / RUN 249 落地后）；本轮证据只能记「在上一个构建里未观测」。
+2. G-1…G-4 全部要夹具预置（真证明卡、完稿卡+Lean 作业、1/0.4 双裁决、build 自证）。
+3. A（未知命题仍投递）与 D（`proofGate` 谎报）是机制侧，未在本轮修。
+4. F-04/F-05/F-06/F-07/F-08/F-09 是回执/读数合同问题，需单独一轮「回执自述必须可核对」。

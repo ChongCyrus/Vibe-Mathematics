@@ -458,6 +458,18 @@ export function createResume({ store = null, work = null, control = null, identi
     if (own && typeof own === 'object' && Array.isArray(own.recoveries)) {
       state.recoveries = own.recoveries.slice(-natural(sget('vmu.resume.keepRecoveries'), 20))
     }
+    // ★★ RUN 249-D / F-07: `state.seq` drives the recovery record id, and it used to restart at 0 in every process.
+    // MEASURED (a restart on a durable root): the second session adopted `recovery-rec-1` from the fold and then
+    // minted `recovery-rec-1` AGAIN — two records, one id, inside the same namespace. That is the `rec-2` collision
+    // with a proposition card one level down: an id space that is not stable is not an id space. The adopted history
+    // AND the durable counter are reconciled here, so pruning the history cannot make an old id come back.
+    if (own && typeof own === 'object' && Array.isArray(own.recoveries)) {
+      for (const row of state.recoveries) {
+        const m = row && typeof row.id === 'string' ? /^recovery-rec-(\d+)$/.exec(row.id) : null
+        if (m) state.seq = Math.max(state.seq, Number(m[1]))
+      }
+    }
+    state.seq = Math.max(state.seq, natural(counters.get('recoverySeq'), 0))
     // A re-dispatch counter that did NOT survive the restart would let a crash loop re-dispatch forever.
     if (own && typeof own === 'object' && own.reassignAttempts && typeof own.reassignAttempts === 'object') {
       for (const [member, n] of Object.entries(own.reassignAttempts)) if (Number.isInteger(Number(n))) reassignAttempts.set(String(member), Number(n))
@@ -1004,12 +1016,44 @@ export function createResume({ store = null, work = null, control = null, identi
   async function recoverUnlocked({ reason = 'host-ended', steps = null } = {}) {
     const want = Array.isArray(steps) && steps.length ? steps.map(String) : RECOVERY_STEPS.slice()
     for (const s of want) if (!RECOVERY_STEPS.includes(s)) throw refuse(CODE.badStep, 'unknown recovery step: ' + s, 'known: ' + RECOVERY_STEPS.join(', '))
-    const report = { ok: true, id: 'rec-' + (++state.seq), at: stamp(), reason: String(reason), storeAttached: !!store, steps: [], wrote: [] }
+    // ★★ RUN 249-D / F-07 (MEASURED, run 69): this id used to be `rec-<n>`, the SAME namespace `kernel/records.js`
+    // mints proposition cards in (`records.js` mints `rec-` ids). One string then named two objects, and a report that
+    // quoted "rec-2" could not be read back unambiguously. The recovery record now lives in its own id space —
+    // `recovery-rec-<n>` — and carries `idSpace` so a reader never has to parse the prefix to know which object it is.
+    // ★★ RUN 249-D / F-07: the id is minted BEFORE the read step (the report exists from the first line), so the
+    // adopted history below cannot have raised `state.seq` yet. MEASURED on a restart: the second session minted
+    // `recovery-rec-1` while the fold already held `recovery-rec-1`. This narrow read reconciles the counter with the
+    // durable record before minting; the read step below still runs its own full read and names an unreadable fold.
+    try {
+      if (store && typeof store.read === 'function') {
+        const ownPrev = store.read(RESUME_KEY)
+        if (ownPrev && typeof ownPrev === 'object' && Array.isArray(ownPrev.recoveries)) {
+          for (const row of ownPrev.recoveries) {
+            const n = idSuffix(row && row.id)
+            if (n !== null && n > state.seq) state.seq = n
+          }
+        }
+        const storedSeq = ownPrev && ownPrev.counters && typeof ownPrev.counters === 'object' ? Number(ownPrev.counters.recoverySeq) : NaN
+        if (Number.isInteger(storedSeq) && storedSeq > state.seq) state.seq = storedSeq
+      }
+    } catch (e) { /* the read step below reports an unreadable fold by name */ }
+    const report = { ok: true, id: 'recovery-rec-' + (++state.seq), idSpace: 'recovery', at: stamp(), reason: String(reason), storeAttached: !!store, steps: [], wrote: [] }
     if (!store) {
       report.ok = false
       report.code = CODE.unavailable
       report.steps.push({ step: 'read', ok: false, code: CODE.unavailable, note: 'no durable store: nothing to resume (a claim of recovery would be a lie)' })
       report.note = 'no durable store was injected; the recovery is a no-op and says so'
+      // ★★ RUN 249-D / F-06: the separation of "a seat was lost" from "a ledger did not fully restore" must exist on
+      // EVERY receipt, including the ones that fail before reading anything. With no store there is no durable roster to
+      // compare against, so `rosterIntact` cannot be CLAIMED — it is `false` with `rosterMeasured:false` and a sentence
+      // saying exactly that (a `true` here would be an invented fact).
+      report.rosterIntact = false
+      report.rosterMeasured = false
+      report.rosterIntactMeans = 'no durable store was attached: the roster was never read, so "intact" cannot be claimed here (rosterMeasured:false) — the missing piece is the store, not a lost seat'
+      report.ledgerIntact = {}
+      report.ledgerIntactMeans = 'no ledger was read: nothing can be said about any of them'
+      report.needsHuman = [{ step: 'read', code: CODE.unavailable, why: 'no durable store is attached, so nothing could be resumed: wire a store into this assembly and run the recovery again' }]
+      report.needsHumanMeans = 'ok:false is ONLY about the missing store (step "read") — no seat and no ledger was touched'
       state.lastRecovery = report
       return report
     }
@@ -1161,7 +1205,72 @@ export function createResume({ store = null, work = null, control = null, identi
     report.keptLiveMeans = keptLiveMeans !== ''
       ? keptLiveMeans
       : 'no hydrated ledger reported live rows kept back (the `members` projection either restored every live seat or has no live seats)'
-    report.steps.push({ step: 'ledgers', ok: h.ok, hydrated: h.hydrated, unhydrated: h.unhydrated, nothingToRestore, keptLive })
+
+    // ★★ RUN 249-D / F-06 (MEASURED, run 69): the receipt answered `ok:false, failedSteps:["ledgers","readback"]`
+    // while all four seats were live and `keptLive:[]`. The task book's criterion was "not one seat is missing", and
+    // that criterion PASSED — but nothing on the receipt said so, so a reader could only read "the recovery did not
+    // fully succeed" as "somebody is gone". The two facts are now TWO readings, each measured on its own:
+    //   · `rosterIntact` — every member id the durable `members` projection held is still live. It answers ONLY
+    //     "was a seat lost"; a ledger that refused to hydrate cannot make it false (that is the next field's job).
+    //   · `ledgerIntact` — per ledger key, whether the durable value under it was applied. `true` covers both
+    //     "restored/replayed" and "nothing was projected yet (a first run)" — neither one loses a row.
+    // A ledger that refuses to half-overwrite a live policy layer is CORRECT (RUN 69: meetings/ballotbox/chat), and
+    // it stays a named failure — it just no longer has to masquerade as a lost roster.
+    // ★ RUN 249-D / F-06: the durable envelope is `{ value: { data: { members: [...] } } }` for the state-mode
+    // `members` projection (measured on a restart: `store.read('members')` returned exactly that). The first cut
+    // looked only one level deep, so `rosterMeasured` came out `false` on a snapshot that DID hold the roster —
+    // an unmeasured comparison is honest but useless. Every envelope depth the writers actually produce is tried.
+    const memberIdsOf = (env) => {
+      const bags = []
+      const add = (v) => { if (v && typeof v === 'object' && !Array.isArray(v)) bags.push(v) }
+      if (env && typeof env === 'object') { if (Array.isArray(env)) bags.push(env); else { add(env); add(env.value); add(env.data); add(env.value && env.value.data) } }
+      for (const bag of bags) {
+        const list = Array.isArray(bag) ? bag
+          : (Array.isArray(bag.members) ? bag.members
+            : (bag.data && Array.isArray(bag.data.members) ? bag.data.members : null))
+        if (!list) continue
+        const ids = list.map((m) => String((m && m.id) || '')).filter(Boolean)
+        if (ids.length) return ids
+      }
+      return null
+    }
+    let rosterLiveIds = Array.isArray(rosterRows) ? rosterRows.map((m) => String((m && m.id) || '')).filter(Boolean) : []
+    if (rosterLiveIds.length === 0) {
+      // No identity seam: the members projection's OWN list is the live roster (hydrate ran above, so a restored
+      // roster is readable here). A `list()` that throws leaves the reading unmeasured, never "empty".
+      const holder = projections.get('members')
+      try {
+        const l = holder && holder.adapter && typeof holder.adapter.list === 'function' ? holder.adapter.list() : null
+        if (Array.isArray(l)) rosterLiveIds = l.map((m) => String((m && m.id) || '')).filter(Boolean)
+      } catch (e) { /* unmeasured, reported as such */ }
+    }
+    const rosterDurableIds = memberIdsOf(membersEnv)
+    const rosterMeasured = rosterDurableIds !== null && rosterLiveIds.length > 0
+    const rosterMissingLive = rosterMeasured ? rosterDurableIds.filter((id) => rosterLiveIds.indexOf(id) === -1) : []
+    report.rosterIntact = rosterMissingLive.length === 0
+    report.rosterMeasured = rosterMeasured
+    report.rosterLive = rosterLiveIds.length
+    report.rosterDurable = rosterDurableIds === null ? null : rosterDurableIds.length
+    report.rosterMissingLive = rosterMissingLive
+    report.rosterKeptLive = keptLive
+    report.rosterIntactMeans = !rosterMeasured
+      ? 'nobody can be shown to be missing, and that is NOT the same as measured-intact: ' +
+        (rosterDurableIds === null ? 'the durable `members` projection holds no readable member rows' : 'no live roster could be read') +
+        ' (rosterMeasured:false — this is the absence of a comparison, not a claim that every seat survived)'
+      : (rosterMissingLive.length === 0
+        ? 'every member the durable roster held (' + rosterDurableIds.length + ') is still live in the current roster (' + rosterLiveIds.length + ' seats): no seat was lost' + (keptLive.length ? '; ' + keptLive.length + ' live seat(s) the snapshot did not carry were KEPT (keptLive)' : '')
+        : 'these member ids are in the durable roster but NOT live now: ' + rosterMissingLive.join(', ') + ' — this is the fact `ok:false` could never separate from a ledger failure before RUN 249-D')
+    const ledgerIntact = {}
+    for (const row of h.hydrated) if (row && row.key !== undefined) ledgerIntact[String(row.key)] = true
+    for (const row of h.unhydrated) if (row && row.key !== undefined) ledgerIntact[String(row.key)] = false
+    const ledgerBroken = Object.keys(ledgerIntact).filter((k) => ledgerIntact[k] === false)
+    report.ledgerIntact = ledgerIntact
+    report.ledgerIntactKeys = { intact: Object.keys(ledgerIntact).filter((k) => ledgerIntact[k] !== false), broken: ledgerBroken }
+    report.ledgerIntactMeans = ledgerBroken.length === 0
+      ? 'every ledger this recovery touched is intact: each one either restored/replayed, or had nothing projected yet (a first run, which loses no row)'
+      : 'these ledgers are NOT intact: ' + ledgerBroken.join(', ') + ' — the durable value under them was NOT applied (see `unhydrated` for each key\'s code and reason). That is a ledger fact, not a roster fact: `rosterIntact` answers the separate question of whether a SEAT was lost'
+    report.steps.push({ step: 'ledgers', ok: h.ok, hydrated: h.hydrated, unhydrated: h.unhydrated, nothingToRestore, keptLive,
+      ledgerIntact, rosterIntact: report.rosterIntact, rosterMeasured: report.rosterMeasured })
 
     // ⑤ mailbox — the port may be an object with `pending()` or a bare function returning the entries.
     let mb = { attached: false, code: CODE.mailboxMissing, pending: null, ids: [] }
@@ -1255,15 +1364,51 @@ export function createResume({ store = null, work = null, control = null, identi
     report.steps.push({ step: 'outcome', ok: true, interrupted: interrupted.length,
       note: interrupted.length ? 'interrupted work is NAMED; settleOutcome({outcome:"passed"}) refuses for these ids unless explicitly overridden' : 'nothing was interrupted' })
 
-    report.ok = report.steps.every((s) => s.ok !== false)
+    // ★★ RUN 249-D / F-06 (MEASURED, run 69): `ok:false` must never be a bare verdict. Every failing step is now
+    // named on `needsHuman` with a `why`, and `ok` is derived from exactly that list — so "the recovery did not fully
+    // succeed" always comes with WHO has to act and on WHAT, while `rosterIntact`/`ledgerIntact` answer the two
+    // questions a reader actually asks ("is anybody gone?" / "which ledger is not back?").
+    const needsHumanWhy = {
+      read: 'no durable store is attached, so nothing could be resumed: wire a store into this assembly',
+      roster: 'the roster seam AND the members projection are both absent: the roster cannot be restored or verified',
+      children: 'the children port is wired but the query threw: which member children survived the restart is unknown',
+      reassign: 'the declared re-dispatch policy failed for at least one member: see the step row for which one and why',
+      inflight: 'in-flight work could not be named (no work seam, or the seam threw): pending work may go unsettled',
+      ledgers: 'a ledger refused to hydrate (see `unhydrated` for the key, code and reason): its durable value was NOT applied — decide whether the live value or the durable one is the institute\'s',
+      mailbox: 'unacknowledged mail could not be counted: nobody knows how much mail is still queued',
+      watchdogs: 'the watchdog port is wired but refreshing threw: stale meet/verify clocks may go unrefreshed',
+      flags: 'the control surface could not be read: paused surfaces cannot be reported',
+      readback: 'the store moved under this process (read-back drift): something else wrote while the recovery held its expectation — do NOT rewrite the key to make the digest agree',
+      record: 'the recovery record itself could not be written durably: the resume marker on disk is now older than this process',
+      outcome: 'the outcome guard could not be evaluated',
+    }
+    const settleReport = () => {
+      const failed = report.steps.filter((s) => s && s.ok === false)
+      report.ok = failed.length === 0
+      report.failedSteps = failed.map((s) => String(s.step))
+      report.needsHuman = failed.map((s) => {
+        const step = String(s.step)
+        const row = { step, code: s.code || 'VMU_STATE', why: needsHumanWhy[step] || ('the step "' + step + '" reported ok:false') }
+        if (step === 'ledgers') row.keys = (Array.isArray(h.unhydrated) ? h.unhydrated : []).map((u) => String((u && u.key) || '')).filter(Boolean)
+        if (step === 'readback' && rb && Array.isArray(rb.drift)) row.keys = rb.drift.map((d) => String((d && d.key) || '')).filter(Boolean)
+        return row
+      })
+      report.needsHumanMeans = report.needsHuman.length === 0
+        ? 'nothing in this recovery needs a human decision: every step that could be taken was taken, and every ledger either restored or had nothing projected yet'
+        : 'ok:false is ONLY about these steps (a human, or the assembly, must act on them): ' + report.needsHuman.map((n) => n.step + (n.code ? ' (' + n.code + ')' : '')).join(', ')
+    }
+    settleReport()
     report.interrupted = interrupted
     report.hydrated = h.hydrated
     report.unhydrated = h.unhydrated
     report.readBack = rb
     // the recovery record is durable (bounded) — this is the write that the read-gate protects
     try {
+      // ★ RUN 249-D / F-07: the id counter is written WITH the record, so a session that prunes its history still
+      // hands out fresh ids on the next start (the adopted-history reconciliation above is the fallback).
+      counters.set('recoverySeq', state.seq)
       const env = Object.assign(counterEnvelope(), {
-        recoveries: state.recoveries.concat([{ id: report.id, at: report.at, reason: report.reason, interrupted: interrupted.length, unhydrated: h.unhydrated.map((u) => u.key), readBack: rb ? rb.consistent : null }]).slice(-cfg().keepRecoveries),
+        recoveries: state.recoveries.concat([{ id: report.id, idSpace: 'recovery', at: report.at, reason: report.reason, interrupted: interrupted.length, unhydrated: h.unhydrated.map((u) => u.key), readBack: rb ? rb.consistent : null }]).slice(-cfg().keepRecoveries),
         // DURABLE re-dispatch counters (task-52 B): a crash loop must not be able to re-dispatch forever.
         reassignAttempts: Object.fromEntries([...reassignAttempts.entries()].sort()),
       })
@@ -1271,12 +1416,13 @@ export function createResume({ store = null, work = null, control = null, identi
       state.recoveries = env.recoveries
       report.wrote.push(RESUME_KEY)
     } catch (e) {
-      report.ok = false
       report.steps.push({ step: 'record', ok: false, code: (e && e.code) || 'VMU_STATE', message: String((e && e.message) || e) })
+      // the record write is the last thing that can flip `ok` — recompute so `needsHuman` names it too
+      settleReport()
     }
     state.lastRecovery = report
-    say({ type: 'resume/recovered', at: report.at, id: report.id, reason: report.reason, interrupted: interrupted.length, unhydrated: h.unhydrated.length, ok: report.ok })
-    emit('resume/recovered', { at: report.at, id: report.id, ok: report.ok, interrupted: interrupted.length })
+    say({ type: 'resume/recovered', at: report.at, id: report.id, reason: report.reason, interrupted: interrupted.length, unhydrated: h.unhydrated.length, ok: report.ok, rosterIntact: report.rosterIntact, needsHuman: report.needsHuman.length })
+    emit('resume/recovered', { at: report.at, id: report.id, ok: report.ok, interrupted: interrupted.length, rosterIntact: report.rosterIntact, needsHuman: report.needsHuman.length })
     if (h.unhydrated.length) {
       say({ type: 'resume/degraded', at: report.at, unhydrated: h.unhydrated.map((u) => u.key) })
       emit('resume/degraded', { at: report.at, unhydrated: h.unhydrated })
