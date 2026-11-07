@@ -46,6 +46,18 @@ export function refuse(code, message, hint) {
 
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item'
 const nowIso = (clock) => clock()
+// ★★★ RUN 254 / P0-2 (L1): `updatedAt` used to be an ISO STRING on a library row while the records projection stored
+// epoch milliseconds. One field, two shapes: a numeric comparison (`Number(row.updatedAt) >= since`) turned the string
+// into NaN and the row fell out of every time window with no reading at all. The library now stores and reads epoch
+// milliseconds, and this reader accepts the OLD shape too so files already on disk are normalised instead of dropped.
+const msOfUpdatedAt = (v) => {
+  if (v === null || v === undefined || v === '') return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  const n = Number(v)
+  if (Number.isFinite(n)) return n
+  const p = Date.parse(String(v))
+  return Number.isFinite(p) ? p : null
+}
 
 /**
  * Create a library over one workspace root. `tracks` come from the resolved settings
@@ -207,6 +219,14 @@ export function createLibrary({
     for (const f of HEAD_FIELDS) out[f] = rec[f] === undefined ? null : rec[f]
     return out
   }
+  // ★★★ RUN 254 / P0-2 (L1): the documented head shape is seven fields (docs/07 §4.3, pinned by audit-kernel-claims-4),
+  // so the writer fact is OPT-IN rather than a shape change: `list({ withWriter: true })` adds `writer`/`writerSource`
+  // to each row, and the DEFAULT row keeps exactly HEAD_FIELDS. The merged `vibe_vmu_records {action:'list'}` face asks
+  // for it, because a writer filter that cannot see the writer is the defect this fixes.
+  const headWithWriter = (rec) => Object.assign(head(rec), {
+    writer: rec.writer === undefined ? null : rec.writer,
+    writerSource: rec.writerSource === undefined ? null : rec.writerSource,
+  })
 
   /** Rebuild the head list from disk (docs/07 §4.3): never cached, never carrying a body. */
   async function rebuildIndex() {
@@ -237,11 +257,17 @@ export function createLibrary({
             id, kind, member, file,
             title: meta.title || id, status: meta.status || 'open',
             owner: meta.owner || member,
+            // ★★★ RUN 254 / P0-2 (L1): the row names WHO WROTE IT, with the field that answered. The card frontmatter
+            // carries `writer` from now on; cards written before this fix fall back to `owner` and then to the member
+            // directory, and `writerSource` says which of the three answered so a reader never has to guess.
+            writer: meta.writer || meta.owner || member,
+            writerSource: meta.writer ? 'meta.writer' : (meta.owner ? 'meta.owner' : 'member'),
             fingerprint: meta.fingerprint || null, // READ BACK, never recomputed (docs/07 §4.2)
         references: meta.references ? String(meta.references).split(',').filter(Boolean) : [],   // ROUND 231
         visibility: meta.visibility || visibilityDefault,   // ROUND 234: READ BACK, and the declaration fills the gap
       statement: meta.statement === undefined || meta.statement === 'null' ? undefined : String(meta.statement),   // ROUND 231
-            updatedAt: meta.updatedAt || null,
+            // ★★★ RUN 254: epoch milliseconds (the OLD ISO string is normalised on read, never compared as NaN).
+            updatedAt: msOfUpdatedAt(meta.updatedAt),
           })
         }
       }
@@ -315,7 +341,9 @@ export function createLibrary({
             id: meta.id || f.replace(/\.md$/, ''), kind, member, file,
             title: meta.title || null, fingerprint: meta.fingerprint || null,
             status: meta.status || 'open', owner: meta.owner || member,
-            updatedAt: meta.updatedAt || null, trashedAt: meta.trashedAt || null, reason: meta.reason || null,
+            writer: meta.writer || meta.owner || member,
+            writerSource: meta.writer ? 'meta.writer' : (meta.owner ? 'meta.owner' : 'member'),
+            updatedAt: msOfUpdatedAt(meta.updatedAt), trashedAt: meta.trashedAt || null, reason: meta.reason || null,
           })
         }
       }
@@ -490,7 +518,11 @@ export function createLibrary({
         title: record.title || record.statement.slice(0, 60),
         status: record.status || 'open',
         owner: member,
-        updatedAt: nowIso(clock),
+        // ★★★ RUN 254 / P0-2 (L1): the card now names its WRITER, and the timestamp is epoch milliseconds. Before this
+        // the frontmatter had no writer at all and an ISO string here, so a `by` filter could never match a card and a
+        // time window compared the string to a number (NaN) and dropped the row silently.
+        writer: (record.writer || opts.writer || record.owner || opts.member || null),
+        updatedAt: Number(clock()),
       }
       await writeFile(file, render(meta, String(record.statement) + (record.proof ? '\n\n' + record.proof : '')), 'utf8')
       index.set(id, Object.assign({ file }, meta))
@@ -537,13 +569,17 @@ export function createLibrary({
       const rows = [...index.values()].filter((r) =>
         (filter.kind === undefined || r.kind === filter.kind) &&
         (filter.member === undefined || r.member === filter.member))
-      rows.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      // ★★★ RUN 254 / P0-2 (L1): NUMERIC comparison. `updatedAt` is epoch milliseconds now (and old ISO strings are
+      // normalised by msOfUpdatedAt on read), so sorting by string compared digits to letters and put rows in an
+      // order that had nothing to do with time.
+      rows.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
       // Trashed records are invisible by default (rebuildIndex never sees them); `includeTrash` opts in.
       if (filter.includeTrash) { const tr = await readTrash(); for (const t of tr) rows.push(t) }
       // A ROW CAP, and it is COUNTED when it bites (docs/07 §4.4: truncation is never silent). The previous
       // bound was `Math.max(headListAt, rows.length)`, which always resolved to rows.length - so the knob had
       // NO observable effect at all (found by the 2026-10-09 docs-vs-code audit, its finding #35). `0` = all.
-      const heads = rows.map(head)
+      const project = filter.withWriter === true ? headWithWriter : head
+      const heads = rows.map(project)
       if (!(headListAt > 0) || heads.length <= headListAt) return heads
       const kept = heads.slice(0, headListAt)
       truncation.push({ path: 'head-list', kept: kept.length, dropped: heads.length - kept.length, mode: 'head-list-at' })
@@ -588,7 +624,7 @@ export function createLibrary({
         snippetTruncated: cut.length < hay.length - from,
       }))
     }
-    hits.sort((a, b) => (b.score - a.score) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    hits.sort((a, b) => (b.score - a.score) || ((Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)))
     const capped = hits.slice(0, maxResults)
     if (capped.length < hits.length) truncation.push({ path: 'search', kept: capped.length, dropped: hits.length - capped.length, mode: 'max-results' })
     return { ok: true, analyzer, query: needle, hits: capped, total: hits.length, dropped: hits.length - capped.length, snippetLen, enforced: ['vmu.search.analyzer', 'vmu.search.maxResults', 'vmu.search.snippetLen'], fired: hits.length ? ['vmu.search.analyzer'] : [] }

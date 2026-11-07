@@ -24,6 +24,14 @@
 //   F72-8 (中) `read-back-default-draft` had ZERO receipts on the real machine: it lived only in a settlement read-back
 //             and every reachable settlement is refused first. The READ face now answers the gate with the SAME
 //             stored-row reader (§7), so the reason is reachable by simply reading the card.
+//
+// RUN 254-D — the 73rd real-machine run asked two questions the receipts could not answer literally (§9):
+//   F-73-01 (中) a default card answered `proofState:null` (honest: nothing was DECLARED) but the task asked "is this a
+//             draft". `proofStateFolded` now prints the EFFECTIVE state from one exported fold, next to the declared
+//             value — which stays null, because a fold is not a declaration.
+//   F-73-02 (中低) `providerCodeTranslated` existed only when a translation HAPPENED, so the ended and live states
+//             carried no marker. It is now a top-level boolean on every receipt, with a sentence naming which "false"
+//             applies (nothing to translate / the provider code was already named).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -94,6 +102,14 @@ test('§0 every repair is on the source that owns it (source pins, so §1-§4 ca
   has(PACK, 'VMU_MEMBER_SESSION_NEVER_OPENED', '§0i ★★★ F71-8: the never-opened fact has its own name')
   has(PACK, 'providerCodeTranslated', '§0i ★★ RUN 252/F72-1: the provider refusal is translated, not passed through')
   has(PACK, 'seatDenyNames', '§0j ★★★ F71-7: the deny list is COMPUTED from the seat-face table, not retyped')
+  // ★★★ RUN 254 (F-73-01 / F-73-02, MEASURED on the 73rd real-machine run): the task asked "is this card a draft" and the
+  // receipt answered only `proofState:null`; and the translation marker existed only on the ONE path that translated. The
+  // folded state comes from ONE exported fold, and the marker is a top-level boolean on every receipt.
+  has(PACK, 'export function foldedProofStateOf(', '§0o ★★★ RUN 254/F-73-01: the effective-state fold is ONE exported function')
+  has(PACK, 'proofStateFolded: proofStateFoldedOut', '§0o ★★ ...and the card-write receipt prints it under its own name')
+  has(PACK, 'NOT a declared value', '§0p ★★★ RUN 254/F-73-01: foldedMeans says the folded value is NOT a declaration')
+  has(PACK, 'EFFECTIVE state:', '§0p ★★ ...and the lock note names the effective state in words')
+  has(PACK, 'providerCodeTranslated: providerRefusalTranslated', '§0q ★★★ RUN 254/F-73-02: the marker is ALWAYS emitted (a boolean), not only when true')
   ok(PACK.length > 100000, '§0k sanity: the source read is the real file', PACK.length)
   // ★★★ RUN 252 (F72-10, MEASURED on the 72nd real-machine run): `verdicts` was declared as a bare `{type:"array"}`,
   // so a chair composing elements by hand had no shape to satisfy — the only feedback was a runtime failure. The
@@ -356,8 +372,88 @@ test('§7 F72-8 — the READ face answers the proof gate, with no settlement nee
     '§7l ★★ the cardFields reading is unchanged: the author declared nothing (this pin predates RUN 252)', card && card.cardFields && card.cardFields.proofState)
 })
 
-test('§8 cleanup', () => {
+test('§9 RUN 254-D — the folded state is a separate field, and the translation marker is always present', async () => {
+  // ★★★ F-73-01 (MEASURED on the 73rd real-machine run): the task asked "is this card a draft" and the receipt answered
+  // `proofState:null`. The truth is TWO facts and both are now printed: `proofState` stays the DECLARED value (null means
+  // nothing was declared — honest), and `proofStateFolded` is the EFFECTIVE state the rules fold the card into.
+  const plain = R(await b.call('vibe_v5_record_proposition', {
+    statement: 'r254 folded', value: '未定论', motive: 'run254 folded shape', p: 0.5, member: 'r-1',
+  }))
+  eq(plain.ok, true, '§9a precondition: the default card is admitted', plain && { code: plain.code, message: plain.message })
+  eq(plain.proofState, null, '§9b ★★★ F-73-01: proofState stays null — nothing was declared, and a default must not be reported as a declaration', plain.proofState)
+  eq(plain.proofStateFolded, 'draft', '§9c ★★★ ...while proofStateFolded answers "is this card a draft" literally', plain.proofStateFolded)
+  has(String(plain.foldedMeans || ''), 'NOT a declared value',
+    '§9d ★★★ ...and foldedMeans says the folded value is the EFFECTIVE state, not a declaration a reader could quote as one', plain.foldedMeans)
+  has(String(plain.foldedMeans || '').toLowerCase(), 'default', '§9e ★★ ...naming the default rule that produced it')
+  has(String(plain.lockNote || ''), 'EFFECTIVE state: draft',
+    '§9f ★★★ ...and the lock note names the effective state too, so a reader quoting the note gets the same answer', plain.lockNote)
+  // NEGATIVE pin: the fold must not be written back over the declared field.
+  ok(plain.proofState !== 'draft' && plain.proofState !== plain.proofStateFolded,
+    '§9g ★★★ the folded value is NOT copied into proofState (that would report a declaration that never happened)',
+    { proofState: plain.proofState, folded: plain.proofStateFolded })
+  // A DECLARED complete card: the two fields agree because a declaration exists.
+  const libRoot = (() => { try { return b.kernel.library && typeof b.kernel.library.root === 'string' ? b.kernel.library.root : null } catch (e) { return null } })()
+  ok(libRoot !== null, '§9h precondition: the kernel exposes a library root', { libRoot })
+  if (libRoot !== null) {
+    mkdirSync(libRoot, { recursive: true })
+    writeFileSync(join(libRoot, 'r254-proof.md'), '# r254 proof\n')
+    const complete = R(await b.call('vibe_v5_record_proposition', {
+      statement: 'r254 folded complete', value: 'objects', motive: 'run254 folded complete', p: 0.5,
+      proof_state: 'complete', proof_ref: 'r254-proof.md', member: 'r-1',
+    }))
+    eq(complete.ok, true, '§9i precondition: the declared-complete card is admitted', complete && { code: complete.code, message: complete.message })
+    eq(complete.proofState, 'complete', '§9j ★★ a declared state is reported as declared', complete.proofState)
+    eq(complete.proofStateFolded, 'complete', '§9k ★★★ ...and the folded state agrees: folding only normalises a DECLARED value', complete.proofStateFolded)
+    eq(complete.proofGate && complete.proofGate.locked, true, '§9l ★ rest of the gate is untouched: a finished registration still locks', complete.proofGate && complete.proofGate.locked)
+  }
+
+  // ★★★ F-73-02 (MEASURED on the 73rd real-machine run): `providerCodeTranslated` appeared ONLY when a translation happened,
+  // so the ENDED and LIVE states carried no marker at all — "not translated" and "the receipt forgot to say" looked alike.
+  // The provider below is the kernel's OWN visible-tools provider (the same hook run 169 uses), so these are three REAL
+  // readings of `vibe_v5_tool_help`, not three hand-built views.
+  const turn = b.kernel.turn
+  // (1) LIVE: a visible set exists, so there is no session refusal and nothing to translate.
+  turn.setVisibleToolsProvider(() => ['vibe_v5_tool_help', 'vibe_v5_meeting'])
+  const live = R(await b.call('vibe_v5_tool_help', { member: 'r-1' }))
+  ok(Object.prototype.hasOwnProperty.call(live, 'providerCodeTranslated'),
+    '§9m ★★★ F-73-02: the LIVE receipt carries providerCodeTranslated (the key is ALWAYS present)', Object.keys(live).filter((k) => /provider/i.test(k)))
+  eq(live.providerCodeTranslated, false, '§9n ★★★ ...false on a live session: there was no provider refusal to translate', live.providerCodeTranslated)
+  eq(live.refusal, null, '§9o ★★ ...and a live session is not refused at all', live.refusal)
+  eq(live.providerRefusal, null, '§9p ★ ...nor is there a provider refusal to read', live.providerRefusal)
+  eq(live.measuredSet && live.measuredSet.available, true, '§9q ★★ ...the measured set IS available: a tools array is the liveness fact (the kernel prints no liveAgent flag)', live.measuredSet && live.measuredSet.available)
+  hasNot(JSON.stringify(live), 'VMU_NO_SUCH_OBJECT', '§9r ★★★ the live receipt contains no catch-all code anywhere')
+  // (2) ENDED: the provider code is already named, so nothing is translated — but the marker still says so.
+  turn.setVisibleToolsProvider((member) => {
+    const e = new Error('member "' + member + '" has a learned child session (child-254) but no LIVE Agent')
+    e.code = 'VMU_MEMBER_SESSION_NOT_LIVE'
+    e.cause = 'child-session-not-live'
+    e.childId = 'child-254'
+    e.hint = 'the calls are in the child session log'
+    throw e
+  })
+  const ended = R(await b.call('vibe_v5_tool_help', { member: 'r-1' }))
+  eq(ended.refusal && ended.refusal.code, 'VMU_MEMBER_SESSION_NOT_LIVE', '§9s ★★★ the ENDED state keeps its named refusal', ended.refusal && ended.refusal.code)
+  eq(ended.providerCodeTranslated, false, '§9t ★★★ ...and the receipt says the provider code was NOT translated', ended.providerCodeTranslated)
+  eq(ended.providerRefusal && ended.providerRefusal.code, 'VMU_MEMBER_SESSION_NOT_LIVE', '§9u ★★★ ...because the provider code was already named', ended.providerRefusal && ended.providerRefusal.code)
+  has(String(ended.providerCodeTranslatedMeans || ''), 'ALREADY named', '§9v ★★ ...and its sentence explains that false (already named, nothing to rename)', ended.providerCodeTranslatedMeans)
+  hasNot(JSON.stringify(ended), 'VMU_NO_SUCH_OBJECT', '§9w ★★★ the ended receipt contains no catch-all code anywhere')
+  // (3) NEVER OPENED: the one case that IS translated, and it says true.
+  turn.setVisibleToolsProvider((member) => {
+    const e = new Error('no child session has been learned for member "' + member + '" yet')
+    e.code = 'VMU_NO_SUCH_OBJECT'
+    e.cause = 'no-child-session-yet'
+    throw e
+  })
+  const never = R(await b.call('vibe_v5_tool_help', { member: 'r-1' }))
+  eq(never.refusal && never.refusal.code, 'VMU_MEMBER_SESSION_NEVER_OPENED', '§9x ★★★ the NEVER-OPENED state is named', never.refusal && never.refusal.code)
+  eq(never.providerCodeTranslated, true, '§9y ★★★ ...and the receipt says the provider code WAS translated', never.providerCodeTranslated)
+  eq(never.providerRefusal && never.providerRefusal.code, 'VMU_MEMBER_SESSION_NEVER_OPENED', '§9z ★★★ ...so the provider refusal says the same named fact', never.providerRefusal && never.providerRefusal.code)
+  hasNot(JSON.stringify(never), 'VMU_NO_SUCH_OBJECT', '§9aa ★★★ neither state repeats the catch-all: one fact, one name')
+  turn.setVisibleToolsProvider(null)
+})
+
+test('§10 cleanup', () => {
   try { rmSync(root, { recursive: true, force: true }) } catch (e) { /* best effort */ }
-  ok(n > 0, '§8 assertions ran', n)
+  ok(n > 0, '§10 assertions ran', n)
   console.log('RUN 251 assertions: ' + n)
 })

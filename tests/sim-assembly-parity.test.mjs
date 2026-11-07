@@ -42,6 +42,8 @@ function ok(cond, name, detail) {
 const NL = String.fromCharCode(10)
 const FENCE = '```'
 const fence = (payload) => [FENCE + 'json', JSON.stringify(payload), FENCE].join(NL)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const waitFor = async (pred, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end) { if (pred()) return true; await sleep(5) } return !!pred() }
 
 const HARNESS = await import(pathToFileURL(join(REPO, 'scripts', 'sim', 'harness.mjs')).href)
 const GATE = await import(pathToFileURL(join(REPO, 'scripts', 'audit-prompt-budget.mjs')).href)
@@ -73,6 +75,21 @@ const RULER_FACTS = {
 }
 ok(RULER_FACTS.type !== '' && RULER_FACTS.chair !== '' && RULER_FACTS.agenda !== '',
   'and read back the three facts a bound prompt is assembled from (type / chair / agenda)', RULER_FACTS)
+
+// ★★★ RUN 254-B / P1-5 — A PENDING DELIVERY ROW IS MACHINE STATE, NOT A RULER DIFFERENCE. Convening the RULER meeting
+// queues an UN-ACKED appointment mail for r-1 (RUN 248's durable delivery: `kernel/meetings.js` mail seam). The harness
+// now renders that row in a simulated prompt exactly like a real turn does (the P1-5 fix: the same `noticeBlock` +
+// `noticeSource` as the entry), measured +113 characters on every seat - while the budget gate measures the prompt
+// TEMPLATE and has no mailbox, so it cannot see any pending mail. Same inputs for THIS comparison therefore includes
+// "no un-acked mail": settle what this setup queued. (The notice block's own parity is pinned against a REAL turn, not
+// against the gate, in `tests/vmu-run254-notice-settlement.test.mjs`.)
+const setupMail = h.kernel.mailbox.noticeLines('r-1')
+if (setupMail.unackedRows.length > 0) {
+  await h.call('vibe_vmu_mailbox', { action: 'ack', member: 'r-1', ids: setupMail.unackedRows.map((row) => row.id) })
+  await waitFor(() => h.kernel.mailbox.noticeLines('r-1').count === 0)
+}
+ok(h.kernel.mailbox.noticeLines('r-1').count === 0,
+  'the measurement starts from a settled inbox, so the two rulers measure the same state', setupMail.unackedRows)
 
 const gate = await GATE.measure({ meetingId: RULER_ID, meetingFacts: RULER_FACTS })
 ok(Boolean(gate && gate.seats && gate.seats.chair), 'the budget gate published its own measurement', gate && Object.keys(gate))

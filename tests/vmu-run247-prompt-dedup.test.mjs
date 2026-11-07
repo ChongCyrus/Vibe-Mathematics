@@ -115,6 +115,12 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //        不是 `vibe_v5_verdict` 的 `verdict`）＝chair 专属 +322；`proof_state`（形参）与 `proofState`（回执/卡体读回）
   //        分名 + 归档 sha 只覆盖正文这两句在 charter/shared 段，三席同值 +151，合计 +775 ⇒ 上限
   //        70689 + 2000 + 1356 + 594 + 775 = 75414，比实测 75353 多 61（仍与 RUN 248 同一份余量）。
+  //   ★ RUN 254-C 不涨预算：这一轮是**等量置换**，不是新增教学。审计 W2 守门缺口③要把真机字节数（16 463 / 496 /
+  //        15 967 B）从提示词里拿走，换成不含数字的通用口径；④要补 `tool_help` 的 `source` 语义（读数来源、
+  //        `count:null`＝没活会话所以没测到、`declaredCount` 才是声明集）。新增的那句从同段删等量冗余（重复的 urgent
+  //        旁注、重复的「私信+urgent 才推进这一轮」、无用的轮询劝告、office 只读到摘录的旁注等），**净差 ≤0**：
+  //        `v5r-blocks-b.js` 76 644 → 76 644 字符；整份装配每席不变（chair/normal 27 258、member 23 677、temp 20 364），
+  //        上限与余量原样不动（仍 28615 / 75414）。
   const RUN247 = { chair: 26944, member: 23200, temp: 20545, sum: 70689 }
   const RUN248_TEACHING = { chair: 548, member: 1008, temp: 383, sum: 1939, budget: 2000 }
   const RUN249_TEACHING = { chair: 452, member: 452, temp: 452, sum: 1356 }

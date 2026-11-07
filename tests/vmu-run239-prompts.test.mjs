@@ -296,7 +296,7 @@ try {
   // Every string pinned below is one the code really emits; none of it is a paraphrase of an intention.
   {
     console.log('§8 ·8 the delivery readings a seat can check are taught (block rendered, full reply, empty reply)')
-    ok(says(blocksBSource, 'rendered') && says(blocksBSource, 'blockChars') && says(blocksBSource, '装配回执的 `notices`'),
+    ok(says(blocksBSource, 'rendered') && says(blocksBSource, 'blockChars') && says(blocksBSource, '装配回执 `notices`') && says(blocksBSource, '小节读数'),
       '§8a ·8 the assembly reading is named exactly as the turn receipt emits it')
     ok(says(blocksBSource, '不出现块头') && says(blocksBSource, '通知丢了'),
       '§8b ·8 "no header" is taught as "no message", not as "the notice was lost"')
@@ -319,7 +319,7 @@ try {
     await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
     await b.K.members.hire({ id: 'r-1', slot: 'member' })
     const normal = await seatPrompt(b.K, 'r-1', 'normal')
-    ok(says(normal, '装配回执的 `notices`') && says(normal, '文本通道'),
+    ok(says(normal, '装配回执 `notices`') && says(normal, '文本通道'),
       '§8g ·8 every round teaches the two readings that decide "did I hear" and "did I say anything"')
     const opened = await b.K.meetings.open({ type: 'debate', chair: 'r-acad', materials: '确认命题; 分配复核', members: ['r-1'], roster: ['r-1'], actor: 'r-acad' })
     const meetingId = String(opened && (opened.meeting === undefined || opened.meeting === null ? '' : opened.meeting))
@@ -367,6 +367,14 @@ try {
   // printed the element shape, so "verdict" was the only word a model had seen. Same class: the proof declaration is an
   // ARGUMENT named `proof_state` (snake) while the RECEIPT/body read back `proofState` (camel); and the archive receipt's
   // `replyFullSha256`/`replyFullBytes` cover the reply TEXT only, not the file header.
+  // ★ RUN 254-C (the RUN 253 read-only audit, W2 gate gaps ③/④): two fixes, both pinned here.
+  //   ③ The 72nd run's byte figures (16 463 / 496 / 15 967 B) had been written INTO the prompt. Measurements belong in
+  //     the acceptance docs; a prompt that carries one run's numbers goes stale the moment the archive header changes.
+  //     The prompt now states the shape ("header ≈0.3–0.6 KB", "check the file yourself with sha256sum", "trust the
+  //     receipt you actually got") and §10e2 asserts the digits are GONE.
+  //   ④ `tool_help`'s `source` was unstated: `count:null`/`tools:null` reads as "this seat has no tools" when it means
+  //     "there was no live session, so nothing was measured". The prompt now says which is which and names
+  //     `declaredCount` as the declaration set; §10i2 denies the permission misreading.
   {
     console.log('§10 ·10 the argument/field names the faces really use are taught, and the retired spellings are gone')
     ok(says(blocksASource, 'proof_state:"complete"') && says(blocksASource, '回执/卡体读回才叫 `proofState`'),
@@ -377,8 +385,10 @@ try {
       '§10c ·10 the verdict element shape is printed verbatim, and `verdict` is named as ANOTHER tool\'s key')
     ok(says(blocksASource, '被具名拒 `VMU_INVALID_ARGUMENT`'),
       '§10d ·10 the consequence of the wrong key is named (a named refusal, not a silent drop)')
-    ok(says(blocksBSource, '只覆盖正文，不含归档头') && says(blocksBSource, '两个 sha 不同'),
-      '§10e ·10 the archive receipt is taught as covering the reply TEXT only (file header excluded)')
+    ok(says(blocksBSource, '只覆盖正文') && says(blocksBSource, 'sha256sum') && says(blocksBSource, '以实收回执为准'),
+      '§10e ·10 the archive receipt is taught as covering the reply TEXT only, verifiable by checking the file yourself')
+    ok(denies(blocksBSource, '16 463') && denies(blocksBSource, '15 967') && denies(blocksBSource, '第 72 次真机实测'),
+      '§10e2 ·10 the live run\'s byte figures stay in the docs, not in the prompt (RUN 254-C W2 gate)')
 
     const b = await boot(await mkRoot())
     await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
@@ -388,9 +398,27 @@ try {
       '§10f ·10 the chair\'s assembled prompt prints the element shape (a chair acting on it cannot guess)')
     ok(says(chairNormal, 'proof_state:"complete"'),
       '§10g ·10 the assembled charter teaches the argument spelling `proof_state`')
+    ok(says(blocksBSource, '`source` 是**读数来源**') && says(blocksBSource, '`declaredCount`') && says(blocksBSource, '不是「该席位没有工具」'),
+      '§10i ·10 tool_help\'s `source` is taught as the READING source, and null counts as "not measured"')
+    ok(denies(blocksBSource, '`source` 是**席位权限**'),
+      '§10i2 ·10 `source` is not taught as a seat permission (the wording RUN 254-C W2 found unstated)')
     const memberNormal = await seatPrompt(b.K, 'r-1', 'normal', {})
-    ok(says(memberNormal, '只覆盖正文，不含归档头'),
+    ok(says(memberNormal, '只覆盖正文') && says(memberNormal, 'sha256sum'),
       '§10h ·10 every seat\'s assembled prompt says the archive sha covers the body, not the file')
+    ok(says(memberNormal, '`source` 是**读数来源**') && says(memberNormal, '`declaredCount`'),
+      '§10j ·10 every seat\'s assembled prompt carries the tool_help reading semantics')
+    // ★ RUN 254-C / C3 (the RUN 253 audit's one INCONSISTENT object: `[新到的消息]` ack vs read). The mechanism
+    // settled it as ONE criterion (`vibe-math-vmu/kernel/mailbox.js` `noticeLines`: a row is DELIVERED UNTIL ACKED —
+    // `open()`/read only sets `read`), so the prompt must say "ack is the only settlement" and must not keep the old
+    // "ack what you finished reading" phrasing, which invited a member to look for an ack reading had made moot.
+    ok(says(blocksBSource, '**唯一**结算') && says(blocksBSource, '行不会因被读消失') && says(blocksBSource, '`unackedRows`') && says(blocksBSource, '`settledBy:"ack"`'),
+      '§10k ·10 mail is DELIVERED UNTIL ACKED, and the receipt\'s named readings are taught')
+    ok(denies(blocksBSource, '读完正文用'),
+      '§10l ·10 the retired "ack what you finished reading" wording is gone (reading never settles a delivery)')
+    ok(says(memberNormal, '**唯一**结算') && says(memberNormal, '`unackedRows`') && says(memberNormal, '`settledBy:"ack"`'),
+      '§10m ·10 the member\'s assembled prompt carries the ack-settles-it reading')
+    ok(says(chairNormal, '**唯一**结算') && says(chairNormal, '行不会因被读消失'),
+      '§10n ·10 the chair\'s assembled prompt carries the same one-criterion wording')
   }
 } finally {
   for (const root of roots) { try { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) } catch {} }

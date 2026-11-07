@@ -121,7 +121,7 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r89-'))
   let err = null
   try { k.meetings.speak({ meeting: m, member: 'r-1', text: '太早了' }) } catch (e) { err = e }
   ok(err !== null, 'speaking before the start is refused', err && err.code)
-  ok(err && err.code === 'VMU_STATE', 'the refusal is VMU_STATE', err && err.code)
+  ok(err && err.code === 'VMU_MEETING_NOT_STARTED', 'the refusal names the START TIME rather than the generic state (RUN 254-E / F-73-04)', err && err.code)
   ok(err && /SCHEDULED/.test(String(err.message)), 'the message says the meeting is SCHEDULED', err && err.message)
   const view3 = k.meetings.meetingView({ meeting: m })
   ok(view3 && view3.state === 'scheduled', 'the view reports scheduled', view3 && view3.state)

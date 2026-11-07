@@ -138,8 +138,8 @@ const nonEmptyString = (v) => typeof v === 'string' && v.length > 0
   const sched = svc.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1', 'r-2'], materials: 'x', at: NOW + 3600000 })
   const sAct = errOf(() => svc.speak({ meeting: sched.meeting, member: 'acad', text: 'too early' }))
 
-  ok(!!sAct && sAct.code === 'VMU_STATE',
-    '§C1. acting in a scheduled meeting is still refused by name (VMU_STATE)', sAct && sAct.code)
+  ok(!!sAct && sAct.code === 'VMU_MEETING_NOT_STARTED',
+    '§C1. acting in a scheduled meeting is refused by a code that NAMES the cause (VMU_MEETING_NOT_STARTED, RUN 254-E / F-73-04: it used to be the generic VMU_STATE)', sAct && sAct.code)
   ok(!!sAct && /the START TIME is what blocks this, not the attendance rule/.test(String(sAct.message)),
     '§C2. ★★★ the message now names the CLOCK as the blocker instead of leaving the reader to guess attendance', sAct && String(sAct.message).slice(-180))
   ok(!!sAct && /nothing about attendance has been judged yet/.test(String(sAct.message)),

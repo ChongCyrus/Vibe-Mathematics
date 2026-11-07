@@ -1072,14 +1072,26 @@ export function createMailbox({
      *
      * WHICH ROWS: a row that carries a notice template is a DELIVERY (an appointment, a chair push) — its own line
      * instructs `mailbox ack <id>` and it stays visible until that ack, even after the body was opened (opening sets
-     * `read`, and a delivery that vanished on being read would make its own ack instruction meaningless). Every other
-     * mail follows the ordinary rule: unread, or marked todo.
+     * `read`, and a delivery that vanished on being read would make its own ack instruction meaningless).
+     *
+     * ★★★ RUN 254-B / P1-1 — READ IS NOT SETTLEMENT, AND THIS VIEW NOW HAS EXACTLY ONE CRITERION. The 253rd-run
+     * audit measured a contradiction in this block: every rendered line ends with `读后 mailbox ack <id>`, but for an
+     * ORDINARY mail `open()` (reading the body) dropped the line on the next turn, so a member that read the mail and
+     * followed the wording looked for an ack that was never needed, and a member that did nothing kept seeing a line
+     * it had already read. Two criteria — delivered = read, delivered = acked — were standing in one block. This face
+     * now has ONE: a row is DELIVERED UNTIL IT IS ACKED. `ack()` splices the row out of the box, so every row this
+     * view can see is by construction un-acked; `open()`/`setState({read})` only change the member's reading state and
+     * no longer silence anything. The return names the criterion instead of leaving it to be inferred: `acked` (true
+     * only when this member has nothing left to acknowledge), `ackRequired` (this view is carrying lines the member
+     * must ack), `unackedRows` (every un-acked row, including any cut by `limit`), `settledBy: 'ack'`.
      */
     noticeLines(member, { limit = MAILBOX_NOTICE_LINES_MAX } = {}) {
       pullShared('noticeLines')
       const id = String(member === undefined || member === null ? '' : member)
       const box = boxes.get(id) || []
-      const want = box.filter((e) => (e.notice === undefined || e.notice === null ? (e.read !== true || e.todo === true) : true))
+      // ONE CRITERION (RUN 254-B): the box only ever holds UN-ACKED rows — `ack()` removes a row — so there is no
+      // read filter here. Reading is the member's own state; it never settles a delivery.
+      const want = box.slice()
       const sorted = want.slice().sort((a, b) => {
         const na = Number(a.seq)
         const nb = Number(b.seq)
@@ -1097,7 +1109,17 @@ export function createMailbox({
       return { ok: true, member: id, count: lines.length, total: want.length, truncated: want.length > shown.length,
         limit: max, lines,
         entries: shown.map((e) => ({ id: e.id, from: e.from, at: e.at, kind: e.kind, channel: channelOf(e),
-          subject: e.subject, read: e.read === true, todo: e.todo === true })) }
+          subject: e.subject, read: e.read === true, todo: e.todo === true })),
+        // ★ RUN 254-B / P1-1: THE NAMED READINGS. These are the criterion itself, not a comment about it: a consumer
+        // that only has this receipt can tell "nothing left to ack" (acked) from "this block is asking for acks"
+        // (ackRequired) without reading the line wording or inferring from `read`.
+        acked: want.length === 0,
+        ackRequired: want.length > 0,
+        unackedRows: want.map((e) => ({ id: e.id, from: e.from, kind: e.kind || null, channel: channelOf(e),
+          subject: e.subject, read: e.read === true, todo: e.todo === true,
+          delivery: e.notice !== undefined && e.notice !== null })),
+        settledBy: 'ack',
+        means: 'a line here is a DELIVERY still pending, and the mailbox keeps a row until mailbox.ack settles it: open()/read/setState are the member own reading state and never settle a delivery. acked:true means nothing is left to acknowledge; ackRequired:true means this block is carrying lines the member must ack; unackedRows names every un-acked row, including any cut by limit. settledBy names the ONE operation that removes a line.' }
     },
 
     /** Open ONE entry by id: returns the body and marks read=true (the body is NOT removed; ack does that). */
@@ -1306,6 +1328,16 @@ export function createMailbox({
         boxes: per, members: Object.keys(per).length,
         pending: Object.values(per).reduce((a, b) => a + b.pending, 0),
         acked: Object.values(per).reduce((a, b) => a + b.acked, 0),
+        // ★ RUN 254-B / P1-1: the SAME criterion at the aggregate face. A delivery is settled by ack, not by read, so
+        // "how much mail is still owed an ack" is a named reading here instead of a per-row inference. `pending` above
+        // was already that number — this names it as the delivery criterion and groups it by recipient.
+        notice: (() => {
+          const ids = Object.keys(per)
+          const unackedRows = ids.reduce((sum, key) => sum + Number(per[key] && Number.isFinite(Number(per[key].pending)) ? per[key].pending : 0), 0)
+          const pendingMembers = ids.filter((key) => Number(per[key] && Number.isFinite(Number(per[key].pending)) ? per[key].pending : 0) > 0)
+          return { acked: unackedRows === 0, ackRequired: unackedRows > 0, unackedRows, pendingMembers, settledBy: 'ack',
+            means: 'the delivery criterion of the turn notice block: a row is delivered until mailbox.ack settles it, and reading (open/setState read) does not settle anything. acked:true means no member is owed an ack; unackedRows counts every row still in some box; pendingMembers names who is owed one.' }
+        })(),
         seq, durable,
         // G7 self-report (Round 9): whether a durable commit log is bound is READABLE, never inferred.
         durableLog: { bound: !!(durableQueue && durableQueue.durable === true) },

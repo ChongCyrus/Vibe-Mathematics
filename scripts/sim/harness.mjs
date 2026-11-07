@@ -60,13 +60,32 @@ function promptTextOf(prompt) {
   return prompt === undefined || prompt === null ? '' : String(prompt)
 }
 
-/** Normalise what a scenario's `deliver` returns (a string, {text}, or ContentBlock[]) into one string. */
+/**
+ * Normalise what a scenario's `deliver` returns (a string, {text}, {reply}, or ContentBlock[]) into the reply TEXT.
+ *
+ * ★★★ RUN 254-B / P1-6 — AN OBJECT IS NOT A REPLY TEXT, AND `String(obj)` WAS HIDING THE SHAPE DEFECT. A scenario
+ * that handed back a HOST DELIVERY ENVELOPE (`{output:[{type:'text',…}]}` — the shape a delegated child result has,
+ * not the shape a reply has) used to be flattened by `String(reply)` into the literal `[object Object]`. The kernel
+ * then read 15 characters of prose, so "the host delivered the wrong shape" never reached the kernel and no gate
+ * could refuse it: the simulator itself manufactured a well-formed-looking reply out of a defect. Now an unrecognised
+ * object is PASSED THROUGH as a named shape-error marker (never `String(anObject)`), so the structure reaches the
+ * delivery boundary and the kernel can refuse it by name (`VMU_TURN_DELIVERY_SHAPE`).
+ */
 function replyTextOf(reply) {
   if (typeof reply === 'string') return reply
   if (Array.isArray(reply)) return promptTextOf(reply)
   if (reply && typeof reply === 'object' && typeof reply.text === 'string') return reply.text
   if (reply && typeof reply === 'object' && typeof reply.reply === 'string') return reply.reply
-  return reply === undefined || reply === null ? '' : String(reply)
+  if (reply === undefined || reply === null) return ''
+  // An object this boundary does not recognise is a SHAPE ERROR, not text. Hand the structure down untouched: the
+  // marker keeps the original value under `value` so the kernel refusal (and a probe) can name what actually arrived.
+  return {
+    shapeError: 'a scenario answered with an object where a reply TEXT was expected',
+    shape: reply && typeof reply === 'object' && Array.isArray(reply.output) ? 'delivery-envelope' : 'object',
+    keys: reply && typeof reply === 'object' ? Object.keys(reply) : [],
+    value: reply,
+    means: 'the reply was not a string / ContentBlock[] / {text} / {reply}; the simulator passes the object through instead of stringifying it, so the kernel can refuse the delivery shape by name (VMU_TURN_DELIVERY_SHAPE) instead of reading [object Object] as a member answer',
+  }
 }
 
 /**
@@ -90,7 +109,11 @@ function simulateSubagents(deliver, delivered) {
     const text = promptTextOf(request && request.prompt)
     const label = String((request && request.label) || 'sim-child-' + seq)
     const reply = replyTextOf(await deliver({ provider, label, kind, text }))
-    delivered.push({ seq, kind, provider, label, chars: text.length, replyChars: reply.length, text, reply })
+    // ★ RUN 254-B / P1-6: `reply` is TEXT unless the scenario handed back an object; in that case it is the named
+    // shape-error marker and `replyShape` says so in the corpus instead of a character count being invented for it.
+    delivered.push({ seq, kind, provider, label, chars: text.length,
+      replyChars: typeof reply === 'string' ? reply.length : 0,
+      replyShape: typeof reply === 'string' ? 'text' : 'shape-error', text, reply })
     return { output: [{ type: 'text', text: reply }], stopReason: 'end_turn' }
   }
   const activationOf = async (spec) => {
@@ -210,11 +233,40 @@ export async function boot({ root, packs = ['v5r'], clock = () => 1_800_000_000_
     // values (`议程：（类型：，主席：）。`) and came out shorter than the text a real seat reads — the same class of
     // defect RUN 226 fixed for `bindings`/`settings`: a ruler that under-measures reports headroom that is not there.
     // The kernel exposes the SAME map it hands the entry, as `kernel.faces`.
+    // ★★★ RUN 254-B / P1-5 — THE SIMULATOR'S ASSEMBLY MUST READ THE SAME NOTICE PRODUCER AS A REAL TURN. This loop
+    // used to be built WITHOUT `noticeBlock`/`noticeSource`, so a seat with un-acked mail rendered no
+    // `[新到的消息]` block in a simulated prompt while the same seat's REAL turn (kernel/index.js wiring) did. A ruler
+    // that measures a prompt without the notices under-measures the text a member reads — the same class of defect
+    // RUN 226 (missing bindings/settings) and RUN 244 (missing faces) fixed. The pack's block wins and the kernel's is
+    // the fallback, exactly as `vibe-math-vmu.js:573` chooses for the kernel (`noticeBlock || V5R_INBOX_BLOCK`).
+    const { inboxBlock: kernelInboxBlock } = await import(pathToFileURL(join(VMU, 'kernel', 'notices.js')).href)
+    let packInboxBlock = null
+    if (Array.isArray(packs) && packs.includes('v5r')) {
+      const packNotices = await import(pathToFileURL(join(VMU, 'packs', 'v5r', 'notices.js')).href)
+      packInboxBlock = typeof packNotices.inboxBlock === 'function' ? packNotices.inboxBlock : null
+    }
+    const noticeBlock = packInboxBlock || kernelInboxBlock
+    // The other half of the channel: the kernel's `noticeSource` (kernel/index.js:2990-3005) folds the Lean one-shot
+    // notices with the member's mailbox lines (limit 8, newest first, non-destructive — only ack settles them). Without
+    // this the block renders EMPTY even with mail waiting, which is the half that P1-5 measured.
+    const noticeMailbox = handle.kernel && handle.kernel.mailbox && typeof handle.kernel.mailbox.noticeLines === 'function' ? handle.kernel.mailbox : null
+    const noticeLean = handle.kernel && handle.kernel.lean && typeof handle.kernel.lean.takeNoticesFor === 'function' ? handle.kernel.lean : null
+    const noticeSource = (member) => {
+      const leanNotices = noticeLean ? noticeLean.takeNoticesFor(member) : []
+      let mailNotices = []
+      try {
+        const notice = noticeMailbox ? noticeMailbox.noticeLines(String(member), { limit: 8 }) : null
+        if (notice && Array.isArray(notice.lines)) mailNotices = notice.lines
+      } catch (e) { /* best effort, exactly like the kernel: a broken mailbox must not make every assembly fail */ }
+      return [...(Array.isArray(leanNotices) ? leanNotices : []), ...mailNotices]
+    }
     loop = createTurnOrchestrator({
       sectionPolicy: decideSections,
       settings: layer,
       faces: (handle.kernel && handle.kernel.faces && typeof handle.kernel.faces === 'object') ? handle.kernel.faces : {},
       prompt: createPromptPipeline({ sections, bindings, clock: () => new Date(Number(clock())).toISOString() }),
+      noticeBlock,
+      noticeSource,
     })
     /**
      * Assemble the prompt a given seat WOULD receive in this phase, and record it.

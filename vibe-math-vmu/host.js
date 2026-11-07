@@ -1052,7 +1052,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // and the ids it printed were refused by `expand` (they live in the pack library, not in the records projection).
             // A filter the caller passed must be APPLIED, and an id this face printed must be READABLE by this face.
             // So: read BOTH stores, say where each row came from, apply track/kind/limit, and report caps honestly.
-            const libItems = await kernel.library.list()
+            const libItems = await kernel.library.list({ withWriter: true })
             const libRows = Array.isArray(libItems) ? libItems : []
             const trackArg = (typeof track === 'string' && track.trim() !== '') ? track.trim() : null
             const kindArg = (typeof kind === 'string' && kind.trim() !== '') ? kind.trim() : null
@@ -1061,7 +1061,22 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // UNCAPPED and cap only the answer, so `total` is the size of the set the filters cover.
             // `limit:0` is the caller's escape hatch: it must fetch the WHOLE set from the store (the head list caps at
             // headListAt otherwise), while the default read stays capped and still reports the real `total`.
-            const wantAll = Number.isInteger(limit) && limit === 0
+            // ★★★ RUN 254 / P1-2 (audit13 brief): a `limit` that is not a usable page size used to be SILENTLY DROPPED
+            // here (`limit:-3` fell through to "no cap", so the caller got every row and could not tell its own argument
+            // had been ignored). The kernel `records.list` now refuses that shape by name; this face must not launder the
+            // refusal back into a plausible answer, so it validates the argument BEFORE reading either store.
+            const limitArg = (() => {
+              if (limit === undefined || limit === null) return null
+              const numeric = typeof limit === 'number' ? limit : Number(String(limit).trim())
+              if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric < 0) return 'invalid'
+              return numeric
+            })()
+            if (limitArg === 'invalid') {
+              return refused('VMU_INVALID_ARGUMENT',
+                'limit is not a usable page size: ' + JSON.stringify(limit),
+                'pass a non-negative integer (0 = every row, 1..n = page size), or omit `limit` to use vmu.records.headListAt')
+            }
+            const wantAll = limitArg === 0
             // RUN 243 (FEEDBACK65 1.8): the three filters the writesWindow hint needs. A filter the caller passed is
             // APPLIED; a time that does not parse is refused by the kernel by name, never silently ignored.
             const byFilterArg = (typeof by === 'string' && by.trim() !== '') ? by.trim() : null
@@ -1082,15 +1097,72 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const seen = new Set(recRows.map((r) => r && r.id))
             // A library head carries no `track` field (its tracks live in the store path), so when the caller asked for a
             // track the library cannot answer it — it is EXCLUDED BY NAME rather than returned as if it matched.
-            // RUN 243: the same rule now covers the WRITER and the TIME WINDOW. A library head carries neither `by` nor
-            // `updatedAt`, so it cannot answer "what did THIS seat write in THAT window" — returning it would inflate the
-            // filtered set with rows whose writer/age this face cannot check.
-            const filterNeedsRowFacts = byFilterArg !== null || sinceFilterArg !== null || untilFilterArg !== null
-            const libKept = trackArg === null && !filterNeedsRowFacts ? libRows.filter((r) => !seen.has(r && r.id)) : []
+            // ★★★ RUN 254 / P0-2 (L1, MEASURED): RUN 243 extended that same rule to the WRITER and the TIME WINDOW, and
+            // that was wrong for the writer: a library head DID carry `owner` (and now carries `writer`), so a `by` query
+            // excluded every card wholesale and answered total:0 while the card sat in the store — the very silent
+            // exclusion this action exists to prevent. The rule now judges each row: a row that carries the fact is
+            // filtered by it, and a row that does NOT is excluded BY NAME with a count, never dropped without a reading.
+            const parseTimeArg = (s) => {
+              const n = Number(s)
+              if (Number.isFinite(n)) return n
+              const p = Date.parse(String(s))
+              return Number.isFinite(p) ? p : null
+            }
+            const sinceMs = sinceFilterArg === null ? null : parseTimeArg(sinceFilterArg)
+            const untilMs = untilFilterArg === null ? null : parseTimeArg(untilFilterArg)
+            if ((sinceFilterArg !== null && sinceMs === null) || (untilFilterArg !== null && untilMs === null)) {
+              return refused('VMU_INVALID_ARGUMENT',
+                'this face cannot parse the time window: since=' + JSON.stringify(sinceFilterArg) + ' until=' + JSON.stringify(untilFilterArg),
+                'pass epoch milliseconds (number or numeric string) or an ISO-8601 timestamp; a window that does not parse is refused by name, never ignored')
+            }
+            const libWriterOf = (r) => {
+              if (!r) return null
+              for (const f of ['writer', 'by', 'owner']) {
+                const v = r[f]
+                if (typeof v === 'string' && v.trim() !== '') return { writer: v.trim(), source: f }
+              }
+              return null
+            }
+            const libTimeOf = (r) => {
+              const v = r && r.updatedAt
+              // ★ RUN 254: a MISSING time is not 1970. `Number(null)` and `Number('')` are 0, so the naive
+              // coercion turned an unreadable row into "written at the epoch" and let it pass every window.
+              if (v === null || v === undefined || v === '') return null
+              if (typeof v === 'number' && Number.isFinite(v)) return v
+              const n = Number(v)
+              if (Number.isFinite(n)) return n
+              const p = Date.parse(String(v))
+              return Number.isFinite(p) ? p : null
+            }
+            const excluded = { shapeMismatch: 0, noWriter: [], timeUnknown: [] }
+            const libKept = []
+            if (trackArg === null) {
+              for (const r of libRows) {
+                if (!r || seen.has(r && r.id)) continue
+                const w = libWriterOf(r)
+                if (byFilterArg !== null) {
+                  if (w === null) { excluded.shapeMismatch += 1; excluded.noWriter.push(String(r.id || '(no id)')); continue }
+                  if (w.writer !== byFilterArg) continue
+                }
+                if (sinceMs !== null || untilMs !== null) {
+                  const t = libTimeOf(r)
+                  if (t === null) { excluded.shapeMismatch += 1; excluded.timeUnknown.push(String(r.id || '(no id)')); continue }
+                  if (sinceMs !== null && t < sinceMs) continue
+                  if (untilMs !== null && t > untilMs) continue
+                }
+                libKept.push(Object.assign({}, r, { writer: w === null ? null : w.writer, writerSource: w === null ? null : w.source }))
+              }
+            }
             let rows = recRows.concat(libKept)
             if (kindArg !== null) rows = rows.filter((r) => r && typeof r.kind === 'string' && r.kind === kindArg)
-            const cap = Number.isInteger(limit) && limit > 0 ? limit : null
+            const cap = limitArg !== null && limitArg > 0 ? limitArg : null
             const returnedRows = wantAll || cap === null ? rows : rows.slice(0, cap)
+            // ★ RUN 254 / P1-2: the receipt says WHICH page size it used and WHERE it came from, so a caller whose
+            // argument was dropped (or never given) can see the ceiling instead of guessing why the page is short.
+            const limitUsed = wantAll ? 0 : (cap === null ? null : cap)
+            const limitSource = wantAll
+              ? 'caller (0 = every row)'
+              : (cap === null ? 'no caller page cap: the stores apply their own caps (vmu.records.headListAt)' : 'caller')
             // `total` is the size of the set the filters COVER, not the size of the page: the store reports its own
             // count (which is uncapped) and the library contributes its heads.
             const total = Math.max(kindArg === null ? recTotal + libKept.length : 0, rows.length)
@@ -1116,16 +1188,28 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               if (cap !== null && rows.length > returnedRows.length) truncatedBy.push('limit (this call asked for ' + String(cap) + ')')
               if (listed && listed.truncated === true) truncatedBy.push('vmu.records.headListAt (the records head list was itself capped at ' + String(headListAt === null ? 'its declared cap' : headListAt) + ')')
               if (libRows.length > 0 && libKept.length === 0 && trackArg !== null) truncatedBy.push('track filter (library heads carry no track, so they are excluded by name)')
+              if (excluded.shapeMismatch > 0) truncatedBy.push('writer/time filter (' + String(excluded.shapeMismatch) + ' library row(s) carry neither a writer nor a readable last-write time, so they are named in `excluded` instead of being returned as if they matched)')
               if (kindArg !== null) truncatedBy.push('kind filter (only rows whose own `kind` is ' + JSON.stringify(kindArg) + ' are counted)')
             }
             return Object.assign({
               ok: true, action, total, returned: returnedRows.length, truncated,
               rowsFrom: { records: recRows.length, library: libKept.length },
               rowsFromMeans: 'this face reads TWO stores: the records projection (rows addressed by track) and the pack library head list (cards addressed by kind, carrying no track) — each row is counted where it was found and ids are de-duplicated',
-              libraryExcludedBy: filterNeedsRowFacts ? 'writer/time filter' : null,
-              libraryExcludedMeans: filterNeedsRowFacts
-                ? 'the pack library head list was EXCLUDED by name because a library head carries neither the writer nor the last-write time, so it cannot answer a writer/time question — those rows are not hidden results of the filter, they are rows the filter cannot judge'
+              libraryExcludedBy: trackArg !== null ? 'track filter' : null,
+              libraryExcludedMeans: trackArg !== null
+                ? 'the pack library head list was EXCLUDED by name because a library head carries no `track`, so it cannot answer a track question — those rows are not hidden results of the filter, they are rows the filter cannot judge'
                 : null,
+              excluded,
+              excludedMeans: excluded.shapeMismatch === 0
+                ? 'no row was dropped for a shape reason: every row this face read could answer the filters it was given'
+                : 'these are the rows a filter could NOT judge, named by id and counted — a row is excluded only when the fact the filter asks about is missing from it (noWriter: no writer/owner on the row; timeUnknown: no readable updatedAt), never because the row happened to be in the other store',
+              limitUsed,
+              limitSource,
+              limitMeans: limitUsed === null
+                ? 'no page cap was applied by this call: `limit` was omitted, so the page is whatever the two stores returned under their own caps (vmu.records.headListAt) — pass limit:0 to ask for the whole set, or a positive integer for a page'
+                : (limitUsed === 0
+                  ? 'limit:0 means EVERY row: the stores were read uncapped and nothing was cut by this call'
+                  : 'this page holds at most ' + String(limitUsed) + ' row(s), the page size this call asked for'),
               byFilter: byFilterArg,
               byFilterMeans: byFilterArg === null
                 ? 'no writer filter was given'
@@ -1504,7 +1588,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                   { seatFace: { member: caller, tool: gated, kind: String(kind) }, seatFaceMeans: 'the write was refused by the SAME seat gate the pack tool uses, not by a rule of this face' })
               }
             }
-            const appended = Object.assign({ ok: true, action }, await kernel.library.append({ kind, statement, proof }))
+            // ★★★ RUN 254 / P0-2 (L1): the card is stamped with the SEAT THAT WROTE IT. It used to be appended with no
+            // member at all, so every card landed under `shared` with no writer — and then a `by` query could not find the
+            // very card this face had just written. `caller` is null on the office path, which stays `shared` (no seat).
+            const appended = Object.assign({ ok: true, action }, await kernel.library.append({ kind, statement, proof }, caller ? { member: caller, writer: caller } : {}))
             if (gated) {
               appended.seatFace = { member: caller, tool: gated, kind: String(kind), allowed: true }
               appended.seatFaceMeans = 'a member write through this face is allowed only when the pack tool that owns the same library would be allowed to that seat'

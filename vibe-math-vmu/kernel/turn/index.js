@@ -2063,7 +2063,7 @@ export function createTurnOrchestrator({
     const prev = turnReceipts.get(turn.id) || {
       turn: turn.id, member: turn.member || null, openedBy: turn.openedBy || null, phase: turn.phase || null,
       meeting: turn.meeting || null, openedAt: turn.at || null, status: 'open', fields: [], source: null,
-      executed: [], skipped: [], writes: [], codes: [], unavailable: [],
+      executed: [], skipped: [], skippedFields: [], writes: [], codes: [], unavailable: [],
       // ★★★ RUN 250 (task-76): THE EVIDENCE SLOTS EXIST ON EVERY ROW, WITH null AS A NAMED MEANING. The 70th live run
       // proved the disconnect: the `[新到的消息]` block rendered in 70 places and `Members/<member>/Turns/<turn>.md` really
       // existed, yet no turnReceipts row carried either reading, so acceptance had to scan the workspace. These keys are
@@ -2117,6 +2117,17 @@ export function createTurnOrchestrator({
           const row = { field: s && s.field !== undefined ? s.field : null, reason: (s && s.reason) || null }
           if (s && s.existingId !== undefined && s.existingId !== null) row.existingId = s.existingId
           if (s && typeof s.code === 'string') row.code = s.code
+          return row
+        })
+      }
+      // ★★★ RUN 254 / P0-1 (T5): the row now names the fields whose DISPATCH threw, with their codes — the class that
+      // used to abort the whole turn. `skipped` above still carries the whole picture (it is the list that has always
+      // existed); this key isolates the subset that a reader must never have to infer from a failed status.
+      if (Array.isArray(patch.skippedFields)) {
+        next.skippedFields = patch.skippedFields.map((s) => {
+          const row = { field: s && s.field !== undefined ? s.field : null, code: (s && s.code) || null }
+          if (s && s.why) row.why = String(s.why)
+          if (s && s.message) row.message = String(s.message)
           return row
         })
       }
@@ -2496,6 +2507,28 @@ export function createTurnOrchestrator({
         },
         means: 'the delivery seam threw, so this turn is neither delivered nor answered: it is NOT counted in delivered, parsed or notExecuted. Counts alone will not show it again — read deliveryLastFail, and read `writesWindow` before judging that the member did nothing' }
       throw e
+    }
+    // ★★★ RUN 254 / P1-6 (L3, MEASURED): A SHAPE THIS KERNEL CANNOT READ IS NOT "THE REPLY HAD NO FENCE".
+    // probe6: a seam that returned `{ output: [ { type: 'text', text: '{"progress":…}' } ] }` — an object with no
+    // `reply` string — fell through to the `reply === null` branch below and was refused as `VMU_TURN_NO_FENCE`
+    // ("this turn had no tool report and no parseable fenced JSON"), which blames the MEMBER's text for a shape the
+    // ADAPTER chose. The boundary now names the three shapes it accepts, and anything else gets its own code with the
+    // keys it actually received.
+    const deliveredIsObject = delivered !== null && typeof delivered === 'object' && !Array.isArray(delivered)
+    const deliveredIsEnvelope = deliveredIsObject && typeof delivered.reply === 'string'
+    const deliveredIsAwaiting = deliveredIsObject && delivered.awaiting === true
+    if (typeof delivered !== 'string' && !deliveredIsEnvelope && !deliveredIsAwaiting) {
+      const got = Array.isArray(delivered)
+        ? 'an array'
+        : (deliveredIsObject
+            ? 'an object with keys [' + Object.keys(delivered).join(', ') + ']'
+            : (delivered === null || delivered === undefined ? String(delivered) : 'a ' + typeof delivered))
+      try {
+        noteTurnReceipt(turn, { status: 'undelivered', closedWith: 'VMU_TURN_DELIVERY_SHAPE', settledBy: 'delivery-shape', fields: [] })
+      } catch (err) { /* the ledger must never replace the seam's own refusal */ }
+      fail('VMU_TURN_DELIVERY_SHAPE',
+        'the delivery adapter returned a shape this kernel cannot read: ' + got + ' — the reply text was never handed over, so this is NOT a member that stayed silent and NOT a reply without a fence',
+        'return one of the three accepted shapes (docs/26 §3.22): a bare string; { reply: <string>, childId, stopReason, attribution }; or { awaiting: true, memberPrompt } — the keys actually received are listed above')
     }
     counts.delivered += 1
     // ROUND 4 / F11: the adapter may hand back a BARE STRING (the pre-round-4 contract) or the attributed envelope
@@ -3320,6 +3353,12 @@ export function createTurnOrchestrator({
     const ATTRIBUTION_MEANS = 'the author of this row is the member whose turn it is: the turn already knows whose turn it is, so the row is attributed here instead of demanding the model write its own id into the reply json'
     const executed = []
     const skipped = []
+    // ★★★ RUN 254 / P0-1 (T5): A DISPATCH THAT THREW IS A NAMED SKIP, NOT THE END OF THE TURN. Two lists, one meaning
+    // each: `skippedFields` holds ONLY the fields whose dispatch actually THREW (with the refusal code, message, hint
+    // and the underlying error), while `skipped` keeps the whole picture the receipt has always published (shape skips,
+    // face-not-wired, duplicates AND these). `failures` is the internal hand-off to the aggregate failure below.
+    const skippedFields = []
+    const failures = []
     // ★ PHASE 12 / run 35 item ② follow-up (my own note was a LIE): the skip note said "the line stays in the round state
     // only", but `say` is not in RECORDED_FIELDS, so nothing anywhere kept it - the member's sentence was dropped while the
     // receipt claimed it was kept. A note that describes a place where the data is NOT is worse than no note. The text is
@@ -3453,18 +3492,35 @@ export function createTurnOrchestrator({
           ? await fn(...adapted.args)
           : await fn(onBehalf ? composed : (recordComposed !== null ? recordComposed.payload : d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
       } catch (e) {
-        if (e && e.code === 'VMU_NO_OPEN_MEETING') {
-          // ★ PHASE 9 / round 7: the real reason for the measured failure was NOT "meetings is broken": the member
-          // answered a tool-only instruction round with a meeting field, because the instruction never reached its
-          // prompt. Keep the underlying message, but name the field/tool/instruction chain so a reader does not chase
-          // the meeting service. Nothing is pretended to have executed.
-          const err = new Error('this turn was not given a meeting tool, and no meeting is open: the reply field "' + d.field + '" cannot be applied (' + String(e.message || e) + ')')
-          err.code = 'VMU_TURN_FIELD_NOT_APPLICABLE'
-          err.hint = 'the member answered with a field no tool in this turn could produce; check instructionDelivered on the turn receipt, and the per-turn tools allowlist. The underlying meeting error is kept as cause.'
-          err.cause = e
-          throw err
-        }
-        throw e
+        // ★★★ RUN 254 / P0-1 (T5): ONE REFUSED FIELD USED TO KILL THE WHOLE REPLY. Measured on the 71st live run and
+        // reproduced in probe2: a reply carried a legal `progress` beside a `say` bound to a meeting id that does not
+        // exist; the `say` dispatch threw and the throw travelled out of `apply()`, so the turn row read
+        // `status:"failed"` with `executed:[]` and the progress row NEVER LANDED — `records list` answered total:0 and
+        // the office read that as "the member wrote nothing". The legal half of a reply being destroyed by the illegal
+        // half is the silent-loss class this repository refuses. So: the field is skipped BY NAME here (its refusal
+        // code, message, hint and the underlying error are all kept), the rest of the reply still applies, and the
+        // whole turn fails only when NOTHING could be applied (see the aggregate failure after the loop).
+        // ★ PHASE 9 / round 7 keeps its own promise inside that row: the real reason for that measured failure was NOT
+        // "meetings is broken" — the member answered a tool-only instruction round with a meeting field, because the
+        // instruction never reached its prompt. So when the underlying code is VMU_NO_OPEN_MEETING the row names the
+        // field/tool/instruction chain, so a reader does not chase the meeting service.
+        const code = (e && e.code) ? String(e.code) : 'VMU_STATE'
+        const why = code === 'VMU_NO_OPEN_MEETING'
+          ? 'this turn was not given a meeting tool, and no meeting is open: the reply field "' + d.field + '" cannot be applied (' + String((e && e.message) || e) + ')'
+          : 'the face refused this field while it was being dispatched: ' + String((e && e.message) || e)
+        const hint = code === 'VMU_NO_OPEN_MEETING'
+          ? 'the member answered with a field no tool in this turn could produce; check instructionDelivered on the turn receipt, and the per-turn tools allowlist. The underlying meeting error is kept as cause.'
+          : ((e && e.hint) ? String(e.hint) : null)
+        const row = { field: d.field, face: d.face, op: d.op, code, why, hint,
+          message: String((e && e.message) || e), cause: (e && e.code) ? String(e.code) : null }
+        counts.notExecuted += 1
+        skippedFields.push(row)
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'dispatch-refused', code,
+          message: row.message, hint,
+          note: 'the field was NOT dispatched: ' + row.message + '; nothing was written for it and the rest of the turn still applies',
+          means: 'a dispatch that THREW is a named skip now, not the end of the turn: the fields that did apply are in `executed`, and this one is in `skippedFields` with the refusal code that stopped it' })
+        failures.push({ field: d.field, code, error: e })
+        continue
       }
       counts.dispatched += 1
       const entry = { field: d.field, face: d.face, op: d.op, result: res }
@@ -3474,12 +3530,52 @@ export function createTurnOrchestrator({
       if (attributed) { entry.attributedTo = String(memberId); entry.attributionMeans = ATTRIBUTION_MEANS }
       executed.push(entry)
     }
+    // ★★★ RUN 254 / P0-1: THE TURN FAILS ONLY WHEN NOTHING COULD BE APPLIED — and the failure says so by NAMING what
+    // was refused, never by pretending something landed. A single refused field keeps the pre-254 contract (the face's
+    // own refusal travels out unchanged, except VMU_NO_OPEN_MEETING which is wrapped into the named turn code, as the
+    // PHASE 9 fix promised). Two or more refused fields with nothing applied is an aggregate failure: the message lists
+    // every field with its code, and `skippedFields`/`failedFieldCount`/`appliedFieldCount` ride on the error so a
+    // caller can see that the list of applied fields is EMPTY for a reason.
+    if (failures.length > 0 && executed.length === 0) {
+      const first = failures[0]
+      const attach = (err) => {
+        if (!err || typeof err !== 'object') return err
+        try {
+          err.skippedFields = skippedFields.map((s) => Object.assign({}, s))
+          err.skipped = skipped.slice()
+          err.executed = []
+          err.failedFieldCount = failures.length
+          err.appliedFieldCount = 0
+          err.appliedMeans = 'this list is EMPTY because every dispatchable field of the reply refused: a failed turn names what could NOT be applied instead of pretending something landed'
+        } catch { /* the refusal itself must never be replaced by bookkeeping */ }
+        return err
+      }
+      if (failures.length === 1 && first.code !== 'VMU_NO_OPEN_MEETING') throw attach(first.error)
+      if (failures.length === 1) {
+        // PHASE 9 / round 7: no open meeting is a SYMPTOM; the real chain (a field no tool in this turn could produce)
+        // is named, and the underlying error is kept as cause.
+        const err = new Error('this turn was not given a meeting tool, and no meeting is open: the reply field "' + first.field + '" cannot be applied (' + String((first.error && first.error.message) || first.error) + ')')
+        err.code = 'VMU_TURN_FIELD_NOT_APPLICABLE'
+        err.hint = 'the member answered with a field no tool in this turn could produce; check instructionDelivered on the turn receipt, and the per-turn tools allowlist. The underlying meeting error is kept as cause.'
+        err.cause = first.error
+        throw attach(err)
+      }
+      const names = skippedFields.map((s) => '"' + s.field + '" (' + s.code + ')').join(', ')
+      const err = new Error('no reply field could be applied: ' + names + ' — nothing was written for any of them')
+      err.code = 'VMU_TURN_FIELD_NOT_APPLICABLE'
+      err.hint = 'every dispatchable field of this reply was refused by name, so the turn is failed rather than half-applied: `skippedFields` names each field with its code, and the first underlying error is kept as cause.'
+      err.cause = first.error
+      throw attach(err)
+    }
     // ROUND 394: the remaining recorded fields used to be RECOGNISED AND THEN DISCARDED - a model that wrote prioritize,
     // hire or fire had its payload vanish with no trace, which is the silent-failure class this repository refuses.
     // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
     // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
-    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, meeting: boundMeeting,
+    return { ok: true, executed, skipped, skippedFields,
+      failedFieldCount: skippedFields.length,
+      appliedFieldCount: executed.length,
+      planned: dispatches.length, bookkeeping, meeting: boundMeeting,
       meetingMeans: boundMeeting === null
         ? 'no meeting was bound to this turn, so a reply field that needs { meeting, member, text } cannot be dispatched (a bare sentence is kept in notes, never silently dropped)'
         : 'this turn was bound to the named meeting, so a member\'s bare sentence was recorded as THAT MEMBER\'S speech and the receipt carries onBehalf for it', effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
@@ -3488,7 +3584,14 @@ export function createTurnOrchestrator({
       // ★★★ ROUND 240 (FEEDBACK63 ①5): THE COUNT AND THE NAMED ROWS CANNOT DRIFT. Every field counted in
       // `counts.notExecuted` appears in `skipped` WITH a `code`; this sentence states the invariant so a reader who sees a
       // count without a matching row knows the kernel is broken, not that the field was fine.
-      notExecutedMeans: 'counts.notExecuted counts fields this turn KEPT and did NOT execute; each one is named in `skipped` with a `code`: VMU_TURN_FIELD_NOT_APPLICABLE (the field needs an object/meeting this turn does not have - a bare sentence stays in `notes`), VMU_TURN_FACE_NOT_WIRED (no face/op installed for the binding), VMU_TURN_DUPLICATE_SKIPPED (the same act already landed this turn; `existingId` names the row), or the refusal code of a shape adapter (e.g. VMU_RECORD_SHAPE). A skipped row WITHOUT a code was the run-63 defect; there is no such row now, so an empty `skipped` always means nothing was held back.',
+      notExecutedMeans: 'counts.notExecuted counts fields this turn KEPT and did NOT execute; each one is named in `skipped` with a `code`: VMU_TURN_FIELD_NOT_APPLICABLE (the field needs an object/meeting this turn does not have - a bare sentence stays in `notes`), VMU_TURN_FACE_NOT_WIRED (no face/op installed for the binding), VMU_TURN_DUPLICATE_SKIPPED (the same act already landed this turn; `existingId` names the row), the refusal code of a shape adapter (e.g. VMU_RECORD_SHAPE), or the code a DISPATCH itself threw (reason "dispatch-refused", also listed in `skippedFields`). A skipped row WITHOUT a code was the run-63 defect; there is no such row now, so an empty `skipped` always means nothing was held back.',
+      // ★★★ RUN 254 / P0-1 (T5): the two lists answer two different questions and must not be confused: `skipped` is
+      // every field the turn held back (shape skips, unwired faces, duplicates, thrown dispatches), while
+      // `skippedFields` is ONLY the fields whose dispatch THREW — the ones that used to end the turn and take the legal
+      // fields down with them. `appliedFieldCount` is here so a reader can see at a glance whether anything landed.
+      skippedFieldsMeans: skippedFields.length === 0
+        ? 'no dispatch threw in this turn: every field either applied (see `executed`) or was held back before dispatch (see `skipped`)'
+        : 'these are the fields whose dispatch THREW (the class that used to abort the whole turn): each carries the refusal `code`, the face/op it was bound to, the refusal message/hint and the underlying code in `cause`. They are ALSO in `skipped` with reason "dispatch-refused" - the same fact under the receipt key that has always listed every held-back field.',
       // ★★★ RUN 213 (run 50 / FEEDBACK49 1.3, MEASURED): run 50 read `executed:0` as "this member did nothing" and only
       // later found the meeting, the Lean jobs and the ruling cards in the shared records. The receipt counts DISPATCH,
       // not the member's work (it says so in `executedMeans`), but it never said WHERE that work is readable.
@@ -3583,7 +3686,17 @@ export function createTurnOrchestrator({
       // ★★★ ROUND 240 (FEEDBACK63 ①5): A FAILED WRITE-BACK IS A SETTLED TURN TOO. The ledger must say the turn is over
       // and WHY (named code), otherwise `op:"status"` would show it as still `open` forever and a late report could be
       // accepted for a turn that already refused - two answers to one turn, which is the defect this round closes.
-      try { noteTurnReceipt(turn, { status: 'failed', code: e && e.code ? String(e.code) : null, fields: parsed.fields }) } catch { /* the ledger must never replace the refusal */ }
+      // ★★★ RUN 254 / P0-1: A FAILED TURN MUST SAY WHAT DID (NOT) LAND. The aggregate refusal carries the partial
+      // state (`executed`/`skipped`/`skippedFields`) precisely so the settled row can publish it; a failure row that
+      // listed only the field names left the office re-running to learn whether anything was written.
+      try {
+        noteTurnReceipt(turn, {
+          status: 'failed', code: e && e.code ? String(e.code) : null, fields: parsed.fields,
+          ...(Array.isArray(e && e.executed) ? { executed: e.executed } : {}),
+          ...(Array.isArray(e && e.skipped) ? { skipped: e.skipped } : {}),
+          ...(Array.isArray(e && e.skippedFields) ? { skippedFields: e.skippedFields } : {}),
+        })
+      } catch { /* the ledger must never replace the refusal */ }
       try { rememberSettledTurn(turn, { fields: [], source: parsed.source }) } catch { /* the ledger must never replace the refusal */ }
       throw e
     }
@@ -3592,7 +3705,7 @@ export function createTurnOrchestrator({
     try {
       noteTurnReceipt(turn, {
         status: 'applied', fields: parsed.fields, source: parsed.source,
-        executed: out.executed, skipped: out.skipped,
+        executed: out.executed, skipped: out.skipped, skippedFields: out.skippedFields,
         deliveryPath: lastAttribution && typeof lastAttribution.deliveryPath === 'string' ? lastAttribution.deliveryPath : null,
       })
       rememberSettledTurn(turn, { fields: parsed.fields, source: parsed.source })

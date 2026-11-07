@@ -887,12 +887,26 @@ export function createResume({ store = null, work = null, control = null, identi
       // `vmu.resume.autoRecover` is consumed by the kernel start path (it decides whether to call recover() at
       // all); it is READ here too, so the declared knob has a consumer in this very file.
       autoRecover: cfg().autoRecover, willAutoRecover: cfg().autoRecover && !!store }
+    // ★★★ RUN 254 / P1-3 (audit13 brief, MEASURED): `plan.ok` was a CONSTANT `true` while `plan.steps` carried
+    // `ok:false` rows — one receipt said "the plan is fine" and "this step cannot run" at the same time, and the act's
+    // own receipt said a third thing. `ok` is now DERIVED from the steps (the same conjunction the act uses), and
+    // `blocking` names the steps in the way using the SAME step names the act reports.
+    const settlePlan = (p) => {
+      const failed = p.steps.filter((s) => s && s.ok === false)
+      p.ok = failed.length === 0
+      p.failedSteps = failed.map((s) => String(s.step))
+      p.blocking = failed.map((s) => ({ step: String(s.step), code: s.code === undefined || s.code === null ? 'VMU_STATE' : String(s.code), why: s.note || s.message || null }))
+      p.okMeans = failed.length === 0
+        ? 'every planned step could run: no step of this plan is blocking, and the act reports the same step names'
+        : 'at least one planned step could NOT run (' + p.failedSteps.join(', ') + '): `blocking` names each one by the same step name the act reports, so the plan and the act cannot disagree about which step is in the way'
+      return p
+    }
     if (!store) {
       plan.steps.push({ step: 'read', ok: false, code: CODE.unavailable, note: 'no durable store was injected: there is nothing to resume (reported, not faked)' })
       plan.steps.push({ step: 'roster', ok: false, note: 'no durable fold to read a roster from' })
-      return plan
+      return settlePlan(plan)
     }
-    try { read() } catch (e) { plan.steps.push({ step: 'read', ok: false, code: e.code, message: String(e.message) }); return plan }
+    try { read() } catch (e) { plan.steps.push({ step: 'read', ok: false, code: e.code, message: String(e.message) }); return settlePlan(plan) }
     plan.steps.push({ step: 'read', ok: true, keys: readKeys.slice() })
     const inflight = typeof work?.list === 'function' ? work.list() : []
     plan.steps.push({ step: 'inflight', ok: true, pending: inflight.filter((e) => !e.interrupted).length, interrupted: inflight.filter((e) => e.interrupted).length })
@@ -927,7 +941,7 @@ export function createResume({ store = null, work = null, control = null, identi
       means: !!watchdogs ? 'a watchdog port is injected, so the refresh will report a MEASURED count' : 'no watchdog port is injected: the plan can say it will not be refreshed, and cannot say "0 targets" (nothing measured a zero)' })
     plan.steps.push({ step: 'readback', ok: true, declared: cfg().readBack })
     plan.willWrite = true
-    return plan
+    return settlePlan(plan)
   }
 
   // ── F18: the recovery is an EXCLUSIVE section ────────────────────────────────────────────────────────────────

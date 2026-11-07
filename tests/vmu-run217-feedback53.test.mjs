@@ -188,6 +188,15 @@ ok(typeof plain.lockNote === 'string' && plain.lockNote.length > 0,
   '★★★ ③ RUN 252/F72-2: the receipt carries a lockNote at all (the measured receipt had none)', { lockNote: plain.lockNote })
 ok(/NOT locked/.test(String(plain.lockNote)) && /draft/i.test(String(plain.lockNote)),
   '★★★ ③ RUN 252/F72-2: ...and it answers the lock question and names the draft as the reason', { lockNote: plain.lockNote })
+// ★★★ RUN 254 (F-73-01, MEASURED on the 73rd real-machine run): the task asked "is this card a draft" and the receipt
+// answered `proofState:null` — true but not literal. The EFFECTIVE state is now printed next to the declared one, so the
+// answer needs no knowledge of the default rule; `proofState` is NOT back-filled (a fold is not a declaration).
+ok(plain.proofStateFolded === 'draft',
+  '★★★ ③ RUN 254/F-73-01: proofStateFolded answers "is this card a draft" literally', { proofStateFolded: plain.proofStateFolded })
+ok(typeof plain.foldedMeans === 'string' && /NOT a declared value/.test(plain.foldedMeans),
+  '★★★ ③ ...and foldedMeans says the folded value is the EFFECTIVE state, not a declaration', { foldedMeans: plain.foldedMeans })
+ok(plain.proofState === null,
+  '★★★ ③ ...while proofState is unchanged (the fold must never be reported as a declaration)', { proofState: plain.proofState })
 
 console.log('')
 if (failed === 0) console.log('=== RUN 217 FEEDBACK53: ' + passed + ' passed, 0 failed ===')

@@ -576,6 +576,34 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const isPermanent = (rec) => rec.permanent === true || rec.tags.includes(permanentMarker)
   const isMeetingTrack = (track) => /meeting/i.test(track)
   const tierOf = (rec, at = now()) => (tierThreshold > 0 && at - rec.updatedAt >= tierThreshold) ? 'cold' : 'hot'
+  // ★★★ RUN 254 / P0-2 (L1): ONE RESOLVER FOR "WHO WROTE THIS ROW". `owner`/`writer`/`by` answer three different
+  // questions (whose card / who wrote this revision / what the write face called that person), and a filter that reads
+  // only ONE of them silently drops rows whose shape is legal but spelled differently. `by` is the canonical field on a
+  // records row (RUN 240: the durable fold stores the writer under `by`); `writer` is the read-face name for the same
+  // fact, and `owner` is only a last-resort fallback for a row written by a face that had no seat (never a substitute
+  // for `by` when both exist). The SOURCE travels with the answer so a caller can see which field answered.
+  const writerOf = (row) => {
+    if (!row || typeof row !== 'object') return { writer: null, writerSource: null }
+    for (const field of ['by', 'writer', 'owner']) {
+      const v = row[field]
+      if (v !== undefined && v !== null && String(v).trim() !== '') return { writer: String(v), writerSource: field }
+    }
+    return { writer: null, writerSource: null }
+  }
+  /** The last-write instant of a row as epoch ms, or null when the row carries no usable time (never NaN by accident). */
+  const updatedMsOf = (row) => {
+    if (!row || typeof row !== 'object') return null
+    const raw = row.updatedAt
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+    if (typeof raw === 'string' && raw.trim() !== '') { const n = Number(raw); if (Number.isFinite(n)) return n; const p = Date.parse(raw); return Number.isFinite(p) ? p : null }
+    return null
+  }
+  /** The `excluded` block is only useful if it says WHY it is non-empty; this sentence is its only wording. */
+  const excludedMeansOf = (ex) => {
+    const clean = !ex || (ex.shapeMismatch === 0 && ex.noWriter.length === 0 && ex.timeUnknown.length === 0)
+    if (clean) return 'no row was dropped for a shape reason: every live row carried the writer and the time this question filtered on (an EMPTY result here means the filter matched nothing, not that rows were unreadable)'
+    return 'these rows WERE dropped because a filter could not read the fact it asked for - `shapeMismatch` counts them, `noWriter` names the ones with no writer under `by`/`writer`/`owner`, and `timeUnknown` names the ones whose `updatedAt` is not a usable instant. They are named so "nothing matched" and "rows were thrown away" stay different answers'
+  }
   const view = (rec, { withBody = false, at = now(), count = false } = {}) => {
     const base = {
       id: rec.id, track: rec.track, kind: rec.kind, title: rec.title, slug: rec.slug, status: rec.state,
@@ -1174,17 +1202,58 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         throw deny('VMU_INVALID_ARGUMENT', 'until is not a time: ' + String(until),
           'pass the ISO stamp exactly as a receipt prints it (for example writesWindow.to) or epoch milliseconds', [K.headSort], 'list')
       }
-      if (byArg !== null) live = live.filter((r) => String(r.by === undefined || r.by === null ? '' : r.by) === byArg)
-      if (sinceMs !== null) live = live.filter((r) => Number(r.updatedAt) >= sinceMs)
-      if (untilMs !== null) live = live.filter((r) => Number(r.updatedAt) <= untilMs)
+      // ★★★ RUN 254 / P0-2 (L1): A FILTER MUST NEVER DROP A LEGAL ROW IN SILENCE. Before this, `by` compared one
+      // spelling of the writer (`r.by`) and `since`/`until` did `Number(r.updatedAt) >= since` - a row whose time was an
+      // ISO string became NaN and fell out with no reading at all, which is how a real row answered `total:0` while the
+      // same row was visible in an unfiltered list. Every row a filter DROPS for a shape reason is now NAMED in
+      // `excluded`, so "no rows matched" and "rows were thrown away because I could not read them" are different answers.
+      const excluded = { shapeMismatch: 0, noWriter: [], timeUnknown: [] }
+      if (byArg !== null) {
+        const keptByWriter = []
+        for (const r of live) {
+          const w = writerOf(r)
+          if (w.writer === null) { excluded.shapeMismatch += 1; excluded.noWriter.push(String(r.id)); continue }
+          if (w.writer === byArg) keptByWriter.push(r)
+        }
+        live = keptByWriter
+      }
+      if (sinceMs !== null) {
+        live = live.filter((r) => {
+          const t = updatedMsOf(r)
+          if (t === null) { excluded.shapeMismatch += 1; excluded.timeUnknown.push(String(r.id)); return false }
+          return t >= sinceMs
+        })
+      }
+      if (untilMs !== null) {
+        live = live.filter((r) => {
+          const t = updatedMsOf(r)
+          if (t === null) { excluded.shapeMismatch += 1; excluded.timeUnknown.push(String(r.id)); return false }
+          return t <= untilMs
+        })
+      }
       const sinceIso = sinceMs === null ? null : new Date(sinceMs).toISOString()
       const untilIso = untilMs === null ? null : new Date(untilMs).toISOString()
       const noFilter = byArg === null && sinceMs === null && untilMs === null
       live.sort((a, b) => headSort === 'title' ? String(a.title || '').localeCompare(String(b.title || '')) : (headSort === 'createdAt' ? a.createdAt - b.createdAt : a.updatedAt - b.updatedAt) || (a.id < b.id ? -1 : 1))
-      const capWanted = Number.isInteger(limit) && limit >= 0 ? limit : headListAt
+      // ★★★ RUN 254 / P1-2 (L2): a `limit` the caller PASSED is answered or refused - never silently replaced by the
+      // default page size. `limit:0` keeps its documented meaning (every row, no page cap); anything that is not a
+      // non-negative integer is a refusal that names the value, so a caller cannot believe it asked for a page and be
+      // handed another one. When no limit is passed, the receipt says which default was used (`limitUsed`/`limitSource`).
+      let limitUsed = headListAt
+      let limitSource = 'default (vmu.records.headListAt)'
+      if (limit !== null && limit !== undefined) {
+        if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 0) {
+          mark(fired, K.headListAt)
+          throw deny('VMU_INVALID_ARGUMENT', 'limit is not a usable page size: ' + JSON.stringify(limit),
+            'pass a non-negative integer (0 = every row, 1..n = page size), or omit `limit` to use vmu.records.headListAt (' + headListAt + ')', [K.headListAt], 'list')
+        }
+        limitUsed = limit
+        limitSource = limit === 0 ? 'caller (0 = every row)' : 'caller'
+      }
+      const capWanted = limitUsed
       if (!pointerPropagation) {
         mark(fired, K.pointerPropagation)
-        return { ok: true, items: [], heads: [], count: 0, available: live.length, dropped: live.length, truncated: live.length > 0, suppressed: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)',
+        return { ok: true, items: [], heads: [], count: 0, available: live.length, dropped: live.length, truncated: live.length > 0, suppressed: true, excluded, excludedMeans: excludedMeansOf(excluded), limitUsed, limitSource, limitMeans: 'this page is MUTED (vmu.records.pointerPropagation=false): no rows are returned, so the page size did not apply; `available` counts the set the filter covers', enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)',
           ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames }
       }
       const cap = capWanted === 0 ? live.length : capWanted
@@ -1195,12 +1264,27 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // ★★ RUN 240: the head row names BOTH facts now — `owner` (whose row) and `writer` (who wrote this revision) —
       // and the list result carries the same three-name glossary the write receipt does, so `list` and `expand` teach
       // the same vocabulary.
-      return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort,
+      // ★ RUN 254 cold-T1 fix (audit-receipt-fields): the enforcement triplet stays in the FIRST lines of the receipt.
+      // It used to sit at the very end of this object; the P0-2/P1-2 readings inserted in front of it pushed it out of
+      // the audit's window, so the gate could no longer SEE that this receipt carries `enforced` (the fact was there,
+      // the reading was not readable). Position in the object is not the semantics — the window is.
+      return { ok: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at,
+        items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort,
         filter: { by: byArg, since: sinceIso, until: untilIso },
+        // ★★★ RUN 254 (P0-2 L1 + P1-2 L2): the page and the filter now answer their own questions. `excluded` names the
+        // rows a filter dropped for a shape reason (never a silent zero), and `limitUsed`/`limitSource` say which page
+        // size actually applied (a caller can no longer pass a limit and be handed the default without being told).
+        excluded, excludedMeans: excludedMeansOf(excluded),
+        limitUsed, limitSource,
+        limitMeans: limitSource === 'caller'
+          ? 'the page size is the one this call asked for (' + limitUsed + '); `dropped` counts the rows the page cap held back'
+          : (limitSource === 'caller (0 = every row)'
+            ? 'the caller asked for limit:0, which means EVERY row: no page cap was applied'
+            : 'no `limit` was passed, so vmu.records.headListAt (' + headListAt + ') decided the page size; pass a non-negative integer (0 = every row) to choose it yourself'),
         filterMeans: noFilter
           ? 'no writer/time filter was given: these are the live rows of the whole ' + (track === null ? 'ledger' : 'track ' + JSON.stringify(track))
           : 'these rows are the ones whose OWN writer is ' + (byArg === null ? 'any seat' : JSON.stringify(byArg))
-            + ' and whose last write landed in [' + (sinceIso === null ? 'the beginning' : sinceIso) + ', ' + (untilIso === null ? 'now' : untilIso) + '] - filtered BEFORE the page cap, so available counts the set this question covers', enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent',
+            + ' and whose last write landed in [' + (sinceIso === null ? 'the beginning' : sinceIso) + ', ' + (untilIso === null ? 'now' : untilIso) + '] - filtered BEFORE the page cap, so available counts the set this question covers', note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent',
         ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames }
     },
 

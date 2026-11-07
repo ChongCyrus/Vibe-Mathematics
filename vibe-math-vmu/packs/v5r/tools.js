@@ -552,7 +552,13 @@ async function toolOverview(args = {}, { kernel } = {}) {
  * Exported so the translation is pinned as a pure function (the pack face and the test read the same code).
  */
 export function sessionRefusalOf({ view = null, member = '' } = {}) {
-  const live = view !== null && view !== undefined && view.liveAgent === true && Array.isArray(view.tools)
+  // ★★★ RUN 254 (F-73-02): LIVE means "this reading HAS a visible set" — not "the view carries liveAgent:true". The kernel
+  // degraded receipt sets `liveAgent:false`; the LIVE receipt carries the tools array and no `liveAgent` field at all, so
+  // keying liveness on the flag alone told a live session it had NEVER opened one. The tools array is the fact; the flag
+  // only ever denies.
+  const live = view !== null && view !== undefined && Array.isArray(view.tools)
+    && !(view.refusal !== undefined && view.refusal !== null)
+    && view.liveAgent !== false
   if (live) return null
   const providerRefusal = view && view.refusal ? view.refusal : null
   const cause = view && view.cause ? String(view.cause) : ''
@@ -588,13 +594,30 @@ export function sessionRefusalOf({ view = null, member = '' } = {}) {
  * perform. The gate for a stored row therefore has ONE implementation here: the settlement read-back below and the read
  * face (`vibe_v5_read_library`) both call it, so a plain READ answers the question and no write is needed.
  */
+/**
+ * ★★★ RUN 254 (F-73-01, MEASURED on the 73rd real-machine run): the task asked "is this card a draft" and the receipt
+ * answered `proofState:null` — honest (nothing was DECLARED) but not literally answerable. The two facts are now printed
+ * under two names: `proofState` stays the DECLARED value (null when nothing was declared — never back-filled with a
+ * default, which would report a declaration that never happened), while `proofStateFolded` is the EFFECTIVE state the
+ * rules fold the card into when no declaration exists. This one function is that fold, and both `proofGateOfStoredCard`
+ * and the card-write receipt read it, so two receipts cannot fold the same row differently.
+ */
+export function foldedProofStateOf(rawState) {
+  const raw = rawState === undefined || rawState === null ? '' : str(rawState).trim()
+  return raw === '' ? 'draft' : raw.toLowerCase()
+}
+
 export function proofGateOfStoredCard(fields = {}) {
   const rawState = fields.proofState
   const state = rawState === undefined || rawState === null ? '' : str(rawState).trim().toLowerCase()
+  // the EFFECTIVE state: a stored row that declares nothing folds to the DEFAULT draft; a declared state is reported as
+  // declared (folded only by case/whitespace). The folded value is never substituted for `proofState`.
+  const folded = foldedProofStateOf(rawState)
   const rawDeferred = fields.proofLockDeferred
   const deferredWord = rawDeferred === undefined || rawDeferred === null ? '' : str(rawDeferred).trim()
   if (state === '') {
     return {
+      folded,
       locked: false, reason: 'read-back-default-draft', proofRefState: 'absent',
       why: 'READ BACK from the stored row: it declares NO `proof_state` at all — a card without one is a DRAFT (the default) — so rule L14 (「登记即定稿」) does not lock it',
       nextMove: null,
@@ -603,6 +626,7 @@ export function proofGateOfStoredCard(fields = {}) {
   }
   if (deferredWord !== '') {
     return {
+      folded,
       locked: false, reason: 'read-back-deferred', proofRefState: 'missing',
       why: 'READ BACK from the stored row: it is declared complete but its lock is DEFERRED (' + deferredWord + ')',
       nextMove: 'the card is still writable: write the file the pointer names and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
@@ -611,6 +635,7 @@ export function proofGateOfStoredCard(fields = {}) {
   }
   if (state !== PROOF_STATE_COMPLETE) {
     return {
+      folded,
       locked: false, reason: 'read-back-not-complete', proofRefState: 'absent',
       why: 'READ BACK from the stored row: it is declared "' + state + '", NOT a finished registration, so rule L14 does not lock it',
       nextMove: null,
@@ -618,6 +643,7 @@ export function proofGateOfStoredCard(fields = {}) {
     }
   }
   return {
+    folded,
     locked: true, reason: 'read-back-complete', proofRefState: 'unknown',
     why: 'READ BACK from the stored row: it is declared finished and the lock is on',
     nextMove: null,
@@ -640,10 +666,11 @@ export function proofLockNoteOf({ gate = null, declaredState = '' } = {}) {
   }
   if (reason === 'default-draft' || reason === 'read-back-default-draft') {
     return 'this card is NOT locked: it declares NO `proof_state` at all, so it is a DRAFT (the default), and rule L14 (「登记即定稿」) locks only a finished registration — the card stays writable'
+      + ' (EFFECTIVE state: ' + String(gate.folded === undefined || gate.folded === null || gate.folded === '' ? 'draft' : gate.folded) + ' — folded from the default because nothing was declared, NOT a declared value)'
       + (reason === 'read-back-default-draft' ? ' (READ BACK from the stored row: answering this needed no write and no settlement)' : '')
   }
   if (reason === 'declared-draft') {
-    return 'this card is NOT locked: it declares `proof_state:"draft"` — a draft is not a finished registration, so rule L14 does not lock it and the card stays writable'
+    return 'this card is NOT locked: it declares `proof_state:"draft"` — a draft is not a finished registration, so rule L14 does not lock it and the card stays writable (EFFECTIVE state: draft — declared by the caller)'
   }
   if (reason === 'declared-not-complete') {
     return 'this card is NOT locked: it declares `proof_state:"' + state + '"`, which is not a finished registration, so rule L14 does not lock it — the card stays writable'
@@ -727,7 +754,13 @@ function toolHelp(args = {}, exec = {}) {
   })()
   // ★★★ RUN 251 (F71-8): the translation from the kernel's cause to the two named refusals lives in ONE exported
   // pure function (`sessionRefusalOf`, above) so the face and the suite read the same code instead of two copies.
-  const measuredCount = view && view.liveAgent === true && Array.isArray(view.tools) ? view.tools.length : null
+  // ★★★ RUN 254 (F-73-02): "measured" follows the SAME liveness fact the refusal translator uses: a view WITH a tools
+  // array is a measured reading (the kernel's live branch carries no `liveAgent` flag and prints the tools), and a view
+  // without one is degraded. Keying on `liveAgent === true` alone printed count:null beside a non-empty tools array.
+  const liveView = view !== null && view !== undefined && Array.isArray(view.tools)
+    && !(view.refusal !== undefined && view.refusal !== null)
+    && view.liveAgent !== false
+  const measuredCount = liveView ? view.tools.length : null
   const providerRefusalRaw = view && view.refusal ? view.refusal : null
   const sessionRefusal = sessionRefusalOf({ view, member: str(args.member) })
   // ★★★ RUN 252 (F72-1, MEASURED on the 72nd real-machine run): the DECLARED layer was already right, but the provider
@@ -735,15 +768,25 @@ function toolHelp(args = {}, exec = {}) {
   // session — the same fact under a second name, in the same object a reader compares field by field. The host provides
   // the cause (`no-child-session-yet`) and now also a `namedCode`; the provider-level payload is TRANSLATED here to the
   // named session answer, and the raw provider code is deliberately NOT copied into the receipt (one fact, one name).
-  const providerRefusal = (providerRefusalRaw !== null
+  const providerRefusalTranslated = providerRefusalRaw !== null
     && String(providerRefusalRaw.code || '') === 'VMU_NO_SUCH_OBJECT'
-    && !(view && view.liveAgent === true)
-    && sessionRefusal !== null)
+    && !liveView
+    && sessionRefusal !== null
+  const providerRefusal = providerRefusalTranslated
     ? Object.assign({}, sessionRefusal, {
       providerCodeTranslated: true,
       translatedMeans: 'the host provider reports "no live Agent" in its own code; this receipt translates that fact to the named session code so ONE fact has ONE name — the raw provider code is deliberately not repeated here (RUN 252 / F72-1)',
     })
     : providerRefusalRaw
+  // ★★★ RUN 254 (F-73-02, MEASURED on the 73rd real-machine run): the marker existed ONLY when a translation HAPPENED, so
+  // the ENDED state (whose provider code was already named) and the LIVE state carried no marker at all — a reader could
+  // not tell "not translated because nothing needed translating" from "this receipt forgot to say". The key is now ALWAYS
+  // present with a boolean true/false, and its sentence says which of the two "false" reasons applies.
+  const providerCodeTranslatedMeans = providerRefusalTranslated
+    ? 'true: the provider payload was translated from its own catch-all code ("no live Agent") to the named session answer (' + String(sessionRefusal && sessionRefusal.code) + '), because "no live Agent" is one fact and this face gives it one name (RUN 252 / F72-1)'
+    : (providerRefusalRaw === null
+      ? 'false: there was NO provider-level refusal in this reading to translate (a live session, or no provider payload), so nothing was translated — the key is present so "not translated" is a fact about this receipt rather than a missing field (RUN 254 / F-73-02)'
+      : 'false: the provider code "' + String(providerRefusalRaw.code || '') + '" was ALREADY named, so no translation was performed — replacing an honest name with another would rename a fact that was never ambiguous (RUN 254 / F-73-02)')
 
   const measuredSet = {
     available: measuredCount !== null,
@@ -751,7 +794,7 @@ function toolHelp(args = {}, exec = {}) {
     tools: measuredCount === null ? null : view.tools,
     hidden: view && Array.isArray(view.hidden) ? view.hidden : null,
     source: view && view.source !== undefined ? view.source : null,
-    liveAgent: view && view.liveAgent === true,
+    liveAgent: liveView,
     schemaScope: view && view.schemaScope !== undefined ? view.schemaScope : null,
     refusal: sessionRefusal,
     providerRefusal,
@@ -807,6 +850,10 @@ function toolHelp(args = {}, exec = {}) {
     measuredSetMeans: measuredSet.means,
     refusal: sessionRefusal === null ? (view && view.refusal ? view.refusal : null) : sessionRefusal,
     providerRefusal,
+    // ★★★ RUN 254 (F-73-02): ALWAYS present (true/false), so "was the provider code translated" is answerable on all three
+    // session states — live, ended, never-opened — instead of only on the one state that needed translating.
+    providerCodeTranslated: providerRefusalTranslated,
+    providerCodeTranslatedMeans,
     tool: 'vibe_v5_tool_help',
     note: 'thin forwarder: the kernel\'s toolsView reading (the member\'s VISIBLE set from the live provider), not the pack declaration; purpose:null means the host registered no description for that name'
       + (absentFields.length === 0 ? ''
@@ -2665,6 +2712,11 @@ function gatedCardHandler(toolName) {
     })() : null
     const proofStateOut = settlementReadback !== null ? settlementReadback.proofState
       : (declaredProofState === '' ? null : declaredProofStateFolded)
+    // ★★★ RUN 254 (F-73-01): the EFFECTIVE state, from the SAME fold the read face uses (`foldedProofStateOf`). It is a
+    // SEPARATE field on purpose: `proofState` above stays the declared value (null when the call declared nothing), and
+    // back-filling it with the fold would report a declaration this write never made.
+    const proofStateFoldedOut = settlementReadback !== null ? settlementReadback.gate.folded
+      : foldedProofStateOf(declaredProofState)
     const proofDeferredOut = settlementReadback !== null ? settlementReadback.proofLockDeferred
       : (proofStateDowngraded === null ? false : true)
     const proofDeferredReasonOut = settlementReadback !== null ? settlementReadback.proofLockDeferredReason
@@ -2756,6 +2808,16 @@ function gatedCardHandler(toolName) {
         : (declaredProofState === ''
           ? 'this call declared NO `proof_state`, so `proofState` is null and the card is a DRAFT (the default): null is the honest value for "nothing was declared", and `proofGate.reason:"default-draft"` is the machine-readable form of the same fact'
           : 'this call DECLARED `proof_state:"' + declaredProofState + '"`; `proofState` is that declared value (proof_ref is a POINTER, and declaring "complete" is not the same as the institute verifying the proof)'),
+      // ★★★ RUN 254 (F-73-01, MEASURED on the 73rd real-machine run): the task asked "is this card a draft" and the receipt
+      // answered only `proofState:null`. Both facts now travel: the declared value (null, honest) AND the EFFECTIVE state
+      // (the default draft, folded). `foldedMeans` says plainly that this is NOT a declaration, so no reader mistakes it
+      // for one, and no reader has to know the default rule to answer "is this a draft".
+      proofStateFolded: proofStateFoldedOut,
+      foldedMeans: settlementReadback !== null
+        ? 'READ BACK from the stored row: the EFFECTIVE state is "' + proofStateFoldedOut + '" — folded from what the row declares (a row that declares NO `proof_state` folds to the DEFAULT "draft"). This is NOT a declared value: `proofState` is the declaration, `proofStateFolded` is what rule L14 actually reads'
+        : (declaredProofState === ''
+          ? 'the EFFECTIVE state is "' + proofStateFoldedOut + '" — when a call declares NO `proof_state`, the rules fold the card to the DEFAULT "draft". This is NOT a declared value: `proofState` is null on purpose (nothing was declared), and `proofStateFolded` answers "is this card a draft" without asking the reader to know the default (RUN 254 / F-73-01)'
+          : 'the EFFECTIVE state is "' + proofStateFoldedOut + '", folded from the value this call DECLARED (`proof_state:"' + declaredProofState + '"`); folding only normalises case/whitespace when a state was declared, so here `proofState` and `proofStateFolded` agree'),
       proofLockDeferred: proofDeferredOut,
       proofLockDeferredReason: proofDeferredReasonOut,
       proofLockDeferredMeans: proofDeferredMeansOut,
@@ -6870,6 +6932,12 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
       proofStateMeans: storedProofState === null
         ? 'the card body states NO `proof_state` line, so the card is a DRAFT (the default): `null` is the honest reading of "nothing was declared", and `proofGate.reason:"read-back-default-draft"` is the machine-readable form of it'
         : 'the card body states `proof_state:"' + storedProofState + '"` — this is the author\'s declared line, READ BACK; declaring a state is not the same as the institute verifying the proof',
+      // ★★★ RUN 254 (F-73-01): the EFFECTIVE state, from the same fold, so "is this card a draft" has a literal answer on
+      // the READ face too — `proofState` stays the declared value (null when the body states nothing).
+      proofStateFolded: storedGate.folded,
+      foldedMeans: storedProofState === null
+        ? 'the EFFECTIVE state is "' + storedGate.folded + '" — folded from a card body that states NO `proof_state`, i.e. the DEFAULT "draft". This is NOT a declared value: `proofState` is null because nothing was declared (RUN 254 / F-73-01)'
+        : 'the EFFECTIVE state is "' + storedGate.folded + '", folded from the `proof_state` the card body declares; folding only normalises case/whitespace when a state was declared, so here `proofState` and `proofStateFolded` agree',
       proofGate: storedGate,
       proofRefState: storedGate.proofRefState,
       lockNote: proofLockNoteOf({ gate: storedGate, declaredState: storedProofState }),

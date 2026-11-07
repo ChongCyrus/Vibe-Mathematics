@@ -381,8 +381,8 @@ try {
   ok(sView.state === 'scheduled' && sView.scheduledFor === now2 + HOUR && sView.activatedAt === null,
     '★ the read face shows "not started yet" honestly (scheduled + scheduledFor + activatedAt:null)', { state: sView.state, activatedAt: sView.activatedAt })
   const sAct = serr(() => sk.meetings.speak({ meeting: sched.meeting, member: 'acad', text: '提前说话' }))
-  ok(!!sAct.error && sAct.error.code === 'VMU_STATE' && /SCHEDULED/.test(String(sAct.error.message)) && /reads .* work now/.test(String(sAct.error.hint)),
-    '★★ acting in a meeting that has not started is refused BY NAME, and the hint says reading still works', sAct.error && sAct.error.code)
+  ok(!!sAct.error && sAct.error.code === 'VMU_MEETING_NOT_STARTED' && /SCHEDULED/.test(String(sAct.error.message)) && /reads .* work now/.test(String(sAct.error.hint)),
+    '★★ acting in a meeting that has not started is refused BY NAME (VMU_MEETING_NOT_STARTED since RUN 254-E / F-73-04), and the hint says reading still works', sAct.error && sAct.error.code)
   const earlyProceed = serr(() => sk.meetings.proceed({ meeting: sched.meeting, actor: 'acad' }))
   ok(!!earlyProceed.error && earlyProceed.error.code === 'VMU_STATE' && /has not arrived yet/.test(String(earlyProceed.error.hint)),
     '★ proceed() BEFORE the start time is refused: nothing is late yet (a way out that is always open is not a way out)', earlyProceed.error && earlyProceed.error.code)

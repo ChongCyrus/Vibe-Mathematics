@@ -95,8 +95,8 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r90-'))
   const att = await call(b, 'vibe_vmu_meeting', { action: 'attend', id: mid, member: 'r-1' }, ctx)
   ok(att.parsed && att.parsed.ok === true, 'attending before the start time is still allowed (the kernel is unchanged)', att.parsed && Object.keys(att.parsed))
   const speak = await call(b, 'vibe_v5_say', { member: 'r-1', meeting: mid, text: 'early' }, ctx)
-  ok(speak.parsed && speak.parsed.ok === false && speak.parsed.code === 'VMU_STATE',
-    'a governance act before the start time is still refused by name', speak.parsed || speak)
+  ok(speak.parsed && speak.parsed.ok === false && speak.parsed.code === 'VMU_MEETING_NOT_STARTED',
+    'a governance act before the start time is still refused by name (RUN 254-E / F-73-04: the code now names the start time)', speak.parsed || speak)
   await rm(root, { recursive: true, force: true, maxRetries: 10 })
 }
 

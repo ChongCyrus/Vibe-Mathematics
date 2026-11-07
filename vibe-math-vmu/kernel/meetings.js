@@ -431,10 +431,34 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     const notice = '【会议预约·' + String(m.chair) + '】' + title + (when === null ? '' : ' @ ' + isoOf(when)) + ' — ' + attendCallOf(m.id, to) + '；读后 mailbox ack {id}'
     return { to, text, subject, kind: 'meeting-appointment', channel: 'mail', dedupeKey: 'meeting-appoint:' + String(m.id), notice }
   }
+  // ★★★ RUN 254-E / F-73-05 (live run 73, MEASURED): the appointment notice went to EVERY roster member except the
+  // chair — including a member whose seat `vmu.meetings.attendDeniedSeats` declares non-attending. The mail then told
+  // that member to attend with the very call attend() refuses, and the receipt's `notified` list made the exclusion
+  // invisible (a reader could not tell "not invited" from "invite refused"). The recipients are now the SAME
+  // ELECTORATE the opening rule waits for (`attendanceScopeOf`), and every excluded member is NAMED in `skipped`
+  // with the reason — one predicate, so "who may attend", "who is waited for" and "who is told to come" agree.
   const appointNoticeOf = (m) => {
     const chair = String(m.chair)
-    const targets = (Array.isArray(m.roster) ? m.roster : []).map(String).filter((id) => id !== '' && id !== chair)
-    return deliverRows(chair, targets, (to) => appointmentDraftFor(m, to))
+    const scope = attendanceScopeOf(m)
+    const targets = scope.electorate.filter((id) => id !== '' && id !== chair)
+    const delivered = deliverRows(chair, targets, (to) => appointmentDraftFor(m, to))
+    const skipped = {
+      attendDenied: scope.attendDenied.slice().sort(),
+      attendDeniedSeats: scope.attendDenied
+        .map((id) => scope.rosterSeatOf.get(String(id)) || null)
+        .filter((s, i, a) => s !== null && s !== '')
+        .filter((s, i, a) => a.indexOf(s) === i)
+        .sort(),
+      count: scope.attendDenied.length,
+    }
+    return Object.assign({}, delivered, {
+      targets: targets.slice().sort(),
+      targetsMeans: 'the appointment mail goes to the ELECTORATE (roster minus the seats vmu.meetings.attendDeniedSeats forbids to attend), minus the chair: a member attend() would refuse must not be told to attend',
+      skipped,
+      skippedMeans: scope.attendDenied.length
+        ? 'these members are on the roster but their seat is declared non-attending (vmu.meetings.attendDeniedSeats): no appointment mail was sent to them, because the mail carries the attend call that same declaration refuses — they are NAMED here rather than silently left out of `notified`'
+        : 'no member on this roster sits in a seat the attendance declarations forbid: every invited member is in `notified`/`notifyFailed`',
+    })
   }
   // ★ THE CHAIR PUSH. Subject names the speaker and the meeting; the body carries an excerpt (<=800 chars, one line,
   // bounded) plus a POINTER to the full text (the minutes entry index, and the transcript when the speech was verbatim).
@@ -1130,7 +1154,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   //
   // ★ ONE VOCABULARY, TWO DIRECTIONS: `until` names what the member waits FOR (its values include names of actions
   // this face already performs); `WAIT_EVENT_UNTIL` is the mapping. `attend-all` is not an action, it is a condition
-  // (every roster member present) re-checked on every attend/admit.
+  // (the attendance rule satisfied) re-checked on every attend/admit.
   const WAIT_UNTIL_MODES = Object.freeze(['speak', 'vote', 'motion', 'poll', 'phase', 'attend-all', 'hand', 'deadline', 'meeting-closed'])
   const WAIT_EVENT_UNTIL = Object.freeze({
     speak: Object.freeze(['speak']),
@@ -1146,7 +1170,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   const WAIT_UNTIL_MEANS = 'until names the EVENT that should end the wait: "speak" = somebody was recorded speaking; ' +
     '"vote" = a vote was counted on a motion; "poll" = a vote/poll was counted (a ballot poll surfaces here as a vote); ' +
     '"motion" = a motion was raised or seconded; "phase" = the meeting phase moved (proceed / recess / resume); ' +
-    '"attend-all" = every roster member is present (re-checked on each attend/admit); "hand" = a member asked for the ' +
+    '"attend-all" = the ATTENDANCE RULE is satisfied — every member of the ELECTORATE (the roster minus the seats ' +
+    'vmu.meetings.attendDeniedSeats forbids to attend; or the quorum floor when vmu.meetings.waitForAll is off) is ' +
+    'present, re-checked on each attend/admit with the SAME predicate the opening door uses; "hand" = a member asked for the ' +
     'floor; "deadline" = the timeoutMs you gave elapsed; "meeting-closed" = the meeting was closed'
   const WAITERS_MEANS = 'waiters are DURABLE rows on the meeting itself: each names the member and the EVENT it waits ' +
     'for (`until`), the instant it was armed and, when a timeout was given, its deadline. state: "armed" = waiting, the ' +
@@ -1293,10 +1319,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   const waiterFiresOn = (w, m, event) => {
     if (w.until === 'attend-all') {
       if (event !== 'attend' && event !== 'admit') return false
-      const roster = Array.isArray(m && m.roster) ? m.roster.map(String) : []
-      const present = (m && m.present && typeof m.present.size === 'number') ? [...m.present].map(String) : []
-      if (roster.length === 0) return false
-      return roster.every((id) => present.includes(id))
+      // ★★★ RUN 254-E consistency patch: the SAME predicate the opening rule uses (`attendanceRuleMet`), so a waiter
+      // and the door can never disagree about "everyone is here". The raw-roster version could not fire on any roster
+      // holding an attend-denied seat (that member never enters `present`).
+      return attendanceRuleMet(m)
     }
     return (WAIT_EVENT_UNTIL[w.until] || []).includes(event)
   }
@@ -1475,7 +1501,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // the caller's, and it was false. The truth is stated here in full: nothing is evaluated without a touch, the
         // due-time touch either opens it (only when the attendance rule is already satisfied at that moment) or parks
         // it in `waiting`, and from there ONLY the chair's proceed() opens it.
-        throw deny('VMU_STATE', 'meeting ' + m.id + ' is SCHEDULED for ' + new Date(m.scheduledFor).toISOString() + ' and has not started: ' + String(opts.what || 'this act') + ' is refused'
+        // ★★★ RUN 254-E / F-73-04 (live run 73, MEASURED): the code was the generic `VMU_STATE`, so a caller could not
+        // tell "this meeting has not started yet" from any other state problem without parsing the sentence. The cause
+        // the message already names is now the CODE too (`VMU_MEETING_NOT_STARTED`); the message and hint are unchanged,
+        // because they were already true (and pinned).
+        throw deny('VMU_MEETING_NOT_STARTED', 'meeting ' + m.id + ' is SCHEDULED for ' + new Date(m.scheduledFor).toISOString() + ' and has not started: ' + String(opts.what || 'this act') + ' is refused'
           + ' — the START TIME is what blocks this, not the attendance rule: nothing about attendance has been judged yet (the rule is evaluated ONCE, at the due-time touch)',
           '★ it does NOT start by itself. At the due time the NEXT TOUCH (a beat(), a read, or an attend) evaluates the '
           + 'attendance rule ONCE: if that rule is satisfied at that moment the meeting opens, otherwise it moves to '
@@ -1555,6 +1585,49 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     return K.waitOnDueMs > 0 ? m.waitStartedAt + K.waitOnDueMs : null
   }
 
+  /**
+   * ★★★ RUN 254-E / F-73-03 (live run 73, MEASURED: "人齐不开门"): WHO THIS MEETING ACTUALLY WAITS FOR.
+   *
+   * THE DEFECT: `arrived()` required EVERY roster member to be present, while `vmu.meetings.attendDeniedSeats`
+   * makes attend() refuse a seat by name. On any roster holding such a member (v5r: the temp seat) the attendance
+   * rule was false BY CONSTRUCTION — the meeting parked in `waiting` forever, and the receipt's
+   * `requiresChairProceedMeans` said "unless the attendance rule fills up" beside a rule that could never fill up.
+   *
+   * THE ONE PREDICATE: the attendance rule's denominator is the ELECTORATE — the roster MINUS the members whose seat
+   * a declaration forbids to attend. This is the SAME definition `quorumOf` already used for the unanimity reading
+   * (RUN 160/161), so it is extracted here and read by both; a second copy of "who is excluded" is exactly the
+   * two-writers bug this repository keeps recording. The excluded members are NAMED in `attendDenied`, never dropped.
+   *
+   * @returns {{roster: string[], rosterSeatOf: Map<string,string>, deniedSeats: string[], attendDenied: string[], electorate: string[]}}
+   */
+  const attendanceScopeOf = (m) => {
+    const list = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
+    const rosterSeatOf = new Map(list.filter(Boolean).map((x) => [String(x.id), String(x.slot)]))
+    const deniedSeats = Array.isArray(K.attendDeniedSeats) ? K.attendDeniedSeats.map(String) : []
+    const roster = !m ? [] : (m.roster instanceof Set ? [...m.roster] : (Array.isArray(m.roster) ? m.roster : [])).map(String)
+    const attendDenied = deniedSeats.length
+      ? roster.filter((r) => deniedSeats.includes(rosterSeatOf.get(String(r))))
+      : []
+    const electorate = roster.filter((r) => !attendDenied.includes(r))
+    return { roster, rosterSeatOf, deniedSeats, attendDenied, electorate }
+  }
+
+  // ★★★ RUN 254-E / F-73-03 consistency patch (the md-lane's read-only review found this sibling): THE ATTENDANCE
+  // RULE IS ONE PREDICATE, and BOTH readers use it. `arrived()` decides whether a touch OPENS the meeting; the
+  // `until:"attend-all"` waiter decides whether a touch WAKES a member. They used to be two copies of "everyone is
+  // here", and when the denominator was fixed for the first one the second still counted the raw roster — on a
+  // roster holding a seat `vmu.meetings.attendDeniedSeats` forbids to attend, that member can never be present, so
+  // the waiter was armed forever (the very defect F-73-03 fixed for the door, still live for the wake).
+  const attendanceRuleMet = (m) => {
+    if (!m) return false
+    if (K.waitForAll === false) return quorumOf(m).met === true
+    const scope = attendanceScopeOf(m)
+    // An empty roster (or one whose every seat is declared non-attending) has no electorate to wait for: the floor
+    // decides, exactly as `arrived()` reads it. Otherwise a meeting could be open while its waiter waits forever.
+    if (scope.roster.length === 0 || scope.electorate.length === 0) return quorumOf(m).met === true
+    return scope.electorate.every((id) => m.present instanceof Set && m.present.has(id))
+  }
+
   /** The quorum computation (READ-ONLY): `attendanceMode` + `unansweredInDenominator` change the numbers. */
   const quorumOf = (m) => {
     // ★★ RUN 160 (FEEDBACK7 item 8): TWO DECLARATIONS CONTRADICTED EACH OTHER. `vmu.meetings.attendDeniedSeats`
@@ -1563,14 +1636,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // CONSTRUCTION and the chair had to narrow the roster by hand (which itself changes who was convened).
     // The electorate of the unanimity reading is therefore the roster MINUS the seats a declaration forbids to
     // attend; those members are named in `nonAttending`, never quietly dropped.
-    const rosterSeatOf = (() => {
-      const list = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
-      return new Map(list.filter(Boolean).map((x) => [String(x.id), String(x.slot)]))
-    })()
-    const deniedSeats = Array.isArray(K.attendDeniedSeats) ? K.attendDeniedSeats.map(String) : []
-    const nonAttendingAll = deniedSeats.length
-      ? m.roster.filter((r) => deniedSeats.includes(rosterSeatOf.get(String(r))))
-      : []
+    // ★★★ RUN 254-E / F-73-03: this used to be a SECOND copy of "roster minus the declared non-attending seats".
+    // It is now the one predicate (`attendanceScopeOf`) that the attendance rule (`arrived()`) reads too, so the
+    // quorum reading and the opening rule can no longer disagree about who the meeting is waiting for.
+    const scope = attendanceScopeOf(m)
+    const rosterSeatOf = scope.rosterSeatOf
+    const deniedSeats = scope.deniedSeats
+    const nonAttendingAll = scope.attendDenied
     const unansweredAll = m.roster.filter((r) => !m.present.has(r))
     const unanswered = unansweredAll.filter((r) => !nonAttendingAll.includes(r))
     const effective = K.unansweredInDenominator ? m.roster.length : m.present.size
@@ -1759,6 +1831,64 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   }
 
   /**
+   * ★★★ RUN 254-E / F-73-03 (live run 73, MEASURED: "人齐不开门"): THE OPENING RULE AS TWO NAMED READINGS.
+   *
+   * THE DEFECT: a roster of four with one attend-denied temp seat read "roster 3/4 present" while the attendance rule
+   * waited on the DENIED member too, so `arrived()` was false forever; the same receipt then said "unless the
+   * attendance rule fills up" — two sentences that cannot both be true. The reading now names BOTH denominators
+   * (`roster` and `electorate`), says which one the opening rule uses (`opensOn`), and names every member still
+   * missing from that one (`missing`) — so a caller can never again see "almost full" beside "waits forever".
+   *
+   * `opensOn` is NOT a new policy: it is the same decision `arrived()` makes (`vmu.meetings.waitForAll` off, or no
+   * electorate to wait for ⇒ the quorum floor; otherwise the electorate), read back as data.
+   */
+  const arrivalReadsOf = (m) => {
+    if (!m) {
+      return { rosterSize: 0, rosterPresent: 0, rosterAllPresent: false, electorateSize: 0, electoratePresent: 0,
+        electorateAllPresent: false, attendDenied: [], attendDeniedSeats: [], missing: [], opensOn: 'quorum-floor',
+        floorMet: false, allPresent: false,
+        opensOnMeans: 'no meeting row: there is no room to read attendance from',
+        means: 'no meeting row: neither denominator can be read' }
+    }
+    const scope = attendanceScopeOf(m)
+    const has = (id) => m.present instanceof Set && m.present.has(id)
+    const rosterPresent = scope.roster.filter(has)
+    const electoratePresent = scope.electorate.filter(has)
+    const missing = scope.electorate.filter((id) => !has(id))
+    const opensOn = (K.waitForAll === false || scope.roster.length === 0 || scope.electorate.length === 0)
+      ? 'quorum-floor'
+      : 'electorate'
+    // A row restored from a snapshot may carry neither `roster` nor `present` (an old/partial live row): the quorum
+    // reading needs both, and a READ (`summary`/`meetingView`) must never throw over a row it cannot fully read.
+    // So the floor is reported as NOT met in that case — absence of the data is not a met floor.
+    const floorReadable = (Array.isArray(m.roster) || m.roster instanceof Set) && m.present instanceof Set
+    const floorMet = floorReadable ? quorumOf(m).met === true : false
+    const allPresent = opensOn === 'quorum-floor' ? floorMet : missing.length === 0
+    const deniedSeats = scope.attendDenied
+      .map((id) => scope.rosterSeatOf.get(String(id)) || null)
+      .filter((s, i, a) => s !== null && a.indexOf(s) === i)
+      .sort()
+    return {
+      rosterSize: scope.roster.length,
+      rosterPresent: rosterPresent.length,
+      rosterAllPresent: rosterPresent.length === scope.roster.length,
+      electorateSize: scope.electorate.length,
+      electoratePresent: electoratePresent.length,
+      electorateAllPresent: missing.length === 0,
+      attendDenied: scope.attendDenied.slice().sort(),
+      attendDeniedSeats: deniedSeats,
+      missing: missing.slice().sort(),
+      opensOn,
+      floorMet,
+      allPresent,
+      opensOnMeans: opensOn === 'electorate'
+        ? 'the touch that OPENS this meeting is judged on the ELECTORATE (roster minus the seats vmu.meetings.attendDeniedSeats forbids to attend), not on the roster: a member who cannot attend cannot ever "arrive", so waiting for one would be waiting forever'
+        : 'the touch that OPENS this meeting is judged on the QUORUM FLOOR (vmu.meetings.waitForAll is off, or this roster has no electorate to wait for): every member who could attend may already be present and the floor still decides',
+      means: 'TWO readings of the same room, printed by name: roster presence is "how many of the invited members are in the room", electorate presence is "how many of the members this meeting actually waits for are in the room" — the opening rule uses `opensOn` (' + opensOn + '), and `missing` names the members still missing from THAT set',
+    }
+  }
+
+  /**
    * ★★★ RUN 251 / F71-11 (live run 71 C4, MEASURED): WHICH reason a `waiting` meeting is waiting for.
    *
    * The state alone does not say it: a meeting reaches `waiting` either because the legal quorum is short, or because
@@ -1823,19 +1953,31 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
               { action: 'attend', why: 'more members must register presence (attend) before the attendance rule can be satisfied' },
               { action: 'proceed', why: 'the chair may open it anyway (chair-gated; the receipt then names the quorum it overrode)' },
             ]))
+    // ★★★ RUN 254-E / F-73-03 (live run 73, MEASURED): the two attendance readings travel WITH the start window, so
+    // every receipt that already carries `startsInMs`/`requiresChairProceed` also carries WHO the rule waits for.
+    const arrival = arrivalReadsOf(m)
     return {
       started, startedAt: started ? activatedAt : null,
       startsInMs, elapsedSinceMs, elapsedMs: elapsedSinceMs,
       waitingFor, waitingForMeans: waitingFor === null ? null : (WAITING_FOR_MEANS[waitingFor] || null),
       quorumMetWhileWaiting: quorumMet,
+      arrival,
+      arrivalMeans: arrival.means,
       requiresChairProceed: !started,
       requiresChairProceedMeans: started
         ? 'false: the meeting is already running — proceed() has nothing left to open; act in it (speak/vote/hand)'
         : (state === 'scheduled'
           ? 'true in the sense that opening is NEVER the framework\'s own decision: at the due time the next touch evaluates the attendance rule ONCE and either opens the meeting (only if that rule is satisfied at that exact moment) or moves it to `waiting`, where only the chair can open it. Plan for a chair proceed() instead of assuming the clock starts the meeting'
-          : (quorumMet === true
-            ? 'true: the quorum IS met and this meeting is still not open — the only ways forward are the chair\'s proceed() (open now), lapse() (abandon) or recess(); no amount of waiting opens it'
-            : 'true unless the attendance rule fills up: more members can still attend, and the touch that completes the rule opens the meeting; otherwise only the chair\'s proceed() (or lapse()/recess()) moves it')),
+          // ★★★ RUN 254-E / F-73-03: this sentence is now BUILT FROM `arrival` (the same predicate `arrived()` uses),
+          // instead of the old pair "the quorum IS met … no amount of waiting opens it" / "unless the attendance rule
+          // fills up". The old pair could be read on one receipt beside a roster the rule could never complete.
+          : (arrival.opensOn === 'quorum-floor'
+            ? (arrival.allPresent
+              ? 'false in practice: the rule this deployment opens on (the quorum floor) is satisfied right now, so the next touch opens the meeting — the chair\'s proceed() is still available, but it is not needed to satisfy the rule'
+              : 'true: this deployment opens on the QUORUM FLOOR (vmu.meetings.waitForAll is off), and the floor is not met yet (present ' + String(arrival.electoratePresent) + ' of ' + String(arrival.electorateSize) + ' that count). Waiting alone changes nothing: more members must attend, or the chair proceeds()/lapses()/recesses()')
+            : (arrival.missing.length === 0
+              ? 'false in practice: every member of the ELECTORATE (' + String(arrival.electorateSize) + ' — the roster minus the seats vmu.meetings.attendDeniedSeats forbids to attend) is already present, so the next touch opens the meeting'
+              : 'true: this meeting opens on the ATTENDANCE RULE over its ELECTORATE (' + String(arrival.electoratePresent) + ' of ' + String(arrival.electorateSize) + ' present; ' + String(arrival.missing.length) + ' still missing: ' + arrival.missing.join(', ') + '). The touch that completes that set opens the meeting — the chair\'s proceed() (or lapse()/recess()) is the OTHER way, and the framework never opens on the chair\'s behalf'))),
       nextActions,
       startReadsMeans: 'startsInMs is non-null ONLY while the meeting has not started (positive = the start time is still in the future, negative = it is overdue); elapsedSinceMs is non-null ONLY once it has started (>= 0, measured from the moment it ACTUALLY opened, i.e. activatedAt — not from scheduledFor); elapsedMs is an alias of elapsedSinceMs kept for old readers (null while not started, never negative)',
     }
@@ -1867,12 +2009,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // ★ R3: 「未到齐」= 名册上还有人不 present（或部署把 `vmu.meetings.waitForAll` 关掉，则回落到法定人数）。
     // 判据只在这里算一次，两个分支共用 —— 否则 `scheduled⇒waiting` 与 `waiting⇒open` 会用两套口径，
     // 那是本仓反复记过的"同一概念两处各写"。
-    const arrived = () => {
-      if (K.waitForAll === false) return quorumOf(m).met
-      const roster = m.roster instanceof Set ? [...m.roster] : (Array.isArray(m.roster) ? m.roster : [])
-      if (roster.length === 0) return quorumOf(m).met
-      return roster.every((id) => m.present.has(id))
-    }
+    // ★★★ RUN 254-E / F-73-03 (live run 73, MEASURED "人齐不开门"): the denominator is the ELECTORATE — the roster
+    // minus the members whose seat a declaration forbids to attend — not the raw roster. A member attend() refuses by
+    // name can never enter `present`, so requiring them made the rule FALSE BY CONSTRUCTION on any roster holding a
+    // temp seat (v5r): four members all present, `arrived()` still false, the meeting waited forever. The predicate is
+    // `attendanceScopeOf` (the SAME one `quorumOf` reads), so the rule and the quorum reading cannot disagree; the
+    // excluded members stay NAMED in `arrival.attendDenied`.
+    const arrived = () => attendanceRuleMet(m)
     if (m.state === 'scheduled') {
       if (!Number.isFinite(m.scheduledFor) || now < m.scheduledFor) return null
       const q = quorumOf(m)
@@ -2413,11 +2556,18 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // settles recomputes with `windowReadsOf()` before building its receipt.
       const windowReadsOf = () => {
         const startReads = startBlockOf(m, ms)
-        const lateReads = Object.assign({ openedAt: openedAtMs, lateAfterMs }, startReads)
+        // ★★★ RUN 254-E / F-73-06 (live run 73, MEASURED): on a SCHEDULED meeting `m.openedAt` holds the SCHEDULED
+        // start (`scheduledFor`), which is in the FUTURE. Copying it into `lateReads.openedAt` printed a future instant
+        // as "when the meeting opened", so `pastOpenedAt` was negative — a lateness clock that runs backwards. Nothing
+        // has opened yet, so the honest reading is null; `startsInMs` (below, from the start window) is the field that
+        // answers "when will it start". Once the meeting has started, openedAt is the real opening instant and is used.
+        const startedNow = startReads.started === true
+        const openedAtRead = startedNow ? openedAtMs : null
+        const lateReads = Object.assign({ openedAt: openedAtRead, lateAfterMs }, startReads)
         // ★ RUN 252 / run-72 C4: the "N ms past openedAt" number must be measured from openedAt (which is what the
         // lateness verdict uses), not from activatedAt: on a meeting that was scheduled and then opened by a
         // latecomer the two differ by the whole wait, so reusing elapsedSinceMs under-reported the lateness.
-        const pastOpenedAt = openedAtMs === null ? null : (ms - openedAtMs)
+        const pastOpenedAt = openedAtRead === null ? null : (ms - openedAtRead)
         const lateMeans = startReads.started !== true
           ? 'NOT JUDGED YET: this meeting has NOT started (startsInMs=' + String(startReads.startsInMs) + ' ms), so lateness cannot be measured — lateness is measured from the moment the meeting OPENS, not from scheduledFor; late:' + late + ' is not a judgement about your timing'
           : (openedAtMs === null
@@ -4577,6 +4727,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // receipt that says the meeting exists. Empty `notifyFailed` is an ASSERTION (every invitee got a row), not
       // "nobody looked".
       notified: appointment.notified, notifyRows: appointment.rows, notifyFailed: appointment.notifyFailed,
+      // ★★★ RUN 254-E / F-73-05: `notified` alone hid WHO was deliberately not mailed. `skipped.attendDenied` names
+      // them (a member whose seat cannot attend is never told to attend), so an empty `notified` cannot be misread as
+      // "everyone was invited and nobody answered".
+      targets: appointment.targets, targetsMeans: appointment.targetsMeans,
+      skipped: appointment.skipped, skippedMeans: appointment.skippedMeans,
       notifyMeans: 'one durable mailbox row per invited member (channel "mail", kind "meeting-appointment", dedupeKey meeting-appoint:<meeting id>): an invitation is MAIL, not a wake, so the member sees it in the notice block of their next turn and settles it with mailbox ack',
       // ★★★ ROUND 240: the SAME formal-agenda reading `summary`/`status` spread, so the open receipt and the later
       // read faces cannot disagree about what was declared (the defect: the receipt carried a boolean, the read face
@@ -4610,6 +4765,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     return { ok: true, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0,
       // ★ RUN 248-N: the delivery result is readable WITHOUT the receipt envelope, next to the roster it concerns.
       notified: appointment.notified, notifyRows: appointment.rows, notifyFailed: appointment.notifyFailed,
+      // ★★★ RUN 254-E / F-73-05: the same exclusions, at the top level (the same reason `notified` is here).
+      targets: appointment.targets, targetsMeans: appointment.targetsMeans,
+      skipped: appointment.skipped, skippedMeans: appointment.skippedMeans,
       // ★★★ ROUND 240: same formal-agenda reading as the receipt (one projection, no second wording).
       ...formalAgendaOf(m),
       sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt,

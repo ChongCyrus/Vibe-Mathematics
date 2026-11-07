@@ -300,8 +300,8 @@ try {
   ok(schedStatus.parsed && schedStatus.parsed.ok === true && schedStatus.parsed.state === 'scheduled' && schedStatus.parsed.registry === 'service',
     '★★ status/summary DO read a scheduled meeting (readable before it starts)', schedStatus.parsed && { code: codeOf(schedStatus.parsed), state: schedStatus.parsed.state })
   const schedSpeak = await call(b, 'vibe_vmu_meeting', { action: 'speak', id: smid, member: 'r-chair', text: '还没到点' })
-  ok(codeOf(schedSpeak.parsed) === 'VMU_STATE',
-    '★★ 反: acting before the start time is refused BY NAME (the rail is the kernel\'s, this suite only proves it is reachable)', schedSpeak.parsed && codeOf(schedSpeak.parsed))
+  ok(codeOf(schedSpeak.parsed) === 'VMU_MEETING_NOT_STARTED',
+    '★★ 反: acting before the start time is refused BY NAME (the rail is the kernel\'s, this suite only proves it is reachable) — since RUN 254-E / F-73-04 the name is VMU_MEETING_NOT_STARTED, not the generic VMU_STATE', schedSpeak.parsed && codeOf(schedSpeak.parsed))
   const badAt = await call(b, 'vibe_v5_meeting', { agenda: 'x', member: 'r-chair', at: 'tomorrow morning' })
   ok(codeOf(badAt.parsed) === 'VMU_INVALID_ARGUMENT' && /tomorrow morning/.test(String(badAt.parsed.message)),
     '★★ 反: a value that is neither epoch ms nor ISO-8601 is refused by name, QUOTING the offending value (no silent "now")', badAt.parsed && { code: codeOf(badAt.parsed), message: badAt.parsed.message })

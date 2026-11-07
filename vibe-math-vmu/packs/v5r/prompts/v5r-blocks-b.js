@@ -294,7 +294,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
         '协调需要时可 hire/fire、创建或分派任务（vibe_v5_task_create／vibe_v5_assign）；开会由院士用 vibe_v5_meeting 召集（type 见会议类型目录），具体字段查手册。',
-        '复杂工具首次使用前调用 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查阅方法（**只收 member；缺它会被具名拒绝**）；简单工具和工具回执直接使用。',
+        '复杂工具首次使用前调 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查方法（只收 member，缺它具名拒）；回执里 `source` 是**读数来源**（`live-seat`／`no-live-agent`），`count:null`/`tools:null`＝无活会话故未测，不是「该席位没有工具」，声明集看 `declaredCount`；简单工具直接用。',
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
       ].join('\n'),
     },
@@ -1028,7 +1028,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：留在收件箱等对方查；只有私信 + `urgent` 才把正文推进对方这一轮；群聊/会议发言带 `urgent` 具名拒。判据：要对方**这一轮就看到**→私信（急就 `urgent`）；只留记录→邮箱；全所都该知道→群聊。**投递形态**：私信与群聊全体发言都会给每个收件人投一条**耐久邮件行**，出现在对方**下一回合提示最上方的 `[新到的消息]` 块**（最新在前、最多 8 行；没 ack 前每回合都在；私信是 `【邮件·<from>】<主题>`、群聊是 `【群聊·<from>】<摘要>` 一行 + 全文指针）。不必反复催也不必轮询；`deliveredTo` 是**真投到**的名单、`deliveryFailed` 才是没投到，读完正文用 `vibe_vmu_mailbox {action:"ack", member, ids}` 结算才消失。**块会渲染、也能核对**：有未读时块头就在提示最上方，无未读则**不出现块头**（＝「没有消息」，不是「通知丢了」）；装配回执的 `notices` 里 `lines`／`rendered`／`blockChars` 是小节读数，`rendered:false` 而你以为有人写过信，先用 `vibe_v5_inbox {action:"list", member}` 查。**回执里的证据比正文活得久**：回复正文超 `vmu.turn.replyLimitChars`（默认 2000 字符）只留摘录——权威键是 `truncated`（被切了）与 `excerptLen`（摘录字符数）；`replyTruncated`/`replyExcerpt` 只是它的旧称，仅存在于回合回执，台账行不复制这两个键。全文落 `Members/<你>/Turns/<turn>.md`（回执 `replyFullPath`/`replyFullSha256`——**只覆盖正文，不含归档头**（头约 0.5KB）；要核整文件请自己 `sha256sum <replyFullPath>`；第 72 次真机实测：整文件 16 463 B、头 496 B、正文 15 967 B，两个 sha 不同），可所办读到的只是摘录；`emptyReply` 只说**文本通道**：true＝这一回合的回复文本 0 字符（空白也算），写了一个字就是 false（哪怕只回 `{"solved":false}`、哪怕这段散文没解析出任何字段）——它**不等于**「没做」：工具通道是另一条通道，`source`/`fields`/`executed`/`writes` 才是做没做的证据。要留证据就把结论写进 `progress`/成果卡并把 `rec-<n>` 写进回复。',
+        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：留在收件箱等对方查；群聊/会议发言带 `urgent` 具名拒。判据要对方**这一轮就看到**→私信；只留记录→邮箱；全所该知道→群聊。**投递**：私信与群聊全体发言各投一条**耐久邮件行**，出现在**下一回合提示最上方的 `[新到的消息]` 块**（最新在前、≤8行；私信是 `【邮件·<from>】<主题>`、群聊是 `【群聊·<from>】<摘要>` ＋全文指针）。`deliveredTo` 是**真投到**的名单、`deliveryFailed` 是没投到，`ack` 是**唯一**结算：`open` 只标 `read`，行不会因被读消失；`acked`／`ackRequired`／`unackedRows`／`settledBy:"ack"` 是具名读数。未读时块头在最上方，无未读则**不出现块头**（＝没消息，不是通知丢了）；装配回执 `notices` 的 `lines`／`rendered`／`blockChars` 是小节读数；`rendered:false` 却以为有人写过信，先 `vibe_v5_inbox {action:"list", member}` 查。**证据比正文活得久**：回复正文超 `vmu.turn.replyLimitChars`（默认 2000 字符）只留摘录——权威键是 `truncated`（被切了）与 `excerptLen`（摘录字符数）；`replyTruncated`/`replyExcerpt` 只是它的旧称，仅存在于回合回执，台账行不复制这两个键。全文落 `Members/<你>/Turns/<turn>.md`（回执 `replyFullPath`/`replyFullSha256`/`replyFullBytes`——**只覆盖正文**；核整文件请自己 `sha256sum <replyFullPath>`，**以实收回执为准**；归档头约 0.3–0.6 KB 不在其中）；`emptyReply` 只说**文本通道**：true＝这一回合的回复文本 0 字符（空白也算），写了一个字就是 false（哪怕只回 `{"solved":false}`、哪怕这段散文没解析出任何字段）——它**不等于**「没做」：工具通道是另一条通道，`source`/`fields`/`executed`/`writes` 才是做没做的证据。要留证据就把结论写进 `progress`/成果卡并把 `rec-<n>` 写进回复。',
       ].join('\n'),
     },
   },
