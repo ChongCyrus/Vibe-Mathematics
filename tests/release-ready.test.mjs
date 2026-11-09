@@ -377,23 +377,30 @@ console.log('--- 5. the real repository: drift is measurable and only loadable c
 
   // The tree hash must bind CONTENT, not just the set of dirty paths, and must be stable across two calls. The
   // in-place edit happens INSIDE the repo on purpose: a file under D:/_tmp is not part of the tree this gate measures. PORTABLE-ALLOW: prose in a comment, not an execution path
+  // The "how many paths" assertion must not borrow non-emptiness from the checkout: on a clean tree the old form
+  // (`changed > 0`) was red for the wrong reason, which is the same disease as reading the environment instead of
+  // the thing under test. So we plant one dirty path ourselves, measure WHILE it is there, and check that removing
+  // it restores the digest byte for byte — the plant/remove cycle must leave no trace.
+  const cleanBefore = rr.treeHashOf(REPO)
   const h1 = rr.treeHashOf(REPO)
-  const h2 = rr.treeHashOf(REPO)
-  ok(h1.ok === true, 'the tree hash is measurable in this checkout', h1.why)
-  ok(/^sha256:[0-9a-f]{64}$/.test(String(h1.hash)), 'the tree hash is a sha256', h1.hash)
-  ok(h1.hash === h2.hash, 'two calls on an unchanged tree agree', [h1.hash, h2.hash])
-  ok(h1.head === h2.head && String(h1.head).length >= 7, 'the head commit is part of the digest input', h1.head)
-  ok(h1.changed >= drift.changed.length && h1.changed > 0, 'the digest covers every dirty path', { hashChanged: h1.changed, driftChanged: drift.changed.length })
   const marker = join(REPO, 'scripts', 'sim', 'audit', '.tree-hash-proof-' + String(process.pid) + '.tmp')
+  let planted = null
+  let after = null
   try {
     writeFileSync(marker, 'one')
-    const before = rr.treeHashOf(REPO)
+    planted = rr.treeHashOf(REPO)
     writeFileSync(marker, 'two (same path, different bytes)')
-    const after = rr.treeHashOf(REPO)
-    ok(before.hash !== after.hash, 'editing a file in place changes the hash (a dirty-path list would not)', { before: before.hash, after: after.hash })
+    after = rr.treeHashOf(REPO)
   } finally {
     rmSync(marker, { force: true })
   }
+  const cleanAfter = rr.treeHashOf(REPO)
+  ok(cleanBefore.ok === true && h1.ok === true && planted.ok === true && cleanAfter.ok === true, 'the tree hash is measurable in this checkout, with and without a planted dirty path', [cleanBefore.why, h1.why, planted && planted.why, cleanAfter.why])
+  ok(/^sha256:[0-9a-f]{64}$/.test(String(cleanBefore.hash)) && /^sha256:[0-9a-f]{64}$/.test(String(planted.hash)), 'the tree hash is a sha256', [cleanBefore.hash, planted && planted.hash])
+  ok(cleanBefore.hash === h1.hash && cleanAfter.hash === cleanBefore.hash, 'two calls on an unchanged tree agree, and removing the planted path restores the hash byte for byte', [cleanBefore.hash, h1.hash, cleanAfter.hash])
+  ok(cleanBefore.head === h1.head && cleanBefore.head === planted.head && String(cleanBefore.head).length >= 7, 'the head commit is part of the digest input, on a clean tree as much as a dirty one', [cleanBefore.head, planted && planted.head])
+  ok(cleanBefore.changed >= drift.changed.length && planted.changed === cleanBefore.changed + 1, 'the digest covers every dirty path, and a planted path is counted exactly once (self-made non-emptiness, not the checkout state)', { hashChanged: cleanBefore.changed, planted: planted && planted.changed, driftChanged: drift.changed.length })
+  ok(planted.hash !== after.hash, 'editing a file in place changes the hash (a dirty-path list would not)', { before: planted.hash, after: after && after.hash })
 }
 
 console.log('--- 6. the CLI: skipping the gate is a reason, --json is parseable, forgeries are red by name')
