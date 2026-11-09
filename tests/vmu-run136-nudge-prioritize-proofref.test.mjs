@@ -123,8 +123,12 @@ try {
   console.log('=== 3. F-136c: the prioritize teaching matches the apply discipline the receipt shows ===')
   const seatFaces = readFileSync(join(HERE, 'vibe-math-vmu/packs/v5r/seat-faces.js'), 'utf8')
   ok(!/没有 priority 列/.test(seatFaces), '★★ F-136c(正)：教学不再声称"任务账本没有 priority 列"')
-  ok(/真改任务板的优先级/.test(seatFaces) && /from→to/.test(seatFaces),
-    '★ 教学说了"带 priority 的条目真改任务板"并点名回执的 from→to', /prioritize/.test(seatFaces))
+  // ★ RUN 268: the prompt's wording lost the particle 的 in the compression round ("真改任务板优先级"), which is a
+  // pure wording change — the taught behaviour (priority items REALLY change the board priority; receipt names
+  // from→to and applied) is unchanged. So the pin follows the shipped wording instead of forcing the product copy
+  // back for a particle. The optional 的 keeps this pin stable across that identical rewording, nothing else loosened.
+  ok(/带 priority 的条目真改任务板(?:的)?优先级/.test(seatFaces) && /from→to/.test(seatFaces) && /applied/.test(seatFaces),
+    '★ 教学说了"带 priority 的条目真改任务板"并点名回执的 from→to 与 applied', /prioritize/.test(seatFaces))
   const toolsSrc = readFileSync(join(HERE, 'vibe-math-vmu/packs/v5r/tools.js'), 'utf8')
   const descMatch = /name: 'vibe_v5_prioritize',\s*description: '([\s\S]*?)',\n/.exec(toolsSrc)
   ok(!!descMatch, '§3 前置：能读到 prioritize 的 description', !!descMatch)

@@ -103,7 +103,8 @@ const roster = kernel.members.roster()
 ok(roster.length === 3, 'roster is non-empty before any identity assertion (RULE E)', roster.length)
 
 console.log('=== 1. B5: ONE SEAT ALONE ⇒ adopt IS REFUSED BY NAME, AND NOTHING IS ADOPTED ===')
-const draftA = await call({ action: 'propose', member: 'r-1', text: '第一版蓝图（研究员 r-1 起草）：\n1. 每轮先报进度。\n2. 命题必须可证伪。' })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const draftA = await call({ action: 'propose', member: 'r-1', materialize: true, text: '第一版蓝图（研究员 r-1 起草）：\n1. 每轮先报进度。\n2. 命题必须可证伪。' })
 ok(draftA.ok && draftA.parsed.continued === false && draftA.parsed.revision === 1, 'a single author can still PROPOSE (a draft is not in force)', draftA.parsed && { id: draftA.parsed.id, revision: draftA.parsed.revision, authors: draftA.parsed.authors })
 ok(draftA.parsed && Array.isArray(draftA.parsed.authors) && draftA.parsed.authors.length === 1 && draftA.parsed.authors[0].member === 'r-1',
   '★ the draft row records its FIRST author in its own `authors` field (the persistent shape, not a second store)', draftA.parsed && draftA.parsed.authors)
@@ -118,7 +119,7 @@ ok(stateAfterRefusal.parsed && stateAfterRefusal.parsed.hasCurrent === false && 
   '★ the refused adoption changed nothing: no current revision, still one waiting draft', stateAfterRefusal.parsed && { hasCurrent: stateAfterRefusal.parsed.hasCurrent, drafts: stateAfterRefusal.parsed.draftsWaiting })
 
 console.log('=== 2. B5: THE SECOND SEAT CONTINUES THE SAME DRAFT, AND THEN adopt PASSES ===')
-const cont = await call({ action: 'propose', member: 'acad', path: PATH, text: '院士补充（共同设计）：\n3. 里程碑按周切分。\n4. 蓝图每月复查一次。' })
+const cont = await call({ action: 'propose', member: 'acad', path: PATH, materialize: true, text: '院士补充（共同设计）：\n3. 里程碑按周切分。\n4. 蓝图每月复查一次。' })
 ok(cont.ok && cont.parsed.continued === true, '★ the chair\'s propose CONTINUES the open draft instead of minting a competing revision', cont.parsed && { id: cont.parsed.id, continued: cont.parsed.continued })
 ok(cont.parsed.id === draftA.parsed.id && cont.parsed.revision === draftA.parsed.revision,
   '★ 同一 draft id、同一 revision: 共同设计落在同一份文档上（不是第二份草案）', { before: draftA.parsed.id, after: cont.parsed.id, revision: cont.parsed.revision })
@@ -147,7 +148,7 @@ ok(stateCo.parsed && stateCo.parsed.freshness && typeof stateCo.parsed.freshness
   '★ B4: the state receipt carries the `freshness` reading (same shape as the exported function) with a non-empty means', stateCo.parsed && stateCo.parsed.freshness && { stale: stateCo.parsed.freshness.stale, keys: Object.keys(stateCo.parsed.freshness).slice(0, 8), means: String(stateCo.parsed.freshness.means).slice(0, 80) })
 
 console.log('=== 3. B5: THE OTHER MISSING SIDE, THE UNCHANGED CHAIR-ONLY RIGHT, AND EXPLICIT SEATS ===')
-const draftAlt = await call({ action: 'propose', member: 'acad', path: PATH_ALT, text: '院士单独起草的一版（缺研究员）。' })
+const draftAlt = await call({ action: 'propose', member: 'acad', path: PATH_ALT, materialize: true, text: '院士单独起草的一版（缺研究员）。' })
 ok(draftAlt.ok && draftAlt.parsed.authors.length === 1 && draftAlt.parsed.authors[0].member === 'acad',
   'a chair-only draft is allowed to exist (proposing is not adopting)', draftAlt.parsed && draftAlt.parsed.authors)
 const memberAdopt = await call({ action: 'adopt', member: 'r-1', path: PATH_ALT, draft: draftAlt.parsed.id })
@@ -158,17 +159,17 @@ const residentMissing = await call({ action: 'adopt', member: 'acad', path: PATH
 ok(residentMissing.ok === false && residentMissing.code === 'VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN' && /常驻研究员/.test(residentMissing.message),
   '★ the OTHER missing side is named too: 常驻研究员席（member）(a chair designing alone is not 「共同」)', { code: residentMissing.code, message: residentMissing.message })
 ok(triple(residentMissing), 'this refusal is also a three-piece (code + message + hint)', { code: residentMissing.code, hint: String(residentMissing.hint || '').slice(0, 80) })
-const residentJoins = await call({ action: 'propose', member: 'r-2', path: PATH_ALT, text: '研究员 r-2 的设计 section：先把判据写成可复算的步骤。' })
+const residentJoins = await call({ action: 'propose', member: 'r-2', path: PATH_ALT, materialize: true, text: '研究员 r-2 的设计 section：先把判据写成可复算的步骤。' })
 ok(residentJoins.ok && residentJoins.parsed.continued === true && residentJoins.parsed.id === draftAlt.parsed.id && residentJoins.parsed.authors.length === 2,
   '★ the hint\'s next step works: 研究员 propose on the same path continues the SAME draft and completes the co-design', residentJoins.parsed && { id: residentJoins.parsed.id, authors: residentJoins.parsed.authors })
 const adoptedAlt = await call({ action: 'adopt', member: 'acad', path: PATH_ALT, draft: residentJoins.parsed.id })
 ok(adoptedAlt.ok && adoptedAlt.parsed.status === 'current' && adoptedAlt.parsed.authors.map((a) => a.member).sort().join(',') === 'acad,r-2',
   '★ after the resident joined, the same chair adopts it (the refusal was a gate, not a dead end)', adoptedAlt.parsed && adoptedAlt.parsed.authors)
 
-const seatMember = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_SEAT, text: '研究员 r-1 的基准稿（显式 seat）。', by: 'r-1', seat: 'member', at: T0 })
+const seatMember = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_SEAT, materialize: true, text: '研究员 r-1 的基准稿（显式 seat）。', by: 'r-1', seat: 'member', at: T0 })
 ok(seatMember.ok && seatMember.authors.length === 1 && seatMember.authors[0].seat === 'member',
   'the writer RECORDS an explicit seat when the caller knows it (seat:"member")', seatMember.authors)
-const seatChair = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_SEAT, draft: seatMember.id, text: '院士用显式 seat 续写：加一条复查节奏。', by: 'acad', seat: 'chair', at: T0 + 1000 })
+const seatChair = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_SEAT, draft: seatMember.id, materialize: true, text: '院士用显式 seat 续写：加一条复查节奏。', by: 'acad', seat: 'chair', at: T0 + 1000 })
 ok(seatChair.ok && seatChair.continued === true && seatChair.authors.map((a) => a.seat).sort().join(',') === 'chair,member',
   '★ explicit seats survive on the same draft row (chair + member)', seatChair.authors)
 const seatAdopt = BLUEPRINT.adoptBlueprint({ records: kernel.records, path: PATH_SEAT, draft: seatMember.id, by: 'acad', at: T0 + 2000 })
@@ -176,8 +177,8 @@ ok(seatAdopt.ok && seatAdopt.codesign.missing.length === 0 && seatAdopt.authors.
   '★ the module-level path (explicit seat + explicit draft) satisfies the same gate (no tool dependency)', seatAdopt.codesign)
 
 console.log('=== 4. B4: blueprintFreshness IS PURE, INJECTABLE, AND ITS means SAYS WHAT OVERDUE MEANS ===')
-const freshDraft = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, text: '新鲜度测试稿：基准。', by: 'r-1', seat: 'member', at: T0 })
-const freshCont = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, draft: freshDraft.id, text: '共同设计补一条维护节奏。', by: 'acad', seat: 'chair', at: T0 + 1000 })
+const freshDraft = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, materialize: true, text: '新鲜度测试稿：基准。', by: 'r-1', seat: 'member', at: T0 })
+const freshCont = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, draft: freshDraft.id, materialize: true, text: '共同设计补一条维护节奏。', by: 'acad', seat: 'chair', at: T0 + 1000 })
 const freshAdopt = BLUEPRINT.adoptBlueprint({ records: kernel.records, path: PATH_FRESH, draft: freshDraft.id, by: 'acad', at: T0 + 2000 })
 ok(freshAdopt.ok && freshAdopt.status === 'current', 'fixture: a co-designed revision was adopted at an INJECTED time (RULE E: the fixture is real)', freshAdopt.ok ? freshAdopt.adoptedAt : freshAdopt.message)
 const freshReading = BLUEPRINT.blueprintFreshness({ records: kernel.records, path: PATH_FRESH }, { now: T0 + 3000 })
@@ -221,10 +222,10 @@ ok(freshAfter.stale === true && freshAfter.lastStaleSeenAt === staleNow,
 const staleAgain = BLUEPRINT.blueprintState({ records: kernel.records, path: PATH_FRESH, now: staleNow + 9000 })
 ok(staleAgain.lastStaleSeenAt === staleNow && staleAgain.freshness.persist.attempted === false && staleAgain.freshness.persist.written === false,
   '★ IDEMPOTENT: a second overdue read does not rewrite the same adopted revision', { lastStaleSeenAt: staleAgain.lastStaleSeenAt, persist: staleAgain.freshness.persist })
-const lateAdoptDraft = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, text: '逾期后的新版：维护节奏改为两周。', by: 'r-2', seat: 'member', at: staleNow + 10000 })
+const lateAdoptDraft = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, materialize: true, text: '逾期后的新版：维护节奏改为两周。', by: 'r-2', seat: 'member', at: staleNow + 10000 })
 ok(lateAdoptDraft.ok && lateAdoptDraft.continued === false && lateAdoptDraft.revision === 2,
   'a NEW revision can be proposed after an overdue one (stale never blocks work)', { revision: lateAdoptDraft.revision, continued: lateAdoptDraft.continued })
-const lateCont = await call({ action: 'propose', member: 'acad', path: PATH_FRESH, text: '院士对逾期版的共同设计：按两周复查。' })
+const lateCont = await call({ action: 'propose', member: 'acad', path: PATH_FRESH, materialize: true, text: '院士对逾期版的共同设计：按两周复查。' })
 ok(lateCont.ok && lateCont.parsed.continued === true, 'the co-design gate applies to the late revision too (same mechanism, no bypass)', lateCont.parsed && lateCont.parsed.id)
 const lateAdopt = BLUEPRINT.adoptBlueprint({ records: kernel.records, path: PATH_FRESH, draft: lateAdoptDraft.id, by: 'acad', at: staleNow + 20000 })
 ok(lateAdopt.ok === true && lateAdopt.overdueUpdate === true && lateAdopt.previousAgeMs > BLUEPRINT.BLUEPRINT_STALE_AFTER_MS,
@@ -236,10 +237,10 @@ ok(toolStale.ok && toolStale.parsed.freshness && typeof toolStale.parsed.freshne
 const toolRead = await call({ action: 'read', path: PATH_FRESH, id: lateAdopt.id })
 ok(toolRead.ok && toolRead.parsed.fields && toolRead.parsed.fields.authors !== undefined,
   '★ the tool read receipt still surfaces the row fields, so the co-design authors are readable by id', toolRead.parsed && toolRead.parsed.fields && toolRead.parsed.fields.authors)
-const noCarrier = BLUEPRINT.blueprintFreshness({}, { now: 0 })
+const noCarrier = BLUEPRINT.blueprintFreshness({}, { now: 0, nowFromKernel: true })
 ok(noCarrier.available === false && noCarrier.stale === false && typeof noCarrier.means === 'string' && noCarrier.means.length > 0,
   '★ zero-mechanism control: no records face ⇒ available=false + a non-empty means ("cannot answer" is not "up to date")', noCarrier && { available: noCarrier.available, means: String(noCarrier.means).slice(0, 80) })
-const noPath = BLUEPRINT.blueprintFreshness({ records: kernel.records }, { now: 0 })
+const noPath = BLUEPRINT.blueprintFreshness({ records: kernel.records }, { now: 0, nowFromKernel: true })
 ok(noPath.available === false && typeof noPath.means === 'string' && noPath.means.length > 0,
   'an empty path is also reported as unavailable with a means (never a fake fresh)', noPath && { available: noPath.available, reason: noPath.reason })
 
@@ -249,7 +250,7 @@ const ghost = await call({ action: 'propose', member: 'r-ghost', text: 'x' })
 const noAuthor = await call({ action: 'propose', text: 'x' })
 const badAction = await call({ action: 'explode' })
 const unknownDraft = await call({ action: 'adopt', member: 'acad', draft: 'no-such-row' })
-const legacyDraft = await call({ action: 'propose', member: 'r-1', path: PATH_WRONG, text: '一版只有单个作者的草案。' })
+const legacyDraft = await call({ action: 'propose', member: 'r-1', path: PATH_WRONG, materialize: true, text: '一版只有单个作者的草案。' })
 const wrongPath = await call({ action: 'adopt', member: 'acad', path: PATH, draft: legacyDraft.parsed.id })
 const collect = [emptyText, ghost, noAuthor, badAction, unknownDraft, wrongPath]
 ok(collect.length === 6, 'the refusal set really holds six entries (non-vacuous guard)')

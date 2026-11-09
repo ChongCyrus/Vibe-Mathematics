@@ -213,8 +213,11 @@ ok(!!st && st.archiveArtifacts && Array.isArray(st.archiveArtifacts.missing) && 
   '★★★ 正：status.archiveArtifacts.missing 仍旧点名 tex（行没写）', st && st.archiveArtifacts && st.archiveArtifacts.missing)
 ok(!!st && !(Array.isArray(st.missing) && st.missing.length > 0 && st.pdfCompiled && st.pdfCompiled.produced === true),
   '★★★ 互斥：status 上 produced:true ⇒ missing 为空')
-ok(!!st && Array.isArray(st.toolchainAbsent) && st.toolchainAbsent.length === 0 && /not-reported/.test(String(st.toolchainAbsentMeans)),
-  '★★ 正：status 明确说它读的是台账，"空名单 = 未上报，不是已安装"', st && st.toolchainAbsentMeans)
+// ★★★ RUN 256 (TB-2624 item 1): status no longer says "I only read the ledger, so I cannot know". It reports the
+// SAME observation compile/final made in this session (`latexAvailable:true` here because the engine really ran), and
+// the means sentence states it is an OBSERVATION, never an installation claim made by a read.
+ok(!!st && Array.isArray(st.toolchainAbsent) && st.toolchainAbsent.length === 0 && st.latexAvailable === true && /OBSERVATION/.test(String(st.toolchainAbsentMeans)),
+  '★★ 正：status 报的是本会话的观测（引擎跑过 ⇒ latexAvailable:true），并明说不是「已安装」的断言', st && { toolchainAbsent: st.toolchainAbsent, latexAvailable: st.latexAvailable, means: st.toolchainAbsentMeans })
 ok(!!st && typeof st.missingMeans === 'string' && /compile IS on file/.test(st.missingMeans),
   '★★ 正：status.missingMeans 解释了空列表来自"编译在案"', st && st.missingMeans)
 // F72-6 on the ledger reading too: the compile bytes and the disk-file bytes are the SAME whole file.
@@ -301,7 +304,7 @@ ok(!!ec && (ec.missing.filter((n) => (ec.toolchainAbsent || []).includes(n)).len
 ok(!!ec && typeof ec.toolchainAbsentMeans === 'string' && /COMPILER toolchain/.test(ec.toolchainAbsentMeans),
   '★★ 正：toolchainAbsentMeans 明说这是环境事实、不是本次缺输入', ec && ec.toolchainAbsentMeans)
 const blocked2 = await receipt(v5r, 'vibe_v5_paper', { action: 'final', target: T2, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })
-const envReqId = (() => { const m = String((blocked2.parsed && blocked2.parsed.message) || '').match(/consult-[A-Za-z0-9_-]+-\d+/); return m ? m[0] : null })()
+const envReqId = (() => { const m = String((blocked2.parsed && blocked2.parsed.message) || '').match(/consult-[A-Za-z0-9_-]+/); return m ? m[0] : null })()
 ok(typeof envReqId === 'string', '前置(RULE E)：第二篇的问询 id 可从拒绝消息里读出', envReqId)
 await receipt(v5r, 'vibe_v5_paper', { action: 'consult', target: T2, member: OFFICE, request_id: envReqId, answer: '看过，可交付' })
 const envFinRaw = await receipt(v5r, 'vibe_v5_paper', { action: 'final', target: T2, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })

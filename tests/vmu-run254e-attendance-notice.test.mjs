@@ -161,8 +161,11 @@ const schedAt = (svc, roster) => svc.open({ chair: 'acad', actor: 'acad', roster
   const hint = String(err && err.hint || '')
   ok(msg.includes('the START TIME is what blocks this'),
     '§2b. the message still says WHICH thing blocks the act (the start time), not "bad state"', msg.slice(0, 140))
-  ok(hint.includes('beat() is the clock'),
-    '§2c. and the hint still names the calls that move it ("beat() is the clock")', hint.slice(0, 140))
+  // RUN 258 / AUDIT-14 P1-8: the old pin read "beat() is the clock", which is FALSE when the caller holds the
+  // clock: a beat only touches the meeting and leaves startsInMs unchanged. The honest sentence is kept instead,
+  // and the false claim is asserted GONE (a prose pin that keeps a lie is worse than no pin).
+  ok(hint.includes('beat() is only a touch') && !hint.includes('beat() is the clock'),
+    '§2c. ★★★ the hint says what beat() really is ("only a touch", the clock does NOT advance) and no longer claims beat() moves the clock', hint.slice(0, 200))
   ok(hint.includes('the institution rule is not'),
     '§2d. ★★★ and the hint still separates the CLOCK from the INSTITUTION ("the institution rule is not what blocks this act either") — the sentence an earlier cold run pinned, kept verbatim', hint.slice(0, 200))
 }

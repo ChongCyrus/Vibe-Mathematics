@@ -243,9 +243,14 @@ try {
   ok(noFaceOp.parsed && noFaceOp.parsed.ok === false && noFaceOp.parsed.code === 'VMU_INVALID_ARGUMENT' && /NO task-face operation/.test(String(noFaceOp.parsed.message)),
     '★ task_update: 反 — `delete` has NO task-face operation in this kernel ⇒ refused BY NAME (not faked, not silently ignored)', noFaceOp.parsed && noFaceOp.parsed.message)
 
-  const hireNoPurpose = await receipt(v5rBoot, 'vibe_v5_hire', { initial_task: '读一篇论文' })
-  ok(hireNoPurpose.parsed && hireNoPurpose.parsed.ok === false && hireNoPurpose.parsed.code === 'VMU_INVALID_ARGUMENT',
-    'hire: 反 — a missing purpose is refused by name', hireNoPurpose.parsed)
+  // ★★ A9 (same-code sibling guard, measured by rules-recheck): this call used to omit `to` as well, so deleting the
+  // `purpose` guard stayed GREEN — the `to` guard refused with the SAME `VMU_INVALID_ARGUMENT`, and the assertion only
+  // read the code. Supply `to` so no sibling guard can fire, and require the MESSAGE to name purpose: then only the
+  // purpose guard can produce this refusal.
+  const hireNoPurpose = await receipt(v5rBoot, 'vibe_v5_hire', { initial_task: '读一篇论文', to: 'r-temp-nopurpose' })
+  ok(hireNoPurpose.parsed && hireNoPurpose.parsed.ok === false && hireNoPurpose.parsed.code === 'VMU_INVALID_ARGUMENT'
+    && /purpose/i.test(String(hireNoPurpose.parsed.message)),
+    'hire: 反 — a missing purpose is refused by name, with `to` supplied (the message NAMES purpose, so a sibling guard cannot stand in for it)', hireNoPurpose.parsed)
   const hiredTemp = await receipt(v5rBoot, 'vibe_v5_hire', { purpose: '核验引理 A 的边界情形', initial_task: '逐个 n 验证 n≤3', to: 'r-temp-1' })
   const tempRow = kernel.members.roster().filter((m) => m.id === 'r-temp-1')[0]
   ok(hiredTemp.parsed && hiredTemp.parsed.ok === true && hiredTemp.parsed.slot === 'temp' && tempRow && String(tempRow.slot) === 'temp',

@@ -115,7 +115,12 @@ ok(!/"(?:meeting_hand|meeting_invite)":\s*(?:true|false|\{)/.test(blocksB), 'G6:
 // `progress` field — NOT "a temp writes no progress", which the fs face and the receipt field falsify.
 ok(blocksB.includes('临时工不进成果库') && blocksB.includes('`progress` 字段') && !blocksB.includes('临时工不写这些库'),
   'L10 pin: the temp boundary is the card face + the receipt `progress` field (not "no progress")')
-ok(blocksB.includes('产出由指派者归档'), 'L10 pin: the assigner archives a temp worker\'s output')
+// ★ RUN 255 / task-96 (TB-2611-P, user Q2) REVERSED the second half: "the assigner archives the temp's output"
+//   reads as "the assigner (often the office) writes it", which is exactly the ghostwriting the live run measured
+//   (`memberActed:false`). The new sentence keeps the card-face refusal and moves the output to the temp's own
+//   hand: the assigner CHECKS, never writes. The pin now holds the new sentence and the retired one is gone.
+ok(blocksB.includes('产出由临时工在回执里交回（指派者只核对、不代写）') && !blocksB.includes('产出由指派者归档'),
+  'L10 pin: a temp output goes back in ITS OWN receipt - the assigner checks, never writes')
 // L32 (rule: 院士通过命令…决策会议进行中的一切内容、控制、活动) — chair authority is the FALLBACK authority
 ok(blocksB.includes('都由你的命令决定'), 'L32 pin: inside a running meeting, the chair\'s commands decide content/control/activity')
 ok(blocksB.includes('只是常用手段，不是穷举'), 'L32 pin: the listed verbs are common means, not an exhaustive list')
@@ -134,7 +139,13 @@ ok(readFileSync(resolve(PROMPTS, 'v5r-assistant.js'), 'utf8').includes('「有�
 // A4 (item: 院士＝chair 席) — the seat mapping is taught in prose, not only in a code comment
 ok(blocksB.includes('院士＝`chair`'), 'A4 pin: the seat mapping (院士=chair, 常驻研究员=member, 临时工=temp) is taught')
 // D1/D5 (items: 各自推进各自的总任务 / 四字段含时间等基础信息)
-ok(blocksB.includes('每人各自推进各自的'), 'D1 pin: each member advances their OWN 总任务')
+// ★ RUN 262 (lead m07488): ① is the INSTITUTE's objective (one copy in the kernel, kernel/turn/index.js:1713 scopeNote).
+// The old pin quoted the prompt's contradiction (『`[总任务]` 是「你」的总任务』/『每人各自推进各自的』). What D1 asks for is
+// that a member can FIND their share: ① says it is the institute's, ②/③ lead with `属于你（<member>，未完成 N 条）`.
+ok(blocksB.includes('是本所的总任务') && blocksB.includes('内核只有一份，不按人分'),
+  'D1 pin: ① is taught as the INSTITUTE objective (one copy), not as each member having their own')
+ok(blocksB.includes('属于你（<member>，未完成 N 条）'), 'D1 pin: the member share lead-in on ②/③ is taught verbatim')
+ok(!blocksB.includes('是「你」的总任务'), 'D1 pin (negative): the contradiction (① called the reader own task) is gone')
 ok(blocksB.includes('四行都带**时间等基础信息**'), 'D5 pin: the four board rows carry time as basic information')
 // C10/C11/E24 (items: Lean 代码与编译结果归档 / 忠实性审查 is the debate focus when p≠1)
 ok(blocksB.includes('运行结果在 `vibe_v5_lean_run/job` 回执'), 'C10 pin: the Lean code AND the run result are archived together (the archive line is an INDEX; the result lives in the run/job receipt)')

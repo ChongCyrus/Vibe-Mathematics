@@ -69,7 +69,11 @@ try {
   }
   {
     const src = await readFile(join(REPO, 'vibe-math-vmu', 'tools', 'human.js'), 'utf8')
-    ok(/out\.failedSteps = bad\.map/.test(src), '§0h a partial recovery names the failed steps')
+    // RUN 259 / TB-2647: the face no longer derives a THIRD list from the rows — it prints the report's derived
+    // `failedSteps` (and omits it entirely when the only bad step is read-back drift, which is not a failure of this
+    // process). The pin moves with the contract, not the other way round.
+    ok(/out\.failedSteps = Array\.isArray\(report\.failedSteps\)/.test(src),
+      '§0h a partial recovery names the failed steps — the report\'s own derived list, not a third derivation in the face')
     ok(/out\.driftKeys = keys/.test(src), '§0i a read-back drift names the keys that moved')
     ok(/do NOT rewrite the key to make the digest agree/.test(src),
       '§0j and the drift hint forbids the one fix that destroys the other writer fact')

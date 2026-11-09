@@ -1,0 +1,170 @@
+{
+  "generatedAt": "2026-11-09T21:14:34+08:00",
+  "note": "Named dev-only exceptions: files that must NOT ship in the tarball (they read D:/_tmp corpora, need the slv driver/clone, bind loopback ports, or need real-run env). why >= 24 chars + owner are required; a blank/short why is a RED.",
+  "entries": [
+    {
+      "path": "scripts/sim/audit/fidelity-branches.mjs",
+      "owner": "sim-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "scripts/sim/audit/fidelity-measure.mjs",
+      "owner": "sim-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "scripts/sim/audit/release-ready.mjs",
+      "owner": "lead (release gate 收口)",
+      "why": "依赖本机真机驱动或 slvp* 克隆目录；读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "依赖本机真机驱动或 slvp* 克隆目录",
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "scripts/sim/corpus-stamp.mjs",
+      "owner": "sim-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "scripts/sim/scenarios/end-to-end.mjs",
+      "owner": "sim-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/audit-host-receipt-superset.mjs",
+      "owner": "audit-lane",
+      "why": "依赖本机回环端口（真机驱动实例）；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "依赖本机回环端口（真机驱动实例）"
+      ]
+    },
+    {
+      "path": "tests/audit-prompt-names.mjs",
+      "owner": "audit-lane",
+      "why": "依赖本机回环端口（真机驱动实例）；读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "依赖本机回环端口（真机驱动实例）",
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/check-task-brief.test.mjs",
+      "owner": "env-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/release-ready.test.mjs",
+      "owner": "lead (release gate 收口)",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/sim-build-stamp.test.mjs",
+      "owner": "sim-lane",
+      "why": "依赖本机真机驱动或 slvp* 克隆目录；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "依赖本机真机驱动或 slvp* 克隆目录"
+      ]
+    },
+    {
+      "path": "tests/sim-harness-shape.test.mjs",
+      "owner": "sim-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/sim-vs-real.test.mjs",
+      "owner": "sim-lane",
+      "why": "依赖本机真机驱动或 slvp* 克隆目录；读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "依赖本机真机驱动或 slvp* 克隆目录",
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/vmu-run255-mail-receipts.test.mjs",
+      "owner": "md-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/vmu-run256-delivery-code-passthrough.test.mjs",
+      "owner": "md-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/vmu-run256-mail-tool-facts.test.mjs",
+      "owner": "md-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/vmu-run256-reading-shapes.test.mjs",
+      "owner": "md-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/vmu-run257-prompt-receipt-parity.test.mjs",
+      "owner": "md-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/vmu-run259-audit14.test.mjs",
+      "owner": "md-lane",
+      "why": "依赖本机回环端口（真机驱动实例）；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "依赖本机回环端口（真机驱动实例）"
+      ]
+    },
+    {
+      "path": "tests/vmu-run259-recovery-steps.test.mjs",
+      "owner": "md-lane",
+      "why": "依赖本机真机驱动或 slvp* 克隆目录；读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "依赖本机真机驱动或 slvp* 克隆目录",
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    },
+    {
+      "path": "tests/vmu-run262-meeting-start-early.test.mjs",
+      "owner": "md-lane",
+      "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
+      "hintKinds": [
+        "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
+      ]
+    }
+  ]
+}

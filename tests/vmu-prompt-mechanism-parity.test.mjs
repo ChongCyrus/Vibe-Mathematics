@@ -13,7 +13,8 @@
 //      hand-built fixture and not the loader tree;
 //   ② the MECHANISM is re-measured on every run through the real turn orchestrator (`parse` / `plan`) and through the
 //      exported field catalogue — the whitelist's `reason` numbers are therefore re-checkable, not folklore;
-//   ③ every taught paragraph that belongs to a family is either consistent (family not triggered) or covered by a
+//   ③ every taught paragraph that belongs to a family is either consistent (family not triggered), CHECKED (the
+//      family's own live `verified()` probe is green — and then no ledger entry is involved), or covered by a
 //      whitelist entry whose stable substring really occurs in that paragraph;
 //   ④ SHRINK-ONLY: an entry whose taught text is gone (fixed in the prompt) is a RED — the list cannot rot;
 //   ⑤ the detector has teeth (self-probe: a planted un-whitelisted teaching trips it; a planted whitelisted one does
@@ -50,9 +51,17 @@ const J = (o) => JSON.stringify(o)
 const FAMILIES = Object.freeze([
   Object.freeze({
     id: 'unknown-field-refusal',
-    taught: 'an unregistered top-level reply field is refused as VMU_TURN_UNKNOWN_FIELD',
+    taught: 'an unregistered top-level reply field is refused as VMU_TURN_UNKNOWN_FIELD, and the refusal hint lists the names this loop accepts (known fields: …)',
     regex: /会被判\s*`VMU_TURN_UNKNOWN_FIELD`/,
-    mechanism: 'unknown-field-mode',
+    mechanism: 'unknown-field-exit',
+    // ★ RUN 268: this family is no longer a DIVERGENCE family — it is a CHECKED one. The taught sentence is true for
+    // THIS institution (packs/v5r/settings/defaults.json declares vmu.turn.unknownReplyFieldMode:"refuse"; the kernel
+    // default stays ignore-named) and the exit it names is measured live below: the refusal hint literally begins
+    // `known fields: …`. Measured in round 16 the sentence was unconditional and therefore false; the text has since
+    // been rewritten to teach the refusal + the hint-listed exit, so the ledger entry was deleted (shrink-only) and the
+    // claim is verified here instead. If the pack stops declaring refuse, or the hint stops listing names, this
+    // predicate goes false and the same paragraph turns red — that is the teeth.
+    verified: () => unknownFieldExitProven,
   }),
   Object.freeze({
     id: 'fixture-vocabulary',
@@ -155,6 +164,21 @@ ok(unknownDefault.threw === false && unknownDefault.ignored.includes('note'),
 ok(unknownRefuse.threw === true && unknownRefuse.code === 'VMU_TURN_UNKNOWN_FIELD',
   'MECHANISM: only refuse mode throws VMU_TURN_UNKNOWN_FIELD', unknownRefuse)
 
+/** ①b the exit the prompt names: does THIS pack really run refuse, and does the refusal hint list the accepted names? */
+const PACK_DEFAULTS = JSON.parse(readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.json'), 'utf8'))
+const declaredUnknownFieldMode = PACK_DEFAULTS && PACK_DEFAULTS.defaults ? PACK_DEFAULTS.defaults['vmu.turn.unknownReplyFieldMode'] : null
+const unknownRefuseHint = (() => {
+  try { loopRefuse.parse('```json\n{"note":"measured"}\n```'); return '' } catch (e) { return String((e && e.hint) || '') }
+})()
+ok(declaredUnknownFieldMode === 'refuse',
+  'MECHANISM: this pack DECLARES vmu.turn.unknownReplyFieldMode="refuse" (packs/v5r/settings/defaults.json), so the taught refusal is the institution\'s real behaviour',
+  declaredUnknownFieldMode)
+ok(unknownRefuseHint.includes('known fields:'),
+  'MECHANISM: the refusal hint lists the accepted names (`known fields: …`) — the exit the prompt teaches', unknownRefuseHint.slice(0, 120))
+const unknownFieldExitProven = declaredUnknownFieldMode === 'refuse'
+  && unknownRefuse.threw === true && unknownRefuse.code === 'VMU_TURN_UNKNOWN_FIELD'
+  && unknownRefuseHint.includes('known fields:')
+
 /** ② the real reply catalogue: how many top-level fields does the kernel accept, and which of the four taught ones exist? */
 const FIELD_OWNER_NAMES = Object.keys(FIELD_OWNERS)
 ok(FIELD_OWNER_NAMES.length > 0, 'MECHANISM: FIELD_OWNERS is a non-empty name table (not a hand-written field list)', FIELD_OWNER_NAMES.length)
@@ -210,8 +234,12 @@ const scan = (input) => {
 }
 const judge = (hits, { shrinkOnly = true } = {}) => {
   const violations = []
+  // A family may declare a live `verified()` predicate: then its taught claim is CHECKED, not excused — the paragraph
+  // passes only while the mechanism probe for it is green (see `unknown-field-refusal`). Families without one must
+  // still be covered by a named ledger entry.
+  const familyVerified = (id) => FAMILIES.some((f) => f.id === id && typeof f.verified === 'function' && f.verified() === true)
   for (const h of hits) {
-    const covered = entries.some((e) => e.family === h.family && h.text.includes(e.contains))
+    const covered = familyVerified(h.family) || entries.some((e) => e.family === h.family && h.text.includes(e.contains))
     if (!covered) violations.push({ kind: 'UN-WHITELISTED', ...h, at: locate(h.text.slice(0, 40)) })
   }
   if (shrinkOnly) for (const e of entries) {
@@ -232,7 +260,10 @@ ok(realViolations.length === 0, 'no UN-NAMED teach-vs-mechanism divergence in th
 for (const h of realHits) console.log('  ···· [' + h.family + '] ' + h.source + ':' + h.line + '  ' + h.text.slice(0, 90) + '…  ⇒ ' + locate(h.text.slice(0, 20)))
 
 // ── SECTION 5 — the gate has TEETH (self-probe, no file edits anywhere in the tree) ────────────────────────────
-const plantUnnamed = [{ source: 'self-probe:unnamed', text: '（自证）未登记顶层字段会被判 `VMU_TURN_UNKNOWN_FIELD`，请勿书写。' }]
+// ★ RUN 268: the unnamed probe must use a family that is NOT the CHECKED one — `unknown-field-refusal` is now
+// verified live, so planting it here would prove nothing. `meeting-field-in-reply` still requires a named ledger
+// entry, so a fresh sentence in that family must trip the detector.
+const plantUnnamed = [{ source: 'self-probe:unnamed', text: '（自证）会议邀请可以直接写 "meeting_invite": 任意值 进回执。' }]
 const plantedViolations = judge(scan(plantUnnamed), { shrinkOnly: false })
 ok(plantedViolations.length >= 1 && plantedViolations[0].kind === 'UN-WHITELISTED',
   'TEETH: a planted un-whitelisted teaching trips the detector', plantedViolations)
@@ -240,6 +271,11 @@ const plantNamed = entries.filter((e) => e.family === 'fixture-vocabulary').map(
 ok(plantNamed.length > 0, 'TEETH: the self-probe has a whitelisted sample to plant', plantNamed.length)
 const plantedNamedViolations = judge(scan(plantNamed), { shrinkOnly: false })
 ok(plantedNamedViolations.length === 0, 'TEETH: a planted whitelisted teaching does NOT trip the detector', plantedNamedViolations)
+// The CHECKED family is excused ONLY by its live probe: if the pack stopped declaring refuse, or the refusal hint
+// stopped listing names, `unknownFieldExitProven` would be false and the same paragraph would become a violation.
+ok(unknownFieldExitProven === true,
+  'TEETH: the CHECKED unknown-field family is green on this tree (its paragraph is excused only while this predicate holds)',
+  { declaredUnknownFieldMode, hintHasNames: unknownRefuseHint.includes('known fields:') })
 
 // ── SECTION 6 — report ─────────────────────────────────────────────────────────────────────────────────────────
 console.log('')

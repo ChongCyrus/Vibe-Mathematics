@@ -73,7 +73,7 @@ const allPromptSources = () => readdirSync(PROMPTS_DIR)
   .map((f) => ({ f, text: readFileSync(join(PROMPTS_DIR, f), 'utf8') }))
 
 try {
-  console.log('=== 0. 源码口径：29 个已登记字段里有 formal；新句说清「收敛口径」与「另接受」 ===')
+  console.log('=== 0. 源码口径：REPLY_FIELDS 里有 formal；新句说清「收敛口径」并把清单交给回执（RUN 257） ===')
   {
     const owners = Object.keys(kernelTurn.FIELD_OWNERS)
     ok(owners.length === 22, '§0a FIELD_OWNERS 仍是 22 个（机制没有被这套修法改动）', owners.length)
@@ -86,8 +86,12 @@ try {
 
     const toolsText = String(core.v5rFixtureTools.text)
     ok(toolsText.includes(NEW_RECIPE), '§0e ★★★ fixture-tools 段已改成「本夹具的收敛口径」口径', toolsText.slice(0, 0))
-    ok(toolsText.includes('29 个已登记字段') && toolsText.includes('`formal`'),
-      '§0f ★★★ 新句点名「内核另接受 29 个已登记字段」并举例 formal')
+    // ★ RUN 257 / task-94 round D (Lead m05579): the COUNT and the sample names were themselves a copy of the kernel
+    // catalogue — and the kernel prints its own catalogue in the refusal (`known fields: …`,
+    // kernel/turn/index.js:2930). The sentence now points at that receipt; the copy is gone. RUN 151's intent
+    // (four is the convergence recipe, the catalogue is larger) survives; the second reader does not.
+    ok(toolsText.includes('known fields') && toolsText.includes('据此改写调用') && !toolsText.includes('29 个已登记字段'),
+      '§0f ★★★ 新句把字段清单交给回执（`known fields: …`）而不是手抄：计数与样例副本都不在了')
     ok(toolsText.includes('progress / say / solved / vote_solved'), '§0g 四个字段的收敛样例仍在（不是把教学删掉了）')
     ok(!OLD_CLAIM.test(toolsText), '§0h ★★★ 旧话「顶层只允许这四个字段」已从该段消失')
     // self-probe: the needle really matches the retired wording, so §0h/§0i are not empty assertions.
@@ -119,7 +123,7 @@ try {
     ok(Boolean(asm) && typeof asm.text === 'string' && asm.text.length > 2000, '§1a 装配真的产出了提示词', asm && asm.text.length)
     const text = String(asm.text)
     ok(text.includes(NEW_RECIPE), '§1b ★★★ 装配里带着新的收敛口径句')
-    ok(text.includes('29 个已登记字段'), '§1c ★★★ 装配里带着「内核另接受 29 个已登记字段」')
+    ok(text.includes('known fields') && !text.includes('29 个已登记字段'), '§1c ★★★ 装配里带的是回执指针（`known fields: …`），不是手抄计数（RUN 257 反转 RUN 151 的复述式修法）')
     ok(text.includes('formal'), '§1d ★★★ 同一份装配里 reply-channel 仍教 formal —— 两句现在相容', (text.match(/formal/g) || []).length)
     ok(!OLD_CLAIM.test(text), '§1e ★★★ 同一份装配里没有旧话（矛盾消失）')
     // the reply-channel row that teaches `formal` is the OTHER side of the contradiction; name it explicitly.

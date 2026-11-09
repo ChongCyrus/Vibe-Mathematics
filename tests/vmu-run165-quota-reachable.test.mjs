@@ -84,8 +84,11 @@ console.log('§0 源码口径：拒绝语许诺的修法是工具面真能做的
     '(0) ★ 旧短语「or compact/remove records」「NO tool face exposes remove/compact」都已消失', null)
   ok(/this limit is read at WRITE time, so raising it with vibe_v5_set \{key:"vmu\.records\.head\.maxItems"/.test(RECORDS_SRC),
     '(0) 第二条路仍在：`vibe_v5_set` 抬 `vmu.records.head.maxItems`（写时热读）', null)
-  ok(/'list', 'expand', 'append', 'status', 'prune'/.test(HOST_SRC) && /if \(action === 'prune'\) \{/.test(HOST_SRC),
-    '(0) 记录面的 action enum 真有 prune，且真有 prune 分支', null)
+  // RUN 257：枚举新增合法值 `get`（get≡expand）。pin 从「精确枚举」改为形状断言：枚举里必须有 prune，且不得出现已废止的 compact/remove；
+  // 断言的是形状（这一行的枚举到底列了哪些动词），不是「某处出现了 get」这种能力断言。
+  const enum165 = (HOST_SRC.match(/enum: \['list', 'get',[^\]]*\]/) || [''])[0]
+  ok(enum165.includes("'prune'") && !/(compact|remove)/.test(enum165) && /if \(action === 'prune'\) \{/.test(HOST_SRC),
+    '(0) 记录面的 action enum 真有 prune（含新增的 get，不含废止的 compact/remove），且真有 prune 分支', null)
   ok(/rc\.list\(\{ track: pruneTrack, limit: 0 \}\)/.test(HOST_SRC) && /rc\.remove\(\{ id: row\.id, reason: pruneWhy, by: callerBy \}\)/.test(HOST_SRC),
     '(0) prune 走内核已有的 list+remove（审计与回收站是内核算的，不是工具面重造）', null)
   ok(/const isUpdate = !!\(existingRow && existingRow\.state === 'live' && existingRow\.track === track\)/.test(RECORDS_SRC) &&

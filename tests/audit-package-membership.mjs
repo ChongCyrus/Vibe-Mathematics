@@ -13,8 +13,9 @@
  * Run: node tests/audit-package-membership.mjs
  * Env: PACKAGE_JSON=<path>  (used by the mutants harness to point at a mutated copy)
  */
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
+import { dirname, join, relative, resolve, sep } from 'node:path'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 // ROUND 15 / task-113: the preset source roots come from the installer itself (not a copy), and the exemption
 // table is the ONE place a "deliberately not shipped" path is named (shape + the six anti-drift switches: see
@@ -30,6 +31,83 @@ const failures = []
 const ok = (cond, label, detail) => { if (cond) { passed++ } else { failed++; failures.push(label + (detail ? ' — ' + detail : '')) } }
 const pkg = JSON.parse(readFileSync(PKG, 'utf8'))
 const listed = new Set(pkg.files)
+
+// STRICT IMPORT PARSER (task-156 / TB-2674). The shipped regex pair below had two measured defects:
+//   (a) semicolon-less style let `/^[ \t]*(import|export)\b[^;]*?from\s+['"](\.[^'"]+)['"]/` run PAST a
+//       non-relative specifier (`from 'node:fs'`) on the next line and pair it with a much later relative
+//       `from './x'` — measured on tests/_lib/falsify.mjs and tests/legacy/formal-verify-v2.test.mjs;
+//   (b) a fixture embedded as a JS string (`"import ... from './_lib/falsify.mjs'"`) matched the same shape
+//       and was reported as a real import.
+// Fix: (1) blank template literals and comments (keeping newline/column positions), (2) scan statement by
+// statement (a statement starts at column 0 with import/export and continues while brackets are unbalanced),
+// (3) lex the statement into word/string tokens and accept a specifier only when the STRING token is
+// immediately preceded by the `from` WORD token (or is the bare `import '<rel>'` form). Strings inside
+// strings are one token, so fixture text cannot impersonate an import.
+const strictImportsOf = (src) => {
+  const blank = (m) => m.replace(/[^\n]/g, ' ')
+  const code = src
+    .replace(/`(?:\\[\s\S]|[^`\\])*`/g, blank)
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/(^|[ \t])\/\/[^\n]*/gm, (m, lead) => lead + ' '.repeat(m.length - lead.length))
+  const bracketDelta = (s) => { let d = 0; for (const c of s) { if (c === '{' || c === '(' || c === '[') d++; else if (c === '}' || c === ')' || c === ']') d-- } return d }
+  const specifierOf = (stmt) => {
+    const toks = []
+    let i = 0
+    while (i < stmt.length) {
+      const c = stmt[i]
+      if (c === '/' && stmt[i + 1] === '/') { const j = stmt.indexOf('\n', i); if (j < 0) break; i = j; continue }
+      if (c === '/' && stmt[i + 1] === '*') { const j = stmt.indexOf('*/', i + 2); i = j < 0 ? stmt.length : j + 2; continue }
+      if (c === "'" || c === '"') { let j = i + 1; let v = ''; while (j < stmt.length) { if (stmt[j] === '\\') { v += stmt[j + 1] || ''; j += 2; continue } if (stmt[j] === c) break; v += stmt[j]; j++ } toks.push({ type: 'str', value: v }); i = j + 1; continue }
+      if (c === '`') { let j = i + 1; while (j < stmt.length) { if (stmt[j] === '\\') { j += 2; continue } if (stmt[j] === '`') break; j++ } toks.push({ type: 'tmpl', value: '' }); i = j + 1; continue }
+      if (/[A-Za-z_$]/.test(c)) { let j = i; while (j < stmt.length && /[A-Za-z0-9_$]/.test(stmt[j])) j++; toks.push({ type: 'word', value: stmt.slice(i, j) }); i = j; continue }
+      i++
+    }
+    for (let k = 0; k < toks.length; k++) {
+      const t = toks[k]
+      if (t.type !== 'str' || !t.value.startsWith('.')) continue
+      const prev = toks[k - 1]
+      if (prev && prev.type === 'word' && prev.value === 'from') return t.value
+      if (k === 1 && toks[0].type === 'word' && toks[0].value === 'import') return t.value
+    }
+    return null
+  }
+  const lines = code.split('\n')
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^(?:import|export)\b/.test(lines[i])) continue
+    let stmt = lines[i]
+    let depth = bracketDelta(lines[i])
+    while (depth > 0 && i + 1 < lines.length) { i++; stmt += '\n' + lines[i]; depth += bracketDelta(lines[i]) }
+    const spec = specifierOf(stmt)
+    if (spec) out.push(spec)
+  }
+  return out
+}
+
+// SELF-PROBE for the strict parser: it must ignore fixture text / comment examples, must not pair across a
+// non-relative specifier, and must still see statement / side-effect / re-export / after-node:fs imports.
+{
+  const cases = [
+    ["const data = \"from './nope-data.js'\"", false],
+    ["const fn = (s) => s.replace(\"from './nope-arg.js'\", 'x')", false],
+    ["// import x from './nope-comment.js'", false],
+    ["/* import x from './nope-block.js' */", false],
+    ["import { a } from './real-statement.js'", true],
+    ["import './real-side-effect.js'", true],
+    ["export * from './real-reexport.js'", true],
+    ["import { c } from 'node:fs'\nimport { d } from './real-after-node.js'", true],
+  ]
+  const got = []
+  for (const [text, want] of cases) {
+    const specs = strictImportsOf(text)
+    const okCase = want
+      ? specs.some((s) => s.startsWith('./real-'))
+      : specs.length === 0
+    ok(okCase, `strict import self-probe: ${JSON.stringify(text)} -> ${JSON.stringify(specs)}`)
+    got.push(...specs)
+  }
+  ok(!got.some((s) => s.includes('nope')), 'strict import self-probe: no fixture text was read as an import')
+}
 const disk = readdirSync(join(REPO, 'tests')).filter((f) => f.endsWith('.mjs'))
 const mutants = disk.filter((f) => /\.mutants\.mjs$/.test(f)).map((f) => 'tests/' + f).sort()
 const unlistedMutants = mutants.filter((f) => !listed.has(f) && !EXCLUDED.has(f))
@@ -65,6 +143,18 @@ const volumes = readdirSync(join(REPO, 'vibe-math-vmu', 'docs'))
 ok(volumes.length >= 15, 'the design volumes on disk were found', String(volumes.length))
 const unlistedVolumes = volumes.filter((f) => !listed.has(f))
 ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in package.json#files', JSON.stringify(unlistedVolumes))
+// SHARED BY BOTH BLOCKS (module scope): the VMU closure and the long-tail decision surface both need to read a
+// file's relative imports. One cache, one parser, one place to fix.
+const importCache = new Map()
+const relativeImportsOf = (absFile) => {
+  if (importCache.has(absFile)) return importCache.get(absFile)
+  let text = ''
+  try { text = readFileSync(absFile, 'utf8') } catch { importCache.set(absFile, []); return [] }
+  const specs = strictImportsOf(text)
+  importCache.set(absFile, specs)
+  return specs
+}
+
 // IMPORT CLOSURE: every RELATIVE import inside the vmu package must be shipped by the installer. This is the
 // gate for a defect class that shipped twice (kernel/work.js once, kernel/minutes.js again): a new module is
 // imported by index.js, the two installer audits stay green, and the tarball crashes on the user's machine with
@@ -99,40 +189,15 @@ ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in packa
   for (const f of readdirSync(join(REPO, 'tests'))) {
     if (/^vmu-.*\.test\.mjs$/.test(f)) jsFiles.push(join(REPO, 'tests', f))
   }
-  // SHAPE CRITERION (round 4): an import is a STATEMENT, so `import`/`export` must START a line (indentation
-  // allowed, `[^;]` keeps the match inside one statement) - that is what separates code from DATA and from PROSE.
-  // Round 3 hit this class twice: `kernel/paper.js` quoted a settings key inside a COMMENT and the wired-schema
-  // generator read it as a key, and `tests/vmu-activity-falsify.test.mjs` holds `"from './bus.js'"` as a STRING it
-  // uses to rewrite a mutated copy - the previous text-only regex reported that string as a missing import. A gate
-  // that reads prose as code is not a gate, and "narrow the needle" is not a fix: the guard must have the shape.
-  const IMPORT_STATEMENT = /^[ \t]*(?:import|export)\b[^;]*?from\s+['"](\.[^'"]+)['"]/gm   // import … from '…'
-  const SIDE_EFFECT_IMPORT = /^[ \t]*import\s+['"](\.[^'"]+)['"]/gm                        // import '…'
-  const relativeImportsOf = (src) => {
-    const out = []
-    for (const re of [IMPORT_STATEMENT, SIDE_EFFECT_IMPORT]) for (const m of src.matchAll(re)) out.push(m[1])
-    return out
-  }
-  // SELF-PROBE: the criterion must IGNORE a data string and a commented-out import while still finding the real
-  // ones. Without this, "the gate stopped seeing imports" would look exactly like "no import is missing".
-  {
-    const probe = [
-      'const data = "from \'./nope-data.js\'"',            // data, not an import
-      "const fn = (s) => s.replace(\"from './nope-arg.js'\", 'x')",  // data inside a call
-      "// import x from './nope-comment.js'",              // prose
-      "import { a } from './real-statement.js'",           // REAL
-      "import './real-side-effect.js'",                    // REAL (bare)
-      "export * from './real-reexport.js'",                // REAL (re-export)
-    ].join('\n')
-    const got = relativeImportsOf(probe)
-    ok(got.length === 3
-      && got.includes('./real-statement.js') && got.includes('./real-side-effect.js') && got.includes('./real-reexport.js')
-      && !got.some((x) => x.includes('nope')),
-      '★ SELF-PROBE: the import criterion counts STATEMENT-POSITION imports (3 found) and ignores the data strings and the commented-out import that the old text-only regex reported',
-      JSON.stringify(got))
-  }
+  // SHAPE CRITERION (round 4 -> REWRITTEN task-156 / TB-2674). The regex pair that stood here had two MEASURED
+  // defects: (a) semicolon-less style let `/^[ \t]*(import|export)\b[^;]*?from\s+['"](\.[^'"]+)['"]/` run PAST a
+  // non-relative specifier (`from 'node:fs'`) and pair it with a much later relative `from './x'`;
+  // (b) a fixture embedded as a JS string matched the same shape and was reported as a real import. The fix lives
+  // at module scope (`strictImportsOf`, self-probed): blank template literals/comments, scan statement by
+  // statement, lex tokens, accept a specifier only when it is the string token right after the `from` word.
   const missing = []
   for (const f of jsFiles) {
-    for (const spec of relativeImportsOf(readFileSync(f, 'utf8'))) {
+    for (const spec of relativeImportsOf(f)) {
       const target = resolve(dirname(f), spec)
       const rel = relative(REPO, target).replace(/\\/g, '/')
       if (!listed.has(rel)) missing.push(f.replace(REPO + '\\', '') + ' -> ' + spec)
@@ -140,6 +205,126 @@ ok(unlistedVolumes.length === 0, 'every design volume on disk is listed in packa
   }
   ok(missing.length === 0, 'every relative import inside the vmu package is shipped (no MODULE_NOT_FOUND class)',
     missing.slice(0, 6).join(' | '))
+}
+// LONG-TAIL DECISION SURFACE (task-156 / TB-2674; Lead ruling 2026-11-09: option B).
+//
+// `files[]` is the explicit publish surface. Being absent from it is NOT by itself an error, but every
+// code file in the long-tail directories below MUST be explicitly decided, in precedence order:
+//   in-files  >  dev-only  >  in-legacy-baseline  >  MISS (RED)
+// The legacy baseline is FROZEN and SHRINK-ONLY: its entries predate `generatedAt`; adding a newer file
+// to it is RED (that is how a baseline becomes a trash can), and a missing file is RED as a stale entry.
+// It is regenerated only in a Lead-triggered close-out window (`node scripts/...` by the Lead), never ad hoc.
+{
+  const DEVONLY_PATH = join(REPO, 'tests', 'package-membership-dev-only.json')
+  const LEGACY_PATH = join(REPO, 'tests', '_lib', 'package-membership-legacy.json')
+  const WHY_MIN = 24
+  const readJsonOr = (p, dflt) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : dflt)
+  const norm = (p) => p.split(sep).join('/')
+  const walkCode = (dir, acc) => {
+    if (!existsSync(dir)) return acc
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git') continue
+      const p = join(dir, e.name)
+      if (e.isDirectory()) walkCode(p, acc)
+      else if (/\.(mjs|js)$/.test(e.name)) acc.push(norm(relative(REPO, p)))
+    }
+    return acc
+  }
+  const surfaceTargets = new Set()
+  for (const rel of walkCode(join(REPO, 'tests'), [])) {
+    const base = rel.split('/').pop()
+    if (rel.endsWith('.test.mjs') || base.startsWith('audit-') || rel.startsWith('tests/_lib/')) surfaceTargets.add(rel)
+  }
+  for (const rel of walkCode(join(REPO, 'scripts', 'sim'), [])) surfaceTargets.add(rel)
+
+  // dev-only ledger: why >= 24 code points + owner are required; blank/short why is RED.
+  const devRaw = readJsonOr(DEVONLY_PATH, [])
+  const devEntries = Array.isArray(devRaw) ? devRaw : (devRaw.entries || [])
+  const whyOk = (e) => {
+    const why = String((e && e.why) || '').trim()
+    return [...why].length >= WHY_MIN && String((e && e.owner) || '').trim().length > 0
+  }
+  const devInvalid = devEntries.filter((e) => !whyOk(e)).map((e) => e && e.path)
+  const devSet = new Set(devEntries.filter(whyOk).map((e) => e.path))
+  const devGone = [...devSet].filter((p) => !existsSync(join(REPO, p)))
+
+  // frozen legacy baseline
+  const legacyDoc = readJsonOr(LEGACY_PATH, { paths: [] })
+  const legacyPaths = Array.isArray(legacyDoc.paths) ? legacyDoc.paths : []
+  const legacySet = new Set(legacyPaths)
+  const legacySha = createHash('sha256').update(legacyPaths.join('\n'), 'utf8').digest('hex')
+  const legacyShaOk = !legacyDoc.sha256OfPaths || legacySha === legacyDoc.sha256OfPaths
+  const generatedAtMs = Date.parse(legacyDoc.generatedAt || '') || 0
+  // BIRTH time, not change time: on Windows ctimeMs is the LAST CHANGE time, so a file that merely got rewritten
+  // after the baseline would look like new surface (measured: scripts/sim/run.mjs, born 2026-11-04, rewritten
+  // 2026-11-09 21:17). The property we mean is "this file did not exist when the baseline was generated".
+  const createdAfterBaseline = (rel) => {
+    try {
+      const st = statSync(join(REPO, rel))
+      const born = Number.isFinite(st.birthtimeMs) && st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs
+      return born > generatedAtMs
+    } catch { return false }
+  }
+  const staleLegacy = legacyPaths.filter((p) => !existsSync(join(REPO, p)) || !surfaceTargets.has(p))
+  const swallowedNewSurface = legacyPaths.filter((p) => surfaceTargets.has(p) && createdAfterBaseline(p))
+  const redundantLegacy = legacyPaths.filter((p) => listed.has(p))
+  const redundantDevOnly = [...devSet].filter((p) => listed.has(p))
+
+  // pure three-way classification (self-probed below)
+  const classify = (rel, ctx) =>
+    ctx.listed.has(rel) ? 'in-files' : ctx.dev.has(rel) ? 'dev-only' : ctx.legacy.has(rel) ? 'in-legacy-baseline' : 'MISS'
+  const ctx = { listed, dev: devSet, legacy: legacySet }
+  const probeCase = (rel, l, d, g, want) => ok(classify(rel, { listed: new Set(l), dev: new Set(d), legacy: new Set(g) }) === want, `membership classify self-probe: ${rel} -> ${want}`)
+  probeCase('tests/x.test.mjs', ['tests/x.test.mjs'], [], [], 'in-files')
+  probeCase('tests/x.test.mjs', [], ['tests/x.test.mjs'], [], 'dev-only')
+  probeCase('tests/x.test.mjs', [], [], ['tests/x.test.mjs'], 'in-legacy-baseline')
+  probeCase('tests/x.test.mjs', [], [], [], 'MISS')
+
+  const states = { 'in-files': [], 'dev-only': [], 'in-legacy-baseline': [], MISS: [] }
+  for (const rel of surfaceTargets) states[classify(rel, ctx)].push(rel)
+  const miss = states.MISS.sort()
+
+  // import closure: a published target's relative imports must also be published; a decided target's
+  // imports must at least be decided (no new surface may hide behind a legacy/dev-only file).
+  const decisionOf = (rel) => classify(rel, ctx)
+  const closureMiss = []
+  const closureWeak = []
+  for (const rel of surfaceTargets) {
+    const state = decisionOf(rel)
+    for (const spec of relativeImportsOf(join(REPO, rel))) {
+      const target = norm(relative(REPO, resolve(dirname(join(REPO, rel)), spec)))
+      if (!existsSync(join(REPO, target))) continue
+      const ts = decisionOf(target)
+      if (state === 'in-files') { if (ts !== 'in-files') closureMiss.push(`${rel} -> ${target} (${ts})`) }
+      else if (ts === 'MISS') closureWeak.push(`${rel} -> ${target}`)
+    }
+  }
+
+  const detail = (label, arr) => {
+    if (arr.length) console.log(`  ${label} (${arr.length}): ${arr.slice(0, 8).join(', ')}${arr.length > 8 ? ' …' : ''}`)
+  }
+  detail('legacy stale', staleLegacy)
+  detail('legacy swallowed new surface', swallowedNewSurface)
+  detail('legacy redundant (now in files)', redundantLegacy)
+  detail('legacy sha mismatch', legacyShaOk ? [] : ['sha256OfPaths changed'])
+  detail('dev-only invalid why/owner', devInvalid)
+  detail('dev-only gone', devGone)
+  detail('dev-only redundant (also in files)', redundantDevOnly)
+  detail('closure missing (published -> unregistered)', closureMiss)
+  detail('closure weak (decided -> unregistered)', closureWeak)
+  detail('MISS (undecided long-tail code)', miss)
+
+  ok(surfaceTargets.size > 0, `long-tail surface discovered (${surfaceTargets.size} code file(s): in-files ${states['in-files'].length}, dev-only ${states['dev-only'].length}, legacy ${states['in-legacy-baseline'].length}, MISS ${miss.length})`)
+  ok(miss.length === 0, `every long-tail code file is explicitly decided — ${miss.length} MISS`)
+  ok(closureMiss.length === 0, `published targets import only published targets — ${closureMiss.length} gap(s)`)
+  ok(closureWeak.length === 0, `decided targets never import an undecided file — ${closureWeak.length} gap(s)`)
+  ok(devInvalid.length === 0, `dev-only entries carry why >= ${WHY_MIN} code points and an owner — ${devInvalid.length} invalid`)
+  ok(devGone.length === 0, `dev-only entries point at existing files — ${devGone.length} gone`)
+  ok(redundantDevOnly.length === 0, `no dev-only entry is also published — ${redundantDevOnly.length} redundant`)
+  ok(staleLegacy.length === 0, `legacy baseline has no stale entry (a missing file must be removed from the baseline) — ${staleLegacy.length} stale`)
+  ok(swallowedNewSurface.length === 0, `legacy baseline may not swallow new surface — ${swallowedNewSurface.length} violation(s)`)
+  ok(redundantLegacy.length === 0, `legacy baseline has no entry that is now in files — ${redundantLegacy.length} redundant`)
+  ok(legacyShaOk, `legacy baseline sha256OfPaths matches its paths (${legacyPaths.length} entries)`)
 }
 ok(missingPaths.length === 0, 'every listed path exists', JSON.stringify(missingPaths))
 const duplicateListed = pkg.files.filter((f, i) => pkg.files.indexOf(f) !== i)

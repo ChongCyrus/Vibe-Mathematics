@@ -86,8 +86,21 @@ export function makeMailboxSpec({ param, refused, TOOL_NAMES, kernel }) {
             : action === 'setState'
               ? 'setState needs member:"<id>", id:"<ml-N>" and read:boolean and/or todo:boolean; it never removes the body'
               : null)
-        return refused(e.code || 'VMU_STATE', String(e.message), actionHint,
-          { enforced: Array.isArray(e.enforced) ? e.enforced.slice() : [], enforcedScope: e.enforcedScope || 'evaluated-so-far' })
+        // ★ TB-2620 / task-101: this face used to rebuild a FIXED pair of keys (enforced/enforcedScope), so every
+        // other fact the kernel attached to the refusal (ackedAt/ackedBy/settledBy/alreadyAcked, and any future one)
+        // died at the face boundary — while docs/03 R97 promises a refusal's attached facts reach the caller.
+        // The fix is to hand the raw error to the injected `refused()`: host.js refusalFacts() is the ONE copy rule
+        // (envelope keys ok/code/message/hint and name/stack excluded), so nothing is re-enumerated here. `facts` is
+        // then a READING of that same receipt (envelope removed) so a caller can write `facts.ackedAt` without
+        // knowing the flattening convention; absent facts are an empty object, never undefined.
+        const receipt = refused(e.code || 'VMU_STATE', String(e.message), actionHint, e && typeof e === 'object' ? e : null)
+        const facts = {}
+        for (const key of Object.keys(receipt)) {
+          if (key === 'ok' || key === 'code' || key === 'message' || key === 'hint') continue
+          facts[key] = receipt[key]
+        }
+        receipt.facts = facts
+        return receipt
       }
     },
   }

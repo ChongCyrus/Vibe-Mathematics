@@ -23,7 +23,7 @@ export function makeRetentionSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'trash') return Object.assign({ ok: true, action }, await retention.trash({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
-        return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        return refused(e.code || 'VMU_STATE', String(e.message), e.hint, e)
       }
     },
   }

@@ -136,7 +136,7 @@ export const BLUEPRINT_STATUSES = Object.freeze(['draft', 'current'])
  * `lastStaleSeenAt` were APPENDED by the B4/B5 mechanisms: old fields keep their name and position, so every row written
  * before this revision still parses, and a new row is a superset of the old shape.
  */
-export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt', 'mdFingerprint', 'mdPath', 'outline', 'revisionReason'])
+export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt', 'mdFingerprint', 'mdPath', 'outline', 'revisionReason', 'mdWrittenBy', 'mdWroteInOwnTurn'])
 /** ★ RUN 225-A: the header field that holds the sha256 of the md this row was indexed from (last position: a row written
  *  before the md face has no such field and still parses — the superset rule this file already follows for authors). */
 export const BLUEPRINT_MD_KEY = 'mdFingerprint'
@@ -169,6 +169,90 @@ export const BLUEPRINT_DRAFT_DIR = 'Drafts'
 export const BLUEPRINT_MD_MISSING = 'VMU_PACK_V5R_BLUEPRINT_MD_MISSING'
 /** The refusal code for "the draft file bytes are not the bytes the row indexed" (a NEW code, registered here). */
 export const BLUEPRINT_MD_DRIFT = 'VMU_PACK_V5R_BLUEPRINT_MD_DRIFT'
+/**
+ * ★★★ RUN 255 / TB-2613 (md ownership): WHO wrote the md a row points at is a FACT OF THE ROW, not a guess made when a
+ * reader asks. The two fields are APPENDED at the end of BLUEPRINT_FIELDS (the append-only rule this file already follows
+ * for authors/outline): a row written before this revision has neither field and still parses — its ownership is then
+ * `fs-untracked` when the file exists on disk, or null when it does not. `mdWroteInOwnTurn` is stored as the literal
+ * string true only when it is true; absence means the writing turn is not known (never a claim that it was not in-turn).
+ */
+export const BLUEPRINT_MD_BY_KEY = 'mdWrittenBy'
+export const BLUEPRINT_MD_IN_TURN_KEY = 'mdWroteInOwnTurn'
+/** The three distinguishable writers: a member file, a kernel-materialized file, a file with no row provenance on disk. */
+export const BLUEPRINT_MD_OWNERS = Object.freeze(['member-file', 'kernel-materialized', 'fs-untracked'])
+
+/**
+ * ★★★ RUN 256 / TB-2623 (clock purity): ONE clock reading, ONE entry. Product code may not read the wall clock to stamp
+ * a fact: a caller that holds the kernel clock passes it in (`at`/`now`), and this module then records `atSource:'kernel-clock'`.
+ * Only when NO clock reaches this module does it fall back to the wall clock — and that fallback is NAMED here (one place,
+ * counted, enumerated) instead of being a silent `Date.now()` in five functions, which is how an injected clock and the
+ * wall clock ended up MIXED in the same receipt (`authors[].at` wall time beside `scheduledFor` injected time).
+ */
+const WALL_CLOCK_READS = { count: 0, sites: [] }
+function wallClockReadingOf(site) {
+  WALL_CLOCK_READS.count += 1
+  const label = String(site)
+  if (WALL_CLOCK_READS.sites.indexOf(label) < 0) WALL_CLOCK_READS.sites.push(label)
+  return Date.now()
+}
+/**
+ * ★★★ RUN 256 / TB-2623: One reading, with the SOURCE named. BOTH legal clock shapes count as a caller-supplied
+ * stamp — a finite number of milliseconds AND an ISO-8601 string (the kernel's own `isoStampOf` produces the second
+ * shape, so treating it as "no clock" here would silently turn a caller clock into the wall clock and mislabel it).
+ * Only a value that is neither finite nor parseable falls back to the one named wall-clock reading.
+ */
+/** The plausible range for a stamped clock value (2000-01-01 .. 2100-01-01, UTC). A value outside it is a BUG in the
+ * caller, not a time: refusing by name keeps a broken clock distinguishable from a clock that was never read. */
+const CLOCK_VALUE_MIN_MS = 946684800000
+const CLOCK_VALUE_MAX_MS = 4102444800000
+/** ISO-8601 WITH an explicit offset (`Z` or `+HH:MM`). A date-only spelling (`2026-01-01`) or a local slash spelling
+ * (`2026/01/01`) carries no offset, so it names an INSTANT only by guessing the reader timezone — refused, not guessed. */
+const CLOCK_ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})$/
+const CLOCK_VALUE_HINT = '时钟值要么是整数毫秒（2000-01-01 至 2100-01-01 之间），要么是带显式位移的 ISO-8601（如 2026-01-01T00:00:00+08:00 或 2026-01-01T00:00:00Z）。 REACHABLE INSTEAD: 传整数毫秒（2000-01-01..2100-01-01）或带位移的 ISO-8601（如 2026-01-01T00:00:00+08:00）；确实没有钟就不要传这个参数（默认走唯一计数的墙钟，回执 atSource:"wall-clock"）；不传这个值，就由本模块读唯一那一处计数的墙钟（atSource:"wall-clock"）。纯日期 2026-01-01、斜杠写法 2026/01/01、负数/小数/超范围的数字、以及垃圾字符串，一律具名拒绝，而不是静默换成本次的墙钟——时钟坏了必须看起来和时钟读到值不一样（RUN 259 / AUDIT-14 P1-2）'
+export function clockReadingOf(value, site, options = {}) {
+  const where = String(site === undefined || site === null ? 'clockReadingOf' : site)
+  // ★ absent = the ONE named wall-clock reading (unchanged: counted, enumerable). It is not a silent substitution: the
+  // receipt says atSource:"wall-clock" and blueprintClockSourcesOf() counts it.
+  if (value === undefined || value === null) return { at: wallClockReadingOf(where), atSource: 'wall-clock', clockValue: null }
+  if (typeof value === 'number') {
+    if (Number.isFinite(value) !== true || Number.isInteger(value) !== true) {
+      throw refuse('VMU_V5R_CLOCK_VALUE_INVALID', '时钟值不是整数毫秒（位置 ' + where + '）：' + String(value), CLOCK_VALUE_HINT)
+    }
+    // ★ a reading that came from the KERNEL CLOCK SEAM is trusted as a measurement (test/sim deployments inject small
+    // counters such as 1000 on purpose); a value handed in as caller DATA must be plausible, or it is refused by name.
+    const fromKernel = options && options.kernelClock === true
+    if (fromKernel !== true && (value < CLOCK_VALUE_MIN_MS || value >= CLOCK_VALUE_MAX_MS)) {
+      throw refuse('VMU_V5R_CLOCK_VALUE_INVALID', '时钟值不在合理区间 2000-01-01..2100-01-01 内（位置 ' + where + '）：' + String(value) + ' ms', CLOCK_VALUE_HINT)
+    }
+    return { at: value, atSource: 'kernel-clock', clockValue: fromKernel === true ? 'kernel-clock-seam' : 'integer-ms' }
+  }
+  if (typeof value === 'string') {
+    const raw = value.trim()
+    if (raw === '') throw refuse('VMU_V5R_CLOCK_VALUE_INVALID', '空字符串不是时钟值（位置 ' + where + '）', CLOCK_VALUE_HINT)
+    if (CLOCK_ISO_WITH_OFFSET.test(raw) !== true) {
+      throw refuse('VMU_V5R_CLOCK_VALUE_INVALID', '时钟字符串不是带显式位移的 ISO-8601（位置 ' + where + '）：「' + raw + '」——纯日期或本地斜杠写法都不指明瞬时', CLOCK_VALUE_HINT)
+    }
+    const parsed = Date.parse(raw)
+    if (Number.isFinite(parsed) !== true) {
+      throw refuse('VMU_V5R_CLOCK_VALUE_INVALID', '时钟字符串无法解析成瞬时（位置 ' + where + '）：「' + raw + '」', CLOCK_VALUE_HINT)
+    }
+    if (parsed < CLOCK_VALUE_MIN_MS || parsed >= CLOCK_VALUE_MAX_MS) {
+      throw refuse('VMU_V5R_CLOCK_VALUE_INVALID', '时钟字符串不在合理区间 2000-01-01..2100-01-01 内（位置 ' + where + '）：「' + raw + '」', CLOCK_VALUE_HINT)
+    }
+    return { at: parsed, atSource: 'kernel-clock', clockValue: 'iso-with-offset' }
+  }
+  throw refuse('VMU_V5R_CLOCK_VALUE_INVALID', '时钟值必须是整数毫秒或带位移的 ISO-8601 字符串（位置 ' + where + '）：收到 ' + typeof value, CLOCK_VALUE_HINT)
+}
+/** The audit face: how many wall-clock reads this module has made, and where (one entry, so the count can be driven to 0). */
+export function blueprintClockSourcesOf() {
+  return {
+    wallClockReads: WALL_CLOCK_READS.count,
+    sites: WALL_CLOCK_READS.sites.slice(),
+    means: WALL_CLOCK_READS.count === 0
+      ? 'zero wall-clock reads: every stamp this module wrote came from a caller-supplied clock (atSource \u0027kernel-clock\u0027)'
+      : 'this deployment reached the wall clock ' + WALL_CLOCK_READS.count + ' time(s) (' + WALL_CLOCK_READS.sites.join(', ') + ') because no clock was passed in — those receipts carry atSource:\u0027wall-clock\u0027 and must not be replayed as reproducible corpus',
+  }
+}
 
 /**
  * The md path of ONE revision: `<dirname(path)>/Drafts/<stem>-r<N>.md` (stem = the canonical basename minus `.md`).
@@ -235,6 +319,128 @@ export function readBlueprintDraftMd({ records, mdPath = '' } = {}) {
     means: isBlueprintMd
       ? 'the draft is a blueprint md on disk: its `## 正文` section is the document, and the row stores the sha256 of the WHOLE file (so an edit of the header or of the prose is the same detectable fact)'
       : 'the draft is a plain markdown file (no `- vmuMd：` header line): its WHOLE text is the document, and the row stores the sha256 of the whole file',
+  }
+}
+
+/**
+ * ★★★ RUN 255 / TB-2613: the ownership the ROW records (never inferred from who is asking). Two header fields carry it:
+ * `mdWrittenBy` (member-file | kernel-materialized | fs-untracked) and `mdWroteInOwnTurn` (the writing turn was the
+ * member's own turn). A row written before this revision carries neither — that absence is REPORTED as null, never turned
+ * into a guess by the reader.
+ */
+export function blueprintMdProvenanceOf(fields = {}) {
+  const source = fields === null || fields === undefined ? {} : fields
+  const by = txt(source[BLUEPRINT_MD_BY_KEY])
+  const inTurn = txt(source[BLUEPRINT_MD_IN_TURN_KEY]).toLowerCase()
+  return {
+    writtenBy: by === '' ? null : by,
+    wroteInOwnTurn: inTurn === '' ? null : inTurn === 'true',
+    means: by === ''
+      ? 'the row carries no mdWrittenBy header field (a row written before RUN 255, or a path that records no provenance), so WHO wrote the file cannot be read off the row: the reader is told null instead of being handed a guess'
+      : 'mdWrittenBy is the row header field itself — what the WRITER recorded, not something the reader infers from the file or from who is asking',
+  }
+}
+
+/**
+ * ★★★ RUN 255 / TB-2613: the ownership EVIDENCE of one md file. `bytes` and `sha256` are read from the DISK (through the
+ * records md reader) at evidence time, never copied out of the row's own `mdFingerprint`, so a row that drifted from its
+ * file cannot make the evidence agree with itself. `writtenBy` comes from the row provenance; with none, a file that
+ * exists is `fs-untracked` (a real file with no recorded writer) — its `atSource` says which of the four facts decided it.
+ * Returns null when there is no path to be owned at all (the honest "no md here", not an empty object).
+ */
+export function mdOwnerOf({ records = null, mdPath = '', writtenBy = null, wroteInOwnTurn = null } = {}) {
+  const rel = txt(mdPath)
+  if (rel === '') return null
+  const declared = txt(writtenBy === null || writtenBy === undefined ? '' : writtenBy)
+  const inTurn = wroteInOwnTurn === true ? true : (wroteInOwnTurn === false ? false : null)
+  let read = null
+  if (records && typeof records.mdRead === 'function') {
+    try { read = records.mdRead({ path: rel }) } catch (e) {
+      read = { ok: false, available: true, exists: null, error: { code: (e && e.code) || null, message: String((e && e.message) || e) } }
+    }
+  }
+  const readable = read !== null && read.available === true
+  const exists = readable ? read.exists === true : null
+  const fingerprint = exists === true && read.fingerprint !== undefined && read.fingerprint !== null ? String(read.fingerprint) : null
+  const bytes = exists === true && read.bytes !== undefined && read.bytes !== null ? Number(read.bytes) : null
+  const known = BLUEPRINT_MD_OWNERS.indexOf(declared) !== -1
+  if (declared === '' && exists !== true) {
+    return null
+  }
+  const who = declared !== '' ? declared : 'fs-untracked'
+  // ★★★ RUN 255 rev3 (Lead P1-6): atSource is DERIVED from the one test that already decided the value — declared === ''
+  // means a file nobody claims by provenance was found on disk, so the source IS the disk; otherwise the source is the
+  // row header. The old three-way ternary had two identical arms (a branch that could never be true); no dead branch now.
+  const atSource = declared === '' ? 'disk-only' : 'row-provenance'
+  const means = declared === ''
+    ? 'there is a file on disk at this path but the row records NO writer (mdWrittenBy absent): it is reported as fs-untracked — a real file nobody claims by provenance — rather than being credited to the member'
+    : (known
+      ? 'writtenBy is the row header value itself (' + declared + '), so the claim has a source on disk; bytes and sha256 were read from the file JUST NOW, not copied from the row'
+      : 'the row records writtenBy=' + declared + ', which is not one of the three known writers (' + BLUEPRINT_MD_OWNERS.join('/') + '): it is printed verbatim instead of being silently coerced')
+  return {
+    writtenBy: who,
+    wroteInOwnTurn: inTurn,
+    path: rel,
+    exists: exists === true ? true : (readable ? false : null),
+    absPath: exists === true && read.absPath !== undefined ? read.absPath : null,
+    bytes,
+    sha256: fingerprint,
+    atSource,
+    means,
+  }
+}
+
+/**
+ * ★★★ RUN 256 / TB-2622: THE ONE hint for "how do I get a draft adopted". MEASURED defect: the adopt refusal taught
+ * `propose { action, path, member, text }` (text-only), but under the RUN 255 fs-first default a text-only propose returns
+ * `filed:false` and appends no author, so following that hint could NEVER pass the `NEEDS_CODESIGN` gate this same file
+ * raises — two hints in one file denying each other. This function is the single source: `codesignRefusal` (the adopt
+ * gate), both `draftMdMissing` receipts (the text-only dead end) and both success receipts (the codesign precondition)
+ * all carry ITS text verbatim, so a model that copies the hint lands on a call that works.
+ * Pure: no records, no disk. `path` and `draftMdPath` are interpolated (they are the same in every context that shares a
+ * blueprint); the draft id stays a placeholder because the unfiled receipt has no id yet.
+ */
+export function resumeDraftHintOf(record = {}) {
+  const src = record !== null && typeof record === 'object' ? record : {}
+  const fields = src.fields !== null && typeof src.fields === 'object' ? src.fields : src
+  const path = txt(fields.path)
+  const rawRevision = fields.revision === undefined || fields.revision === null ? src.revision : fields.revision
+  const revision = Number.isFinite(Number(rawRevision)) ? Number(rawRevision) : 0
+  const declaredMdPath = txt(fields[BLUEPRINT_MD_PATH_KEY] !== undefined ? fields[BLUEPRINT_MD_PATH_KEY] : src[BLUEPRINT_MD_PATH_KEY])
+  const draftMdPath = declaredMdPath !== '' ? declaredMdPath : blueprintDraftMdPathOf({ path, revision })
+  const member = '<你的成员 id>'
+  const hint = '下一步（可复制；fs-first：不带 mdPath 的 propose 只回 filed:false，不写文件、也不追加 authors）：'
+    + '① 用 fs 把整份正文写进 ' + draftMdPath + '（plain md 或带 `## 正文` 的 blueprint md）；'
+    + '② 再提议：vibe_v5_blueprint { action: "propose", path: "' + path + '", member: "' + member + '", mdPath: "' + draftMdPath + '" }；'
+    + '③ 院士席与常驻研究员席各走一次 ①②，再 vibe_v5_blueprint { action: "adopt", path: "' + path + '", draft: "<filed 回执里的 draft id>" }'
+  const nextActions = [
+    {
+      step: 1,
+      do: '用 fs 工具把整份正文写进草案 md',
+      args: { path: draftMdPath, content: '<整份正文：纯 markdown，或带 `## 正文` 的 blueprint md>' },
+      becomes: '磁盘上出现 ' + draftMdPath + '；内核只索引它的 sha256，不改写它',
+    },
+    {
+      step: 2,
+      do: '带同一个 mdPath 重新 propose',
+      args: { tool: 'vibe_v5_blueprint', action: 'propose', path, member, mdPath: draftMdPath },
+      becomes: 'filed:true：行索引的是你写的字节，你的 member 记入 authors',
+    },
+    {
+      step: 3,
+      do: '两席都写过 section 后 adopt',
+      args: { tool: 'vibe_v5_blueprint', action: 'adopt', path, draft: '<filed 回执里的 draft id>' },
+      becomes: 'status:adopted：草案正文晋升为 current',
+    },
+  ]
+  return {
+    draftMdPath,
+    path,
+    revision,
+    draftId: txt(src.id) !== '' ? txt(src.id) : null,
+    hint,
+    nextActions,
+    means: 'ONE chain, not alternatives: the draft document belongs to the member (fs), the kernel indexes its bytes and records who wrote them; a propose without mdPath writes nothing and adds no author, so it cannot build the co-design record this gate checks',
   }
 }
 
@@ -696,7 +902,7 @@ export function composeBlueprintBody(row = {}) {
 export function blueprintMdHeaderOf({
   path = '', status = '', revision = null, proposedBy = '', proposedAt = null,
   adoptedBy = '', adoptedAt = null, proposalId = '', note = '', authors = null,
-  outline = null, revisionReason = '', mdPath = '',
+  outline = null, revisionReason = '', mdPath = '', mdWrittenBy = '', mdWroteInOwnTurn = '',
 } = {}) {
   const fields = {}
   const put = (key, value) => { const s = txt(value); if (s !== '') fields[key] = s }
@@ -715,6 +921,10 @@ export function blueprintMdHeaderOf({
   put(BLUEPRINT_MD_PATH_KEY, mdPath)
   put(BLUEPRINT_OUTLINE_KEY, typeof outline === 'string' ? txt(outline) : serializeOutline(outline))
   put(BLUEPRINT_REASON_KEY, oneLine(revisionReason))
+  // ★★★ RUN 255 / TB-2613: the md itself records WHO wrote it, so the ownership evidence survives a reindex (the row is
+  // rebuilt from this header) instead of living only in a receipt of the call that wrote it.
+  put(BLUEPRINT_MD_BY_KEY, mdWrittenBy)
+  put(BLUEPRINT_MD_IN_TURN_KEY, mdWroteInOwnTurn)
   return fields
 }
 
@@ -981,12 +1191,11 @@ function codesignRefusal(target, status) {
   const message = '蓝图草案 ' + id + '（' + revision + '）缺少共同设计留痕：还缺 ' + named.join(' 与 ') + '。'
     + '规则要求「由院士+常驻研究员共同设计策划、决定如何调整」：adopt 是院士的最终编辑权，不能替代共同设计。'
     + '（当前 authors：' + (who || '（空）') + '）' + historical
-  const hint = '下一步（可复制；同一路径下未落成的草案会被续写为同一个 draft id）：\n'
-    + '① 院士本人写自己的设计 section：vibe_v5_blueprint { action: "propose", path: "' + txt(target.fields.path) + '", member: "<院士 id>", text: "<院士的设计/调整说明>" }\n'
-    + '② 至少一名常驻研究员写自己的 section：vibe_v5_blueprint { action: "propose", path: "' + txt(target.fields.path) + '", member: "<研究员 id>", text: "<研究员的设计/调整说明>" }\n'
-    + '③ 再由主席席落成：vibe_v5_blueprint { action: "adopt", path: "' + txt(target.fields.path) + '", draft: "' + id + '" }\n'
-    + '模块调用方也可显式续写：proposeBlueprint({ draft: "' + id + '", path: "' + txt(target.fields.path) + '", by: "<id>", text: "..." })'
-  return refuse(BLUEPRINT_NEEDS_CODESIGN, message, hint)
+  // ★★★ RUN 256 / TB-2622: this used to teach a TEXT-ONLY propose, which under the RUN 255 fs-first default returns
+  // filed:false and appends no author — i.e. the hint could never pass the gate it is printed beside. The one source
+  // below is shared with both draftMdMissing receipts and both success receipts.
+  const resume = resumeDraftHintOf(target)
+  return refuse(BLUEPRINT_NEEDS_CODESIGN, message, resume.hint)
 }
 
 /**
@@ -999,13 +1208,14 @@ function codesignRefusal(target, status) {
 export function blueprintFreshness(store = {}, options = {}) {
   const src = store && typeof store === 'object' ? store : {}
   const opts = options && typeof options === 'object' ? options : {}
-  const now = Number.isFinite(opts.now) ? opts.now : Date.now()
+  const nowRead = clockReadingOf(opts.now, 'blueprintFreshness', { kernelClock: opts.nowFromKernel === true })
+  const now = nowRead.at
   const window = windowWith(opts.staleAfterMs, opts.staleAfterMsSource)
   const path = txt(src.path)
   const records = src.records || null
-  if (path === '') return freshnessReading({ path: '', available: false, reason: 'no-path', stamp: now, staleAfterMs: window.ms, staleAfterMsSource: window.source })
+  if (path === '') return freshnessReading({ path: '', available: false, reason: 'no-path', stamp: now, stampFromKernel: opts.nowFromKernel === true, staleAfterMs: window.ms, staleAfterMsSource: window.source })
   if (!records || typeof records.list !== 'function' || typeof records.get !== 'function') {
-    return freshnessReading({ path, available: false, reason: 'no-records-face', stamp: now, staleAfterMs: window.ms, staleAfterMsSource: window.source })
+    return freshnessReading({ path, available: false, reason: 'no-records-face', stamp: now, stampFromKernel: opts.nowFromKernel === true, staleAfterMs: window.ms, staleAfterMsSource: window.source })
   }
   try {
     const { rows } = listBlueprints({ records, path })
@@ -1024,6 +1234,7 @@ export function blueprintFreshness(store = {}, options = {}) {
       staleAfterMs: window.ms,
       staleAfterMsSource: window.source,
       stamp: now,
+      stampFromKernel: opts.nowFromKernel === true,
       lastStaleSeenAt: inForce === null ? null : msOf(inForce.fields.lastStaleSeenAt),
     })
   } catch (e) {
@@ -1032,6 +1243,7 @@ export function blueprintFreshness(store = {}, options = {}) {
       available: false,
       reason: (e && e.code) || 'read-failed',
       stamp: now,
+      stampFromKernel: opts.nowFromKernel === true,
       staleAfterMs: window.ms,
       staleAfterMsSource: window.source,
       error: { code: (e && e.code) || null, message: String((e && e.message) || e) },
@@ -1046,7 +1258,11 @@ function freshnessReading(input = {}) {
   const adoptedAt = Number.isFinite(input.adoptedAt) ? input.adoptedAt : null
   const ageMs = Number.isFinite(input.ageMs) ? input.ageMs : null
   const stale = input.stale === true
-  const stamp = Number.isFinite(input.stamp) ? input.stamp : Date.now()
+  const stampRead = clockReadingOf(input.stamp, 'freshnessReading', { kernelClock: input.stampFromKernel === true })
+  const stamp = stampRead.at
+  // ★★★ RUN 259 / AUDIT-14 P1-2: atSource is DERIVED from the measurement, never taken from the caller — a caller could
+  // hand in `{stamp: <wall-clock NOW>, atSource: "kernel-clock"}` and make a wall-clock read claim to be a kernel reading.
+  const stampSource = stampRead.atSource
   const lastStaleSeenAt = Number.isFinite(input.lastStaleSeenAt) ? input.lastStaleSeenAt : null
   const window = windowWith(input.staleAfterMs, input.staleAfterMsSource)
   const staleAfterMs = window.ms
@@ -1092,6 +1308,10 @@ function freshnessReading(input = {}) {
     lastStaleSeenAt,
     means,
     staleNote,
+    stamp,
+    stampSource,
+    clockSources: blueprintClockSourcesOf(),
+    clockSourcesMeans: blueprintClockSourcesOf().means,
     readAt: stamp,
     reason: input.reason || null,
     error: input.error || null,
@@ -1110,10 +1330,16 @@ function freshnessReading(input = {}) {
  * `records.supersede`d with the stamp added (same id, same revision, version trail kept). Idempotent: one write per
  * adopted revision; a failed write is REPORTED (`persist.error`), never thrown out of a read-out.
  */
-export function blueprintState({ records, path, now = null, staleAfterMs = null, staleAfterMsSource = null }) {
+export function blueprintState({ records, path, now = null, atSource = null, staleAfterMs = null, staleAfterMsSource = null, nowFromKernel = false }) {
+  const atSourceGiven = atSource
   const { rows, skipped } = listBlueprints({ records, path })
   const track = records
-  const stamp = Number.isFinite(now) ? now : Date.now()
+  const stampRead = clockReadingOf(now, 'blueprintState', { kernelClock: nowFromKernel === true })
+  const stamp = stampRead.at
+  // ★★★ RUN 259 / AUDIT-14 P1-2: the caller may describe its reading (`atSourceGiven`, kept for history) but the value
+  // written into the receipt is the MEASURED one. Overriding it made `atSource` a claim, not a measurement.
+  const atSourceOut = stampRead.atSource
+  const atSourceCaller = txt(atSourceGiven) === '' ? null : txt(atSourceGiven)
   const window = windowWith(staleAfterMs, staleAfterMsSource)
   const currents = rows.filter((r) => r.status === 'current')
   const inForce = currents.length === 0 ? null : currents[currents.length - 1]
@@ -1188,6 +1414,12 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     ageMs,
     stale,
     stamp,
+    // ★ TB-2655 / task-134 (MEASURED on prompt-lane suite): this internal re-validation used to forget WHICH CLOCK the
+    // stamp came from, so a `boot({ clock: () => 1000 })` deployment (the harness unit) had its own measured stamp
+    // re-checked as if a caller payload and refused VMU_V5R_CLOCK_VALUE_INVALID. The seam flag travels with the VALUE.
+    stampFromKernel: nowFromKernel === true,
+    atSource: atSourceOut,
+    atSourceCaller: atSourceCaller,
     lastStaleSeenAt,
     persist,
     staleAfterMs: window.ms,
@@ -1237,6 +1469,12 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
       lastStaleSeenAt: lastStaleSeenAt,
       outline: currentOutline,
       revisionReason: currentReason === '' ? null : currentReason,
+      mdWrittenBy: blueprintMdProvenanceOf(inForce.fields).writtenBy,
+      mdOwner: mdOwnerOf({
+        records, mdPath: txt(inForce.fields[BLUEPRINT_MD_PATH_KEY]),
+        writtenBy: blueprintMdProvenanceOf(inForce.fields).writtenBy,
+        wroteInOwnTurn: blueprintMdProvenanceOf(inForce.fields).wroteInOwnTurn,
+      }),
     },
     currentRevision,
     updatedAt: adoptedAt,
@@ -1245,6 +1483,11 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     staleAfterMs: window.ms,
     staleAfterMsSource: window.source,
     staleNote: freshness.staleNote,
+    stamp,
+    stampSource: atSourceOut,
+    stampSourceCaller: atSourceCaller,
+    clockSources: blueprintClockSourcesOf(),
+    clockSourcesMeans: blueprintClockSourcesOf().means,
     lastStaleSeenAt,
     // ★ B4: the SAME shape `blueprintFreshness` returns (plus `persist`, which says whether this read wrote the mark).
     freshness,
@@ -1253,6 +1496,7 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     // "where is it" is part of listing the drafts, not a follow-up call.
     drafts: drafts.map((d) => {
       const draftMdPathOfRow = txt(d.fields[BLUEPRINT_MD_PATH_KEY]) || null
+      const draftProvenance = blueprintMdProvenanceOf(d.fields)
       return {
         id: d.id, revision: d.revision, proposedBy: d.fields.proposedBy || null, proposedAt: d.fields.proposedAt || null,
         bytes: d.bytes === undefined ? null : d.bytes, authors: d.authors, outline: outlineOf(d),
@@ -1260,6 +1504,13 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
         mdPath: draftMdPathOfRow,
         draftMdPath: draftMdPathOfRow,
         mdWritten: blueprintMdOnDisk({ records, path: draftMdPathOfRow === null ? '' : draftMdPathOfRow }),
+        // ★★★ RUN 255 / TB-2613: WHO wrote this draft file, read off the row provenance, with the evidence (bytes/sha256)
+        // taken from the disk at read time. A draft with no file has mdOwner:null — the absence is the answer.
+        mdWrittenBy: draftProvenance.writtenBy,
+        mdOwner: mdOwnerOf({
+          records, mdPath: draftMdPathOfRow === null ? '' : draftMdPathOfRow,
+          writtenBy: draftProvenance.writtenBy, wroteInOwnTurn: draftProvenance.wroteInOwnTurn,
+        }),
       }
     }),
     draftsWaiting: drafts.length,
@@ -1298,6 +1549,14 @@ export function readBlueprint({ records, id }) {
     // ★★★ RUN 248: reading ONE revision prints the file that revision owns and whether it is on disk — the draft md is
     // the document, so "what did I actually read" includes "from which file, and is it there".
     draftMdPath: md.draftMdPath, mdWritten: md.mdWritten,
+    // ★★★ RUN 255 / TB-2613: the ownership evidence for the file this row indexes (reader-side, from the row provenance
+    // plus a fresh disk read), or null when the row owns no file.
+    mdWrittenBy: blueprintMdProvenanceOf(parsed.fields).writtenBy,
+    mdOwner: mdOwnerOf({
+      records, mdPath: txt(parsed.fields[BLUEPRINT_MD_PATH_KEY]),
+      writtenBy: blueprintMdProvenanceOf(parsed.fields).writtenBy,
+      wroteInOwnTurn: blueprintMdProvenanceOf(parsed.fields).wroteInOwnTurn,
+    }),
   }, parsed, outlineReading({ outline: parsed.outline, source: 'row' }),
   revisionReasonReading({ revisionReason: parsed.revisionReason || '', source: parsed.revisionReason === null ? 'none' : 'row' }))
 }
@@ -1320,9 +1579,15 @@ export function readBlueprint({ records, id }) {
  * not on disk is refused by code (`VMU_PACK_V5R_BLUEPRINT_MD_MISSING`) with that path and the reachable fix — never silently
  * replaced by an empty draft.
  */
-export function proposeBlueprint({ records, path, text, by, draft = '', at = null, note = '', seat = '', outline = null, revisionReason = '', requireOutline = false, mdPath = '' }) {
+export function proposeBlueprint({ records, path, text, by, draft = '', at = null, atKernel = false, note = '', seat = '', outline = null, revisionReason = '', requireOutline = false, mdPath = '', materialize = false, inOwnTurn = null }) {
   const track = refuseIfNoRecords(records)
-  // ★★★ RUN 248: the draft md the MEMBER may have written itself (fs). Empty = the kernel materializes the draft.
+  // ★★★ RUN 255 / TB-2613: the DEFAULT flipped to fs-first. Omitting `mdPath` no longer means "the kernel writes the
+  // draft": it means the member still owes that file, and the receipt asks for it (`draftMdMissing`). Kernel
+  // materialization remains available, but only when asked for by name (`materialize: true`) — the old behaviour is now
+  // an explicit choice instead of a silent default.
+  const materializeNow = materialize === true
+  const inOwnTurnGiven = inOwnTurn === true ? true : (inOwnTurn === false ? false : null)
+  // ★★★ RUN 248: the draft md the MEMBER may have written itself (fs). Empty = the member still owes the file.
   const givenMdPath = txt(mdPath)
   const wantedPath = txt(path)
   if (wantedPath === '') throw refuse('VMU_INVALID_ARGUMENT', 'a blueprint proposal needs the path it is about',
@@ -1335,7 +1600,9 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   const author = txt(by)
   if (author === '') throw refuse('VMU_INVALID_ARGUMENT', 'a blueprint proposal needs its author',
     'pass member:<the roster id proposing> — an unsigned revision cannot be reviewed or audited')
-  const stamp = Number.isFinite(at) ? at : Date.now()
+  const stampRead = clockReadingOf(at, 'proposeBlueprint', { kernelClock: atKernel === true })
+  const stamp = stampRead.at
+  const atSource = stampRead.atSource
   const seatGiven = txt(seat)
   // ★ RUN 236: both optional revision facts are validated BEFORE anything is written (a malformed outline must never leave
   // the md rewritten and the row half-updated). `provided: false` (absent) is not a problem; a malformed one is refused by
@@ -1494,7 +1761,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     if (memberDraft !== null && memberDraft.available === true && memberDraft.exists === false) {
       throw refuse(BLUEPRINT_MD_MISSING,
         'the draft md you named is not on disk: ' + draftPath,
-        'write it first with the fs tool (<workspace>/VibeMath/' + draftPath + ' — a plain markdown file, or a blueprint md whose `## 正文` holds the prose), then call propose again with the same mdPath; or omit mdPath and the kernel writes ' + blueprintDraftMdPathOf({ path: wantedPath, revision }))
+        'write it first with the fs tool (<workspace>/VibeMath/' + draftPath + ' — a plain markdown file, or a blueprint md whose `## 正文` holds the prose), then call propose again with the same mdPath; or omit mdPath and pass materialize:true, and the kernel writes the draft file it owns (' + blueprintDraftMdPathOf({ path: wantedPath, revision }) + ') from your text (RUN 255: the default is fs-first, so the kernel no longer writes it unasked). REACHABLE INSTEAD: 用 fs 写 ' + draftPath + '（纯 markdown，或把正文放进 blueprint md 的 `## 正文`），再以同一 mdPath 调 vibe_v5_blueprint {action:"propose", path:"' + wantedPath + '", member, mdPath:"' + draftPath + '"}；或省略 mdPath 并传 materialize:true，由内核写 ' + blueprintDraftMdPathOf({ path: wantedPath, revision }))
     }
     const fileText = memberDraft !== null && memberDraft.exists === true ? txt(memberDraft.text) : ''
     if (memberDraft !== null && memberDraft.exists === true && fileText === '') {
@@ -1504,31 +1771,94 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     const textSource = fileText !== '' ? 'md' : 'argument'
     const draftText = fileText !== '' ? fileText : bodyNext
     const textArgumentDropped = fileText !== '' && body !== '' && body !== fileText
-    const mdFields = blueprintMdHeaderOf({
-      path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, mdPath: draftPath,
-      outline: outlineNext, revisionReason: reasonNext,
-    })
+    const memberFileHere = memberDraft !== null && memberDraft.available === true && memberDraft.exists === true
     let md = null
-    if (memberDraft !== null && memberDraft.available === true && memberDraft.exists === true) {
+    if (memberFileHere) {
       md = {
         ok: true, available: true, written: false, writtenBy: 'member-file',
+        wroteInOwnTurn: inOwnTurnGiven,
         path: draftPath, mdPath: draftPath, absPath: memberDraft.absPath,
         fingerprint: memberDraft.fingerprint, bytes: memberDraft.bytes, format: memberDraft.format,
         atomic: null, replaced: false,
-        means: 'this call wrote NO file: the draft md is the member own file (fs), read back and indexed as it stands — the row stores the sha256 of those bytes, so any later edit of the file is one detectable fact',
+        means: 'this call wrote NO file: the draft md is the member own file (fs), read back and indexed as it stands — the row stores the sha256 of those bytes, so any later edit of the file is one detectable fact, and the row records WHO wrote it (mdWrittenBy) instead of leaving ownership to be guessed',
       }
-    } else {
+    } else if (materializeNow) {
+      // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+      const mdFields = blueprintMdHeaderOf({
+        path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, mdPath: draftPath,
+        outline: outlineNext, revisionReason: reasonNext,
+        mdWrittenBy: 'kernel-materialized', mdWroteInOwnTurn: 'false',
+      })
       const mdWrote = writeBlueprintMd({
         records, path: draftPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + revision + '｜草案',
         status: 'draft', revision, fields: mdFields, text: draftText,
       })
-      md = Object.assign({}, mdWrote, { writtenBy: 'kernel-materialized', mdPath: draftPath })
+      md = Object.assign({}, mdWrote, { writtenBy: 'kernel-materialized', wroteInOwnTurn: false, mdPath: draftPath })
+    } else {
+      // ★★★ RUN 255 / TB-2613: THE DEFAULT. Nothing is written — not the file, not a row. The call honestly reports the
+      // one fact the caller has to act on (the draft md does not exist yet) and hands back the text it would have written,
+      // so the member can write it with its own fs tool and call again with mdPath. A row written here would claim a
+      // document that is not on disk, which is exactly the "invented evidence" class this institution refuses.
+      // ★★★ RUN 256 / TB-2622: the ONE resume hint (shared with the adopt refusal and both success receipts).
+      const RH = resumeDraftHintOf({ fields: { path: wantedPath, revision, mdPath: draftPath } })
+      return {
+        ok: true,
+        action: 'propose',
+        filed: false,
+        id: null,
+        path: wantedPath,
+        revision,
+        baseRevision: currentRevision,
+        status: null,
+        proposedBy: author,
+        proposedAt: stamp,
+        continued: false,
+        draftMdMissing: true,
+        materialize: false,
+        mdPath: draftPath,
+        draftMdPath: draftPath,
+        text: draftText,
+        textSource,
+        textArgumentDropped,
+        md: {
+          ok: true, available: true, written: false, writtenBy: null, wroteInOwnTurn: null,
+          path: draftPath, mdPath: draftPath, absPath: null, fingerprint: null, bytes: 0,
+          format: null, atomic: null, replaced: false,
+          means: 'this call wrote NOTHING: the default is fs-first, so the draft md is still the member own to write — no file, no row, no sha to claim',
+        },
+        mdFingerprint: null,
+        mdWritten: false,
+        writtenBy: null,
+        mdOwner: null,
+        // ★★★ RUN 255 rev3 (Lead P0-3, MEASURED): the receipt SHAPE may not depend on whether a file was written. The
+        // success path carries headingDropped/bodyPrefixDropped/verified; if the early exit simply OMITTED them a caller
+        // reading `receipt.headingDropped` got `undefined` — the same key silently missing exactly when the call filed
+        // nothing. Named null says the honest thing: nothing was cleaned, because nothing was written.
+        headingDropped: null,
+        headingDroppedMeans: 'not cleaned: this call wrote no row and no file (draftMdMissing:true), so no `## 共同设计补充｜…` heading was stripped from any body — null is the named absence, not 0 (0 would claim a body was inspected and found clean)',
+        bodyPrefixDropped: null,
+        bodyPrefixDroppedMeans: 'not measured: this call joined no earlier draft (nothing was filed), so there was no pasted copy to compare - null is the named absence, not 0',
+        verified: null,
+        fingerprint: null,
+        deduplicated: false,
+        mdChangedSinceIndex: null,
+        // ★★★ RUN 256 / TB-2622: the hint and the action list come from the ONE source (`resumeDraftHintOf`) — the
+        // same text the adopt refusal prints, so the dead end and the gate cannot teach different calls again.
+        why: 'the draft md ' + draftPath + ' is not on disk yet: under the RUN 255 fs-first default the kernel does NOT write it (and does not write a row) — the member owns this document',
+        resumeHint: RH.hint,
+        resumeHintMeans: RH.means,
+        nextActions: RH.nextActions,
+        nextActionsMeans: RH.means + ' — the three steps are ONE chain: write the file, re-propose with the SAME mdPath, then adopt after both seats wrote',
+        note: '草案还没有落盘（draftMdMissing:true）：跑 ① 用 fs 把整份正文写进 ' + draftPath + '，② 带同一个 mdPath 重新 propose（filed:true、你的 member 记入 authors），③ 两席都写过之后 adopt。text-only propose 不会写文件也不会追加 authors，别照旧文案走。',
+      }
     }
     const composed = composeBlueprintBody({
       path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors,
       outline: outlineNext, revisionReason: reasonNext,
       mdFingerprint: md.available === true ? (md.fingerprint || '') : '',
       mdPath: md.available === true ? draftPath : '',
+      mdWrittenBy: md.writtenBy === undefined || md.writtenBy === null ? '' : md.writtenBy,
+      mdWroteInOwnTurn: md.wroteInOwnTurn === true ? 'true' : '',
       text: draftText,
     })
     const put = track.put({
@@ -1540,6 +1870,9 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       by: author,
     })
     const verified = verifyBlueprintRowMd({ track, id: put.id, md, mdPath: draftPath, text: draftText })
+    // ★★★ RUN 256 / TB-2622: the codesign precondition — the SAME hint the adopt gate prints, on the receipt that
+    // creates the draft, so "what is still missing before adopt" is answered by one text everywhere.
+    const RH = resumeDraftHintOf({ id: put.id, fields: { path: wantedPath, revision, mdPath: draftPath } })
     return {
       ok: true,
       action: 'propose',
@@ -1555,6 +1888,12 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       authors,
       draftSharing: draftSharingOf(null, authors, false),
       codesign: blueprintCodesignStatus(authors, ''),
+      atSource,
+      clockSources: blueprintClockSourcesOf(),
+      clockSourcesMeans: blueprintClockSourcesOf().means,
+      // ★★★ RUN 256 / TB-2622: same text as the adopt refusal and both draftMdMissing receipts (one source).
+      resumeHint: RH.hint,
+      resumeHintMeans: RH.means,
       ...outlineReading({ outline: outlineNext, requireOutline: requireOutline === true, source: outlineSource }),
       ...revisionReasonReading({ revisionReason: reasonNext, source: reasonSource }),
       // ★★★ RUN 239-B: WHICH outline handling this call did (merge for a continuation, take-as-given for a new revision).
@@ -1567,6 +1906,16 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       draftMdPath: md.available === true ? draftPath : null,
       mdWritten: md.available === true && txt(md.fingerprint) !== '',
       writtenBy: md.writtenBy === undefined ? null : md.writtenBy,
+      // ★★★ RUN 255 (sim-lane mainline): `filed` and `draftMdMissing` are ALWAYS BOTH PRESENT — the success receipt used
+      // to carry only `draftMdMissing:false`, so the same key was missing exactly when the call succeeded.
+      filed: true,
+      draftMdMissing: false,
+      materialize: materializeNow,
+      mdOwner: mdOwnerOf({
+        records, mdPath: md.available === true ? draftPath : '',
+        writtenBy: md.writtenBy === undefined ? null : md.writtenBy,
+        wroteInOwnTurn: md.wroteInOwnTurn === undefined ? null : md.wroteInOwnTurn,
+      }),
       textSource,
       textArgumentDropped,
       verified,
@@ -1621,22 +1970,104 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   if (memberDraft !== null && memberDraft.available === true && memberDraft.exists === false) {
     throw refuse(BLUEPRINT_MD_MISSING,
       'the draft md you named is not on disk: ' + draftPath,
-      'write it first with the fs tool, then call propose again with the same mdPath; or omit mdPath and this call writes ' + draftPath + ' from the row')
+      'write it first with the fs tool, then call propose again with the same mdPath; or pass materialize:true to ask the kernel to write ' + draftPath + ' from the row (RUN 255: the default is fs-first)')
   }
-  const mdFields = blueprintMdHeaderOf({
-    path: wantedPath, status: 'draft', revision: target.revision,
-    proposedBy: txt(target.fields.proposedBy), proposedAt: msOf(target.fields.proposedAt),
-    note: txt(note) || txt(target.fields.note), authors, mdPath: draftPath,
-    outline: outlineNext, revisionReason: reasonNext,
-  })
-  const mdWrote = writeBlueprintMd({
-    records, path: draftPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + target.revision + '｜草案',
-    status: 'draft', revision: target.revision, fields: mdFields, text: textNext,
-  })
-  const md = Object.assign({}, mdWrote, {
-    writtenBy: 'kernel-materialized', mdPath: draftPath,
-    formatSwitched: memberDraft !== null && memberDraft.format !== BLUEPRINT_MD_FORMAT,
-  })
+  const memberFileHere = memberDraft !== null && memberDraft.available === true && memberDraft.exists === true
+  // ★★★ RUN 256 / TB-2622: ONE hint for this whole continuation branch, computed ONCE above both exits — the dead end
+  // below and the success receipt after the if/else carry THIS text, so the two paths cannot teach different calls.
+  // (It used to be declared inside the dead-end `else` only, and the success return referenced it out of scope: node
+  // --check does not catch a const that is merely missing at runtime.)
+  const RH = resumeDraftHintOf({ id: target.id, fields: { path: wantedPath, revision: target.revision, mdPath: draftPath } })
+  let md = null
+  if (memberFileHere) {
+    // ★★★ RUN 255 / TB-2613: when the member names its own file, that WHOLE file IS the continuation — the kernel does
+    // not rewrite it (a rewrite would replace the member own prose with the kernel composition, and the row would then
+    // index bytes the member never wrote). The row still records the sha256 of what is on disk.
+    if (txt(memberDraft.text) === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'the draft md ' + draftPath + ' carries no text, so it would continue the draft with an empty document',
+        'write the revision prose into ' + draftPath + ' and call propose again — a continuation that froze nothing would be adopted as nothing')
+    }
+    textNext = txt(memberDraft.text)
+    md = {
+      ok: true, available: true, written: false, writtenBy: 'member-file', wroteInOwnTurn: inOwnTurnGiven,
+      path: draftPath, mdPath: draftPath, absPath: memberDraft.absPath,
+      fingerprint: memberDraft.fingerprint, bytes: memberDraft.bytes, format: memberDraft.format,
+      atomic: null, replaced: false,
+      formatSwitched: memberDraft.format !== BLUEPRINT_MD_FORMAT,
+      means: 'this call wrote NO file: the continuation is the member own draft md (fs), read back as it stands — the row indexes ITS bytes and records who wrote them, instead of the kernel rewriting the member document',
+    }
+  } else if (materializeNow) {
+    // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+    const mdFields = blueprintMdHeaderOf({
+      path: wantedPath, status: 'draft', revision: target.revision,
+      proposedBy: txt(target.fields.proposedBy), proposedAt: msOf(target.fields.proposedAt),
+      note: txt(note) || txt(target.fields.note), authors, mdPath: draftPath,
+      outline: outlineNext, revisionReason: reasonNext,
+      mdWrittenBy: 'kernel-materialized', mdWroteInOwnTurn: 'false',
+    })
+    const mdWrote = writeBlueprintMd({
+      records, path: draftPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + target.revision + '｜草案',
+      status: 'draft', revision: target.revision, fields: mdFields, text: textNext,
+    })
+    md = Object.assign({}, mdWrote, {
+      writtenBy: 'kernel-materialized', wroteInOwnTurn: false, mdPath: draftPath,
+      formatSwitched: memberDraft !== null && memberDraft.format !== BLUEPRINT_MD_FORMAT,
+    })
+  } else {
+    // ★★★ RUN 255 / TB-2613: the default for a continuation too — no file is invented. The member still owns the
+    // document, so the call reports the missing file (and the composed text) instead of rewriting the draft row.
+    // ★★★ RUN 256 / TB-2622: the hint/actions come from the ONE source computed above the branch, so this dead end
+    // and the adopt gate teach the exact same call shape.
+    return {
+      ok: true,
+      action: 'propose',
+      filed: false,
+      id: target.id,
+      path: wantedPath,
+      revision: target.revision,
+      baseRevision: currentRevision,
+      status: 'draft',
+      proposedBy: txt(target.fields.proposedBy) || author,
+      proposedAt: msOf(target.fields.proposedAt),
+      continued: true,
+      continuedBase,
+      author,
+      authors,
+      draftMdMissing: true,
+      materialize: false,
+      mdPath: draftPath,
+      draftMdPath: draftPath,
+      text: textNext,
+      textSource: 'argument',
+      md: {
+        ok: true, available: true, written: false, writtenBy: null, wroteInOwnTurn: null,
+        path: draftPath, mdPath: draftPath, absPath: null, fingerprint: null, bytes: 0,
+        format: null, atomic: null, replaced: false,
+        means: 'this call wrote NOTHING: the default is fs-first, so the draft md is still the member own to write — the row was not touched and no sha was claimed',
+      },
+      mdFingerprint: null,
+      mdWritten: false,
+      writtenBy: null,
+      mdOwner: null,
+      // ★★★ RUN 255 rev3 (Lead P0-3): same receipt SHAPE as the success path — a caller reading headingDropped /
+      // bodyPrefixDropped / verified gets a named null here instead of `undefined` just because nothing was filed.
+      headingDropped: null,
+      headingDroppedMeans: 'not cleaned: this call wrote no file and did not touch the row (draftMdMissing:true), so no `## 共同设计补充｜…` heading was stripped from any body — null is the named absence, not 0',
+      bodyPrefixDropped: null,
+      bodyPrefixDroppedMeans: 'not measured: this call joined the draft in the receipt only (nothing was filed), so the pasted-copy comparison did not run — null is the named absence, not 0',
+      verified: null,
+      fingerprint: null,
+      deduplicated: false,
+      mdChangedSinceIndex: null,
+      // ★★★ RUN 256 / TB-2622: same single source as the new-proposal dead end and the adopt refusal.
+      why: 'the draft md ' + draftPath + ' is not on disk yet: under the RUN 255 fs-first default this continuation writes no file and does not touch the row — the member owns this document',
+      resumeHint: RH.hint,
+      resumeHintMeans: RH.means,
+      nextActions: RH.nextActions,
+      nextActionsMeans: RH.means + ' — the three steps are ONE chain: write the WHOLE continuation into the file, re-propose with the SAME mdPath, then adopt after both seats wrote',
+      note: '续写没有落盘（draftMdMissing:true）：跑 ① 用 fs 把整份正文写进 ' + draftPath + '，② 带同一个 mdPath 重新 propose（filed:true、你的 member 记入 authors），③ 两席都写过之后 adopt。text-only propose 不会写文件也不会追加 authors。',
+    }
+  }
   const composed = composeBlueprintBody({
     path: wantedPath,
     status: 'draft',
@@ -1649,6 +2080,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     revisionReason: reasonNext,
     mdFingerprint: md.available === true ? (md.fingerprint || '') : '',
     mdPath: md.available === true ? draftPath : '',
+    mdWrittenBy: md.writtenBy === undefined || md.writtenBy === null ? '' : md.writtenBy,
+    mdWroteInOwnTurn: md.wroteInOwnTurn === true ? 'true' : '',
     text: textNext,
   })
   const wrote = track.supersede({
@@ -1675,6 +2108,12 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     authors,
     draftSharing: draftSharingOf(String(target.id), authors, true),
     codesign: blueprintCodesignStatus(authors, ''),
+    atSource,
+    clockSources: blueprintClockSourcesOf(),
+    clockSourcesMeans: blueprintClockSourcesOf().means,
+    // ★★★ RUN 256 / TB-2622: same text as the adopt refusal (one source) — the codesign precondition on this receipt.
+    resumeHint: RH.hint,
+    resumeHintMeans: RH.means,
     ...outlineReading({ outline: outlineNext, requireOutline: requireOutline === true, source: outlineSource }),
     ...revisionReasonReading({ revisionReason: reasonNext, source: reasonSource }),
     // ★★★ RUN 239-B: the continuation's outline merge (added/updated/kept), so "did my new outline replace the base?"
@@ -1687,6 +2126,15 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     draftMdPath: md.available === true ? draftPath : null,
     mdWritten: md.available === true && txt(md.fingerprint) !== '',
     writtenBy: md.writtenBy === undefined ? null : md.writtenBy,
+    // ★★★ RUN 255 (sim-lane mainline): both keys present in BOTH states — a success receipt no longer omits `filed`.
+    filed: true,
+    draftMdMissing: false,
+    materialize: materializeNow,
+    mdOwner: mdOwnerOf({
+      records, mdPath: md.available === true ? draftPath : '',
+      writtenBy: md.writtenBy === undefined ? null : md.writtenBy,
+      wroteInOwnTurn: md.wroteInOwnTurn === undefined ? null : md.wroteInOwnTurn,
+    }),
     formatSwitched: md.formatSwitched === true,
     verified,
     mdChangedSinceIndex: false,
@@ -1696,7 +2144,9 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     headingDroppedMeans,
     bodyPrefixDropped,
     bodyPrefixDroppedMeans,
-    note: '★ 续写的是同一份草案（id/r 不变）：' + author + ' 的 section 已写进 `## 共同设计补充｜' + author + '`；正文里其他设计者的文字没有被改写，草案的 md 文件 ' + (md.available === true ? draftPath : '(没有 md 面)') + ' 已整份重写。adopt 前 authors 必须同时有院士席与常驻研究员席。',
+    note: '★ 续写的是同一份草案（id/r 不变）：' + author + ' 的 section 已写进 `## 共同设计补充｜' + author + '`；正文里其他设计者的文字没有被改写，草案的 md 文件 ' + (md.available === true ? draftPath : '(没有 md 面)') + (md.writtenBy === 'member-file'
+      ? ' 是成员自己的文件（本调用只读回、不重写）。'
+      : ' 已整份重写。') + 'adopt 前 authors 必须同时有院士席与常驻研究员席。',
   }
 }
 
@@ -1708,7 +2158,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
  * The chair-only edit right is UNCHANGED (the rule's 「最终编辑权交给院士」) — co-design is a precondition of the final
  * edit, not a transfer of it.
  */
-export function adoptBlueprint({ records, path, draft, by, at = null, note = '', staleAfterMs = null, staleAfterMsSource = null, outline = null, revisionReason = '', requireOutline = false }) {
+export function adoptBlueprint({ records, path, draft, by, at = null, atKernel = false, note = '', staleAfterMs = null, staleAfterMsSource = null, outline = null, revisionReason = '', requireOutline = false, refreshFingerprint = false }) {
   const track = refuseIfNoRecords(records)
   let wantedPath = txt(path)
   // ★★★ RUN 224 (run 59 / FEEDBACK58 1.7, MEASURED): the prompts teach `{ action: "adopt", draft: "<id>" }` WITHOUT a
@@ -1775,7 +2225,9 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     throw refuse('VMU_STATE', '草案 r' + revision + ' 比现行版本 r' + previous.revision + ' 旧，不能落成',
       'propose 一版新蓝图（revision 会自动加一），再 adopt 新的那一份')
   }
-  const stamp = Number.isFinite(at) ? at : Date.now()
+  const stampRead = clockReadingOf(at, 'adoptBlueprint', { kernelClock: atKernel === true })
+  const stamp = stampRead.at
+  const atSource = stampRead.atSource
   const previousAdoptedAt = previous === null ? null : msOf(previous.fields.adoptedAt)
   const previousAgeMs = previousAdoptedAt === null ? null : Math.max(0, stamp - previousAdoptedAt)
   const window = windowWith(staleAfterMs, staleAfterMsSource)
@@ -1789,6 +2241,12 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
   const draftedFingerprint = txt(target.fields[BLUEPRINT_MD_KEY])
   let draftText = target.text
   let mdTextFrom = 'row'
+  // ★★★ RUN 259 / AUDIT-14 P0-3: drift is a FACT about two byte sequences, and the fix has to be an action that CHANGES
+  // which bytes the row vouches for. The old hint said "run reindex" — reindex cannot own a plain markdown draft (it
+  // answers ok:false + blocked now), so following the hint changed nothing and the next adopt refused with the SAME code.
+  // The repair named here is `refreshFingerprint:true`: one adopt that says OUT LOUD "the file is the truth, take its
+  // current bytes", and the receipt records the drift it admitted instead of forgetting it.
+  let mdDrift = null
   if (draftRead !== null && draftRead.available === true) {
     if (draftRead.exists !== true) {
       throw refuse(BLUEPRINT_MD_MISSING,
@@ -1796,9 +2254,27 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
         'continue the draft once (propose { path: "' + wantedPath + '", draft: "' + target.id + '" }) — it writes ' + draftedMdPath + ' again from the row — or restore that file, then adopt again')
     }
     if (draftedFingerprint !== '' && txt(draftRead.fingerprint) !== '' && draftedFingerprint !== txt(draftRead.fingerprint)) {
-      throw refuse(BLUEPRINT_MD_DRIFT,
-        'the draft md was changed after the row indexed it: ' + draftedMdPath + ' is ' + txt(draftRead.fingerprint) + ', but row ' + target.id + ' recorded ' + draftedFingerprint,
-        'the file is the truth: run vibe_vmu_records { action: "reindex" } so the row admits the file (or restore the draft to the indexed bytes), then adopt again — adopting now would put into force text the index never saw')
+      const fileFp = txt(draftRead.fingerprint)
+      // ★★★ RUN 259 / AUDIT-14 P0-3: the ONE repair that provably changes which bytes the next adopt accepts is
+      // refreshFingerprint:true. reindex is NOT offered as a repair: it rebuilds the draft row from the FILE, and a draft
+      // file written before the co-signature carries only the first proposer in its header, so "reindex then adopt"
+      // turned a DRIFT refusal into a NEEDS_CODESIGN refusal (same kind of circular advice, different code). For a plain
+      // markdown draft reindex does not even index the file (ok:false + blocked[].reachableInstead). One call, one fact.
+      const driftHint = '文件是真相：以磁盘字节为准，一次调用修好——vibe_v5_blueprint {action:"adopt", path:"' + wantedPath + '", member:"<chair id>", draft:"' + target.id + '", refreshFingerprint:true}：这次 adopt 把 mdDrift（indexedFingerprint 与 fileFingerprint）记进回执，并把当前文件字节写进生效版。不要用 reindex 修 drift：它按文件重建草案行，草案文件头若早于共同设计会丢掉后来的作者，adopt 会改拒 VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN；纯 markdown 草案 reindex 还会回 ok:false 并在 blocked[] 里点名它。REACHABLE INSTEAD: vibe_v5_blueprint {action:"adopt", path:"' + wantedPath + '", member:"<chair id>", draft:"' + target.id + '", refreshFingerprint:true}（一次调用，回执带 mdDrift 的两个 sha256）'
+      if (refreshFingerprint !== true) {
+        throw refuse(BLUEPRINT_MD_DRIFT,
+          'the draft md was changed after the row indexed it: ' + draftedMdPath + ' is ' + fileFp + ', but row ' + target.id + ' recorded ' + draftedFingerprint,
+          'the file is the truth: pass refreshFingerprint:true to adopt the CURRENT bytes (the receipt then records the drift), or make the index admit the file first (only a vmu md can be re-indexed; a plain markdown draft cannot). ' + driftHint)
+      }
+      // explicit acknowledgement: the file changed and the caller chose the file. Recorded, not forgotten.
+      mdDrift = {
+        path: draftedMdPath,
+        indexedFingerprint: draftedFingerprint,
+        fileFingerprint: fileFp,
+        admitted: true,
+        refreshFingerprint: true,
+        means: 'the draft file was NOT the file the row indexed: this adopt was told refreshFingerprint:true, so the CURRENT disk bytes (' + fileFp + ') go into force and the drift is recorded here instead of being silently dropped — the index never saw these bytes before this call',
+      }
     }
     draftText = draftRead.text
     mdTextFrom = 'md'
@@ -1832,12 +2308,17 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
       means: 'the canonical md ALREADY holds exactly these bytes (same sha256), so this call VERIFIED instead of rewriting: the member wrote the document in force, and adoption only signed it — copiedFrom:null says no byte was copied by this call',
     }
   } else {
+    // ★★★ RUN 255 / TB-2613: the canonical file THIS call writes records its writer in its own header, so the ownership
+    // survives a reindex. The `expected` bytes above deliberately carry no provenance line: they are only a comparison
+    // against a file a member may have written (whose header this kernel does not dictate).
+    const mdFieldsWritten = Object.assign({}, mdFields, { mdWrittenBy: 'kernel-materialized', mdWroteInOwnTurn: 'false' })
     const mdWrote = writeBlueprintMd({
       records, path: wantedPath, title: canonicalTitle,
-      status: 'current', revision, fields: mdFields, text: draftText,
+      status: 'current', revision, fields: mdFieldsWritten, text: draftText,
     })
     md = Object.assign({}, mdWrote, {
       writtenBy: mdWrote.available === true && mdWrote.written === true ? 'kernel-materialized' : null,
+      wroteInOwnTurn: false,
       mdPath: wantedPath,
       copiedFrom: draftedMdPath === '' ? null : draftedMdPath,
       alreadyWritten: false,
@@ -1870,6 +2351,11 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     revisionReason: reasonNext,
     mdFingerprint: md.fingerprint || '',
     mdPath: wantedPath,
+    // ★★★ RUN 255 / TB-2613: the adopted row says WHO wrote the file it indexes — `kernel-materialized` when this call
+    // copied the draft bytes, `member-file` when the member had already written the canonical file and this call only
+    // verified it (the writing turn of that copy is not known here, so mdWroteInOwnTurn stays absent).
+    mdWrittenBy: md.writtenBy === undefined || md.writtenBy === null ? '' : md.writtenBy,
+    mdWroteInOwnTurn: '',
     // ★★★ RUN 248: the ADOPTED row carries the DRAFT FILE's text verbatim — the file is the document, so promotion
     // moves ITS bytes, not the row's copy of them (a row that had drifted from its file is refused above, never used).
     text: draftText,
@@ -1937,7 +2423,7 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
       }
     }
   }
-  const after = blueprintState({ records, path: wantedPath, now: stamp, staleAfterMs: window.ms, staleAfterMsSource: window.source })
+  const after = blueprintState({ records, path: wantedPath, now: stamp, nowFromKernel: atKernel === true, staleAfterMs: window.ms, staleAfterMsSource: window.source })
   return {
     ok: true,
     action: 'adopt',
@@ -1951,6 +2437,9 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     status: 'current',
     adoptedBy: adopter,
     adoptedAt: stamp,
+    atSource,
+    clockSources: blueprintClockSourcesOf(),
+    clockSourcesMeans: blueprintClockSourcesOf().means,
     proposalId: target.id,
     authors: target.authors,
     codesign,
@@ -1995,6 +2484,18 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     },
     copiedFrom: md.copiedFrom === undefined ? null : md.copiedFrom,
     alreadyWritten: md.alreadyWritten === true,
+    // ★★★ RUN 259 / AUDIT-14 P0-3: null when the file was the indexed file; the whole drift record when the caller took
+    // the file with refreshFingerprint:true. A reader can tell "verified" from "admitted a drift" from "no drift check".
+    mdDrift,
+    fingerprintRefreshed: mdDrift !== null,
+    refreshFingerprint: refreshFingerprint === true,
+    // ★★★ RUN 255 / TB-2613: ownership evidence of the file in force — sha256/bytes read from the disk NOW, writer taken
+    // from the row provenance this call just wrote (never inferred from who asked).
+    mdOwner: mdOwnerOf({
+      records, mdPath: wantedPath,
+      writtenBy: md.writtenBy === undefined ? null : md.writtenBy,
+      wroteInOwnTurn: md.writtenBy === 'kernel-materialized' ? false : null,
+    }),
     draftMdPath: draftedMdPath === '' ? null : draftedMdPath,
     mdWritten: after.md === null || after.md === undefined ? null : after.md.mdWritten,
     mdTextFrom,

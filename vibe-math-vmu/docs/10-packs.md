@@ -315,6 +315,27 @@ vmu.paper.finalizer = 'academician'（v5r :1167 的值）
 
 ★ **未落地的两点恰好是"会臆造"的地方**：v5r 的动议面是**附议**、不是选项投票（选项集无 v5r 出处）；且 `governance.motion` 只有 `{propose, second, withdraw}`（**无读方法**）⇒ 模块拿不到动议文本。⇒ 这两点必须由 ①/② 的接缝给出**可核**输入，否则就是臆造。
 
+### 4.12 RUN 256 / TB-2618：**声明何时生效**（一张表，判据只有"消费者看得见"）
+
+清单里写了 ≠ 生效了。一个键能不能在**构造之后**再声明，取决于**有没有读者在构造后读它**；没有读者而接受，就是把"零效果"伪装成"已配置"。下表是唯一口径：
+
+| 清单键 | 生效点 | 机制 | 构造后再声明 |
+| --- | --- | --- | --- |
+| `phases` | 构造期 | 入口 `foldPackDeclarations` → `vmu.tasks.stages` + `stages` 选项 | **具名拒** `VMU_PACK_DECLARATION_TOO_LATE` |
+| `noticeBlock` | 构造期 | 同上 → 内核 `noticeBlock` 选项（入口运行时 `PACK_RUNTIME` 折叠的一等路径） | **具名拒** |
+| `meetingTypeCatalog` | 构造期 | 同上 → `vmu.meetings.typeCatalog` | **具名拒** |
+| `recordTracks` | 构造期折叠 / 构造后 `declareTracks` | 折叠 → `vmu.records.tracks`；`declareTracks` → 库 + **records 白名单**（同一实现，后声明**真生效**） | **接受且生效** |
+| `slots` | 构造期折叠 / 构造后 `declareSlots` | 折叠 → 内核 `slots` 选项（建名册）；`declareSlots` → 替换名册 | **接受且生效** |
+| `office` / `agendaStateMachine` | —（当前**无消费者**：既无构造期折叠目标，也无后置机制） | 无 | **具名拒** `VMU_PACK_DECLARATION_UNCONSUMED`（RUN 258 / TB-2649）：`apply()` 在任何副作用前拒，`facts` 给 `{key, consumer:null}`，`hint` 以 `REACHABLE INSTEAD:` 开头给唯一可达动作「不要再声明它」——**提前到 `config.packManifests` 声明也无效**（折叠目标只有 `phases` / `recordTracks` / `meetingTypeCatalog` / `slots` / `noticeBlock`）。折叠台账只记**真折成功**的键，未折的进 `unsupported`；`appliedPacks()` 条目形状为 `{id, applied, declarations:{folded:[…], unsupported:[{key, why}]}}`，装载失败的 `packErrors[i]` 条目为 `{id, code, message, facts}`（`unsupported` 不再是只写不读的死字段） |
+
+三条硬规则：
+
+1. **第一方 packs 在构造期装配**：入口先 `foldPackDeclarations(config.packManifests)`、再 `createKernel`。第一方 pack（`v5r-core` 等）经 `config.packs` 装载时其声明在**构造期**生效——新闸门**不得**封死内核自己的启动路径（RUN 256 的实测教训：闸门一度把 `slots` 也算成"必须构造期折叠"，导致全部 boot 套件崩）。
+2. **太晚的声明只能落在"有构造后机制"的键上**，否则拒；拒绝 message 点名 pack、键、以及"该在 `createKernel` 之前声明"，`hint` 以 `REACHABLE INSTEAD:` 开头给出可达写法（`config.packManifests`）。
+3. **一个键一个读者**：`recordTracks` 的构造期折叠与 `declareTracks` 的后声明都落到同一份 `liveTracks()`（`kernel/records.js`），不允许第二个白名单快照；否则就是"两份口径"的下一个 P0。
+
+可执行样例：`tests/fixtures/minimal-pack/`（一份 manifest + 一个 handler，零内核改动）——建所、写 `thesis` 记录、开自己的 `thesis-defense` 会议类型，全由框架接上；驱动它的断言在 `tests/vmu-run256-pack-declarations.test.mjs` §5（夹具 ≤120 行、恰好 1 个 handler）。想定义自己的机构，从这个目录抄形状即可。
+
 ---
 
 ## 5. v5r-pack：行为包含对照方案（D8）

@@ -1386,18 +1386,30 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // resolved at call time; without a store both faces degrade BY NAME (`durableQueue.durable === false`) and
   // nothing pretends to be durable.
   const sharedCommitLog = createSharedCommitQueue({ resolveStore: commitStore, clock, name: 'g7-shared' })
+  // TB-2618 / RUN 256: THE AUDIENCE SEAM IS BOUND FOR EVERY ENTRY, AND IT RESOLVES AT CALL TIME.
+  // Measured defect: `resolveAudience` was created only when `members` was already truthy AT CONSTRUCTION, but a pack
+  // declares slots AFTER the kernel exists - so in every real entry `{to:'all'}` refused VMU_ENGINE_UNAVAILABLE
+  // ("no audience seam is bound") while the receipt said it would send to everyone. The resolver now always exists and
+  // asks the CURRENT roster (`members` is the same late-bound value declareSlots replaces); with no roster it refuses
+  // by name exactly as before. "Bound" therefore means "can answer", not "answered once at boot".
   const mailbox = createMailbox({ clock: guardedClock, log, settings: settingsView, bus, store, deliver,
     durableQueue: sharedCommitLog,
-    resolveAudience: members ? ({ to } = {}) => {
+    resolveAudience: ({ to } = {}) => {
       if (to === 'voters') {
         const e = new Error('this assembly has no ballot context, so the voter set cannot be resolved')
         e.code = 'VMU_MAILBOX_NO_SUCH_RECIPIENT'
         e.hint = 'send to a named recipient, or to "all" (the roster); a voter set needs a ballot face'
         throw e
       }
+      if (!members || typeof members.roster !== 'function') {
+        const e = new Error('cannot resolve "' + String(to) + '": this assembly has no roster, so there is no audience')
+        e.code = 'VMU_ENGINE_UNAVAILABLE'
+        e.hint = 'declare slots (a pack declaration folded before createKernel, or kernel.declareSlots) or name recipients explicitly'
+        throw e
+      }
       const roster = typeof members.roster === 'function' ? members.roster() : []
       return roster.map((m) => (m && (m.id || m.member)) || m).filter(Boolean).map(String)
-    } : null })
+    } })
   const panel = createPanel({ clock: guardedClock, log, settings: settingsView, bus, members: memberRef })
   const discipline = createDiscipline({ settings: settingsView, bus, clock, log })
   const custody = createCustody({ settings: settingsView, bus, clock, log })
@@ -3957,7 +3969,28 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         return library
       }
       rebuildLibrary(list.slice())
-      return { ok: true, tracks: list.slice() }
+      // ★ RUN 256 / TB-2618: a late `recordTracks` declaration must be EFFECTIVE on the records face too (the
+      //   library is only half the ledger). records.declareTracks extends its live whitelist; one implementation.
+      let recordsDecl = null
+      try {
+        if (records && typeof records.declareTracks === 'function') recordsDecl = records.declareTracks(list)
+      } catch (e) {
+        log('declareTracks: the records whitelist refused the same list: ' + String((e && e.message) || e))
+      }
+      // ★ RUN 256 回炉（task-99 rev4）：内核回执的不变量是「每个回执都带 enforced[] 与 fired[]」——读者要能判断
+      //   这次声明被哪个闸门看见过、哪几条轨真的被加入。两个数组原样转发 records 面的读数（一个读数，两处名字），
+      //   字段必须紧跟 `return { ok: true,`（audit-receipt-fields 只扫 6 行窗口）。
+      // ★ RUN 257 / TB-2640：这个面是 records 回执的**转发点**（FORWARDER），不是新的执行者。用解构读取再原样转出，
+      //   让「它不实施任何约束」在源码形状上可被 audit-enforced-consistency 机械验证（见该 gate 的 RECEIPT-ENVELOPE 表）。
+      const { enforced: recEnforced = [], enforcedScope: recScope = 'not-evaluated', fired: recFired = [], tracks: recTracks = null } = recordsDecl || {}
+      return {
+        ok: true,
+        enforced: Array.isArray(recEnforced) ? recEnforced : [],
+        enforcedScope: recScope,
+        fired: Array.isArray(recFired) ? recFired : [],
+        tracks: list.slice(),
+        recordsTracks: recTracks,
+      }
     },
 
     /**

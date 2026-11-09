@@ -16,6 +16,11 @@
 //   4. dispatch is total on the declared catalogue and recorded: a field whose face is not wired is COUNTED as not
 //      executed and reported, never dropped in silence.
 
+// ★ RUN 255 / TB-2606-A + TB-2629: the delivery budget is a DECLARED setting, so its default is READ from the one
+// declaration table instead of being repeated here. The one-shot seam (host-deliver.js) already reads the same
+// declaration; two literals meant the status face and the seam disagreed by 10x about the same deadline.
+import { readDeliveryBudget } from '../../settings/schema.js'
+
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
@@ -759,11 +764,37 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
     }
     const reportPhase = (phase) => { try { if (options && typeof options.onPhase === 'function') options.onPhase(phase) } catch { /* evidence only */ } }
     reportPhase('start-called')
+    // ★★★★★★★ RUN 258 / TB-2651 (AUDIT-14 P1-1) — THE RETRY'S QUESTION IS "MAY THIS START BE ISSUED AGAIN?", NOT
+    // "IS THIS A CODE I RECOGNISE?".
+    // MEASURED (AUDIT-14 probe 2, `D:\_tmp\audit14b\probe2-codes-clock.mjs`): the earlier whitelist named the TWO codes
+    // it wanted to PRESERVE, so every OTHER named code fell through to the retry — `VMU_TURN_DELIVERY_TIMEOUT` was
+    // issued a SECOND time (`starts:2, delays:1`) and then re-labelled VMU_ENGINE_UNAVAILABLE. That told the operator
+    // the host had refused a start which had in fact happened, and it contradicted this file's own notes on the
+    // timeout paths (see the delivery-timeout sections below): a timed-out delivery is the one failure that must NEVER
+    // be re-issued, because the child may still be working and a second start doubles the effect.
+    //
+    // So the whitelist is gone, and the set consulted here is the RETRYABLE class: only a TRANSIENT refusal — the
+    // host's own registry answer between teardown and admission, which arrives either as a bare throw or as this
+    // bridge's own VMU_ENGINE_UNAVAILABLE — may be issued twice. Every other NAMED code is a fact about work that
+    // already happened, or an adapter answer that will not change on a second try: `VMU_TURN_DELIVERY_TIMEOUT`,
+    // `VMU_TURN_DELIVERY_FAILED`, `VMU_TURN_DELIVERY_DISPATCH_FAILED`, `VMU_TURN_ASSEMBLY_FAILED`,
+    // `VMU_TURN_FACE_NOT_WIRED`, and the two delivery shapes (`VMU_TURN_DELIVERY_SHAPE`, `VMU_TURN_DELIVERY_NO_PAYLOAD`,
+    // TB-2632). Those are re-thrown UNTOUCHED — the error object itself, with its facts/keys/shape/means — so the caller
+    // sees the adapter's or the kernel's own code instead of a host failure that never happened. ONE predicate, both
+    // catches below; a future named code is preserved by default (fail-safe: no retry) rather than retried by default.
+    const START_RETRYABLE_CODES = new Set(['VMU_ENGINE_UNAVAILABLE'])
+    const startMayBeIssuedAgain = (e) => {
+      if (!e || typeof e !== 'object') return true
+      const code = typeof e.code === 'string' && e.code !== '' ? e.code : null
+      if (code === null) return true
+      return START_RETRYABLE_CODES.has(code)
+    }
     let handle
     try {
       handle = await startOnce()
       reportPhase('start-returned')
     } catch (e) {
+      if (!startMayBeIssuedAgain(e)) throw e
       const first = String((e && e.message) || e)
       // ★★★ ROUND 80: THE PAUSE IS AN INJECTED SEAM, NOT A GLOBAL TIMER. The timer scan counts every file that creates
       // a global timer and its list is exact, so adding one was not available - and rightly so: a library that reaches
@@ -773,6 +804,7 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       try {
         handle = await startOnce()
       } catch (e2) {
+        if (!startMayBeIssuedAgain(e2)) throw e2
         throw refuse('VMU_ENGINE_UNAVAILABLE',
           'the host refused to start this member turn twice on the ' + path + ' path: ' + String((e2 && e2.message) || e2),
           'the host\'s subagent registry would not admit a new activation; the first failure was "' + first + '". It refuses while a previous activation is still being torn down, so retry later or serialise deliveries so each turn waits for the last teardown (docs/26 §3.22)', e2)
@@ -1123,6 +1155,11 @@ export function deliverByReturning() {
   let pendingPrompt = null
   let answeredFor = null
   let supplied = null
+  // ★★★ RUN 256 / TB-2616 (task-97): A PARKED PROMPT HAS AN IDENTITY, NOT JUST A MEMBER. The text channel used to
+  // answer "the parked turn" by opening a NEW turn and handing it the staged reply, so the member was right, the turn id
+  // was wrong and the parked turn stayed `open` forever. A resume can only be proved if the prompt itself is named:
+  // `promptId` is minted once per prompt by this seam (the only place a prompt is parked) and travels with it.
+  let promptSeq = 0
   const seam = async ({ turn, text }) => {
     if (supplied !== null) {
       const reply = supplied
@@ -1138,7 +1175,10 @@ export function deliverByReturning() {
     }
     // ★ E12 / task-19: the parked prompt carries the meeting its turn was driven for, so the caller answers INTO that
     // meeting without repeating it, and a reply that names a different one is refused by name (see supplyStructuredReply).
-    pendingPrompt = { member: turn && turn.member ? String(turn.member) : null, turnId: turn && turn.id ? turn.id : null, meeting: turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null, text: String(text) }
+    pendingPrompt = { member: turn && turn.member ? String(turn.member) : null, turnId: turn && turn.id ? turn.id : null, meeting: turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null, text: String(text),
+      // ★ RUN 256 / TB-2616: the prompt's own identity + the instant it was parked. A caller that answers it can now be
+      // held to THAT prompt (see the resume path in `step`), and a refusal can say how long it has been held.
+      promptId: 'p-' + String(promptSeq += 1), parkedAt: Date.now(), phase: turn && typeof turn.phase === 'string' ? turn.phase : null }
     return { reply: null, awaiting: true, memberPrompt: pendingPrompt, meeting: pendingPrompt.meeting, childId: null, stopReason: null, deliveryPath: 'caller' }
   }
   seam.supply = (reply) => { supplied = typeof reply === 'string' ? reply : null; return seam }
@@ -1155,7 +1195,110 @@ export function deliverByReturning() {
     pendingPrompt = null
     return answered
   }
+  /**
+   * ★ RUN 256 / TB-2616 (task-97): THE LOOP CANNOT RELEASE A PROMPT IT CANNOT CLEAR. `abandonTurn` has always called
+   * `deliver.clear()` to drop a parked prompt, but this seam never had one, so `clearedParked` was silently `false` and
+   * an `op:"abandon"` left `turnLoop.parked:true` — the release exit was a no-op for the very route (`caller`) whose
+   * prompts get parked. `clear()` drops BOTH halves: the parked prompt and any staged reply (a released turn must not
+   * answer the next one with the reply that was meant for it).
+   */
+  seam.clear = () => { pendingPrompt = null; supplied = null; return seam }
   return seam
+}
+/**
+ * ★★★ RUN 257 / TB-2611 (task-90) KERNEL HALF: A SHARE NOBODY CAN RE-DERIVE IS A CLAIM, NOT A READING.
+ * The office could read every settled turn row (`turnReceipts`), but no reading said how much of the writes the SEATS
+ * did themselves and how much the CALLING session played on their behalf. The row-level fact that answers it is
+ * `deliveryPath`: the delivery seam names who ran the turn. `"caller"` means the CALLING session played this member
+ * turn (`deliverByReturning` parks it and hands the prompt back) - that is the office relay. Any other NAMED path
+ * (`activation`, `continuation`, `one-shot`, or a host seam with its own name) means the seat own session ran it. A
+ * row with no path proves NEITHER side, so its writes are counted as `unknown` and never folded into `member`.
+ *
+ * `memberShare` divides by `memberActs + officeRelayedActs` ONLY. An unproven act must not dilute a ratio in either
+ * direction (that would turn a hole into a number), so `unknownActs` travels BESIDE the ratio instead of inside it.
+ * When both proven sides are zero the ratio is `null` - a named absence ("nothing to divide"), never 0 and never 1.
+ *
+ * Read-only: this function reads turn rows and nothing else; it changes no scheduling and writes nothing.
+ */
+export const WORK_SHARE_MEANS = 'memberShare = memberActs / (memberActs + officeRelayedActs); unknownActs is NOT in that denominator, so an unproven write can neither inflate nor dilute the ratio - it is reported beside it. memberActs are the record writes in settled turns whose row-level deliveryPath says the SEAT OWN SESSION ran them (activation / continuation / one-shot / any host seam name other than caller). officeRelayedActs are the writes in turns whose deliveryPath is "caller": the calling session played this member turn (deliverByReturning, supplied-by-caller), so the office wrote on the member behalf. unknownActs are the writes in turns whose row carries no deliveryPath (legacy row, or a seam that did not say): who ran them is not provable here, so they are NOT counted as member. acts is the sum of the three; memberTurns / officeRelayedTurns / unknownTurns count the rows. A null memberShare means both proven sides are zero (nothing to divide) - not a perfect score and not a zero score.'
+const WORK_SHARE_CLASSIFIED_BY = Object.freeze({
+  member: 'row.deliveryPath is a non-empty string other than "caller": the seat own session (or a host subagent running as that seat) delivered the turn. This is a row-level reading of the same field the delivery seam reports.',
+  'office-relayed': 'row.deliveryPath === "caller": the CALLING session played this member turn (deliverByReturning parks the prompt and returns deliveryPath "caller"; attribution says supplied-by-caller). This is the relay case.',
+  unknown: 'row.deliveryPath is absent or empty: the ledger does not say who ran the turn, so the writes are counted as unknown and NEVER folded into member. The per-call facts (callerIsSeat / ranInOwnTurn / memberActed / actedForMember) live on TOOL receipts, not on a turn row, and this aggregate does not pretend to read them.',
+  'delivery-unavailable': 'row.deliveryUnavailable === true: the delivery seam never handed this turn to the member (timeout / error / not-configured / engine-lost-reply), so the member did not run and any write on this row has PROVENANCE UNKNOWN. This class is read BEFORE deliveryPath on purpose: a broken delivery is not a route, and such a row must never be laundered into "caller" (which means the office CHOSE to play the turn).',
+})
+/**
+ * ★★★ RUN 257 / TB-2645 (task-126, TB-2611 item 4): A REFUSAL THAT DOES NOT SAY "THE MEMBER NEVER RAN" IS A LIE OF
+ * OMISSION. `deliveryFailed` counted the throw and the row said `undelivered`, but nothing said this turn produced no
+ * member act at all, so the office could read a timeout as a turn that happened. These four whys are the decidable
+ * classes; the seam error, the turn row and `deliveryLastFail` all name the SAME one.
+ */
+export const DELIVERY_UNAVAILABLE_WHYS = Object.freeze(['timeout', 'error', 'not-configured', 'engine-lost-reply'])
+export function deliveryUnavailableWhyOf(e) {
+  const code = e && typeof e.code === 'string' ? e.code : ''
+  const message = e && typeof e.message === 'string' ? e.message : ''
+  if (code === 'VMU_TURN_DELIVERY_TIMEOUT') return 'timeout'
+  // The engine accepted the turn and lost the reply (RUN 65: 1 125 039 ms, sub-session wrote but could not return the
+  // text). That is NOT a timeout and must not be smoothed into one.
+  if (code === 'VMU_ENGINE_UNAVAILABLE' && message.indexOf('handed back no reply') !== -1) return 'engine-lost-reply'
+  // Nothing configured: no seam, no host root Agent, no usable factory, no delivery deadline (docs/26 §2 stage 3).
+  if (code === 'VMU_ENGINE_UNAVAILABLE' || code === 'VMU_INVALID_ARGUMENT') return 'not-configured'
+  return 'error'
+}
+export function deliveryUnavailableMeansOf(why) {
+  const named = DELIVERY_UNAVAILABLE_WHYS.indexOf(why) !== -1 ? why : 'error'
+  return '投递不可用（why:' + named + '）：本轮成员未运行，任何写入都不是成员在自己的会话里完成的（所办代转或不可证），所以 workShareOf 把这一行的 write 计入 unknownActs，不算成员发言。'
+}
+export function workShareOf({ turns = [] } = {}) {
+  const rows = Array.isArray(turns) ? turns : []
+  let memberActs = 0
+  let officeRelayedActs = 0
+  let unknownActs = 0
+  let memberTurns = 0
+  let officeRelayedTurns = 0
+  let unknownTurns = 0
+  let deliveryUnavailableTurns = 0
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const writes = Array.isArray(row.writes) ? row.writes.length : 0
+    if (writes === 0) continue
+    // ★ RUN 257 / TB-2645: the FOURTH state is read FIRST. A turn whose delivery never reached the member cannot be
+    // a seat act and cannot be an office relay either - the preserved fact is only "the member did not run here".
+    if (row.deliveryUnavailable === true) {
+      unknownActs += writes
+      unknownTurns += 1
+      deliveryUnavailableTurns += 1
+      continue
+    }
+    const path = typeof row.deliveryPath === 'string' ? row.deliveryPath : ''
+    if (path === '') {
+      unknownActs += writes
+      unknownTurns += 1
+    } else if (path === 'caller') {
+      officeRelayedActs += writes
+      officeRelayedTurns += 1
+    } else {
+      memberActs += writes
+      memberTurns += 1
+    }
+  }
+  const provenActs = memberActs + officeRelayedActs
+  return {
+    memberActs,
+    officeRelayedActs,
+    unknownActs,
+    acts: provenActs + unknownActs,
+    provenActs,
+    memberTurns,
+    officeRelayedTurns,
+    unknownTurns,
+    deliveryUnavailableTurns,
+    memberShare: provenActs > 0 ? Math.round((memberActs / provenActs) * 10000) / 10000 : null,
+    classifiedBy: WORK_SHARE_CLASSIFIED_BY,
+    means: WORK_SHARE_MEANS + (deliveryUnavailableTurns > 0
+      ? ' ' + String(deliveryUnavailableTurns) + ' 个回合投递不可用，成员未运行：这些回合的写入计入 unknownActs（没有可证的执行者），不在 memberShare 的分母里。'
+      : ''),
+  }
 }
 export function sendViaSubagents(subagents) {
   if (!subagents || typeof subagents.sendMessage !== 'function') {
@@ -1646,6 +1789,271 @@ export function renderStatusBoard(readings) {
   }).join('\n')
 }
 
+/**
+ * ★★★ RUN 258 / TB-2621 (task-102): THE BOARD CARRIED FOUR ROWS FROM TWO LEDGERS AND WAS BLIND TO THE TWO LEDGERS
+ * THAT DECIDE THE ROUND.
+ *
+ * Measured before this change: a chair's `normal` prompt was byte-identical in three different worlds (paper archived,
+ * paper finalized, closure settled) - sha256 `cb9049528bcf`, 55,826 B in all three - because `statusBoardReadings` only
+ * knew `vmu.tasks` and `vmu.records`' progress track. The paper and blueprint DO exist durably (the paper pack writes
+ * one `paper-state` row per paper on the records track `paper`; the blueprint pack writes a `blueprint` row whose body
+ * IS the md), and the closure vote lives in this orchestrator's own `closureVotes` map. None of the three had a way
+ * onto the board, so the chair read a frozen world and could only guess whether the paper had moved.
+ *
+ * THREE RULES THIS READER KEEPS, because each one was a live defect in an earlier round:
+ *   ① ONE FIELD, ONE QUESTION. `paper.status` is the pack's lifecycle word; `missing` is derived (participants without
+ *      a part) and is named `missing` ONLY here - RUN 252 measured the same word answering two questions.
+ *   ② NAMED ABSENCE, NEVER undefined. Every group is `{ value|null, why, source, detail, at, atSource, timeWhy }`: a
+ *      group the kernel cannot read says WHY and names the source it tried, so "nothing here" and "not looked at" read
+ *      differently. `value:null` renders no line (an empty row would be noise), but the receipt still carries the why.
+ *   ③ NO SECOND TRUTH SOURCE. Everything here comes from the SAME durable rows the packs write (`records.list` head
+ *      rows + `records.get` bodies) and from `records.mdParse`/`records.mdDigest` - the kernel's own md door - never
+ *      from a fresh fs read or a re-implementation of the blueprint/paper formats. The reading is derived, not stored.
+ */
+export const LIVE_STATUS_FIELDS = Object.freeze([
+  Object.freeze({ key: 'paper', label: '论文' }),
+  Object.freeze({ key: 'blueprint', label: '蓝图' }),
+  Object.freeze({ key: 'closure', label: '结题' }),
+])
+
+const LIVE_TIME_WHY = '这一组读数没有内容时间戳（来源没有回报时间，本次读取也没有提供读取时刻）'
+
+const liveGap = (why, source) => ({
+  value: null, why, source, detail: null, at: null, atSource: null, timeWhy: LIVE_TIME_WHY,
+})
+const liveValue = (value, source, detail, at, atSource) => ({
+  value, why: null, source, detail,
+  at: at === null || at === undefined ? null : String(at),
+  atSource: at === null || at === undefined ? null : String(atSource),
+  timeWhy: at === null || at === undefined ? LIVE_TIME_WHY : null,
+})
+/** `records.list` answers `{ok, items, …}` on a real kernel and a bare array on the older face; both are accepted. */
+const ledgerRowsOf = (listed) => {
+  if (Array.isArray(listed)) return { rows: listed, envelope: null }
+  if (listed && Array.isArray(listed.items)) return { rows: listed.items, envelope: listed }
+  return null
+}
+const newestLedgerRow = (rows) => rows.slice().sort((a, b) => (stampMs(a) === null ? -1 : stampMs(a)) - (stampMs(b) === null ? -1 : stampMs(b)))[rows.length - 1]
+/** Read one row's body through the records door; a row that cannot be expanded is null, never a guessed body. */
+const ledgerBodyOf = (readGet, id) => {
+  if (typeof readGet !== 'function') return null
+  try {
+    const got = readGet({ id: String(id) })
+    if (!got || typeof got !== 'object') return null
+    const body = typeof got.body === 'string' ? got.body : (got.record && typeof got.record.body === 'string' ? got.record.body : null)
+    return body === null ? null : { body, got }
+  } catch (e) { return null }
+}
+/** A ledger reader must not hand a Promise to this synchronous board: name it as unreadable, never await here. */
+const rowsOfSync = (listed) => (isPromise(listed) ? null : ledgerRowsOf(listed))
+
+/**
+ * Derive the three live groups. SYNCHRONOUS by construction (the ledgers it reads are synchronous) so the prompt path
+ * cannot start awaiting things; a reader that hands back a Promise is reported as unreadable instead of being rendered
+ * as "nothing here".
+ */
+export function liveStatusReadings({ records = null, rosterIds = [], votes = null, meeting = null, meetings = null, member = null } = {}) {
+  const readList = readerOf(records, 'list')
+  const readGet = readerOf(records, 'get')
+  const parseMd = readerOf(records, 'mdParse')
+  const digestMd = readerOf(records, 'mdDigest')
+  const out = { ok: true, member: typeof member === 'string' ? member : null, paper: null, blueprint: null, closure: null }
+
+  // ① 论文 — one in-place `paper-state` row per paper on the `paper` track; its body is the pack's own JSON state.
+  const paperSource = 'records 的 paper 轨（paper-state 行的正文）'
+  if (readList === null) out.paper = liveGap('论文读数不可得：本内核没有把 records.list 交给回合层', paperSource)
+  else {
+    let listed = null
+    try { listed = readList({ track: 'paper', limit: 0 }) } catch (e) { out.paper = liveGap('论文轨读取失败：' + String((e && e.message) || e), paperSource) }
+    if (out.paper === null) {
+      const view = rowsOfSync(listed)
+      if (view === null) out.paper = liveGap('论文轨不可读：records.list({track:"paper"}) 的返回里没有 items 数组', paperSource)
+      else {
+        const states = view.rows.filter((r) => r && String(r.kind) === 'paper-state')
+        if (states.length === 0) out.paper = liveGap('论文轨上还没有 paper-state 行：研究所还没有开论文', paperSource)
+        else {
+          const row = newestLedgerRow(states)
+          const read = ledgerBodyOf(readGet, row.id)
+          let state = null
+          if (read !== null) { try { state = JSON.parse(read.body) } catch (e) { state = null } }
+          if (state === null || typeof state !== 'object') out.paper = liveGap('论文状态行存在但正文不是可解析的 JSON（行 ' + String(row.id) + '）：不能假装读到了状态', paperSource)
+          else {
+            const parts = state.parts && typeof state.parts === 'object' ? Object.keys(state.parts) : []
+            const participants = Array.isArray(state.participants) ? state.participants.map(String) : []
+            // ② DERIVED and NAMED: `missing` is "participants with no part yet", nothing else.
+            const missing = participants.filter((m) => parts.indexOf(m) < 0)
+            const status = state.status === undefined || state.status === null ? null : String(state.status)
+            const round = Number.isFinite(Number(state.round)) ? Number(state.round) : null
+            const stamp = stampIso(row)
+            out.paper = liveValue(
+              '状态 ' + (status === null ? '（未回报）' : status) + '｜第 ' + (round === null ? '?' : String(round)) + ' 轮｜缺正文 ' + (missing.length === 0 ? '无' : missing.join('、')),
+              paperSource,
+              {
+                record: String(row.id), target: state.target === undefined ? null : state.target,
+                status, round, participants, parts, missing,
+                // ③ NOT IN THE LEDGER, SO NAMED: the pack reports these on its own receipts; the board must not invent them.
+                toolchainAbsent: null,
+                toolchainAbsentWhy: '账本里没有工具链缺席记录：它只在论文 pack 的 compile 回执上出现，状态板不猜',
+                lastEvent: status === null ? null : (status + (round === null ? '' : '@r' + String(round))),
+              },
+              stamp, 'records 的 updatedAt',
+            )
+          }
+        }
+      }
+    }
+  }
+
+  // ② 蓝图 — the `blueprint` row's BODY is the md; its fields are read with the kernel's own md parser (no second one).
+  const blueprintSource = 'records 的 blueprint 轨（md 正文 + 索引行 sha256）'
+  if (readList === null) out.blueprint = liveGap('蓝图读数不可得：本内核没有把 records.list 交给回合层', blueprintSource)
+  else if (parseMd === null) out.blueprint = liveGap('蓝图读数不可得：records.mdParse 没有注入（蓝图行的正文是 md，必须用内核自己的解析器）', blueprintSource)
+  else {
+    let listed = null
+    try { listed = readList({ track: 'blueprint', limit: 0 }) } catch (e) { out.blueprint = liveGap('蓝图轨读取失败：' + String((e && e.message) || e), blueprintSource) }
+    if (out.blueprint === null) {
+      const view = rowsOfSync(listed)
+      if (view === null) out.blueprint = liveGap('蓝图轨不可读：records.list({track:"blueprint"}) 的返回里没有 items 数组', blueprintSource)
+      else {
+        const rows = view.rows.filter((r) => r && String(r.kind) === 'blueprint')
+        if (rows.length === 0) out.blueprint = liveGap('蓝图轨上还没有蓝图行：研究所还没有提蓝图草案', blueprintSource)
+        else {
+          const row = newestLedgerRow(rows)
+          const read = ledgerBodyOf(readGet, row.id)
+          let parsed = null
+          if (read !== null) { try { parsed = parseMd(read.body) } catch (e) { parsed = null } }
+          // The ROW's body is the md body alone: the index row already carries track/kind/owner, so the blueprint writer
+          // stores the field block + prose WITHOUT the `vmuMd` header a standalone file has. mdParse therefore answers
+          // `ok:false` for a row body (no marker) while still parsing the fields - we read those fields, and record
+          // `mdHasMarker` so nobody mistakes a row body for a standalone md. A body with NO fields is still a named gap.
+          const parsedFields = parsed && parsed.fields && typeof parsed.fields === 'object' ? parsed.fields : null
+          const fields = parsedFields !== null && Object.keys(parsedFields).length > 0 ? parsedFields : null
+          if (fields === null) out.blueprint = liveGap('蓝图行存在但 md 正文解析不了（行 ' + String(row.id) + '）：不能假装读到了状态', blueprintSource)
+          else {
+            const mdPath = fields.mdPath === undefined || fields.mdPath === null ? null : String(fields.mdPath)
+            const indexFingerprint = fields.mdFingerprint === undefined ? (row.fingerprint === undefined ? null : row.fingerprint) : fields.mdFingerprint
+            // The md-vs-index comparison comes from the records face itself (records.js mdDigest), so "the draft file is
+            // missing" and "the file was edited since the row" are the SAME predicates the blueprint adopt gate uses.
+            let md = null
+            if (digestMd !== null && mdPath !== null) { try { md = digestMd({ path: mdPath, indexFingerprint }) } catch (e) { md = null } }
+            const draftMdMissing = md === null ? null : (md.exists === false || md.mdMissing === true)
+            const status = fields.status === undefined || fields.status === null ? null : String(fields.status)
+            const revision = Number.isFinite(Number(fields.revision)) ? Number(fields.revision) : null
+            const stamp = stampIso(row)
+            out.blueprint = liveValue(
+              'id ' + String(row.id) + '｜状态 ' + (status === null ? '（未回报）' : status) + '｜修订 ' + (revision === null ? '?' : String(revision)) +
+                '｜草案 md ' + (draftMdMissing === null ? '（账本无法比较）' : (draftMdMissing ? '缺失' : '在位')) +
+                (md !== null && md.mdChangedSinceIndex === true ? '（被改过，需 reindex）' : ''),
+              blueprintSource,
+              {
+                id: String(row.id), status, revision, mdPath,
+                draftMdMissing,
+                mdChangedSinceIndex: md === null ? null : md.mdChangedSinceIndex === true,
+                mdFingerprint: md === null ? null : (md.mdFingerprint === undefined ? null : md.mdFingerprint),
+                mdHasMarker: parsed !== null && parsed.ok === true,
+                adoptedBy: fields.adoptedBy === undefined ? null : fields.adoptedBy,
+              },
+              stamp, 'records 的 updatedAt',
+            )
+          }
+        }
+      }
+    }
+  }
+
+  // ③ 结题 — two questions, two fields: the CLOSURE vote (this orchestrator's own map) and the UNRESOLVED MOTIONS of
+  // the meeting bound to this turn (read from the meetings face, which the loop already holds). The vote denominator is
+  // the turn's own roster and that is STATED, because voting-eligibility lives in the balloting faces and this reader
+  // must not silently narrow the denominator it cannot see.
+  const voteSource = '本回合编排器的 closureVotes + 本回合绑定会议的动议'
+  const roster = Array.isArray(rosterIds) ? rosterIds.map(String) : []
+  let votesCast = 0
+  let votesFor = 0
+  let votesAgainst = 0
+  let votesUnknown = 0
+  if (votes && typeof votes.size === 'number' && votes.size > 0) {
+    for (const [who, value] of votes.entries()) {
+      const id = String(who)
+      if (roster.length > 0 && roster.indexOf(id) < 0) continue
+      votesCast += 1
+      const word = value && typeof value === 'object' && value.value !== undefined ? String(value.value) : String(value)
+      if (word === 'for' || word === 'solved' || word === 'yes' || word === 'true') votesFor += 1
+      else if (word === 'against' || word === 'no' || word === 'false') votesAgainst += 1
+      else votesUnknown += 1
+    }
+  }
+  let motionsPending = null
+  let motionsWhy = null
+  let motionsDetail = null
+  if (meeting === null || meeting === undefined || String(meeting).trim() === '') {
+    motionsWhy = '本回合没有绑定会议：动议不在本回合的读数范围'
+  } else if (!meetings || typeof meetings.summary !== 'function') {
+    motionsWhy = '会议面没有注入：无法读绑定会议 ' + String(meeting) + ' 的动议'
+  } else {
+    try {
+      const got = meetings.summary({ meeting: String(meeting) })
+      const list = got && Array.isArray(got.motions) ? got.motions : null
+      if (list === null) motionsWhy = '会议面回执里没有 motions 数组：不能假设没有动议'
+      else {
+        const pending = list.filter((mo) => mo && (String(mo.status) === 'proposed' || String(mo.status) === 'seconded'))
+        motionsPending = pending.length
+        motionsDetail = { meeting: String(meeting), total: list.length, pending: pending.map((mo) => String(mo.id)) }
+      }
+    } catch (e) {
+      motionsWhy = '会议 ' + String(meeting) + ' 的动议读不到：' + String((e && e.message) || e)
+    }
+  }
+  if (votes && typeof votes.size === 'number' && votes.size > 0) {
+    out.closure = liveValue(
+      '已投 ' + String(votesCast) + '/' + (roster.length === 0 ? '?（本回合无在册名单）' : String(roster.length)) +
+        '（同意 ' + String(votesFor) + '、反对 ' + String(votesAgainst) + (votesUnknown > 0 ? '、其他 ' + String(votesUnknown) : '') + '）' +
+        '｜未决动议 ' + (motionsPending === null ? '（未读到）' : String(motionsPending)),
+      voteSource,
+      {
+        votesCast, votesTotal: roster.length, votesFor, votesAgainst, votesUnknown,
+        denominator: '本回合 turn.rosterIds；投票资格过滤在 balloting 面，本读数看不到，所以分母不缩小',
+        motionsPending, motionsWhy, motions: motionsDetail,
+      },
+      null, null,
+    )
+  } else if (motionsPending !== null) {
+    out.closure = liveValue('未决动议 ' + String(motionsPending), voteSource,
+      { votesCast: 0, votesTotal: roster.length, votesFor: 0, votesAgainst: 0, votesUnknown: 0, denominator: '本回合 turn.rosterIds', motionsPending, motionsWhy, motions: motionsDetail },
+      null, null)
+  } else {
+    out.closure = liveGap(
+      '本回合既没有 closure 投票、也没有可读的绑定会议动议' + (motionsWhy === null ? '' : '（' + motionsWhy + '）'),
+      voteSource,
+    )
+  }
+  return out
+}
+
+/**
+ * Render only the groups that HAVE a value: a null group prints nothing in the prompt (an empty label is noise), while
+ * `turn.status().liveReadings` still carries its `why`. With every group null this returns "" and the status block is
+ * byte-identical to the pre-RUN-258 one — that property is asserted, because a board that grows an empty row on every
+ * prompt would break prompt diffability for no reading at all.
+ */
+export function renderLiveStatus(live) {
+  if (!live || typeof live !== 'object') return ''
+  const lines = []
+  for (const decl of LIVE_STATUS_FIELDS) {
+    const f = live[decl.key]
+    if (!f || typeof f !== 'object') continue
+    const value = typeof f.value === 'string' && f.value.trim() !== '' ? f.value.trim() : null
+    if (value === null) continue
+    const source = typeof f.source === 'string' && f.source.trim() !== '' ? f.source.trim() : null
+    const when = f.at === null || f.at === undefined || String(f.at).trim() === '' ? null : String(f.at).trim()
+    const timeWhy = when === null && typeof f.timeWhy === 'string' && f.timeWhy.trim() !== '' ? f.timeWhy.trim() : null
+    let shown = source === null ? value : value + '（来源：' + source + '）'
+    if (when !== null) shown += '（读于 ' + when + '）'
+    else if (timeWhy !== null) shown += '（时间未提供：' + timeWhy + '）'
+    lines.push('[' + decl.label + '] ' + shown)
+  }
+  return lines.join('\n')
+}
+
 const composeStatusBlock = (turn, readings = null) => {
   if (!turn || typeof turn !== "object") return ""
   const who = turn.roleLabel ? String(turn.roleLabel) + "「" + String(turn.member) + "」" : String(turn.member)
@@ -1660,6 +2068,11 @@ const composeStatusBlock = (turn, readings = null) => {
   // loop's read legs) or by a caller-supplied `statusSources`; when neither could produce a field, the line names the
   // missing SOURCE and why it is missing rather than printing an empty tag.
   lines.push("", "[状态板]", renderStatusBoard(readings))
+  // ★★★ RUN 258 / TB-2621: the two ledgers that decide the round (paper / blueprint) and the closure vote, appended
+  // ONLY when they carry a value. An empty group adds nothing, so a world with no paper and no blueprint renders the
+  // exact pre-RUN-258 block - diffability is a property, not a hope (asserted in the suite).
+  const liveLines = renderLiveStatus(readings && readings.live ? readings.live : null)
+  if (liveLines !== "") lines.push("", liveLines)
   return lines.join("\n")
 }
 
@@ -1845,10 +2258,27 @@ export function createTurnOrchestrator({
   //      chair's turn and the child kernel reads the fold a millisecond later.
   // The GATE is not touched: a seat that never ran a turn is still refused (`tests/vmu-run35-chair-act.test.mjs` asserts
   // that counterfactual), because the ledger only ever records a turn that really was opened.
+  // ★★★★★★★ RUN 257 / TB-2636 — A RECEIPT STAMP IS A CLOCK READ, NOT A WALL-CLOCK READ.
+  //
+  // `Date.now()` at these stamps made the SAME turn produce different receipt bytes on two runs, which is exactly what
+  // the determinism gate (TB-2605) and the paired corpus (TB-2602) read as a product change. The stamps migrated below
+  // are FACTS ABOUT WHEN the kernel noticed something (a failure counter's `at`, a dispatch error's `at`, a queued
+  // wake's `at`) — they are not deadlines, so they take the ONE injected clock like every other row, and the row says
+  // `atSource: 'kernel-clock'` so a reader can tell it apart from the wall clock.
+  //
+  // Durations that DECIDE a timeout (the parked prompt, the turn lock, the store lock) deliberately keep the wall
+  // clock: an injected frozen clock would never time out, so `tests/audit-clock-purity.mjs` names those by file, line
+  // anchor and owner instead of migrating them (TB-2636). The two kinds of read are different facts, not one debt.
+  const clockMsOf = () => {
+    const v = typeof clock === 'function' ? clock() : null
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+    const parsed = Date.parse(String(v))
+    return Number.isFinite(parsed) ? parsed : null
+  }
   const ledgerWrites = new Map()
   const ledgerFail = (turn, e) => {
     counts.ledgerFailed += 1
-    counts.ledgerLastFail = { at: Date.now(), turn: turn && turn.id ? turn.id : null,
+    counts.ledgerLastFail = { at: isoStampOf(clock()), atSource: 'kernel-clock', turn: turn && turn.id ? turn.id : null,
       member: turn && turn.member ? String(turn.member) : null,
       code: e && e.code ? String(e.code) : null,
       message: e && e.message ? String(e.message).slice(0, 400) : String(e),
@@ -1959,6 +2389,132 @@ export function createTurnOrchestrator({
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /**
+   * ★★★★★★★ RUN 256 / TB-2616 (task-97) — THE PARKED PROMPT GETS ONE READER, ONE GATE AND ONE RESUME.
+   *
+   * MEASURED (audit round 14, P0-1/P0-2): a caller-played turn parks its assembled prompt on the caller
+   * (`deliverByReturning` keeps ONE prompt). Two defects followed from that one fact, because nothing owned it:
+   *   P0-1 the TEXT channel answered a parked turn by supplying the reply and then calling `step`, and `step` opened a
+   *        NEW turn: the receipt named t-2/r-1, the record was written by r-2 (the parked member), and t-1 stayed
+   *        `status:"open"` forever. The reply reached the RIGHT member through the WRONG turn.
+   *   P0-2 `drive` refused a dispatch that would overwrite a parked prompt (`VMU_TURN_ALREADY_PARKED`), `step` did not:
+   *        a second `step` silently replaced the prompt this caller was still holding.
+   * WHY NOT "open a new turn but stamp the writer correctly": that keeps two turns for one prompt - the parked row stays
+   * open, the ledger grows a phantom, and "which turn did this reply answer" becomes unknowable. The parked turn is
+   * CONTINUED here: same `turnId`, same `member`, same `promptId`, and it settles to a terminal state in one row.
+   *
+   * The helpers below are the ONLY implementation of those three readings: `step` and `drive` call the same gate, and
+   * the resume path reads the same pending reader, so the two doors cannot drift apart again.
+   */
+  /**
+   * ★★ ONE READER, AND IT READS KERNEL STATE — NOT JUST THE SEAM. `deliver.pending()` is a preview in some seams (a
+   * seam that replays prompts may answer `pending()` before anything is parked, and a seam may report a prompt with no
+   * turn id at all: `tests/vmu-subagent-turn.test.mjs` does both). "A turn is parked" is a fact this kernel PROVES:
+   * `runFrom` records every prompt it parks in `parkedPrompts` keyed by the turn that parked it, so a prompt counts as
+   * parked only when (a) the seam still reports it, (b) it names a turn, and (c) this kernel parked that turn and has not
+   * forgotten it. Without (c) the gate would refuse a first dispatch just because a seam had a preview lying around.
+   */
+  const parkedPromptNow = () => {
+    let p = null
+    try { p = deliver && typeof deliver.pending === 'function' ? deliver.pending() : null } catch (e) { return null }
+    const parked = parkedOf(p)
+    if (parked === null || !parked.turnId) return null
+    const turnKey = String(parked.turnId)
+    const remembered = parkedPrompts.get(turnKey) || null
+    if (remembered === null) return null
+    return Object.assign({}, parked, {
+      promptId: parked.promptId || remembered.promptId || null,
+      parkedAt: Number.isFinite(Number(parked.parkedAt)) ? Number(parked.parkedAt) : remembered.at,
+    })
+  }
+  const parkedOf = (p) => (p && typeof p === 'object' && typeof p.member === 'string' && p.member !== '' ? p : null)
+  const parkedAnswerStaged = () => {
+    try { return typeof deliver.awaiting === 'function' ? deliver.awaiting() === false : false } catch (e) { return false }
+  }
+  const parkedFactsOf = (parked) => {
+    const at = parked && Number.isFinite(Number(parked.parkedAt)) ? Number(parked.parkedAt) : null
+    return {
+      turnId: parked && parked.turnId ? String(parked.turnId) : null,
+      member: parked && typeof parked.member === 'string' ? parked.member : null,
+      promptId: parked && typeof parked.promptId === 'string' ? parked.promptId : null,
+      parkedSince: at,
+      parkedForMs: at === null ? null : Math.max(0, Date.now() - at),
+      releaseBy: 'op:"step" carrying the reply (continues that turn), or op:"abandon" (closes it)',
+    }
+  }
+  const parkedGateMeans = 'a parked prompt is the ONE prompt this caller is still holding: overwriting it would lose an unanswered member turn, so the second door is refused by name instead'
+  const refuseParkedOverwrite = (door, parked) => {
+    const f = parkedFactsOf(parked)
+    const msg = 'a member turn is already parked for ' + String(f.member)
+      + (f.turnId ? ' (turn ' + f.turnId + (f.promptId ? ', prompt ' + f.promptId : '') + ')' : '')
+      + ': ' + door + ' now would silently replace the prompt this caller is still holding'
+    const hint = 'answer the parked prompt first: op:"step" with member:"' + String(f.member) + '" and the reply (or op:"reply" with report {...}), which completes that turn; then dispatch again. This kernel keeps ONE parked prompt (deliverByReturning parks the assembled prompt on the caller), so a second dispatch cannot be queued - the prompt to answer is the memberPrompt the dispatch returned with awaiting:true'
+      // ★ RUN 257 / D-2: the sentence after the ASCII marker must let a reader DO the act, not merely point at it.
+      + ' REACHABLE INSTEAD: answer THAT prompt with vibe_vmu_turn { op:"step", member:"' + String(f.member) + '", reply:"<the member\'s fenced json>" } - the receipt then carries resumed:true and resumedTurnId naming this very turn; to drop it instead call vibe_vmu_turn { op:"abandon", turn:"' + (f.turnId || '<the parked turn id>') + '" }, which closes it, and then dispatch again'
+    const e = refuse('VMU_TURN_ALREADY_PARKED', msg, hint)
+    e.parkedFacts = f
+    e.parkedMeans = parkedGateMeans
+    counts.refused += 1
+    lastRefusal.code = 'VMU_TURN_ALREADY_PARKED'
+    lastRefusal.message = msg
+    throw e
+  }
+  const refuseParkedNeedsOwner = (parked, reason) => {
+    const f = parkedFactsOf(parked)
+    const msg = reason === 'no-parked-prompt'
+      ? 'a reply was staged for the member reply slot, but NO member turn is parked: there is nothing for it to answer, and handing it to the next turn would attribute it to a turn nobody asked about'
+      : 'the parked member turn cannot be continued from this call: ' + (reason === 'no-turn-id' ? 'the parked prompt carries no turn id' : 'the turn it names (' + String(f.turnId) + ') is no longer open in this kernel')
+    const hint = reason === 'no-parked-prompt'
+      ? 'the caller-played route parks a prompt and returns it as memberPrompt (awaiting:true); answer THAT prompt with op:"step" and the reply, or start a real turn with op:"drive"/op:"step" without the reply. REACHABLE INSTEAD: op:"status" turnLoop names the parked prompt (parked/parkedTurn/parkedMember/parkedPromptId)'
+      : 'answer the prompt the call ACTUALLY returned: read op:"status" turnLoop.parkedTurn/parkedMember, or call op:"step" with no reply to get a fresh prompt. A reply that names no parked prompt is never applied to a different turn'
+    const e = refuse('VMU_TURN_PARKED_NEEDS_OWNER', msg, hint)
+    e.parkedFacts = f
+    e.parkedReason = reason
+    // ★ RUN 256 / TB-2616: a reply with nothing to answer is DISCARDED, not left staged: left in the slot it would answer
+    // the NEXT turn opened here - a silent wrong-turn attribution that is the very defect this round repairs (the seam's
+    // own `supply(null)` contract is "no reply is staged"), and a caller who retries without a reply would be refused by
+    // this same gate forever.
+    try { if (deliver && typeof deliver.supply === 'function') deliver.supply(null) } catch (e2) { /* the refusal must still throw */ }
+    e.parkedReplyDiscarded = true
+    counts.refused += 1
+    lastRefusal.code = 'VMU_TURN_PARKED_NEEDS_OWNER'
+    lastRefusal.message = msg
+    throw e
+  }
+  // The assembled text of a parked prompt, kept so a resume does NOT re-assemble: `assemble()` drains the member's
+  // one-shot notice queue and bumps `counts.assembled`, so calling it twice for one turn would announce twice and
+  // count twice. The prompt the caller holds is the prompt that is answered.
+  const parkedPrompts = new Map()
+  const PARKED_PROMPTS_KEEP = 8
+  const rememberParkedPrompt = (turn, asm, prompt) => {
+    try {
+      const id = turn && turn.id ? String(turn.id) : null
+      if (id === null) return
+      parkedPrompts.delete(id)
+      parkedPrompts.set(id, {
+        text: asm && typeof asm.text === 'string' ? asm.text : '',
+        instructionDelivered: asm ? asm.instructionDelivered === true : false,
+        sources: asm && Array.isArray(asm.sources) ? asm.sources.length : 0,
+        notices: asm && asm.notices ? asm.notices : null,
+        promptId: prompt && typeof prompt.promptId === 'string' ? prompt.promptId : null,
+        chars: asm && typeof asm.text === 'string' ? asm.text.length : 0,
+        at: clockMsOf(),
+        atSource: 'kernel-clock',
+      })
+      while (parkedPrompts.size > PARKED_PROMPTS_KEEP) parkedPrompts.delete(parkedPrompts.keys().next().value)
+    } catch (e) { /* the resume seam must never replace the prompt */ }
+  }
+  // ★★★★★★★ RUN 258 / TB-2651 (AUDIT-14 P1-6): RETURNS WHETHER A RECORD WAS THERE, SO THE RECEIPT CAN TELL THE TRUTH.
+  // A parked-prompt record is the kernel's OWN bookkeeping (it is what a resume re-uses), so its removal is a guarantee
+  // this kernel can always make — unlike `deliver.clear()`, which only the caller seam has. The abandon receipts report
+  // both facts separately (`parkedCleared` = this return value, `clearCapability` = whether the seam could clear at all).
+  const forgetParkedPrompt = (turnId) => {
+    try {
+      if (turnId === undefined || turnId === null) return false
+      return parkedPrompts.delete(String(turnId)) === true
+    } catch (e) { return false }
+  }
+
+  /**
    * ★★★ ROUND 30 / task-19: READ THE STATUS BOARD FOR THIS TURN. The precedence is the seam's:
    *   1. `statusSources` as a FUNCTION — the caller owns the board (a pack with its own ledger, or a test);
    *   2. `statusSources` as a BAG `{ tasks, records }` — the caller injects the two ledgers;
@@ -1967,6 +2523,36 @@ export function createTurnOrchestrator({
    * A source that throws, or a function that returns something that is not the `statusBoardReadings` shape, is a
    * NAMED refusal: the alternative is rendering a board nobody produced, which is the defect this row removes.
    */
+  /**
+   * ★★★ RUN 258 / TB-2621 (task-102): THE LIVE LEDGERS ARE READ THROUGH THE SAME DOOR AS THE BOARD.
+   *
+   * `statusBoardReadings` could only read tasks + progress; the paper, blueprint and closure readings did not exist on
+   * any prompt path, so a chair's prompt stayed byte-identical across paper/closure state changes. They are derived here
+   * - ONE production call site, the same one the `[状态板]` comes from - so the prompt and `turn.status()` cannot drift.
+   * `records` is taken from the SAME precedence the board uses (caller bag first, declared face second), and `faces`
+   * gives the bound meeting's motions. Nothing here is a second truth source: see the long note on `liveStatusReadings`.
+   */
+  const liveReadingsFor = (turn) => {
+    const bag = statusSources && typeof statusSources === 'object' ? statusSources : null
+    const recordFace = (bag && bag.records) || (faces && faces['vmu.records']) || null
+    return liveStatusReadings({
+      records: recordFace,
+      member: turn && typeof turn.member === 'string' ? turn.member : null,
+      rosterIds: turn && Array.isArray(turn.rosterIds) ? turn.rosterIds : [],
+      votes: closureVotes,
+      meeting: turn && turn.meeting !== undefined && turn.meeting !== null ? String(turn.meeting) : null,
+      meetings: faces && faces['vmu.meetings'] ? faces['vmu.meetings'] : null,
+    })
+  }
+  /** The board object is what `assemble` renders and what `status()` reports; both get the SAME live object. */
+  const withLive = (board, turn) => {
+    const live = liveReadingsFor(turn)
+    lastLiveReadings = live
+    if (!board || typeof board !== 'object') return board
+    return Object.assign({}, board, { live })
+  }
+  let lastLiveReadings = null
+
   const statusReadingsFor = async (turn) => {
     const member = turn && typeof turn.member === 'string' ? turn.member : null
     if (typeof statusSources === 'function') {
@@ -1985,7 +2571,7 @@ export function createTurnOrchestrator({
         fail('VMU_ENGINE_UNAVAILABLE', 'the status board source returned no fields for ' + String(member),
           'return statusBoardReadings(...) (or the same shape); the four fields must be named even when they are unavailable')
       }
-      return out
+      return withLive(out, turn)
     }
     const bag = statusSources && typeof statusSources === 'object' ? statusSources : null
     const taskFace = (bag && bag.tasks) || (faces && faces['vmu.tasks']) || null
@@ -2004,7 +2590,7 @@ export function createTurnOrchestrator({
     // same round byte for byte (that is what makes a prompt diff readable), and a read clock makes every assembly
     // unique. Time therefore comes from the CONTENT (a record carries `updatedAt`) or the row says why it has none -
     // `timeWhy` - instead of borrowing the moment of reading as if it were the moment of the fact.
-    return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT, kernel: kernelNow })
+    return withLive(statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT, kernel: kernelNow }), turn)
   }
 
   // ★★★★★★★ ROUND 240 (FEEDBACK63 ①4/①9, MEASURED): THE HOST'S OWN LEDGER OF WHAT EACH TURN DID. `op:"status"` could
@@ -2071,6 +2657,17 @@ export function createTurnOrchestrator({
       // and `turnReceiptsMeans` spells out which is which.
       notices: null, truncated: null, excerptLen: null, emptyReply: null,
       replyFullPath: null, replyFullSha256: null, replyFullBytes: null, replyArchiveWhy: null,
+      // ★★★ RUN 257 / TB-2611 (task-90): WHO RAN THE TURN is a row-level fact, present from OPEN time. A seat-own-session
+      // turn carries the path the delivery seam reported (`activation` / `continuation` / `one-shot` / a host seam name);
+      // a turn the CALLING session played carries `"caller"`; null means the ledger does not say (legacy row or a silent
+      // seam), which `workShareOf` counts as unknown - never as member.
+      deliveryPath: null,
+      // ★★★ RUN 257 / TB-2645 (task-126): THE FOURTH STATE: did the prompt even REACH the member? null means "not
+      // decided yet" (no delivery attempted); true names a delivery that never handed the turn over (why says which
+      // kind); false is written explicitly by the applied branch so the four states are decidable and no silent null
+      // can be read as success. A true row keeps deliveryPath null: "caller" means the office CHOSE to play the turn,
+      // and a broken delivery is not a choice.
+      deliveryUnavailable: null, deliveryUnavailableWhy: null, deliveryUnavailableMeans: null,
     }
     const next = Object.assign({}, prev)
     if (patch && typeof patch === 'object') {
@@ -2097,7 +2694,39 @@ export function createTurnOrchestrator({
         }
       }
       if (typeof patch.truncated === 'boolean') next.truncated = patch.truncated
+      // ★★★ RUN 250 / lead review: the two names that keep a missing/blocked notice reading from becoming a silent null.
+      // `noticesMeans` explains a named absence; `noticesError` says the ledger write itself failed (and the row still
+      // carries everything else it had). Neither is recomputed from the other.
+      if (typeof patch.noticesMeans === 'string' && patch.noticesMeans !== '') next.noticesMeans = patch.noticesMeans
+      if (patch.noticesError && typeof patch.noticesError === 'object') {
+        next.noticesError = {
+          code: patch.noticesError.code === undefined ? null : patch.noticesError.code,
+          message: typeof patch.noticesError.message === 'string' ? patch.noticesError.message : null,
+        }
+      }
       if (Number.isFinite(patch.excerptLen)) next.excerptLen = Math.max(0, Math.floor(patch.excerptLen))
+      // ★★★ RUN 257 / TB-2611 (task-90): THE LEDGER NOW KEEPS WHO RAN THE TURN. The applied branch has passed
+      // `deliveryPath` since ROUND 240 (`lastAttribution.deliveryPath`), but this whitelist dropped it, so every settled
+      // row read as "a turn happened" with no way to tell a seat-own-session turn from a caller-played (office relayed)
+      // one. An empty string is NOT stored: null is the named absence (`workShareOf` counts it as unknown).
+      if (typeof patch.deliveryPath === 'string' && patch.deliveryPath !== '') next.deliveryPath = patch.deliveryPath
+      // ★★★ RUN 257 / TB-2645 (task-126): the fourth state is copied as a PAIR: true carries its why and its sentence
+      // (a bare true would be a number without a name), false NAMES the good case explicitly and clears the two
+      // explainers, and null is never stored by a patch (the open-time slot already says "not decided").
+      if (patch.deliveryUnavailable === true) {
+        const why = typeof patch.deliveryUnavailableWhy === 'string' && patch.deliveryUnavailableWhy !== ''
+          ? patch.deliveryUnavailableWhy
+          : 'error'
+        next.deliveryUnavailable = true
+        next.deliveryUnavailableWhy = why
+        next.deliveryUnavailableMeans = typeof patch.deliveryUnavailableMeans === 'string' && patch.deliveryUnavailableMeans !== ''
+          ? patch.deliveryUnavailableMeans
+          : deliveryUnavailableMeansOf(why)
+      } else if (patch.deliveryUnavailable === false) {
+        next.deliveryUnavailable = false
+        next.deliveryUnavailableWhy = null
+        next.deliveryUnavailableMeans = null
+      }
       if (typeof patch.replyFullPath === 'string' && patch.replyFullPath !== '') next.replyFullPath = patch.replyFullPath
       if (typeof patch.replyFullSha256 === 'string' && patch.replyFullSha256 !== '') next.replyFullSha256 = patch.replyFullSha256
       if (Number.isFinite(patch.replyFullBytes)) next.replyFullBytes = Math.max(0, Math.floor(patch.replyFullBytes))
@@ -2415,6 +3044,21 @@ export function createTurnOrchestrator({
   /** ③ deliver through the adapter seam. A missing adapter is refused, never faked. */
   const deliverTurn = async (turn, text) => {
     if (typeof deliver !== 'function') {
+      // ★★★ RUN 257 / TB-2645 (task-126): A REFUSAL IS STILL A ROW. Without this the ledger left an `open` row and the
+      // office could not tell "nothing was configured" from "the member is still thinking". The why is named too: this
+      // is the `not-configured` class, not a broken seam.
+      try {
+        const why = 'not-configured'
+        noteTurnReceipt(turn, {
+          status: 'undelivered',
+          closedWith: 'VMU_ENGINE_UNAVAILABLE',
+          settledBy: 'delivery-unavailable',
+          fields: [],
+          deliveryUnavailable: true,
+          deliveryUnavailableWhy: why,
+          deliveryUnavailableMeans: deliveryUnavailableMeansOf(why),
+        })
+      } catch (err) { /* the ledger must never replace the seam's own refusal */ }
       fail('VMU_ENGINE_UNAVAILABLE', 'no delivery adapter is wired: refusing rather than pretending the member answered',
         'inject { deliver: async ({ turn, text }) => reply } (docs/26 §2 stage 3)')
     }
@@ -2467,14 +3111,33 @@ export function createTurnOrchestrator({
       // `failed` in this ledger means "the member answered and the write-back threw". A delivery that never came back
       // is a different fact and gets its own word.
       const threwCode = e && e.code ? String(e.code) : 'VMU_TURN_DELIVERY_FAILED'
+      // ★★★ RUN 257 / TB-2645 (task-126): THE ROW MUST SAY THE MEMBER NEVER RAN. `undelivered` alone still let an
+      // office read a timeout as "a turn happened"; the fourth state names it, its why (timeout / error /
+      // not-configured / engine-lost-reply) and a sentence a reader can quote. deliveryPath stays null here: "caller"
+      // means the office CHOSE to play the turn, and a broken delivery is not a choice.
+      const unavailableWhy = deliveryUnavailableWhyOf(e)
+      const unavailableMeans = deliveryUnavailableMeansOf(unavailableWhy)
       try {
         noteTurnReceipt(turn, {
           status: 'undelivered',
           closedWith: threwCode,
           settledBy: 'delivery-threw',
           fields: [],
+          deliveryUnavailable: true,
+          deliveryUnavailableWhy: unavailableWhy,
+          deliveryUnavailableMeans: unavailableMeans,
         })
       } catch (err) { /* the ledger must never replace the seam's own refusal */ }
+      // The SAME three facts travel on the refused call, so a caller that only catches the error can report what
+      // happened without reading the ledger. Only an extensible error is annotated (the seam's object is not cloned or
+      // rewritten; its code/message/hint are untouched).
+      try {
+        if (e && typeof e === 'object' && Object.isExtensible(e)) {
+          e.deliveryUnavailable = true
+          e.deliveryUnavailableWhy = unavailableWhy
+          e.deliveryUnavailableMeans = unavailableMeans
+        }
+      } catch (err) { /* annotation is a convenience, never a blocker */ }
       counts.deliveryLastFail = {
         // ★ RUN 245 (audit round 12 H4): the KERNEL's clock, not the wall clock — `writesWindow.from/to` below are
         // built with `isoStampOf(clock())`, and one receipt may not compare two clocks and call it an order.
@@ -2485,6 +3148,10 @@ export function createTurnOrchestrator({
         code: e && e.code ? String(e.code) : null,
         message: e && e.message ? String(e.message).slice(0, 400) : String(e),
         deliveryPath: (e && e.deliveryPath) || lastAttribution.deliveryPath || null,
+        // ★ RUN 257 / TB-2645: the last-failure reading names the same state as the row and the error (one fact, one
+        // vocabulary) - timeout / error / not-configured / engine-lost-reply.
+        deliveryUnavailable: true,
+        deliveryUnavailableWhy: unavailableWhy,
         stillRunning: !!(e && e.stillRunning === true),
         // ★ RUN 242 (FEEDBACK65 1.8): "the result did not come back" is not the same claim as "the member did
         // nothing". MEASURED (run 65): r-1's timed-out turn had ALREADY written a blueprint draft (rec-5) and a progress
@@ -2527,8 +3194,10 @@ export function createTurnOrchestrator({
         noteTurnReceipt(turn, { status: 'undelivered', closedWith: 'VMU_TURN_DELIVERY_SHAPE', settledBy: 'delivery-shape', fields: [] })
       } catch (err) { /* the ledger must never replace the seam's own refusal */ }
       fail('VMU_TURN_DELIVERY_SHAPE',
-        'the delivery adapter returned a shape this kernel cannot read: ' + got + ' — the reply text was never handed over, so this is NOT a member that stayed silent and NOT a reply without a fence',
-        'return one of the three accepted shapes (docs/26 §3.22): a bare string; { reply: <string>, childId, stopReason, attribution }; or { awaiting: true, memberPrompt } — the keys actually received are listed above')
+        'the DELIVERY ADAPTER returned a shape this kernel cannot read: ' + got + ' — the reply text was never handed over by the seam, so this is NOT a member that stayed silent and NOT a reply without a fence. This code is about the adapter boundary only: prose with no fence is a different fact and a different code (VMU_TURN_NO_FENCE)',
+        'this code means "the ADAPTER broke the contract", not "the member wrote the wrong thing": return one of the three accepted shapes (docs/26 §3.22): a bare string; { reply: <string>, childId, stopReason, attribution }; or { awaiting: true, memberPrompt } — the keys actually received are listed above. If instead the member replied in free prose with no fence, that is CORRECTLY refused as VMU_TURN_NO_FENCE (the reply catalogue requires a tool report or a fenced object), so do not widen this code to cover it'
+          // ★ RUN 257 / D-2: name the seam and its exact shape, so the fix is a one-line change in the adapter, not a guess.
+          + ' REACHABLE INSTEAD: make the seam hand back one of those three shapes - deliverViaSubagents(...) in this repo builds { reply, childId, stopReason, attribution }, deliverByReturning() returns { awaiting: true, memberPrompt }, and a custom deliver({ turn, text }) adapter must satisfy the same contract (docs/26 §3.22); compare the received-keys list above against that contract')
     }
     counts.delivered += 1
     // ROUND 4 / F11: the adapter may hand back a BARE STRING (the pre-round-4 contract) or the attributed envelope
@@ -2597,6 +3266,18 @@ export function createTurnOrchestrator({
       deliveryWaitedMs: delivered && Number.isFinite(delivered.deliveryWaitedMs) ? delivered.deliveryWaitedMs : null,
       deliveryDeadlineMs: delivered && Number.isFinite(delivered.deliveryDeadlineMs) ? delivered.deliveryDeadlineMs : null,
       deliveryGraceMs: delivered && Number.isFinite(delivered.deliveryGraceMs) ? delivered.deliveryGraceMs : null,
+      // ★★★★★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #4): WHY A LATE TURN IS ALLOWED, said on the receipt instead of
+      // left to be inferred from a true/absent boolean. The deadline is a HARVEST trigger, not a kill switch: when the
+      // seam finally hands over the text, that text is real member work, and dropping it because the clock passed the
+      // deadline would destroy a turn for being slow. What is NOT allowed is pretending it was on time - so the late fact
+      // stays true, and this sentence says what it does and does not mean.
+      deliveredLateMeans: delivered && delivered.deliveredLate === true
+        ? 'this turn came back AFTER its delivery deadline and was HARVESTED rather than discarded: the deadline decides when the seam stops WAITING, not whether the work counts - the reply that finally arrived is real member work, and the alternative (dropping a slow turn) would lose it while the member was still writing. `deliveryWaitedMs` is how long it actually took, `deliveryDeadlineMs` is the budget it passed (`deliveryBudgetMs`/`deliveryBudgetSource` say where that budget came from), and `deliveryGraceMs` is the late window the seam worked under. A late turn is a TURNING POINT for the clock, never a silent success'
+        : null,
+      // ★ RUN 255 / TB-2606-A: the budget this turn was held to, always readable (a late fact with no deadline beside it
+      // is a number a reader cannot check). Same value `turnLoop().deliveryTimeoutMs` reports - one computation, two readers.
+      deliveryBudgetMs: DELIVERY_TIMEOUT_MS,
+      deliveryBudgetSource: DELIVERY_BUDGET.source,
       // ★★ LIVE RUN 47: the SEAT reading (`childPreset`) lives on the seam's envelope and was dropped here, so the
       // one field that answers "did the member preset reach the child" could only be recovered from a 15-minute
       // transcript histogram. It travels now, on every route, with the meaning attached.
@@ -2750,7 +3431,9 @@ export function createTurnOrchestrator({
     const unknownFieldMode = settings && settings['vmu.turn.unknownReplyFieldMode'] === 'refuse' ? 'refuse' : 'ignore-named'
     if (unknown.length && unknownFieldMode === 'refuse') {
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
-        'known fields: ' + known.concat(RECORDED_FIELDS).join(', '))
+        'known fields: ' + known.concat(RECORDED_FIELDS).join(', ')
+          // ★ RUN 257 / D-2: the known-fields list alone teaches the vocabulary, not the act. Name the call.
+          + ' — REACHABLE INSTEAD: resend the report as vibe_vmu_turn { op:"reply", report:{ <one of the names above>: <value> } } (that channel writes the same reply catalogue, so a known name applies immediately), or, for the free-text channel, send a fenced json object through vibe_vmu_turn { op:"step", reply:"```json {...}```" }')
     }
     const recorded = { reply: {}, member: open.member, turnId: open.turnId, via: open.via, ignoredFields: unknown.slice(), meeting: boundMeeting, at: isoStampOf(clock()) }
     for (const k of keys) if (!unknown.includes(k)) recorded.reply[k] = obj[k]
@@ -2758,7 +3441,8 @@ export function createTurnOrchestrator({
       // A report that carries ONLY unknown names would record an empty reply and then look like a turn with nothing to
       // dispatch. That is a refusal, not an empty report: the member meant to say something and none of it is readable.
       fail('VMU_TURN_UNKNOWN_FIELD', 'the report carries no field this loop accepts: ' + unknown.join(', '),
-        'known fields: ' + known.concat(RECORDED_FIELDS).join(', ') + ' (vmu.turn.unknownReplyFieldMode=' + unknownFieldMode + ')')
+        'known fields: ' + known.concat(RECORDED_FIELDS).join(', ') + ' (vmu.turn.unknownReplyFieldMode=' + unknownFieldMode + ')'
+          + ' REACHABLE INSTEAD: drop the unknown names and resend the report through vibe_vmu_turn { op:"reply", report:{ <one of the names above>: <value> } } - a report made ONLY of unknown names records nothing, so nothing was applied; or set vmu.turn.unknownReplyFieldMode="ignore-named" (the default) to have unknown names reported in reply.ignoredFields instead of refusing')
     }
     if (structuredReport && structuredReport.member === recorded.member
       && (structuredReport.turnId === null || recorded.turnId === null || structuredReport.turnId === recorded.turnId)) {
@@ -2925,7 +3609,7 @@ export function createTurnOrchestrator({
         sawJsonish
           ? '回执里带了花括号但没有可用的工具汇报、也不是合法 JSON：本回合没有可用的回执对象（the reply carries braces that do not hold valid JSON, and no tool report backs it either）。成员在自己会话里做过什么在这里看不到——下结论说“什么都没发生”之前，去读记录轨（check the record tracks）'
           : '本回合既没有工具汇报、也没有可解析的围栏 JSON（neither a tool report nor a usable fenced json object）：本回合没有可用的回执对象。成员在自己会话里做过什么在这里看不到——下结论说“什么都没发生”之前，去读记录轨（check the record tracks）',
-        'report through the tool: vibe_vmu_turn { op:"reply", report:{ say:"…", input:{…}, … } } (the fields the reply catalogue declares); the fenced json object stays supported as the COMPATIBILITY path: vibe_vmu_turn { op:"step", reply:"```json { … }```" } — a bare fence, a bare object and a prose-wrapped object are all still accepted (docs/26 §3)')
+        'report through the tool: vibe_vmu_turn { op:"reply", report:{ say:"…", input:{…}, … } } (the fields the reply catalogue declares); the fenced json object stays supported as the COMPATIBILITY path: vibe_vmu_turn { op:"step", reply:"```json { … }```" } — a bare fence, a bare object and a prose-wrapped object are all still accepted (docs/26 §3). THIS CODE IS ABOUT THE MEMBER REPLY ENVELOPE: free prose with no fence and no tool report is CORRECTLY refused here (the reply catalogue requires one of the two channels), so a NO_FENCE refusal means "the reply carried no readable object", never "the adapter broke". The ADAPTER boundary has its own code, VMU_TURN_DELIVERY_SHAPE (docs/26 §3.22): if the seam returned something this kernel could not read, the refusal names that instead')
     }
     // ★ E12 / task-19: `meeting` IS A RESERVED ENVELOPE KEY, NOT A REPLY FIELD. A fenced reply that names the meeting
     // it belongs to (`{"meeting":"m1","say":"…"}`) used to fall into the unknown-field gate: it either landed in
@@ -2942,7 +3626,9 @@ export function createTurnOrchestrator({
     const unknownFieldMode = settings && settings['vmu.turn.unknownReplyFieldMode'] === 'refuse' ? 'refuse' : 'ignore-named'
     if (unknown.length && unknownFieldMode === 'refuse') {
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
-        'known fields: ' + known.concat(RECORDED_FIELDS).join(', '))
+        'known fields: ' + known.concat(RECORDED_FIELDS).join(', ')
+          // ★ RUN 257 / D-2: same code, same contract as the report channel above - one act, two channels.
+          + ' — REACHABLE INSTEAD: resend the SAME fenced object with only the names above (vibe_vmu_turn { op:"step", member:"<the member>", reply:"```json {...}```" } or vibe_vmu_turn { op:"reply", report:{...} }), or set vmu.turn.unknownReplyFieldMode="ignore-named" (the default) to have the unknown names reported in reply.ignoredFields instead of refusing the turn')
     }
     const ignoredFields = unknown.length ? unknown.slice() : []
     if (ignoredFields.length) obj.ignoredFields = ignoredFields
@@ -3092,6 +3778,77 @@ export function createTurnOrchestrator({
     ? r.bookkeeping.filter((b) => b && b.kept === false).map((b) => ({ field: String(b.field), reason: b.reason === undefined ? null : String(b.reason) }))
     : [])
   const FIELDS_IGNORED_MEANS = 'these fields arrived in the reply and were NOT recorded: `reason` says why (the closure vote is the usual case — in a turn where `vibe_vmu_vote` is visible the judgement is recorded through the TOOL, not through the reply field, so the vote is not lost, it is somewhere else). `fields` is what the reply carried; this list is what did not survive it'
+  // ★★★★★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #1, MEASURED): THE THREE FIELD COUNTS NOW TRAVEL ON EVERY
+  // SUCCESS RECEIPT, not only on the whole-turn failure.
+  //
+  // The failure surface has carried `appliedFieldCount` / `failedFieldCount` / `skippedFields` since RUN 254 / P0-1 (see
+  // the aggregate failure block in `apply`), because a turn that applied NOTHING has to explain itself. A turn that
+  // applied SOME of its reply had only `executed` / `skipped` (two bare counts) and `skippedDetail`: the same three names
+  // meant two different things depending on whether the turn failed, so a reader holding a successful receipt could not
+  // answer "how many fields did this reply carry, how many landed, and WHICH ONE refused" in the vocabulary the failure
+  // receipt had taught it. Run 74 read a `progress`-plus-`say` round exactly that way.
+  //
+  // One builder, four receipt sites (drive round row, completed-report row, step completed row, step row), so the names
+  // and the element shape cannot drift apart: the element is the SAME object `skippedFields` carries on the error face
+  // ({ field, face, op, code, why, hint, message, cause }). Bounded to 5 rows like every other detail list here; the
+  // COUNT is `failedFieldCount` and `skippedFieldsTruncated` says when the list was cut. Both counts are ALWAYS present
+  // (0 / [] when there is nothing), never omitted — absent and zero must not look the same.
+  const SKIPPED_FIELDS_MEANS = 'the reply fields a dispatch REFUSED and that did not stop the turn: one row per field with the refusal code, why, hint, message and the underlying cause code. The SAME name and the SAME element shape the failed-turn error carries, so a successful receipt and a failed one answer "which field refused" in one vocabulary. Bounded to 5 rows; failedFieldCount is the COUNT. An empty list means every field that was dispatched landed - it does NOT mean the reply carried no fields (read `fields`/`fieldsIgnored` for that) and it does NOT mean a refusal was hidden'
+  const fieldCountsOf = (r) => {
+    const applied = Array.isArray(r && r.executed) ? r.executed.length : 0
+    const rows = Array.isArray(r && r.skippedFields) ? r.skippedFields : []
+    const failed = rows.length > 0 ? rows.length : (Number.isInteger(r && r.failedFieldCount) ? r.failedFieldCount : 0)
+    return {
+      appliedFieldCount: applied,
+      failedFieldCount: failed,
+      skippedFields: rows.slice(0, 5).map((s) => ({
+        field: s && s.field !== undefined ? s.field : null,
+        face: s && s.face !== undefined ? s.face : null,
+        op: s && s.op !== undefined ? s.op : null,
+        code: s && s.code !== undefined ? s.code : null,
+        why: s && s.why !== undefined ? s.why : null,
+        hint: s && s.hint !== undefined ? s.hint : null,
+        message: s && s.message !== undefined ? s.message : null,
+        cause: s && s.cause !== undefined ? s.cause : null,
+      })),
+      skippedFieldsTruncated: rows.length > 5,
+      skippedFieldsMeans: SKIPPED_FIELDS_MEANS,
+    }
+  }
+  // ★★★★★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #2, MEASURED): A MEETING ID IN THE TEXT THAT DOES NOT EXIST IS A
+  // NAMED REFUSAL, NOT "NO MEETING BOUND".
+  //
+  // Judgement rule (one sentence, so the test can pin it): when a reply field is skipped for `no-meeting-bound` AND its
+  // text names at least one `m-<id>` token, the id is looked up on the meeting face that is ALREADY installed in this
+  // turn (`map['vmu.meetings'].summary`, the declared read leg - no second registry, no second table). If that read
+  // refuses with `VMU_NO_SUCH_OBJECT`, the skip is re-coded `VMU_MEETING_NOT_FOUND` and carries the id. If the id EXISTS
+  // (open, scheduled, waiting or archived) the skip stays `no-meeting-bound`: the id was real, the line still was not a
+  // binding. Any OTHER refusal (face unwired, service unavailable) is NOT read as absence - a probe that could not
+  // answer must never manufacture a ghost.
+  const ghostMeetingOf = (raw, map) => {
+    if (typeof raw !== 'string' || raw === '') return null
+    const ids = meetingIdsMentioned(raw)
+    if (ids.length === 0) return null
+    const leg = map && map['vmu.meetings'] && typeof map['vmu.meetings'].summary === 'function' ? map['vmu.meetings'] : null
+    if (!leg) return null
+    const missing = []
+    for (const id of ids) {
+      try {
+        leg.summary({ meeting: id })
+      } catch (e) {
+        if (e && e.code === 'VMU_NO_SUCH_OBJECT') missing.push(id)
+      }
+    }
+    if (missing.length === 0) return null
+    const id = missing[0]
+    return {
+      meetingId: id,
+      missing,
+      note: 'the reply names meeting "' + id + '", which this kernel does NOT have (checked against the meeting face, not guessed): the field is skipped by name, nothing was written for it, and the turn still completes. This is NOT "the turn had no meeting bound" - the id you wrote does not exist, and a meeting id typed into free text is not a binding',
+      hint: 'REACHABLE INSTEAD: read the meeting you already have with `vibe_v5_meeting { op: "status" }` (omit the id - status answers for the current meeting), then put the real id in the payload as {"meeting": "<id>", ...}; or omit the id entirely and let the meeting ROUND bind it. Do not type a meeting id into free text and expect it to bind',
+      means: 'a skip whose CODE names the missing id: the attendance/quorum machinery was never reached, so "no such meeting" and "no meeting in this turn" cannot be confused again',
+    }
+  }
   const visibleToolsByMember = new Map() // ★ last assembled visible set per member (this turn)
   const toolVotedThisTurn = new Set()    // ★ members who already voted THROUGH THE TOOL this turn
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
@@ -3396,12 +4153,18 @@ export function createTurnOrchestrator({
           : (d.payload && typeof d.payload.text === 'string'
             ? d.payload.text
             : (d.payload && typeof d.payload === 'object' ? JSON.stringify(d.payload) : null))
-        const note = { field: d.field, reason: skipReason.reason, text: raw === null ? null : String(raw).slice(0, NOTE_CAP), kept: raw !== null }
+        // ★ RUN 255 / TB-2606-A (FEEDBACK74 #2): probe the id the line names BEFORE calling the field "unbound". A ghost
+        // id is a different fact from "no meeting in this turn" and gets its own code (see ghostMeetingOf).
+        const ghost = skipReason.reason === 'no-meeting-bound' ? ghostMeetingOf(raw, map) : null
+        const skippedReason = ghost === null ? skipReason.reason : 'ghost-meeting'
+        const skippedCode = ghost === null ? (skipReason.code || 'VMU_TURN_FIELD_NOT_APPLICABLE') : 'VMU_MEETING_NOT_FOUND'
+        const note = { field: d.field, reason: skippedReason, text: raw === null ? null : String(raw).slice(0, NOTE_CAP), kept: raw !== null }
         if (raw !== null && String(raw).length > NOTE_CAP) note.truncated = true
         keptNotes.push(note)
-        skipped.push({ field: d.field, face: d.face, op: d.op, reason: skipReason.reason,
-          code: skipReason.code || 'VMU_TURN_FIELD_NOT_APPLICABLE',
-          note: skipReason.note + '; the line IS kept: see `notes` for this round' })
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: skippedReason,
+          code: skippedCode,
+          ...(ghost === null ? {} : { meetingId: ghost.meetingId, missingMeetings: ghost.missing.slice(), hint: ghost.hint, means: ghost.means }),
+          note: (ghost === null ? skipReason.note : ghost.note) + '; the line IS kept: see `notes` for this round' })
         continue
       }
       const face = map[d.face]
@@ -3675,7 +4438,8 @@ export function createTurnOrchestrator({
         // "nothing went wrong" while a member's action had silently failed. This counter owns that case by name.
         counts.failed += 1
         counts.failedLast = {
-          at: Date.now(),
+          at: isoStampOf(clock()),
+          atSource: 'kernel-clock',
           turn: turn && turn.id ? String(turn.id) : null,
           member: turn && turn.member ? String(turn.member) : null,
           code: e && e.code ? String(e.code) : null,
@@ -3707,6 +4471,9 @@ export function createTurnOrchestrator({
         status: 'applied', fields: parsed.fields, source: parsed.source,
         executed: out.executed, skipped: out.skipped, skippedFields: out.skippedFields,
         deliveryPath: lastAttribution && typeof lastAttribution.deliveryPath === 'string' ? lastAttribution.deliveryPath : null,
+        // ★ RUN 257 / TB-2645: the good case NAMES ITSELF. Without an explicit false, a reader cannot tell a row that
+        // was handed over from one whose state was never decided, and the fourth state would only be half decidable.
+        deliveryUnavailable: false,
       })
       rememberSettledTurn(turn, { fields: parsed.fields, source: parsed.source })
     } catch { /* the ledger must never replace the applied receipt */ }
@@ -3802,14 +4569,22 @@ export function createTurnOrchestrator({
   /** One full turn, in order. Returns the turn receipt rather than making the caller re-implement the sequence. */
   // ★ PHASE 6 / K2: renamed from `run` to `runOne` so the public `run` can be the guarded wrapper below. The body is
   // untouched; what changed is only that it is no longer directly callable while another turn is in flight.
-  const runFrom = async (turn, spec) => {
+  const runFrom = async (turn, spec, resumeOf = null) => {
     // ★ LANE turn-reply: the tool channel needs to know WHICH turn is open while a member answers it (see
     // `openTurnForReport`). Set here rather than at `open()` because a turn that is opened but never assembled has no
     // prompt to answer, and a report must attach to a PROMPT, not to a name.
     inFlightTurn = turn
     try {
-      const asm = await assemble(turn)
-      archivePrompt(turn && turn.id, turn && turn.member, asm && asm.text)
+      // ★★★★★★★ RUN 256 / TB-2616 (task-97) — A RESUMED TURN MUST NOT BE RE-ASSEMBLED. `assemble()` DRAINS the
+      // member's one-shot notice queue and bumps `counts.assembled`; running it a second time for one turn would announce
+      // the same notices twice and count a second assembly that never happened. The prompt the caller is holding IS the
+      // prompt being answered (`promptId` proves it), so a resume reuses it verbatim.
+      const resumeSource = resumeOf && typeof resumeOf.text === 'string' && resumeOf.text !== '' ? resumeOf : null
+      const asm = resumeSource
+        ? { text: resumeSource.text, sources: [], notices: resumeSource.notices || null, instructionDelivered: resumeSource.instructionDelivered === true, resumed: true, sourcesCount: Number(resumeSource.sources) || 0 }
+        : await assemble(turn)
+      const asmSources = resumeSource ? (Number(asm.sourcesCount) || 0) : asm.sources.length
+      if (!resumeSource) archivePrompt(turn && turn.id, turn && turn.member, asm && asm.text)
       const raw = await deliverTurn(turn, asm.text)
       // ★★★★★★★ RUN 245 (audit round 12 H2): THE ANSWER OF AN ABANDONED TURN IS NOT APPLIED. `op:"abandon"` is the
       // release path for a delivery that never returns; when that delivery DOES return after the release, the member
@@ -3906,12 +4681,32 @@ export function createTurnOrchestrator({
         // ★★★ RUN 250 (task-76): a caller-played turn has no reply yet, but its PROMPT has a notice block — that reading is
         // real now and must not wait for settlement, or the office checks "did the delivery block render" from the
         // workspace instead of from the ledger.
-        try { if (asm.notices) noteTurnReceipt(turn, { notices: asm.notices }) } catch { /* the ledger must never replace the prompt */ }
+        // ★★★ RUN 250 / lead review: BOTH SIDES ARE RECORDED AND THE FAILURE IS NOT SWALLOWED. A prompt assembled without
+        // a notice block must still leave a reading — the named absence `notices: null` plus the reason — because an
+        // undefined slot cannot be told apart from "nobody wrote it". And a receipt-write that fails is itself an
+        // observation: it lands on the row as `noticesError` (the row still exists; the prompt still returns), and the
+        // count records it, so "the evidence went missing" can be seen instead of guessed.
+        const noticesPatch = asm.notices && typeof asm.notices === 'object'
+          ? { notices: asm.notices }
+          : { notices: null, noticesMeans: 'assembly did not expose notices: this prompt carried no notice block, and null says so by name rather than leaving the slot unwritten' }
+        try {
+          if (asm.notices) noteTurnReceipt(turn, { notices: asm.notices })
+          else noteTurnReceipt(turn, { notices: null, noticesMeans: 'assembly did not expose notices: this prompt carried no notice block, and null says so by name rather than leaving the slot unwritten' })
+        } catch (e) {
+          const noticesError = { code: e && typeof e.code === 'string' ? e.code : null, message: String((e && e.message) || e) }
+          const row = turnReceipts.get(String(turn.id)) || null
+          if (row) row.noticesError = noticesError
+          else turn.noticesError = noticesError
+          counts.ledgerFailed = (Number.isFinite(counts.ledgerFailed) ? counts.ledgerFailed : 0) + 1
+        }
+        // ★ RUN 256 / TB-2616: the prompt is now PARKED on the caller — keep its assembled text (and its own id) so the
+        // resume can continue THIS prompt instead of assembling a second one over the same turn.
+        rememberParkedPrompt(turn, asm, raw.memberPrompt)
         return { ok: true, awaiting: true, turn, membersFrom: spec && typeof spec.membersFrom === 'string' ? spec.membersFrom : null, memberPrompt: raw.memberPrompt || null,
           // ★ E12 / task-19: the turn-level reading of the binding, beside the one on `memberPrompt` — a caller that
           // reads only the top level must not have to open the prompt object to learn which meeting it is answering.
           meeting: (raw && typeof raw.meeting === 'string' && raw.meeting !== '' ? raw.meeting : (turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null)),
-          assembled: { chars: asm.text.length, sources: asm.sources.length, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true,
+          assembled: { chars: asm.text.length, sources: asmSources, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true,
           delivery: deliveryOf(Object.assign({}, raw, { deliveryPath: (raw && raw.deliveryPath) || 'caller' })),
           fields: [], executed: [], skipped: [], refused: [],
           attribution: Object.assign({}, lastAttribution) }
@@ -4060,10 +4855,25 @@ export function createTurnOrchestrator({
       // hid the speech. `rawText` is exactly what the member wrote, so this reading cannot disagree with `replyBytes`.
       // `replyBytes` (how much the member wrote) still travels with it, and the ledger row carries both.
       const emptyReply = replyTextIsEmpty(rawText)
-      try { noteTurnReceipt(turn, Object.assign({ emptyReply, replyBytes }, evidence)) } catch { /* the ledger must never replace the receipt */ }
-      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
+      // ★ RUN 256 / TB-2616: a turn that CONTINUED a parked prompt says so in its ledger row, with ONE name for the
+      // outcome (`settledBy`). The row is the same row (`turn.id` never changed), so "one prompt, one row" is checkable.
+      try {
+        // ★★★ RUN 250 (task-76): the settled row patch carries the run-level evidence in ONE literal — the readings are
+        // measured by `assemble`/the reply/archive seam and only transmitted here, never recomputed.
+        const settledPatch = Object.assign({ emptyReply, replyBytes }, evidence)
+        // ★ RUN 256 / TB-2616: a turn that CONTINUED a parked prompt says so on its own row, beside the shared evidence.
+        if (resumeSource) settledPatch.settledBy = 'resumed'
+        noteTurnReceipt(turn, settledPatch)
+      } catch (e) {
+        // a failed ledger write is an observation, not a reason to drop the receipt: the count carries it
+        counts.ledgerFailed = (Number.isFinite(counts.ledgerFailed) ? counts.ledgerFailed : 0) + 1
+      }
+      if (resumeSource) forgetParkedPrompt(turn && turn.id)
+      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asmSources, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
         replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
         replyTruncated, replyLimitChars: REPLY_EXCERPT_MAX, replyExcerptMeans,
+        // ★ RUN 256 / TB-2616: the resume facts travel to the receipt an operator reads — WHICH prompt was continued.
+        ...(resumeSource ? { resumed: true, resumedPromptId: resumeSource.promptId || null, resumedMeans: 'this turn CONTINUED a parked prompt instead of opening a new turn: same turnId, same member, same promptId - the caller played the member turn and this call answered THAT prompt' } : {}),
         replyBytes, emptyReply, emptyReplyMeans: EMPTY_REPLY_MEANS, ...replyArchiveFields, ...tail }
     } finally {
       // ★ RUN 245 (audit round 12 H3): same rule as the lock — a late turn clears only its own slot.
@@ -4160,7 +4970,7 @@ export function createTurnOrchestrator({
         dispatchStats.failed += 1
         dispatchStats.recentCompleted.push({ turn: item.turn.id, member: item.turn.member, ms: Date.now() - itemStartedAt, ok: false, code })
         if (dispatchStats.recentCompleted.length > 10) dispatchStats.recentCompleted.shift()
-        dispatchStats.lastError = { code, message, turn: item.turn.id, member: item.turn.member, at: Date.now(),
+        dispatchStats.lastError = { code, message, turn: item.turn.id, member: item.turn.member, at: isoStampOf(clock()), atSource: 'kernel-clock',
           ...(e && Number.isFinite(e.waitedMs) ? { waitedMs: e.waitedMs, deliveryTimeoutMs: e.deliveryTimeoutMs || null, requestSent: e.requestSent === true, lastPhase: e.lastPhase || null, phases: Array.isArray(e.phases) ? e.phases.slice(0, 12) : [] } : {}),
           ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, REFUSAL_REPLY_EXCERPT_MAX), replyTruncated: e.replyText.length > REFUSAL_REPLY_EXCERPT_MAX, replyLimitChars: REFUSAL_REPLY_EXCERPT_MAX, replyExcerptMeans: 'the reply as the member wrote it, CUT at replyLimitChars (' + REFUSAL_REPLY_EXCERPT_MAX + ') when replyTruncated is true; this is the REFUSAL excerpt (the reply could not be parsed into the declared shape), and replyLength is the FULL length', trackValue: e.trackValue === undefined ? null : e.trackValue } : {}) }
         // ★ A dispatched turn that FAILED must not vanish: its named outcome stays in status; the awaiting handle rejects.
@@ -4195,6 +5005,12 @@ export function createTurnOrchestrator({
   const dispatchStatus = () => Object.assign({}, dispatchStats, { active: dispatchActive })
 
   const runOne = async (spec) => {
+    // ★ RUN 256 / TB-2616 (task-97): A RESUMED TURN IS NOT OPENED. The turn object already exists (it was opened when
+    // the prompt was parked); opening a second one is exactly P0-1. Nothing is minted here: same id, same member, same
+    // round, and the assembled prompt rides in on the spec so `assemble()` is not run twice.
+    if (spec && spec.resumeTurn && typeof spec.resumeTurn === 'object' && typeof spec.resumeTurn.id === 'string') {
+      return runFrom(spec.resumeTurn, spec, spec.resumePrompt || null)
+    }
     // ★★★ PHASE 12 / R10: THE LIVE FACTS THE CHARTER ASKS FOR. Measured on a full live run: the member prompt carried
     // `〔未提供：roster〕` and `〔未提供：quorum〕` — the pack's charter TEMPLATE_VARS map has carried both since it was
     // written (its `quorumM()`/`rosterLine(member)` feed `{{ quorum }}`/`{{ roster }}`), but
@@ -4265,17 +5081,26 @@ export function createTurnOrchestrator({
   // backstop is never reached, while a reader of `turnLoop` was told there was a 25-minute fallback. That ordering is
   // deliberate (the backstop exists for a seam that neither returns NOR throws), so it is not changed - it is now
   // REPORTED beside the number it outranks, with the relation spelled out.
-  const DELIVERY_TIMEOUT_MS = (() => {
-    const d = Number(settingOf(settings, 'vmu.turn.deliveryTimeoutMs'))
-    return Number.isFinite(d) && d > 0 ? d : 900000
-  })()
+  //
+  // ★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #4) + TB-2629: ONE bounce budget, resolved ONCE, read by the loop,
+  // the receipt and the seam. The declared default lives in settings/schema.js and NOWHERE else: an earlier draft kept a
+  // literal 1800000 here while the schema still declared 180000 (what the one-shot seam reads), so the status and the
+  // receipt reported 30 minutes while the seam killed the turn at 176400 + 45000 ms - a legal 982572 ms turn from run 74
+  // would have been killed. The declaration is the truth; this block only resolves setting-or-declaration and names
+  // which one it used, so `deliveryBudgetSource` can no longer be produced by a second, different read.
+  // TB-2629 / task-110: the resolution itself lives in settings/schema.js (`readDeliveryBudget`), next to the
+  // declaration, so the kernel loop, the v3 planner and the one-shot seam cannot each own a different number.
+  const DELIVERY_BUDGET = readDeliveryBudget((key) => settingOf(settings, key))
+  const DELIVERY_TIMEOUT_MS = DELIVERY_BUDGET.ms
   const DELIVERY_GRACE_MS = Math.floor(DELIVERY_TIMEOUT_MS / 4)
   const ABANDON_AFTER_MS = (() => {
     const explicit = Number(settingOf(settings, 'vmu.turn.abandonAfterMs'))
     if (Number.isFinite(explicit) && explicit > 0) return explicit
-    const delivery = Number(settingOf(settings, 'vmu.turn.deliveryTimeoutMs'))
-    if (Number.isFinite(delivery) && delivery > 0) return Math.max(600000, delivery + 600000)
-    return 1800000
+    // ★ RUN 255 / TB-2606-A: derive from DELIVERY_TIMEOUT_MS (the ALREADY-RESOLVED budget above), not from a second
+    // read of the setting - one computation, two readers. A second read made the backstop ignore the kernel default,
+    // so raising the default left the backstop at its old literal while the seam budget grew: the backstop could then
+    // never fire, which is exactly the run-65 defect this block exists to report.
+    return Math.max(600000, DELIVERY_TIMEOUT_MS + 600000)
   })()
   const SEAM_BUDGET_MS = DELIVERY_TIMEOUT_MS + DELIVERY_GRACE_MS
   const abandonments = []
@@ -4287,28 +5112,86 @@ export function createTurnOrchestrator({
    * What it does NOT do: apply anything. An abandoned turn applied nothing, and its row says so (`status:"abandoned"`,
    * `closedWith:"VMU_TURN_ABANDONED"`); the report a caller filed against it stays readable in `turnReceipts`.
    */
-  const abandonTurn = ({ turn = null, why = null } = {}) => {
+  const abandonTurn = ({ turn = null, why = null, settledBy = null } = {}) => {
+    // ★ RUN 256 / TB-2616 (task-97): the RELEASE exit and the TIMED-OUT exit are the same mechanism but different
+    // facts - "the caller released it" is not "the loop closed it because it outlived abandonAfterMs". One name for the
+    // outcome, chosen by the caller of this function (`run` passes "timed-out"), defaulting to the human door.
+    const settled = settledBy === 'timed-out' ? 'timed-out' : 'released'
+    const namedTurnId = turn === null || turn === undefined || String(turn).trim() === '' ? null : String(turn).trim()
+    const whyOf = (value) => (value === null || value === undefined || String(value).trim() === '' ? null : String(value).trim())
     const t = inFlightTurn
-    if (!t || typeof t !== 'object' || typeof t.id !== 'string') {
-      return { ok: true, abandoned: false, at: isoStampOf(clock()),
-        means: 'no turn is IN FLIGHT on this kernel, so there was nothing to close: an `open` row in op:"status" turnReceipts whose turn this call did not close belongs to a delivery that already returned (the row is bookkeeping) or to a turn opened by a SIBLING kernel, which this loop cannot close' }
+    const inFlightId = t && typeof t === 'object' && typeof t.id === 'string' ? String(t.id) : null
+    // ★ RUN 256 / TB-2616: A PARKED PROMPT IS RELEASABLE WITHOUT A LOCK. `drive`/`step` park a prompt and RETURN, so the
+    // lock is already free (`turnLoop.inFlight:false`); op:"abandon" is the documented release door, and before this
+    // branch it answered "no turn is IN FLIGHT" while `turnLoop.parked` said a prompt WAS held — a caller could be
+    // refused by the parked gate forever with no way out. Same closure as the timeout exit, different fact: 'released'.
+    // This door is taken when the caller named NOTHING or named THAT turn; naming a different row takes the named-row
+    // door below, which never touches this slot.
+    const parkedOnly = parkedOf(parkedPromptNow())
+    if (parkedOnly) {
+      const parkedTurnId = parkedOnly.turnId ? String(parkedOnly.turnId) : null
+      if (namedTurnId === null || namedTurnId === parkedTurnId) {
+        const parkedAgeMs = Number.isFinite(Number(parkedOnly.parkedAt)) && Number(parkedOnly.parkedAt) > 0 ? Date.now() - Number(parkedOnly.parkedAt) : null
+        const closed = closeParkedTurn(parkedOnly, 'released', whyOf(why), parkedAgeMs)
+        return Object.assign({ ok: true, abandoned: true, closedWith: 'VMU_TURN_ABANDONED' }, closed, {
+          means: 'the PARKED member turn is CLOSED, not completed: no lock was held (the delivery had returned awaiting), so there was nothing in flight to release — this closes the prompt the caller was holding. Nothing was applied, and the ledger row says status "abandoned", settledBy "released"' })
+      }
     }
-    const turnId = String(t.id)
-    if (turn !== null && turn !== undefined && String(turn).trim() !== '' && String(turn).trim() !== turnId) {
-      return { ok: true, abandoned: false, inFlight: turnId, named: String(turn).trim(), at: isoStampOf(clock()),
-        means: 'the turn you named is not the turn in flight, so nothing was closed; read op:"status" turnReceipts for the row whose status is still "open" and pass THAT id (the in-flight one is also named by op:"status" turnLoop.inFlightTurn)' }
+    // ★★★★★★★ RUN 258 / TB-2651 (AUDIT-14 P1-5) — A NAMED ROW IS A LEDGER OPERATION, SO IT MUST NOT REQUIRE AN IDLE LOOP.
+    // MEASURED (AUDIT-14 P1-5): the whole orphan door used to live inside `if (!t || typeof t.id !== 'string')`, so while
+    // ANY turn was in flight, naming ANOTHER open row answered `{ok:true, abandoned:false, inFlight:"t-N"}` — a success
+    // receipt for a no-op, with the real fact only in a `means` sentence — and that row was never closed. On a real
+    // machine the loop is in flight most of the time, so the only door out of an orphan row was unreachable exactly when
+    // it was needed (and the `ok:true` read as "handled").
+    // Naming a row that is NOT the in-flight turn never touches the lock and never clears the seam slot: it writes that
+    // ONE ledger row (status "abandoned", settledBy "abandoned-orphan") and forgets that row's parked-prompt record, so a
+    // prompt parked for another seat stays parked. That is exactly why it is allowed while a turn is in flight. When the
+    // name IS the in-flight turn, the in-flight closure below keeps priority — that one really does release the lock.
+    if (namedTurnId !== null && namedTurnId !== inFlightId) {
+      let namedRow = null
+      try { namedRow = turnReceipts.get(namedTurnId) || null } catch (e) { namedRow = null }
+      if (namedRow === null) {
+        let openIds = []
+        try { openIds = Array.from(turnReceipts.values()).filter((r) => r && r.status === 'open').map((r) => String(r.turn)) } catch (e) { openIds = [] }
+        throw refuse('VMU_NO_SUCH_OBJECT', 'no turn with id ' + JSON.stringify(namedTurnId) + ' is on this kernel\'s ledger, so op:"abandon" has no row to close',
+          'read op:"status" turnReceipts for the ids this loop actually holds' + (openIds.length > 0 ? ' (open now: ' + openIds.join(', ') + ')' : ' (none of them is open)') + (inFlightId !== null ? '; the turn IN FLIGHT is ' + inFlightId + ' — naming THAT id releases the lock, while naming any other open row only closes that row' : '') + '; omit the id to release the prompt that is parked, if there is one')
+      }
+      if (namedRow.status !== 'open') {
+        return { ok: true, abandoned: false, turn: namedTurnId, status: namedRow.status || null, settledBy: namedRow.settledBy || null, closedWith: namedRow.closedWith || null, at: isoStampOf(clock()), turnRow: namedRow,
+          means: 'this turn is already settled (status ' + JSON.stringify(namedRow.status || null) + '), so there is nothing to close: op:"abandon" is idempotent and never rewrites a settled row' }
+      }
+      const closedOrphan = closeOrphanTurn(namedRow, namedTurnId, whyOf(why), isoStampOf(clock()))
+      return Object.assign({ ok: true, abandoned: true, closedWith: 'VMU_TURN_ABANDONED' }, closedOrphan, {
+        means: 'the row you NAMED is now CLOSED, not completed: it was still "open" with no seat delivering it (its delivery had already returned and its seam slot was consumed), so this is the release that runs AFTER the delivery - nothing was applied, and the row reads status "abandoned", settledBy "abandoned-orphan" with the reason it outlived its delivery. Only the named row was touched: a prompt parked for another seat is untouched' + (inFlightId !== null ? ', and the turn in flight (' + inFlightId + ') was NOT touched either - closing a row is bookkeeping, while releasing the lock is the in-flight door' : '') })
     }
+    if (inFlightId === null) {
+      return { ok: true, abandoned: false, named: namedTurnId, at: isoStampOf(clock()),
+        means: 'no turn is IN FLIGHT on this kernel, so there was nothing to close: an `open` row in op:"status" turnReceipts whose turn this call did not close belongs to a delivery that already returned (the row is bookkeeping) or to a turn opened by a SIBLING kernel, which this loop cannot close. Name the row you want closed with { turn: "<id>" }: a row still "open" here is settled by that name (RUN 257), and only that row is touched' }
+    }
+    const turnId = inFlightId
     const ageMs = turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null
-    const theWhy = why === null || why === undefined || String(why).trim() === '' ? null : String(why).trim()
+    const theWhy = whyOf(why)
     let receiptRow = null
-    try { noteTurnReceipt(t, { status: 'abandoned', code: 'VMU_TURN_ABANDONED' }) } catch (e) { /* the ledger must never veto the escape */ }
+    try { noteTurnReceipt(t, { status: 'abandoned', code: 'VMU_TURN_ABANDONED', settledBy: settled }) } catch (e) { /* the ledger must never veto the escape */ }
     try { rememberSettledTurn(t, { fields: [], source: 'abandoned' }) } catch (e) { /* same */ }
     try {
       receiptRow = Array.from(turnReceipts.values()).find((r) => r && r.turn === turnId) || null
     } catch (e) { receiptRow = null }
     // A parked prompt belongs to the turn that was closed: a prompt nobody can answer must not be left holding the slot.
+    // ★★★★★★★ RUN 258 / TB-2651 (AUDIT-14 P1-6) — TWO FACTS, TWO FIELDS: "cleared the slot" is not "cannot clear slots".
+    // MEASURED: `clearedParked` came from `if (deliver && typeof deliver.clear === 'function') { deliver.clear(); … }`, and
+    // ONLY the caller seam has `clear` (line 1198); the subagents seam and both production host-deliver routes never do.
+    // So `clearedParked:false` measured two different things — "there was no parked prompt" and "this deployment cannot
+    // clear one at all" — and the means text read it as the first. The receipt now states both by name:
+    //   clearCapability: 'present' | 'absent'      — could this seam clear a parked slot at all?
+    //   clearedParked:   boolean                   — did THIS call clear the slot?
+    //   parkedCleared:   boolean | 'not-applicable' — the kernel's OWN guarantee (a fact this kernel always controls):
+    //                     the parked-prompt record for THIS turn is gone from `parkedPrompts`. True even on a route whose
+    //                     seam cannot clear; the orphan door says 'not-applicable' because its seat was already gone.
+    const clearCapability = deliver && typeof deliver.clear === 'function' ? 'present' : 'absent'
     let clearedParked = false
-    try { if (deliver && typeof deliver.clear === 'function') { deliver.clear(); clearedParked = true } } catch (e) { clearedParked = false }
+    if (clearCapability === 'present') { try { deliver.clear(); clearedParked = true } catch (e) { clearedParked = false } }
+    const parkedCleared = forgetParkedPrompt(turnId)
     if (t && t.id) {
       abandonedTurns.add(String(t.id))
       // bounded: the ledger keeps the row; this set only spans the seam's grace window
@@ -4325,12 +5208,133 @@ export function createTurnOrchestrator({
     // queue gets its turn now. Without this the queued wake would wait for the stuck delivery to return - which is
     // the very thing that never happened in run 64.
     void pumpWakeQueue()
-    const row = { turn: turnId, member: t.member || null, openedBy: t.openedBy || null, meeting: t.meeting || null, ageMs, why: theWhy, clearedParked, at: isoStampOf(clock()) }
+    // ★ RUN 258 / TB-2651-A (lead m06021): every abandonment row says WHICH door closed it with a boolean, not by
+    // asking a reader to compare `settledBy` against the magic value 'abandoned-orphan'. `orphan:false` here (this is the
+    // in-flight door), `orphan:true` + `orphanWhy` at the orphan door below: the same fact at all three exits.
+    const row = { turn: turnId, member: t.member || null, openedBy: t.openedBy || null, meeting: t.meeting || null, ageMs, why: theWhy, clearedParked, clearCapability, parkedCleared, orphan: false, settledBy: settled, at: isoStampOf(clock()) }
     abandonments.push(row)
     if (abandonments.length > 20) abandonments.shift()
     return { ok: true, abandoned: true, turn: turnId, member: t.member || null, openedBy: t.openedBy || null, meeting: t.meeting || null, ageMs,
-      closedWith: 'VMU_TURN_ABANDONED', clearedParked, why: theWhy, turnRow: receiptRow,
+      closedWith: 'VMU_TURN_ABANDONED', clearedParked, clearCapability, parkedCleared, orphan: false, why: theWhy, turnRow: receiptRow, settledBy: settled,
       means: 'this turn is CLOSED, not completed: the loop lock is released and the next op:"step"/op:"drive" opens a real turn. Nothing was applied - an abandoned turn has no outcome; anything a caller reported against it stays readable in op:"status" turnReceipts (status "abandoned", closedWith "VMU_TURN_ABANDONED")' }
+  }
+  /**
+   * ★ RUN 256 / TB-2616 (task-97): THE THIRD EXIT — A PARKED PROMPT NOBODY ANSWERS IS CLOSED BY NAME, PAST
+   * `abandonAfterMs`. A parked turn has RELEASED the loop lock (the delivery returned `awaiting:true`), so `run`'s
+   * in-flight backstop never sees it: without this, one caller who holds a prompt and walks away parks the institute's
+   * turn slot forever, and every later `drive`/`step` is refused by the parked gate with no way out but a caller who
+   * remembers `op:"abandon"`. The timeout and the release are the SAME closed state with different facts, so both write
+   * `settledBy` ('released' from `abandonTurn`, 'timed-out' here) and both are readable in `turnReceipts` +
+   * `turnLoop.abandonments`. Returns true when the prompt was overdue and has been closed (the door may then proceed).
+   */
+  const closeParkedTurn = (parked, settledBy, why, ageMs) => {
+    const settled = settledBy === 'timed-out' ? 'timed-out' : 'released'
+    const turnId = parked && parked.turnId ? String(parked.turnId) : null
+    const t = turnId !== null ? (turns.get(turnId) || null) : null
+    if (t) {
+      try { noteTurnReceipt(t, { status: 'abandoned', code: 'VMU_TURN_ABANDONED', settledBy: settled }) } catch (e) { /* the ledger must never veto the escape */ }
+      try { rememberSettledTurn(t, { fields: [], source: 'abandoned' }) } catch (e) { /* same */ }
+      try {
+        abandonedTurns.add(String(t.id))
+        while (abandonedTurns.size > ABANDONED_KEEP) abandonedTurns.delete(abandonedTurns.values().next().value)
+      } catch (e) { /* bounded bookkeeping only */ }
+    }
+    // ★ RUN 258 / TB-2651 (AUDIT-14 P1-6): same two facts as the in-flight door — `clearedParked` says what THIS call
+    // did to the seam slot, `clearCapability` says whether this route could clear one at all, and `parkedCleared` is the
+    // kernel's own guarantee about the `parkedPrompts` record (this function exists only for a held prompt, so the
+    // record is expected to have been there; the boolean is measured, not assumed).
+    const clearCapability = deliver && typeof deliver.clear === 'function' ? 'present' : 'absent'
+    let clearedParked = false
+    if (clearCapability === 'present') { try { deliver.clear(); clearedParked = true } catch (e) { clearedParked = false } }
+    const parkedCleared = forgetParkedPrompt(turnId)
+    let receiptRow = null
+    try { receiptRow = turnId === null ? null : (Array.from(turnReceipts.values()).find((r) => r && String(r.turn) === turnId) || null) } catch (e) { receiptRow = null }
+    const row = { turn: turnId, member: (parked && parked.member) || null, openedBy: (t && t.openedBy) || null, meeting: (t && t.meeting) || null,
+      ageMs: ageMs === undefined ? null : ageMs, why: why === undefined ? null : why, clearedParked, clearCapability, parkedCleared, orphan: false, settledBy: settled, at: isoStampOf(clock()) }
+    abandonments.push(row)
+    if (abandonments.length > 20) abandonments.shift()
+    return { turn: turnId, member: row.member, openedBy: row.openedBy, meeting: row.meeting, ageMs: row.ageMs, why: row.why,
+      clearedParked, clearCapability, parkedCleared, orphan: false, settledBy: settled, turnRow: receiptRow }
+  }
+  /**
+   * ★★★★★★★ RUN 257 / TB-2639 (task-120) — THE ORPHAN: A NAMED ROW STILL `open`, WITH NO LOCK AND NO SEAM SLOT.
+   * MEASURED (task-120 probe): park t-1; `supplyMemberReply("prose without a fenced json block")`; `step` again — the
+   * RESUME consumes the seam slot (deliverByReturning takes the supplied text and clears pendingPrompt+supplied) and the
+   * refusal branch in `runFrom` deliberately does NOT mark the row settled ("the refusal already says this turn did not
+   * apply"). The result is a row this loop KEEPS reporting as `{turn:"t-1", status:"open"}` while
+   * `turnLoop.inFlight:false`, `turnLoop.parked:false` and `deliver.pending() === null`: the parked branch above cannot
+   * see it (no slot), the in-flight branch below cannot reach it (no lock), and `op:"abandon"` answered "nothing to
+   * close … the row is bookkeeping". RUN 241's lesson in its other form: a state the loop can SEE must be a state the
+   * loop can LEAVE.
+   * WHAT THIS IS NOT (lead's hard design, m05027): a key to any row. Only the id the caller NAMED is closed, and only
+   * while that row is still "open" AND no live seat holds THAT row. Currently the parked branch (slot held) and the
+   * in-flight branch (lock held) keep priority only when the name IS theirs; naming a DIFFERENT open row reaches this
+   * door even while a prompt is parked or a turn is in flight (AUDIT-14 P1-5: closing a row is bookkeeping, and on a
+   * real machine the loop is in flight most of the time, so requiring an idle loop made this door unreachable exactly
+   * when it was needed). `abandon` never chooses a row on its own: a caller who names nothing still gets the honest
+   * `abandoned:false`.
+   */
+  const closeOrphanTurn = (row, turnId, why, at) => {
+    const id = String(turnId)
+    const known = (() => { try { return turns.get(id) || null } catch (e) { return null } })()
+    const turnForLedger = known !== null ? known : {
+      id, member: row && row.member !== undefined ? row.member : null, openedBy: row && row.openedBy !== undefined ? row.openedBy : null,
+      phase: row && row.phase !== undefined ? row.phase : null, meeting: row && row.meeting !== undefined ? row.meeting : null,
+      at: row && row.openedAt !== undefined ? row.openedAt : null,
+    }
+    const theWhy = why === null || why === undefined || String(why).trim() === ''
+      ? 'the row was still "open" when this call named it, with no turn in flight and no prompt parked: the resume consumed the seam slot and the refusal left the row open, so nothing was delivering this turn and nobody could close it'
+      : String(why).trim()
+    let receiptRow = null
+    try { receiptRow = noteTurnReceipt(turnForLedger, { status: 'abandoned', code: 'VMU_TURN_ABANDONED', settledBy: 'abandoned-orphan' }) } catch (e) { receiptRow = null }
+    // The fact a later reader needs on the ROW itself: this closure came from the orphan door, and the reason it existed.
+    try {
+      const stored = turnReceipts.get(id) || null
+      if (stored) {
+        stored.orphan = true
+        stored.orphanWhy = theWhy
+        stored.orphanMeans = 'no delivery was in flight and no caller held a prompt for this turn: the row said "open" after its delivery had returned, which is exactly the state op:"abandon" now settles by NAME'
+        receiptRow = stored
+      }
+    } catch (e) { /* the ledger row is best-effort here; the return value below still names the closure */ }
+    try { rememberSettledTurn(turnForLedger, { fields: [], source: 'abandoned' }) } catch (e) { /* same */ }
+    try {
+      abandonedTurns.add(id)
+      while (abandonedTurns.size > ABANDONED_KEEP) abandonedTurns.delete(abandonedTurns.values().next().value)
+    } catch (e) { /* bounded bookkeeping only */ }
+    // The seam slot is NOT this turn's seat any more (that is why the row was orphaned); clear it only if it still
+    // names this very turn, so a prompt parked for ANOTHER seat is never thrown away by this call.
+    // ★ RUN 258 / TB-2651 (AUDIT-14 P1-6): three named facts instead of one ambiguous `false`. `clearCapability` says
+    // whether this seam can clear at all; `clearedParked` says whether THIS call cleared it; `parkedCleared` is
+    // 'not-applicable' here rather than false — an orphan's seat was already gone when the row orphaned, so "nothing was
+    // cleared" is not a failure and not "there was no parked prompt". The kernel's own guarantee (the `parkedPrompts`
+    // record for this id is gone) is still enforced below by `forgetParkedPrompt(id)`.
+    const clearCapability = deliver && typeof deliver.clear === 'function' ? 'present' : 'absent'
+    const parkedCleared = 'not-applicable'
+    let clearedParked = false
+    try {
+      const parkedNow = parkedOf(parkedPromptNow())
+      if (parkedNow && parkedNow.turnId !== null && parkedNow.turnId !== undefined && String(parkedNow.turnId) === id) {
+        if (clearCapability === 'present') { deliver.clear(); clearedParked = true }
+      }
+    } catch (e) { clearedParked = false }
+    forgetParkedPrompt(id)
+    const member = receiptRow && receiptRow.member !== undefined ? receiptRow.member : (turnForLedger.member !== undefined ? turnForLedger.member : null)
+    const openedBy = receiptRow && receiptRow.openedBy !== undefined ? receiptRow.openedBy : (turnForLedger.openedBy !== undefined ? turnForLedger.openedBy : null)
+    const meeting = receiptRow && receiptRow.meeting !== undefined ? receiptRow.meeting : (turnForLedger.meeting !== undefined ? turnForLedger.meeting : null)
+    abandonments.push({ turn: id, member, openedBy, meeting, ageMs: null, why: theWhy, clearedParked, clearCapability, parkedCleared, orphan: true, orphanWhy: theWhy, settledBy: 'abandoned-orphan', at })
+    if (abandonments.length > 20) abandonments.shift()
+    return { turn: id, member, openedBy, meeting, ageMs: null, why: theWhy, clearedParked, clearCapability, parkedCleared, settledBy: 'abandoned-orphan', orphan: true, orphanWhy: theWhy, turnRow: receiptRow }
+  }
+  const closeParkedOverdue = (parked) => {
+    if (!parked) return false
+    const parkedAtMs = Number(parked.parkedAt)
+    const ageMs = Number.isFinite(parkedAtMs) && parkedAtMs > 0 ? Date.now() - parkedAtMs : null
+    if (ageMs === null || !(ageMs >= ABANDON_AFTER_MS)) return false
+    closeParkedTurn(parked, 'timed-out', 'the parked prompt for ' + String(parked.member) + (parked.turnId ? ' (turn ' + String(parked.turnId) + ')' : '')
+      + ' had been held for ' + String(ageMs) + ' ms, past abandonAfterMs (' + String(ABANDON_AFTER_MS)
+      + '), and nobody answered it: this loop closed that turn by name so one unanswered prompt cannot hold the institute', ageMs)
+    return true
   }
   // ★ A wake that fires while the loop is busy is QUEUED, never driven: opening a turn from inside another turn is what
   // left run 64's t-2 open forever. The waiter stays on the ledger; the queue runs as soon as the loop is free.
@@ -4361,7 +5365,7 @@ export function createTurnOrchestrator({
     const id = 'wq-' + wakeQueueSeq
     let settle = () => {}
     const promise = new Promise((resolve) => { settle = (v) => resolve(v) })
-    wakeQueue.push({ id, member, meeting: (spec && spec.meeting) || null, why: (spec && spec.why) || null, at: Date.now(), settle })
+    wakeQueue.push({ id, member, meeting: (spec && spec.meeting) || null, why: (spec && spec.why) || null, at: clockMsOf(), settle })
     const depth = wakeQueue.length
     void pumpWakeQueue()
     return { ok: true, queued: true, id, member, meeting: (spec && spec.meeting) || null, depth, promise,
@@ -4377,8 +5381,33 @@ export function createTurnOrchestrator({
     inFlightOpenedBy: inFlightTurn ? (inFlightTurn.openedBy || null) : null,
     inFlightMeeting: inFlightTurn && typeof inFlightTurn.meeting === 'string' ? inFlightTurn.meeting : null,
     inFlightForMs: turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null,
+    // ★★★★★★★ RUN 256 / TB-2616 (task-97): THE PARKED PROMPT HAD NO READER. `inFlight` describes the lock, and a
+    // caller-played turn RELEASES the lock while it parks its prompt on the caller - so the one state a caller must act
+    // on ("you are holding an unanswered prompt") was invisible, and a second step/drive could overwrite it. These five
+    // keys read the parked prompt itself, from the same reader the gate uses (`parkedPromptNow`), so the status board
+    // and the refusal can never disagree. `openTurns` counts the ledger rows still `status:"open"`: a parked turn keeps
+    // exactly one such row until it is answered (resumed), released, or timed out.
+    parked: parkedOf(parkedPromptNow()) !== null,
+    parkedTurn: (parkedOf(parkedPromptNow()) || {}).turnId || null,
+    parkedMember: (parkedOf(parkedPromptNow()) || {}).member || null,
+    parkedPromptId: (parkedOf(parkedPromptNow()) || {}).promptId || null,
+    parkedSince: (parkedOf(parkedPromptNow()) || {}).parkedAt || null,
+    parkedForMs: (() => {
+      const p = parkedOf(parkedPromptNow())
+      return p && Number.isFinite(Number(p.parkedAt)) ? Math.max(0, Date.now() - Number(p.parkedAt)) : null
+    })(),
+    parkedMeans: 'a caller-played prompt is PARKED on this session and is waiting to be answered: inFlight can be false at the same time (the lock is released when the prompt goes back to the caller). Answer it with op:"step" carrying the reply (that CONTINUES the parked turn - same turnId/member/promptId) or close it with op:"abandon"; a second op:"drive"/op:"step" without an answer is refused VMU_TURN_ALREADY_PARKED rather than overwriting it',
+    openTurns: (() => {
+      try {
+        let n = 0
+        for (const row of turnReceipts.values()) if (row && row.status === 'open') n += 1
+        return n
+      } catch (e) { return null }
+    })(),
+    openTurnsMeans: 'rows in turnReceipts whose status is still "open": a turn that was opened and never settled. A parked turn is expected to hold ONE such row until it is answered, released or timed out; a row that stays open while nothing is parked and nothing is in flight is an ORPHAN (its delivery returned without settling it - e.g. a resumed reply the channel could not parse) and this loop can leave that state by naming it: op:"abandon" with { turn: "<id>" } settles exactly that row (RUN 257), reading turnReceipts for the ids and their openedBy',
     abandonAfterMs: ABANDON_AFTER_MS,
     deliveryTimeoutMs: DELIVERY_TIMEOUT_MS,
+    deliveryBudgetSource: DELIVERY_BUDGET.source,
     deliveryGraceMs: DELIVERY_GRACE_MS,
     deliverySeamBudgetMs: SEAM_BUDGET_MS,
     timeoutOrder: ABANDON_AFTER_MS > SEAM_BUDGET_MS ? 'backstop-after-seam' : 'backstop-before-seam',
@@ -4386,19 +5415,56 @@ export function createTurnOrchestrator({
       ? 'the delivery seam gives up at deliverySeamBudgetMs (' + String(SEAM_BUDGET_MS) + ' ms = deliveryTimeoutMs + 25%) and THROWS, which releases the lock on its own; abandonAfterMs (' + String(ABANDON_AFTER_MS) + ' ms) is deliberately LARGER, so it only fires for a seam that neither returns nor throws. In a deployment where the seam times out normally, this backstop is never reached and the delivery timeout is what releases the loop - do not read abandonAfterMs as "how long a caller must wait"'
       : 'abandonAfterMs (' + String(ABANDON_AFTER_MS) + ' ms) is SMALLER than the delivery seam budget (' + String(SEAM_BUDGET_MS) + ' ms), so the loop closes a still-running delivery BEFORE the seam would: that is a deliberate choice by whoever set vmu.turn.abandonAfterMs',
     abandonsImmediately: 'vibe_vmu_turn { op:"abandon" }',
-    wakeQueue: wakeQueue.map((w) => ({ id: w.id, member: w.member, meeting: w.meeting, queuedForMs: Date.now() - w.at })),
+    wakeQueue: wakeQueue.map((w) => {
+      const nowMs = clockMsOf()
+      return { id: w.id, member: w.member, meeting: w.meeting, queuedForMs: w.at === null || nowMs === null ? null : Math.max(0, nowMs - w.at), queuedForMsSource: 'kernel-clock' }
+    }),
     wakeQueueMeans: 'a wake that fired while the loop was busy waits here (it is never driven from inside another turn): it runs the moment the in-flight turn settles',
     recentAbandonments: abandonments.slice(),
     lateAnswersNotApplied: counts.lateAfterAbandon || 0,
     lateAnswersNotAppliedMeans: 'answers that arrived AFTER their turn was released as abandoned: this loop reports them and applies nothing, so a row that says `abandoned` cannot gain records retroactively',
     turnInFlightMeans: 'inFlight is the LOOP\'s one-turn lock, not a promise about the durable ledgers: a second kernel over the same workspace answers inFlight:false while this one is busy, and `human.recover` reports inflight.pending from the DURABLE side (run 64 read pending:0 while a turn was stuck here - both readings were true). The in-flight turn names itself and its age; `vibe_vmu_turn { op:"abandon" }` closes it by name and releases the lock.'
   })
+  // ★★★ RUN 260 / TB-2667 (task-147, closes the ledger's run254-leftopen-3): "HOW MANY FIELDS DID THIS SESSION SKIP?"
+  // HAD NO SINGLE READING. The per-turn ledger carries `skipped`/`skippedFields` per row, but the rows are bounded to the
+  // last TURN_RECEIPT_CAP turns: a reader had to page through them, and once old rows fell off the total silently got
+  // SMALLER with nothing saying why. This reading is derived from the SAME row array `turnReceipts` publishes (never a
+  // second tally): `fields` counts skip EVENTS across the retained rows, `fieldsDispatchThrown` counts the subset whose
+  // dispatch THREW (the per-turn `skippedFields` key), `turnsWithSkips` counts the rows that skipped at least one field,
+  // and `evictedTurns` is the difference between the turns this loop ever opened and the rows it still retains - so a
+  // shrinking total is NAMED (`evictedSkippedUnknown`) instead of looking like a quiet change.
+  const skippedTotalsReading = () => {
+    const rows = Array.from(turnReceipts.values())
+    let fields = 0
+    let fieldsDispatchThrown = 0
+    let turnsWithSkips = 0
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue
+      const skipped = Array.isArray(row.skipped) ? row.skipped.length : 0
+      const thrown = Array.isArray(row.skippedFields) ? row.skippedFields.length : 0
+      fields += skipped
+      fieldsDispatchThrown += thrown
+      if (skipped > 0 || thrown > 0) turnsWithSkips += 1
+    }
+    const retainedTurns = rows.length
+    const evictedTurns = Math.max(0, turns.size - retainedTurns)
+    return {
+      fields,
+      fieldsDispatchThrown,
+      turnsWithSkips,
+      scope: 'retained-turn-rows',
+      retainedTurns,
+      evictedTurns,
+      evictedSkippedUnknown: evictedTurns > 0,
+      means: 'this total is BOUNDED to the turn rows the ledger still retains, not to the session. `fields` sums the `skipped` entries of those rows (one entry = one field a kept turn did NOT execute, whatever the reason; it counts EVENTS, so the same field skipped in two turns counts twice - dedupe the `field`s out of `turnReceipts` yourself if you need names), `fieldsDispatchThrown` sums their `skippedFields` entries (the per-turn key of that name: ONLY the fields whose dispatch threw, so the two differ whenever something was skipped for its shape, for a missing meeting, as a duplicate, or with no face wired), and `turnsWithSkips` counts the rows that skipped at least one. `retainedTurns`/`evictedTurns` come from that same row array and the loop\'s own turn registry (turns ever opened minus rows retained), never from separate counting. Read `evictedSkippedUnknown` before trusting the numbers: when `evictedTurns` is 0 every turn this loop ever opened is still on the ledger and this total IS the session so far; when it is greater than 0 the retainer has already dropped that many old rows and how many fields THEY skipped is not recoverable from here - `fields` is then neither a session total nor an upper bound, only the retained part, and a total smaller than yesterday is that eviction, not a session that un-skipped anything. `counts.notExecuted` counts the same events for the whole process lifetime (it does NOT shrink when rows evict) but carries no per-turn attribution, so it can tell you the session-wide count and never which turns it belongs to.',
+    }
+  }
   const run = async (spec) => {
     if (turnInFlight) {
       const ageMs = turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null
       // (2) A LOCK PAST ITS DEADLINE IS A STUCK TURN, NOT A BUSY ONE: close it BY NAME and let this call proceed.
       if (ageMs !== null && ageMs >= ABANDON_AFTER_MS) {
-        abandonTurn({ why: 'the turn in flight (' + String(inFlightTurn && inFlightTurn.id) + ') had held the loop for ' + String(ageMs) + ' ms, past abandonAfterMs (' + String(ABANDON_AFTER_MS) + '), and no delivery returned: the loop closed it by name so the institute is not held hostage by one turn' })
+        abandonTurn({ settledBy: 'timed-out', why: 'the turn in flight (' + String(inFlightTurn && inFlightTurn.id) + ') had held the loop for ' + String(ageMs) + ' ms, past abandonAfterMs (' + String(ABANDON_AFTER_MS) + '), and no delivery returned: the loop closed it by name so the institute is not held hostage by one turn' })
       } else {
         throw refuse('VMU_TURN_REENTRANT',
           'a turn is already in progress, so this run() would nest inside it' + (ageMs === null ? '' : ' (that turn has been in flight for ' + String(ageMs) + ' ms; it is closed by name once it passes ' + String(ABANDON_AFTER_MS) + ' ms)'),
@@ -4526,6 +5592,18 @@ export function createTurnOrchestrator({
       out.replyExcerptMeans = 'the reply as the member wrote it, CUT at replyLimitChars when replyTruncated is true. This round FAILED at the REPLY ENVELOPE, so what the member actually wrote is the first thing to read - and the excerpt is NOT the whole story of what happened: tools that member ran in its own child session are durable already'
     }
     if (e.delivery && typeof e.delivery === 'object') out.delivery = e.delivery
+    // ★ RUN 257 / TB-2645 (task-126): a batch/step failure row must carry the fourth state too. The throwing exit sets
+    // it on the error; without this lift the ROW a batch reader sees would still read as "a turn with no answer".
+    if (e.deliveryUnavailable === true) {
+      out.deliveryUnavailable = true
+      out.deliveryUnavailableWhy = typeof e.deliveryUnavailableWhy === 'string' ? e.deliveryUnavailableWhy : null
+      out.deliveryUnavailableMeans = typeof e.deliveryUnavailableMeans === 'string' ? e.deliveryUnavailableMeans : null
+    }
+    // ★ RUN 255 / TB-2606-A: a FAILED round row carries the same three field counts as a successful one. The whole-turn
+    // failure error already attaches them (see the aggregate failure block in `apply`); without this the failed ROW - the
+    // thing a batch reader actually sees - still reduced the reply to nothing, so success and failure answered "which
+    // field refused" in two different vocabularies.
+    Object.assign(out, fieldCountsOf(e))
     return out
   }
   const MEMBER_FAILURE_LIMIT = 3
@@ -4572,7 +5650,7 @@ export function createTurnOrchestrator({
             ? 'the completed report was not bound to a meeting'
             : 'the completed report was bound to the named meeting; its say became that member\'s speech (see executed[].onBehalf)',
           fields: done.fields, fieldsIgnored: fieldsIgnoredOf(done), ...(fieldsIgnoredOf(done).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: (done.executed || []).length, executedDetail: (done.executed || []).slice(0, 5), executedDetailTruncated: (done.executed || []).length > 5, executedMeans: EXECUTED_MEANS, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
-          turn: done.turn ? done.turn.id : null, source: 'tool' }
+          turn: done.turn ? done.turn.id : null, source: 'tool', ...fieldCountsOf(done) }
       } catch (e) {
         const code = (e && e.code) || null
         const message = String((e && e.message) || e)
@@ -4590,14 +5668,18 @@ export function createTurnOrchestrator({
     // "which turn does this reply answer" ambiguous, which is the very ambiguity that produced the wrong-family code.
     // The parked prompt is answered with op:"step" + the reply (or op:"reply" for a structured report), and a structured
     // report already waiting for it was completed ABOVE, so this guard only fires when a real unanswered prompt is held.
-    const parkedForDrive = (() => { try { return typeof deliver.pending === 'function' ? deliver.pending() : null } catch (e) { return null } })()
-    if (parkedForDrive && typeof parkedForDrive === 'object'
-      && typeof parkedForDrive.member === 'string' && parkedForDrive.member !== '') {
-      fail('VMU_TURN_ALREADY_PARKED', 'a member turn is already parked for ' + parkedForDrive.member
-        + (parkedForDrive.turnId ? ' (turn ' + String(parkedForDrive.turnId) + ')' : '')
-        + ': dispatching now would silently replace the prompt this caller is still holding',
-      'answer the parked prompt first: op:"step" with member:"' + parkedForDrive.member + '" and the reply (or op:"reply" with report {...}), which completes that turn; then dispatch again. This kernel keeps ONE parked prompt (deliverByReturning parks the assembled prompt on the caller), so a second dispatch cannot be queued - the prompt to answer is the memberPrompt the dispatch returned with awaiting:true')
-    }
+    // ★★★★★★★ RUN 229 / task-13 — A PARKED TURN IS NOT A SLOT A SECOND DISPATCH MAY OVERWRITE.
+    // Measured (the sim turns scenario, caller delivery): `drive {member:"r-1"}` parks r-1's prompt and returns
+    // `awaiting:true`; a second `drive {member:"r-2"}` silently replaced `pendingPrompt`, so r-1's prompt was lost with
+    // no refusal and no warning, and the late reply for r-1 came back as `VMU_INVALID_ARGUMENT` (the wrong family: "bad
+    // argument" for a turn that was REPLACED). The seam keeps ONE prompt on purpose (`deliverByReturning`'s own note: a
+    // turn that is not answered must be re-asked, not silently remembered), so the truthful repair is a NAMED refusal at
+    // the dispatch that would overwrite it - a queue here would keep prompts alive that nobody answered and would make
+    // "which turn does this reply answer" ambiguous, which is the very ambiguity that produced the wrong-family code.
+    // ★ RUN 256 / TB-2616: `step` had the SAME hole and now calls the SAME gate (`refuseParkedOverwrite`), so the two
+    // doors cannot drift: one reader (`parkedPromptNow`), one code (`VMU_TURN_ALREADY_PARKED`), one message.
+    const parkedForDrive = parkedOf(parkedPromptNow())
+    if (parkedForDrive && !closeParkedOverdue(parkedForDrive)) refuseParkedOverwrite('dispatching', parkedForDrive)
     for (let i = 1; i <= n; i += 1) {
       const spec = nextTurn({ members: selection, phase, why, nextStep, role, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy })
       // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
@@ -4613,6 +5695,8 @@ export function createTurnOrchestrator({
         // answers INTO it (and a conflicting `meeting` on the reply is refused by name) without re-reading the prompt.
         if (r && r.awaiting) return withScope({ ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, meeting: (r.meeting || (r.memberPrompt && r.memberPrompt.meeting) || null), deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member })
         receipts.push({ round: i, member: spec.member, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
+          // ★ RUN 255 / TB-2606-A: the three field counts travel on a SUCCESSFUL round too (see fieldCountsOf).
+          ...fieldCountsOf(r),
           // ★ ROUND 240: the same-value merge is a FACT about the two channels, and a batch receipt is read by the same
           // office that reads a step receipt - so it travels here too (empty means the two channels did not overlap).
           ...(Array.isArray(r.sameValueFields) && r.sameValueFields.length ? { sameValueFields: r.sameValueFields, replyChannelsMeans: r.replyChannelsMeans || null } : {}),
@@ -4676,13 +5760,28 @@ export function createTurnOrchestrator({
       partial: e.partial && typeof e.partial === 'object' ? e.partial : null,
     } : null
     return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack,
-      ...(failureDelivery && (failureDelivery.deliveryPath || failureDelivery.deliveryPathMeans) ? failureDelivery : {}),
+      // ★ RUN 255 / TB-2606-A: the delivery block travelled only when the seam named a PATH, so a seam that reported
+      // waitedMs / partial / a still-running request but no path lost those facts on the receipt - the same defect family
+      // as run 16 (the facts existed one layer down). A delivery failure is worth reporting when ANY of its readings exist.
+      ...(failureDelivery && (failureDelivery.deliveryPath || failureDelivery.deliveryPathMeans || Number.isFinite(failureDelivery.waitedMs)
+        || failureDelivery.partial !== null) ? failureDelivery : {}),
       ...(e && typeof e.hint === 'string' ? { hint: e.hint } : {}),
       ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, REFUSAL_REPLY_EXCERPT_MAX), replyTruncated: typeof e.replyText === 'string' ? e.replyText.length > REFUSAL_REPLY_EXCERPT_MAX : null, replyLimitChars: REFUSAL_REPLY_EXCERPT_MAX, replyExcerptMeans: 'the reply as the member wrote it, CUT at replyLimitChars (' + REFUSAL_REPLY_EXCERPT_MAX + ') when replyTruncated is true; this is the REFUSAL excerpt (the reply could not be parsed into the declared shape), and replyLength is the FULL length', trackValue: e.trackValue } : {}),
       // ★★★ ROUND 38: the refusal object carries the side-effect disclosure (see attachReplyDiagnostics); it must also
       // reach the FAILURE RECEIPT, because that is the object an operator actually reads. A disclosure that stops one
       // layer down is the same defect family as run 23's hint and run 29's child id.
       ...(e && e.sideEffectsUnverified === true ? { sideEffectsUnverified: true, sideEffectsMeans: typeof e.sideEffectsMeans === 'string' ? e.sideEffectsMeans : null } : {}),
+      // ★ RUN 255 / TB-2606-A: the SAME three field counts a successful round carries (0 / [] when there were none), so
+      // "which reply field refused" is answered in one vocabulary on BOTH sides of success. Without this the failed
+      // single-round receipt still reduced the reply to a code and the reader had to diff two shapes to learn the same fact.
+      ...fieldCountsOf(e),
+      // ★ RUN 256 / TB-2616: a refusal about a PARKED prompt carries the facts a caller needs to act — the turn, the
+      // member, the prompt id, how long it has been held, and which door releases it — not just prose.
+      ...(e && typeof e === 'object' && e.parkedFacts && typeof e.parkedFacts === 'object' ? { parked: e.parkedFacts, parkedMeans: typeof e.parkedMeans === 'string' ? e.parkedMeans : null } : {}),
+      ...(e && typeof e === 'object' && typeof e.parkedReason === 'string' ? { parkedReason: e.parkedReason } : {}),
+      // ★★ a refusal that DISCARDS a staged reply must say so on the receipt the caller reads: "the reply you supplied
+      // was thrown away" is the difference between "answer it again" and "your words are about to answer the NEXT turn".
+      ...(e && typeof e === 'object' && e.parkedReplyDiscarded === true ? { parkedReplyDiscarded: true, parkedReplyDiscardedMeans: 'the reply supplied in this same call had no parked prompt to answer, so it was DISCARDED (not staged): the next prompt this caller receives starts from an empty slot' } : {}),
       ...(e && typeof e === 'object' && e.delivery && typeof e.delivery === 'object' ? { delivery: e.delivery } : {}) }
   }
 
@@ -4824,7 +5923,7 @@ export function createTurnOrchestrator({
             skippedDetailTruncated: (r.skipped || []).length > 5,
             notes: (r.notes || []).slice(0, 5),
             notesMean: r.notesMean || null,
-            turn: completedTurnId, source: 'tool', completed: true } }
+            turn: completedTurnId, source: 'tool', completed: true, ...fieldCountsOf(r) } }
       } catch (e) { return stepFailure(e) }
     }
     // ★ LIVE RUN 13 (the institute's own report, ⑦.3 and item 1): on THIS route two facts were unreadable. (a)
@@ -4838,6 +5937,33 @@ export function createTurnOrchestrator({
     // decided but not WHAT it resolved to, and the one branch that did emit the list (the settlement route, below) was
     // unreachable under activation delivery. The list is the resolved selection (an empty `members` becomes the
     // roster-default list), so it is derived here once and spread on every route.
+    // ★★★★★★★ RUN 256 / TB-2616 (task-97) — P0-1/P0-2: THE PARKED PROMPT IS ANSWERED, OR THE DOOR IS REFUSED.
+    // MEASURED (audit round 14): (P0-1) `vibe_vmu_turn {op:"step", reply:"…"}` on the text channel supplied the reply and
+    // then called `step`, which opened a NEW turn — the receipt said t-2/r-1, the record was written by r-2, and t-1 (the
+    // turn whose prompt was actually answered) stayed `open`. (P0-2) `drive` refused a second dispatch over a parked
+    // prompt (`VMU_TURN_ALREADY_PARKED`) while `step` silently replaced it.
+    // The decision, made ONCE here for both questions:
+    //   · a parked prompt AND a staged reply  ⇒ CONTINUE that turn (same turnId/member/promptId; see `spec` below);
+    //   · a parked prompt and no staged reply ⇒ refuse, the same gate `drive` uses (one name, one message);
+    //   · a staged reply with no parked prompt ⇒ refuse by name: it has nothing to answer, and handing it to the next
+    //     turn would attribute an answer to a prompt nobody issued.
+    const parkedNowForStep0 = parkedOf(parkedPromptNow())
+    const answerStagedForStep = parkedAnswerStaged()
+    // ★ The third exit: an UNANSWERED parked prompt past `abandonAfterMs` is closed by name here too, so the door is not
+    // blocked forever by a caller who walked away with the prompt in hand.
+    const parkedExpiredForStep = parkedNowForStep0 !== null && !answerStagedForStep && closeParkedOverdue(parkedNowForStep0)
+    const parkedNowForStep = parkedExpiredForStep ? null : parkedNowForStep0
+    if (parkedNowForStep && !answerStagedForStep) refuseParkedOverwrite('stepping', parkedNowForStep)
+    const parkedTurnForStep = (() => {
+      if (!answerStagedForStep || !parkedNowForStep) return null
+      const id = parkedNowForStep.turnId ? String(parkedNowForStep.turnId) : null
+      if (id === null) return null
+      const t = turns.get(id)
+      return t && typeof t === 'object' ? t : null
+    })()
+    if (answerStagedForStep && parkedTurnForStep === null) {
+      refuseParkedNeedsOwner(parkedNowForStep, parkedNowForStep === null ? 'no-parked-prompt' : (parkedNowForStep.turnId ? 'turn-not-open' : 'no-turn-id'))
+    }
     const selectionReadings = {
       ...selectionReadingsOf(deliver && typeof deliver.pending === 'function' ? deliver.pending() : null, requestedIds),
       requestedMembers: requestedIds.slice(),
@@ -4859,7 +5985,41 @@ export function createTurnOrchestrator({
             ? 'the caller named `member` (SINGULAR: one seat), so requestedMembers and resolvedMembers are that one id — this is not an inferred selection and not a list, the shorthand for "wake this one member"'
             : 'the caller named a selection through some other shape; requestedMembers and resolvedMembers are the same list after normalisation')),
     }
-    const spec = nextTurn({ members, phase, why, nextStep, role, membersFrom, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy })
+    // ★ RUN 256 / TB-2616: P0-1 — a staged reply is applied to the PARKED turn, never to a freshly opened one. The spec
+    // below carries the EXISTING turn object (so `runOne` continues it) plus the prompt text that was parked (so the
+    // resume does not re-assemble: `assemble()` drains one-shot notices and counts an assembly).
+    const resumeSpec = parkedTurnForStep
+      ? (() => {
+        const remembered = parkedPrompts.get(String(parkedTurnForStep.id)) || null
+        const fallbackText = parkedNowForStep && typeof parkedNowForStep.text === 'string' ? parkedNowForStep.text : ''
+        const resumePrompt = remembered || {
+          text: fallbackText,
+          instructionDelivered: true,
+          sources: 0,
+          notices: null,
+          promptId: parkedNowForStep && typeof parkedNowForStep.promptId === 'string' ? parkedNowForStep.promptId : null,
+        }
+        return {
+          member: parkedTurnForStep.member,
+          round: parkedTurnForStep.round,
+          phase: parkedTurnForStep.phase === undefined ? phase : parkedTurnForStep.phase,
+          why: parkedTurnForStep.why === undefined ? why : parkedTurnForStep.why,
+          nextStep: parkedTurnForStep.nextStep === undefined ? nextStep : parkedTurnForStep.nextStep,
+          meeting: parkedTurnForStep.meeting === undefined ? meeting : parkedTurnForStep.meeting,
+          openedBy: parkedTurnForStep.openedBy || (openedBy === null || openedBy === undefined ? 'drive' : openedBy),
+          resumeTurn: parkedTurnForStep,
+          resumePrompt,
+          resumedPromptId: resumePrompt.promptId || null,
+        }
+      })()
+      : null
+    const spec = resumeSpec || nextTurn({ members, phase, why, nextStep, role, membersFrom, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy })
+    // ★ RUN 256 / TB-2616: the resume is a READING on the receipt, not a claim the caller has to infer from an id: the
+    // caller must be able to see that THIS call settled the turn it replied to (and which prompt that was).
+    const resumedFrom = resumeSpec
+      ? { resumed: true, resumedTurnId: String(resumeSpec.resumeTurn.id), resumedMember: resumeSpec.resumeTurn.member === undefined ? null : String(resumeSpec.resumeTurn.member), resumedPromptId: resumeSpec.resumedPromptId,
+        resumedMeans: 'this call CONTINUED the parked member turn instead of opening a new one: same turnId, same member, same promptId. The receipt below settles THAT turn — check resumeTurnId against the pending.turnId the earlier awaiting:true receipt returned, and turnReceipts for the ONE row whose status is now terminal' }
+      : null
     // ★★ LIVE RUN 47 (the institute's own report ㉿.2): the face DOES name where the selection came from
     // (`caller-selection` | `roster-default`), but the reading was looked up on the RUN result instead of on the SPEC
     // that carries it, so every live receipt read `membersFrom: null` - present but empty, the worst of both.
@@ -4886,7 +6046,10 @@ export function createTurnOrchestrator({
       return { list: cappedCalls, total: allCalls.length, truncated: allCalls.length > cappedCalls.length }
     }
     try {
-      const r = await run({ ...spec, round: turns.size + 1 })
+      // ★ RUN 256 / TB-2616: a resumed turn keeps ITS OWN round number (the prompt the caller answered was issued in that
+      // round). A fresh turn takes the loop's next round, as before.
+      const roundForRun = resumeSpec && Number.isFinite(Number(spec.round)) ? Number(spec.round) : turns.size + 1
+      const r = await run({ ...spec, round: roundForRun })
       // ★★★ ROUND 73: a caller-played turn is a LEGAL outcome, not a receipt with empty fields. It is surfaced as such so
       // the caller knows to play the member turn and answer on the next call.
       // ★ ROUND 88: and it NAMES THE ROUTE that handed the prompt back, so "which delivery path ran" is read from the
@@ -5059,6 +6222,7 @@ export function createTurnOrchestrator({
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         ...toolCallsReading, ...memberCallsReading,
         membersFrom: membersFromReading, delegation: r.delivery || null,
+        ...(resumedFrom || {}),
         ...selectionReadings }
       return { ok: true, ...memberCallsReading,
         // ★ LIVE RUN 19 (⑨): the awaiting receipt and the failure receipt both named `deliveryPath`, while the
@@ -5074,6 +6238,9 @@ export function createTurnOrchestrator({
         executedDetail: r.executed.slice(0, 5),
         executedDetailTruncated: r.executed.length > 5,
         executedMeans: EXECUTED_MEANS,
+        // ★ RUN 255 / TB-2606-A: appliedFieldCount / failedFieldCount / skippedFields are ALWAYS present on this
+        // receipt (0 / [] when there is nothing), in the same names and element shape the failed-turn error uses.
+        ...fieldCountsOf(r),
         // ★ ROUND 240 (FEEDBACK63 ①5): both channels, same value ⇒ one dispatch; the field names travel so a reader can
         // tell "merged, counted once" from "the second channel was dropped".
         ...(Array.isArray(r.sameValueFields) && r.sameValueFields.length ? { sameValueFields: r.sameValueFields, replyChannelsMeans: r.replyChannelsMeans || null } : {}),
@@ -5118,6 +6285,9 @@ export function createTurnOrchestrator({
         replyLimitChars: Number.isFinite(Number(r.replyLimitChars)) ? Number(r.replyLimitChars) : null,
         replyExcerptMeans: typeof r.replyExcerptMeans === 'string' ? r.replyExcerptMeans : null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
+        // ★ RUN 256 / TB-2616: the resume facts ride INSIDE the receipt too, so a reader that only opens `receipt` still
+        // learns that this call continued a parked turn instead of opening one.
+        ...(resumedFrom ? { resumed: true, resumedTurnId: resumedFrom.resumedTurnId, resumedPromptId: resumedFrom.resumedPromptId } : {}),
         ...toolCallsReading,
         ...memberCallsReading,
         // ★★ LIVE RUN 46 (the institute's own report, item ㉟.2/㉟.4): `membersFrom` and the delegation block were
@@ -5125,6 +6295,7 @@ export function createTurnOrchestrator({
         // turns, so this deployment's step receipt never returned an awaiting envelope and the two readings were
         // unreachable in the very mode they describe. Same defect family as run 37's count-only `skipped`.
         membersFrom: membersFromReading, delegation: r.delivery || null },
+        ...(resumedFrom || {}),
         ...selectionReadings }
     } catch (e) {
       return stepFailure(e)
@@ -5259,6 +6430,11 @@ export function createTurnOrchestrator({
       lastAttribution: Object.assign({}, lastAttribution, { slot: lastAttribution && typeof lastAttribution.member === 'string' ? 'single' : 'empty', member: (lastAttribution && typeof lastAttribution.member === 'string' ? lastAttribution.member : null), turn: (lastAttribution && typeof lastAttribution.turn === 'string' ? lastAttribution.turn : null), attemptedMember: lastAttribution && typeof lastAttribution.member === 'string' ? null : lastAttributionMember, attemptedMemberMeans: lastAttribution && typeof lastAttribution.member === 'string' ? null : 'a delivery was ATTEMPTED for this member and has not returned, so it is not a claim about the last delivery: `member`/`turn` stay null until one does', slotMeans: 'lastAttribution describes the LAST DELIVERY THAT RETURNED, and its member/turn/childId are stamped together when that delivery returns - so a turn whose seam is still in flight is NOT described here (read op:"status" turnLoop for the turn that is holding the lock, and turnReceipts for every turn this kernel opened)' }),
       attributionMeans: 'the turn engine keeps ONE attribution slot: lastAttribution describes the MOST RECENT delivery only, not every member\'s last turn. Per-member history is not retained here - `woken` and `counts` are tallies, and `memberSessions` maps a member to the child session that played its last turn',
       memberSessions: Object.fromEntries(memberSessions),
+      // ★★★ RUN 257 / TB-2611 (task-90) KERNEL HALF: THE RATIO THE OFFICE CAN RE-DERIVE. Derived here from the SAME rows
+      // `turnReceipts` publishes (one computation, no second ledger), so an acceptance test can recompute it from the
+      // rows and compare numbers. `unknownActs` is NOT in the memberShare denominator; a null memberShare means both
+      // proven sides are zero. See `workShareOf` for the shape and `means` for the wording.
+      memberWorkShare: workShareOf({ turns: Array.from(turnReceipts.values()) }),
       // ★★★ ROUND 240 (FEEDBACK63 ①4/①9): THE PER-TURN LEDGER THE OFFICE COULD NOT READ. `turns` above is a COUNT; this is
       // the list. One row per turn (bounded to the last TURN_RECEIPT_CAP): who, which door opened it (`drive` = the
       // caller's own step/drive, `activation` = the background pump, `wait` = a meeting wake settling a parked turn, null =
@@ -5270,8 +6446,14 @@ export function createTurnOrchestrator({
       // fold and reported `inflight.pending:0`, so the two faces denied each other. `turnLoop` states the loop's own fact:
       // who holds the lock, for how long, when it will be closed by name, and whether a wake is waiting for a free turn.
       turnLoop: turnLoopReading(),
+      // ★★★ RUN 260 / TB-2667 (task-147): THE SESSION-WIDE SKIP TOTAL, DERIVED FROM THE SAME ROWS `turnReceipts` PUBLISHES.
+      // Before this, answering "how many fields did this session skip?" meant paging through a bounded row list, and the
+      // answer silently shrank once rows were evicted. `scope` names the bound in the value itself, and
+      // `evictedSkippedUnknown` says whether the number is the whole session or only its retained tail.
+      skippedTotals: skippedTotalsReading(),
+      skippedTotalsMeans: 'the SUM the per-turn ledger could not give without paging: `fields` counts skipped-field EVENTS across the retained turn rows (same field skipped twice counts twice), `fieldsDispatchThrown` the subset whose dispatch threw, `turnsWithSkips` the rows that skipped at least one field. `scope:"retained-turn-rows"` is the bound, and `evictedSkippedUnknown:true` means rows have already been dropped, so `fields` is only the retained part - not a session total and not an upper bound',
       turnLoopMeans: 'THIS IS THE LOOP\'S OWN FACT, not a copy of the durable fold: `inFlight` true means one turn is holding the single-turn slot right now, `inFlightForMs` says for how long, and past `abandonAfterMs` this loop closes that turn BY NAME (or immediately with op:"abandon"). A reader who sees inFlight:true while the durable fold says nothing is pending is looking at exactly the run-64 contradiction - the fix is op:"abandon", not a retry',
-      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null). RUN 250: each row ALSO carries the prompt/delivery evidence the run receipt shows - `notices` is {lines, rendered, blockChars} for the block that was in that turn\'s prompt (so "did the delivery render" is checkable per turn, not by scanning the workspace), `truncated`/`excerptLen` describe the receipt\'s own cut, `emptyReply`/`replyBytes` describe what the member wrote, and when a reply was cut past `vmu.turn.replyLimitChars` the full text lives at `replyFullPath` with `replyFullSha256`/`replyFullBytes` (verify them against the real file). null is a NAMED absence - "this loop has no reading for it (yet)"; `replyArchiveWhy` names why a cut reply has no full-text file (no archive seam wired, or the seam refused), and null there means there was nothing to warn about. RUN 251 (task-77): two more sentences a reader needs. (a) NAMES: the ONE authoritative names for the receipt cut are `truncated` and `excerptLen` — `replyTruncated` and `replyExcerpt` are the turn RECEIPT\'s older names for the same facts, kept here by name so old readers can find them and deliberately NOT duplicated as row keys; `excerptLen` is the CHARACTER COUNT of the cut (the excerpt TEXT itself is the receipt\'s `replyExcerpt`). (b) WHERE: row-level keys are `truncated`, `excerptLen`, `emptyReply`, `replyBytes`, `replyFullPath`, `replyFullSha256`, `replyFullBytes`, `replyArchiveWhy`; the block reading is the NESTED object `notices` = {lines, rendered, blockChars}, so `lines` is a key of `row.notices`, not of the row. `emptyReply` is about the reply TEXT (empty or whitespace-only = true; the tool channel is a separate channel, so `source`/`fields` still say what a parked report carried) — it never means "the parsed object had no usable value": a prose answer that parsed to nothing is emptyReply:false with replyBytes > 0.',
+      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null). RUN 250: each row ALSO carries the prompt/delivery evidence the run receipt shows - `notices` is {lines, rendered, blockChars} for the block that was in that turn\'s prompt (so "did the delivery render" is checkable per turn, not by scanning the workspace), `truncated`/`excerptLen` describe the receipt\'s own cut, `emptyReply`/`replyBytes` describe what the member wrote, and when a reply was cut past `vmu.turn.replyLimitChars` the full text lives at `replyFullPath` with `replyFullSha256`/`replyFullBytes` (verify them against the real file). null is a NAMED absence - "this loop has no reading for it (yet)"; `replyArchiveWhy` names why a cut reply has no full-text file (no archive seam wired, or the seam refused), and null there means there was nothing to warn about. RUN 251 (task-77): two more sentences a reader needs. (a) NAMES: the ONE authoritative names for the receipt cut are `truncated` and `excerptLen` — `replyTruncated` and `replyExcerpt` are the turn RECEIPT\'s older names for the same facts, kept here by name so old readers can find them and deliberately NOT duplicated as row keys; `excerptLen` is the CHARACTER COUNT of the cut (the excerpt TEXT itself is the receipt\'s `replyExcerpt`). (b) WHERE: row-level keys are `truncated`, `excerptLen`, `emptyReply`, `replyBytes`, `replyFullPath`, `replyFullSha256`, `replyFullBytes`, `replyArchiveWhy`; the block reading is the NESTED object `notices` = {lines, rendered, blockChars}, so `lines` is a key of `row.notices`, not of the row. `emptyReply` is about the reply TEXT (empty or whitespace-only = true; the tool channel is a separate channel, so `source`/`fields` still say what a parked report carried) — it never means "the parsed object had no usable value": a prose answer that parsed to nothing is emptyReply:false with replyBytes > 0. RUN 257 (task-90): `deliveryPath` is WHO RAN THE TURN as the delivery seam reported it - "caller" means the CALLING session played this member turn (an office relay), any other named path (activation/continuation/one-shot/a host seam name) means the seat own session ran it, and null means the ledger does not say (legacy row or a silent seam) - so a reader can tell the two apart without re-running the turn. Those row paths are what `memberWorkShare` classifies; its `means` states the ratio and the unknown rule.',
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.
@@ -5293,7 +6475,12 @@ export function createTurnOrchestrator({
       // closure-vote permission (run 15 read `"r-temp": false` and could not tell whether that seat's judgement counted).
       // It never counted toward closure; `closureVote` is the counted tally and this field says which is which.
       solvedThisRoundMeans: 'the raw per-round `solved` readings of this session, one per member that emitted the field - INCLUDING seats that hold no closure-vote permission (they appear here and never count toward closure; `closureVote` is the counted tally). It is the per-round convergence reading, NOT the closure vote: use `closureVote` for "is the question judged solved"',
-      closureVote: closureVoteOf({ votes: closureVotes, roster, may, permission }) }),
+      closureVote: closureVoteOf({ votes: closureVotes, roster, may, permission }),
+      // ★★★ RUN 258 / TB-2621 (task-102): THE SAME THREE GROUPS THE PROMPT'S STATUS BLOCK NOW CARRIES, read through the
+      // SAME `statusReadingsFor` call (this object is updated by that call, so a reader can reconcile the prompt text
+      // against this receipt field by field). null means "no turn has been assembled in this loop yet" - not "no paper".
+      liveReadings: lastLiveReadings,
+      liveReadingsMeans: 'the paper/blueprint/closure groups the LAST assembled status block carried, produced by the same statusReadingsFor call that built that block (so prompt and receipt cannot drift). Each group is {value|null, why, source, detail, at, atSource, timeWhy}: a null value names WHY the group is absent (no paper row, no bound meeting, an unreadable ledger), `source` names the ledger row/face that answered, and `at`/`timeWhy` say whether the content had a timestamp. `detail` is the derived reading (paper: status/round/missing/participants; blueprint: status/revision/mdPath/draftMdMissing/mdChangedSinceIndex; closure: votesCast/votesTotal/votesFor/votesAgainst/motionsPending). It is DERIVED from the durable rows on every assemble and never stored, so it cannot become a second truth source' }),
   }
 }
 
@@ -5312,6 +6499,30 @@ export function createTurnOrchestrator({
 // it can be asserted without a live host; `apply()` is its only caller and consults it before touching any face.
 export const hasMeetingRef = (payload) =>
   !!(payload && payload.meeting !== undefined && payload.meeting !== null && payload.meeting !== '')
+
+/**
+ * ★★★★★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #2, MEASURED): WHICH MEETING IDS A REPLY FIELD ACTUALLY NAMES.
+ *
+ * The skip below (`no-meeting-bound`) answers "this line carries no meeting". Run 74 showed that is not the only way a
+ * line can carry no USABLE meeting: a member wrote `say: "m-ghost-74 …"` - an id in the TEXT - and the receipt then said
+ * exactly what it says when the member wrote no id at all, so "you named a meeting that does not exist" and "this turn
+ * had no meeting" were one sentence. This finder is the missing half: it is a pure text scan (no registry here, so it
+ * cannot lie about existence), the CALLER probes the registry, and only an id the registry refuses with
+ * `VMU_NO_SUCH_OBJECT` is called a ghost. Bounded to 5 ids; trailing sentence punctuation is not part of an id.
+ */
+const MEETING_ID_PATTERN = /(?:^|[^A-Za-z0-9_.-])(m-[A-Za-z0-9][A-Za-z0-9_.-]*)/g
+export const meetingIdsMentioned = (text) => {
+  const out = []
+  if (typeof text !== 'string' || text === '') return out
+  MEETING_ID_PATTERN.lastIndex = 0
+  let hit = MEETING_ID_PATTERN.exec(text)
+  while (hit !== null && out.length < 5) {
+    const id = String(hit[1]).replace(/[.,;:!?]+$/, '')
+    if (id.length > 2 && out.indexOf(id) === -1) out.push(id)
+    hit = MEETING_ID_PATTERN.exec(text)
+  }
+  return out
+}
 
 export const dispatchSkipReason = (d, opts = null) => {
   if (!d || typeof d !== 'object') return null

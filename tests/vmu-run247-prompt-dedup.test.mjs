@@ -121,6 +121,26 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //        旁注、重复的「私信+urgent 才推进这一轮」、无用的轮询劝告、office 只读到摘录的旁注等），**净差 ≤0**：
   //        `v5r-blocks-b.js` 76 644 → 76 644 字符；整份装配每席不变（chair/normal 27 258、member 23 677、temp 20 364），
   //        上限与余量原样不动（仍 28615 / 75414）。
+  //   ★ RUN 255 / task-96 不涨预算、也不记账：这一轮同样**净减**。口径从「落盘两条路（工具在前、fs 当草稿区）」
+  //        改成「**默认用 fs**＋工具只为内核记账」，并把「产出归/由指派者归档」改成「指派者只核对、不代写」
+  //        （core:572 / blocks-a:228·89·103·220·294·455 / blocks-b:1057·1100 / assistant.js:30 / assistant.json:12）。
+  //        实测（同一个 collect() 的 combos）：chair/normal 28 567、member 24 961、temp 21 690，合计 75 218；
+  //        对 HEAD（`D:/_tmp/base255` worktree，67fb601a）的 28 614 / 25 008 / 21 728 = 75 350 是 **−132**
+  //        （逐席 −47 / −47 / −38）⇒ 两条线上的上限与余量原样不动（仍 28 615 / 75 414）。以后谁把口径改回去、把字数
+  //        涨回来，这里会先红。
+  //   ★ RUN 256 / task-107 **不动座位装配、因此不记账**：这一轮改的是 persona 的**捕获语料**
+  //        （`prompt-corpus-v5/persona-corpus-v5.json` 的 `roles.<id>.blocks[key=s三].text`，四个 role 各 +82 字符，
+  //        再由 `scripts/generate-pack-persona.mjs --write` 重新生成 `v5r-persona.js`）。persona **不在 live 席位装配里**
+  //        （`v5r-core.js:423-425`：运行期声明是手写章程；`tests/vmu-turn.test.mjs` T63 断言 `personaSections.length === 0`），
+  //        所以 chair/member/temp 三份 normal 的字数逐字未变（仍是 28 567 / 24 961 / 21 690 = 75 218）——上限与余量
+  //        原样不动（`chairCeiling`/`sumCeiling` 仍是上面常量相加，没有新增项）。它对齐的是 capture 与 shipped charter，
+  //        不是给学生多教一句；若有人把 persona 接进 live 装配，这里会因为字数上涨而先红。
+  //   ★ RUN 255 / TB-2613（fs-first 提示词急救）**只改蓝图片段三条角色行的「默认谁写文件」**：
+  //        chair 434→471（+37）、member 走 researcher 变体 326→374（+48）、temp 242→281（+39），合计 +124。
+  //        实测 combos：chair/normal **28 613**（上限 28 615，余量 2）、member 25 020、temp 21 740，合计 **75 373**
+  //        （上限 75 414，余量 41）；上限与 cap 都没动，`audit-prompt-budget --check` 的 chair 座位 35 060 < 36 500。
+  //        实测增量比上面三行多 +31（+9/+11/+11）来自**同树其它车道**对 tools 描述的改动（tools 33 620→33 683），
+  //        不是本轮提示词——所以这一轮不能用「combos 原样不动」当判据，只能逐行记账。
   const RUN247 = { chair: 26944, member: 23200, temp: 20545, sum: 70689 }
   const RUN248_TEACHING = { chair: 548, member: 1008, temp: 383, sum: 1939, budget: 2000 }
   const RUN249_TEACHING = { chair: 452, member: 452, temp: 452, sum: 1356 }

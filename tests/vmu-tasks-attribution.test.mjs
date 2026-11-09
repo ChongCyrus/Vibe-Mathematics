@@ -21,7 +21,10 @@ let passed = 0
 const failures = []
 const ok = (cond, name, detail) => {
   if (cond) passed++
-  else { failed++; failures.push(name + (detail === undefined ? '' : ' [' + detail + ']')) }
+  // ★★ the same failure mode as the G4 paper tooth, one layer down: this said `failed++` on `const failed = { n: 0 }`,
+  // so a REAL failure threw a TypeError out of `ok()` and the process died with no FAIL line. Count the way
+  // `refuse()` below already counts, so a failure arrives as a NAMED line plus a non-zero exit.
+  else { failed.n += 1; failures.push(name + (detail === undefined ? '' : ' [' + detail + ']')) }
 }
 const failed = { n: 0 }
 const refuse = async (fn, code, name) => {

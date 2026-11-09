@@ -471,6 +471,36 @@
 
 ★ **判据** ✓：**字段总数 21 ＋ 8 ＝ 29** ✓（**与原版同量** ✓）；★ **挂错面时表现为 `face-not-wired` 并被计数** ✓（**不静默** ✓，见 §3.5 ✓）。
 
+### 3.22.1 ★★★★★ 两个拒因各管一个边界：**适配器坏了 ≠ 成员写成散文**（RUN 255 / TB-2606-A，run 74 FEEDBACK74 #3）
+
+★★ **触发面** ✓：run 74 的任务书按「成员写无围栏散文 ⇒ `VMU_TURN_DELIVERY_SHAPE`」写了期望，真机拿到的是 `VMU_TURN_NO_FENCE` ✓。★ **代码是对的、任务书口径是错的** ✓ —— 但这两个码的边界**此前只在代码里**（`kernel/turn/index.js` 的 `deliverTurn` 与 `parse`），文档没有一句话把它们分开 ⇒ 读文档的人只能靠猜，猜错就会认为「散文也算适配器故障」✗。
+
+★★ **边界（一句话一个码，互不覆盖）** ✓：
+
+| 码 | 谁坏了 | 什么形状 | 回执怎么读 | 下一步 |
+|---|---|---|---|---|
+| `VMU_TURN_NO_FENCE` | **成员回复信封**（成员这一轮写的东西）✓ | 既没有工具汇报、也没有可解析的围栏 JSON —— 自由散文 ✓ | 拒绝是关于**这次回复**的：它没有可用回执对象，**不是**「适配器坏了」✓ | 让成员按两种通道之一重交：`vibe_vmu_turn { op:"reply", report:{…} }`，或围栏 JSON ✓ |
+| `VMU_TURN_DELIVERY_SHAPE` | **投递适配器（宿主 seam）**✓ | 返回值既非裸字符串、非 `{reply:<string>, …}`、非 `{awaiting:true, …}` ✓ | message 里**列出实际收到的键**（`an object with keys [output]`），并明说这段文本**从未交到内核手上**✓ | 改适配器，让它返回三种接受形状之一 ✓ |
+
+★★ **投递适配器接受的三种形状**（`kernel/turn/index.js` 的 `deliverTurn`，本节的权威来源）✓：
+1. **裸字符串** —— 兼容路径 ✓：该轮照常跑完，回执具名「bare string ⇒ 无 childId/stopReason」（**不静默** ✗，见 §3.32）；
+2. **`{ reply: <string>, childId, stopReason, attribution }`** —— 带归属的信封 ✓；
+3. **`{ awaiting: true, memberPrompt }`** —— 成员在等围栏外的输入，**这不是回执** ✓（回执 `awaiting:true`，下一条 `op:"step"` 带 `reply` 才提交）。
+
+★★ **不变量** ✓：一个码不许覆盖另一个码的语义 —— `NO_FENCE` 不得用来报「适配器坏了」，`DELIVERY_SHAPE` 不得用来报「成员写成散文」✓。★ 两个码的 message/hint **互相点名**（NO_FENCE 的 hint 写「适配器边界另有其码」；DELIVERY_SHAPE 的 hint 写「散文正确拒成 NO_FENCE，不要扩大本码」）✓。
+
+★ **判据** ✓：`tests/vmu-run255-feedback74.test.mjs` §4 —— 散文 ⇒ `VMU_TURN_NO_FENCE`；适配器返回 `{ output: [...] }` ⇒ `VMU_TURN_DELIVERY_SHAPE`；**并否定钉住**「NO_FENCE 的 message 不含适配器字样」「DELIVERY_SHAPE 的 message 含实际键名」✓（正句 + 旧句不在，两种都要有）。
+
+### 3.22.2 ★★★★ 投递预算是**一个设置**，缺省 1800000 ms（RUN 255 / FEEDBACK74 #4）
+
+★★ **键** ✓：`vmu.turn.deliveryTimeoutMs`（声明在 `vibe-math-vmu/settings/schema.js` 的设置注册表；**缺省 1800000 ms**）✓。★ **为什么是 1800000** ✓：run 74 实测一个**合法**的单体回合投递耗时 **982572 ms**（16.4 分钟）✓，旧缺省 900000 ms 只能把它按 late 收割 —— 一个读论文写证明的回合是**长**回合，不是卡住的回合 ✓。
+
+★★ **late 收割不是丢弃** ✓：回执同时给 `deliveredLate:true`、`deliveredLateMeans`（「deadline 决定 seam 何时**停止等待**，不决定工作算不算数」）、`deliveryWaitedMs`、`deliveryDeadlineMs`、`deliveryGraceMs` ✓ —— 一个 true 旁边必须有它**为什么允许**的那句话 ✓，不能只留一个布尔让人自己推断。
+
+★★ **一处计算、两处读** ✓：`turnLoop().deliveryTimeoutMs` 与超时判定读**同一个** `DELIVERY_TIMEOUT_MS` ✓；回执上的 `deliveryBudgetMs`/`deliveryBudgetSource` 把「这个回合被按多少预算等的、预算从哪来」一起说出来 ✓。★ 缺省不是规则：知道自家回合短的部署可以调紧 ✓。
+
+★★★★ **三处消费者、一个解析器**（TB-2629 / task-110）✓：这个预算有**三个**读它的人 —— ①内核回合循环（状态面 `turnLoop()` 与回执 `deliveryBudgetSource`）②v3 规划器（`packs/v3/middleware/planner.js` 的 `readSettings().deliveryTimeoutMs`，队列压力判据）③一次性投递 seam（`host-deliver.js`，真正**杀或收割**回合的那一处）✓。三者过去各写一个数（声明 180000 / 内核 1800000 / 规划器回落 180000）⇒ 「状态面说还活着、seam 已经把它杀了」✓；现在**只有声明是真相**：`vibe-math-vmu/settings/schema.js` 导出 `readDeliveryBudget(getSetting)` 返回 `{ ms, source }`，内核循环与规划器都**只调它** ✓，seam 读同一条 `SETTING_DEFS` 条目 ✓。★ 声明缺失时是**具名拒**（`VMU_INVALID_ARGUMENT`，hint 指向该键），**不是**一个 fallback 字面量 ✓ —— 任何字面量回落都会把漂移重新长回来 ✓。★ 同源门禁：`tests/vmu-run255-delivery-budget.test.mjs`（声明只一条且与 docs/04 渲染表一致、解析器三态、loop/planner/seam 真驱动同数、grace/backstop 派生）✓。
+
 ## 3.23 ★★★★ 每轮事实：**循环把"这一轮才知道的事"覆盖到配置之上**（轮 382）✓✓
 
 ★ **问题** ✓：有些值**只对【这一轮】成立** ✓ —— **当前会议号** ✓、**此刻是否真有在册领头人** ✓、**某个临时工的雇主·方向·任期** ✓ —— ★ **当静态配置会过期** ✗，**为它们再造一套变量通道又是重复** ✗。
@@ -4133,19 +4163,23 @@ member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的�
   `state` 报 `mdChangedSinceIndex/mdAheadOfIndex`；`prune` 草案只动索引，文件不会回到现行行。
 - 修法（**当时**；RUN 248 已反转，见下条）：**草案不写 md**（`draftMdDeferred`），正文只活在索引行；`adopt` 是 canonical 文档的唯一写者，
   回执用 `mdIsTheDocumentInForce.wroteNow` 说「这一次真的落盘了」。
-- **现行口径（RUN 248 起，用户 m37456）**：草案**就是文件**——`propose` 不带 `mdPath` 时内核物化
-  `Shared/Drafts/<stem>-r<N>.md`（`writtenBy:"kernel-materialized"`），成员自己用 fs 写好再带同一 `mdPath` propose
-  则文件归成员（`writtenBy:"member-file"`，内核不改写）；行只做索引。`adopt` 只做一件事：校验行与文件 sha 一致后
-  把草案字节晋升进 `Shared/Protocol.md`（缺文件 `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、被改过
-  `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`）。
+- **现行口径（RUN 255 起，fs-first；草案自 RUN 248 起就是文件）**：草案**就是文件**，但**内核默认什么都不写**——
+  `propose` 不带 `mdPath` 时回 `filed:false` + `draftMdMissing:true` + `nextActions`（无文件、无行）；正常路径是成员
+  **先用 fs 自己写** `Shared/Drafts/<stem>-r<N>.md`、**再带同一 `mdPath` propose**（`writtenBy:"member-file"`，作者可考）；
+  要 RUN 248 的旧行为（内核代写）须显式 `materialize:true`（`writtenBy:"kernel-materialized"`）；行只做索引、`md` 是唯一
+  真相（md 改过读面 `mdChangedSinceIndex:true`，`reindex` 按 md 重建）。`adopt` 只做一件事：校验行与文件 sha 一致后把草案
+  字节晋升进 `Shared/Protocol.md`（缺文件 `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、被改过 `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`）。
+  **RUN 255 翻转**：本节 RUN 248 时点原称内核代写草案文件，该默认已废除。
 - （**RUN 248 前的理由，已随之反转**）为什么不是另开 `Shared/Drafts/`：那会多出「哪个文件算数」的第二个问题，并让 `reindex` 把草案文件也收成独立行，
   破坏「一次采纳 = 恰好一行」。**不写文件是不需要解释的写法。**
 - **RUN 248 反转（用户 m37456 裁定：草案要落盘、成员自己用 fs 管 md）**：上面两条反对意见都被真正消掉了，所以
   反转不是退回 237 的 bug —— ①「哪个文件算数」由 `mdPath ≠ path` 判定：草案 md 记 `draftOf`，`records.mdReindex`
   让它**永不进 `mdByKey`**（`vibe-math-vmu/kernel/records.js:1778-1783`），因此不可能遮蔽现行文档；
   ②「reindex 把它收成独立行」由 `:1921-1962` 的草案行对账处理（草案行只有一条、由文件重建，孤儿草案文件单列
-  `orphan-draft-md`）。新形态：`propose` 不带 `mdPath` ⇒ 内核物化 `Shared/Drafts/<stem>-r<N>.md`
-  （`writtenBy:'kernel-materialized'`）；成员用 fs 自己写、带同一 `mdPath` ⇒ `writtenBy:'member-file'` 且内核不改写；
+  `orphan-draft-md`）。新形态（**RUN 255 翻转**：默认写入者从内核改成成员）：`propose` 默认什么都不写，成员先用 fs 写
+  `Shared/Drafts/<stem>-r<N>.md`、再带同一 `mdPath` propose ⇒ `writtenBy:'member-file'`（作者可考）；显式
+  `materialize:true` 才由内核代写 ⇒ `writtenBy:'kernel-materialized'`；不带 `mdPath` 的回执是 `filed:false` +
+  `draftMdMissing:true`；
   `adopt` 变成「校验行↔文件 sha → 晋升草案字节」（缺文件 `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、漂移
   `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`，成员已自行写同字节则 `alreadyWritten:true`）。**保留不动的那一半**：草案依旧不得顶替
   生效文档，晋升仍只有一条路。
@@ -4527,8 +4561,10 @@ DETECTED，always-empty 0，RULES COVERAGE / RULE PARITY / DOC LINT / regen 17/1
 什么、该做什么**。前一半把「内核单写 md」改成「文件是正文、行是索引」；后一半把已经落地的耐久投递从机制事实
 写成提示词里的时机规则（机制侧由 md-lane / notice-lane 实现，本段只记契约与提示词）。
 
-草案落盘：`propose` 不带 `mdPath` 时内核把草案物化到 `Shared/Drafts/<stem>-r<N>.md`（回执 `writtenBy:"kernel-materialized"`）；
-成员先用 fs 把草案写成自己的文件、再带同一 `mdPath` propose，文件归成员（`writtenBy:"member-file"`、`written:false`，
+草案落盘（**RUN 255 翻转**，RUN 248 时点此句称内核代写草案文件）：`propose` 默认**什么都不写**——不带 `mdPath` 回
+`filed:false` + `draftMdMissing:true` + `nextActions`（无文件、无行）；正常路径是成员**先用 fs 写**
+`Shared/Drafts/<stem>-r<N>.md`、**再带同一 `mdPath` propose**，文件归成员（`writtenBy:"member-file"`、`written:false`，
+内核不改写）；要旧行为须显式 `materialize:true`（内核代写 `writtenBy:"kernel-materialized"`）。`md` 是唯一真相，行只是索引。
 内核不改写）。`adopt` 从「写 canonical」变成「晋升文件」：先比行里记的 sha256 与磁盘文件——文件没了
 `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、被改过 `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`（先
 `vibe_v5_records {action:"reindex"}` 收编再采纳）——再把**文件的字节**晋升进 `Shared/Protocol.md`，写完读回校验；
@@ -4779,3 +4815,242 @@ coverage debt 由各自 `--write` 收口）。
 **八、数字与门禁。** 新套件 `vmu-run254-field-isolation` **55/0**、`vmu-run254-notice-settlement` **51/0**、`vmu-run254e-attendance-notice` **61/0**（含 §5 的 15 条唤醒器同源）；提示词 `vmu-run239-prompts` **102/0**（98→102）、`vmu-run247-prompt-dedup` **74/0**（记账只加「等量置换」，上限 28 615/75 414 不动）；`audit-prompt-budget --check` PASS（chair/meeting **35 061**，cap 36 500）；CRLF 0；通知系回归 117/0、45/0、48/0、59/0、15/0。文档门禁读数见收口记录；`regen-all --check` 未 `--write`（收口归 lead），两个新码已在 03-§8 手写表登记、§8.1 报告待收口 `--write` 刷新。
 
 **九、教训与遗留。** 教训六条：①隔离边界要小到「字段」，兜底只在「一个都没成功」时抬；②读数不许因「有些行」缺字段而抛或整批静默丢——要么逐行判定，要么具名 `excluded`；③每个被排除的行都要能叫出名字；④一个分母只能有一个来源（`roster` 与 `electorate` 是两个问题）；⑤「错形状」与「沉默」是不同的失败，必须给不同的码；⑥**同一个问题只许有一个谓词**——门用 electorate、唤醒器还用 roster 是本轮唯一一处「两处实现同一个问题」的残留，它不报错、只是永远不触发（没有红灯的缺陷）。另加一条本车道的：**提示词里不许写死一次性实测数字**——数字会过期，模型却会把它当契约。遗留：`vibe-math-vmu/kernel/index.js:2985` 注释仍写 unread/todo；`deliverViaSubagents`（`kernel/turn/index.js:890-960`）仍先抛 `VMU_ENGINE_UNAVAILABLE`，宿主路径到不了新码（raw seam 已钉）；`vibe-math-vmu/tools/meeting.js:513` 的 `noticesMeans` 仍写「roster minus chair」，与 electorate−chair 不一致（md-lane 改）；`skippedFields` 的跨回合汇总未做。
+
+## ROUND 255 —— 一条回执要能被同一套词汇读：计数、幽灵 id、预算、对称的 excluded
+
+**一、触发面。** run 74（build `67fb601a`）验 RUN 254 五车道，`FEEDBACK74.md` 21 条。本车道修的是 kernel 半：J1 的坏字段隔离在**成功回执**上没有词汇、J2 的两个码没有文档边界、J2 的投递预算 900000 ms 把 16.4 分钟的合法回合按 late 收割、J3 的 `excluded` 一键是计数两键是数组、J5 的预约回执缺 `skipped.attendDeniedSeats` 别名与两个时刻的分辨、TB-2610 的迟到入席默认策略与用户语义相反。
+
+**二、`vibe-math-vmu/kernel/turn/index.js`〔FEEDBACK74 #1〕三计数键恒发。** 新增 `SKIPPED_FIELDS_MEANS`（:3127）与**唯一**构造器 `fieldCountsOf(r)`（:3128）：`appliedFieldCount`（`executed.length`）、`failedFieldCount`（`skippedFields.length`，回退 `failedFieldCount`）、`skippedFields`（≤5 行，元素＝失败面同一个 `{field, face, op, code, why, hint, message, cause}`）、`skippedFieldsTruncated`、`skippedFieldsMeans`。四处回执全 spread 它：drive 每轮行（:4723）、completed-report 行（:4681）、step completed 行（:4935）、step 正常行（:5187）；失败行经 `failureFacts(e)`（:4634）同样带三键 ⇒ **成功回执与失败回执用同一套名字回答「哪个字段拒了」**。两个计数**恒发**（无则 0/[]），缺席与零不许长一样。
+
+**三、〔FEEDBACK74 #2〕写进文本的幽灵会议 id 是具名拒绝。** `meetingIdsMentioned(text)`（:5437-5450，纯文本扫描、去重、≤5、剥尾部标点）＋ `ghostMeetingOf(raw, map)`（:3159）：只在 skip 理由是 `no-meeting-bound` 且文本里**有** `m-<id>` 时才探，探的**唯一**来源是这一回合已装好的会议读面 `map['vmu.meetings'].summary`（不另造注册表）；只有它抛 `VMU_NO_SUCH_OBJECT` 才判缺，**其他拒因（面没装/服务不可用）不算缺** —— 探不到不许造幽灵。命中 ⇒ skip 行 `reason:'ghost-meeting'`、`code:'VMU_MEETING_NOT_FOUND'`、带 `meetingId`/`missingMeetings`/`hint`（`REACHABLE INSTEAD: …`：用 `vibe_v5_meeting { op:"status" }` 读当前会，或省掉 id 让回合绑定）/`means`；id 存在（open/scheduled/waiting/archived）则仍 `no-meeting-bound`，未 open 沿用现码。
+
+**四、〔FEEDBACK74 #4〕投递预算是设置，缺省 1800000 ms。** `DELIVERY_TIMEOUT_MS` 的 fallback 900000 → **1800000**（:4364-4372，读 `vmu.turn.deliveryTimeoutMs`，该键已在 `settings/schema.js` 声明）；`deliveredLate` 旁新增 `deliveredLateMeans`（:2600-2606，「deadline 决定何时停止等待，不决定工作算不算数」）与 `deliveryBudgetMs`/`deliveryBudgetSource`（:2610-2616）；`turnLoop().deliveryTimeoutMs`（:4482）与判定读同一个数 —— 一处计算、两处读。`partial`/`stillRunning`/`waitedMs` 在失败行仍随 `deliveryFacts` 透传（:4766-4786）。**随后 TB-2629 / task-110 把「一处」收进声明旁边**：`settings/schema.js` 导出 `readDeliveryBudget(getSetting)`，内核循环与 v3 规划器（第三份字面量 180000，`packs/v3/middleware/planner.js`）都只调它，seam 读同一条声明；缺声明是具名拒而非 fallback 字面量。同源门禁：`tests/vmu-run255-delivery-budget.test.mjs`（30 条：声明唯一且与 docs/04 渲染一致、解析器三态、loop/planner/seam 真驱动同数、派生数一致）。
+
+**五、〔FEEDBACK74 #3〕两个码各管一个边界（只改说法，不改 parse）。** 见 §3.22.1：`VMU_TURN_NO_FENCE` ＝ 成员信封里既无工具汇报也无围栏 JSON（散文被**正确**拒）；`VMU_TURN_DELIVERY_SHAPE` ＝ 投递适配器返回的形状内核读不了（message 列出实际键）。两个码的 message/hint 互相点名（`kernel/turn/index.js:2529-2532`、`:2945`）。
+
+**六、〔FEEDBACK74 #7（kernel 半）〕`excluded` 对称形状。** `kernel/records.js:608-613` 的 `excludedMeansOf` 改成逐键「count | ids」；`list` 的 drop 循环（:1221-1249）同一次产出 `shapeMismatch`（计数）+ `shapeMismatchIds`（同数 id 表）+ `noWriter`/`noWriterCount` + `timeUnknown`/`timeUnknownCount`。**旧三键原样保留**（兼容），新一轮只加对称键；一个 count 与它的 ids 从同一次 drop 产出，所以不可能不一致。
+
+**七、〔FEEDBACK74 #9 与 TB-2610〕会议面两处读数。** `kernel/meetings.js:4751` 的 `nonAttendingMeans`：`nonAttending` **就是** `skipped.attendDenied`（派生，不第二次计算）；`:1994` 的 `startReadsMeans` 补「两个时刻不是同一件事」——`openedAt` 是**考勤基准＝到期时刻**，`activatedAt` 是**真实开门时刻**，等待过的预约会议 `openedAt < activatedAt` 且 `startedLate` 说出来。
+
+**八、〔TB-2610 政策决策〕`lateAdmission` 缺省 `open` → `chair`。** `open()` 签名默认（:4400）、`lateAdmissionRef` 的 null/undefined fallback（:4669）、`lateAdmissionOf` 的 fallback（:649-653）三处一致；`LATE_ADMISSION_MEANS`（:645 一带）写清三策略差异与「缺省 chair 的理由＝迟到在制度上是一次**请求入座**，由主席裁；留住的人以 `pendingLate` 可读，而不是悄悄滑进来」。**迁移规则**：会议实体上**记了**策略的照读（旧 `open` 会议仍 `open`），**没记**的（旧快照/手写行）按现缺省 `chair`；`open`/`refuse` 仍可显式选。
+
+**九、判据与回归。** 新套件 `tests/vmu-run255-feedback74.test.mjs` 钉上述每条（含「修复前变红」证据与否定断言：成功路径不许凭空出现三键之外、`NO_FENCE` 的 message 不含适配器字样、旧默认 `'open'` 句子不在）；`tests/vmu-run225-late-admission.test.mjs` 三处默认 pin 改 `chair`、§4 waitStates 的 open 显式 `lateAdmission:'open'`（135/0）；`tests/vmu-run252-meeting-open-receipt.test.mjs` §B 显式传策略（31/0）。定向回归见收口记录。
+
+**十、教训。** ①「一个字段回答问题」不等于「一个名字在所有回执里同义」——成功行与失败行必须共用**一个构造器**，否则读者拿到的词汇取决于这轮成没成；②一个 true 旁边要有「为什么允许它为 true」的那句话（`deliveredLate` 与 `deliveredLateMeans`）；③**探不到不等于不存在**：幽灵 id 的判据只能来自这一回合已装好的读面，且只认「具名不存在」，其他拒因一律不算；④一处计算两处读（预算）与一个列表一次产出（excluded 的 count/ids）是同一条纪律：**同一个问题只许有一个来源**；⑤缺省值是**策略**，改它必须同时写迁移规则（记了的照读、没记的按新缺省），否则旧数据会在读面悄悄换语义。
+
+---
+
+## 回合行：谁跑了这一轮，以及「成员根本没跑」（RUN 257 / TB-2611 + TB-2645）
+
+**一、行级事实 `deliveryPath`（四种读法）。** 交付 seam 在回合返回时报告它走了哪条路，`noteTurnReceipt` 现在把它记在行上（白名单曾把它丢掉，ROUND 240 起 applied 分支一直在传、行却从不保存）：
+
+| 值 | 读法 |
+|---|---|
+| `"caller"` | **所办主动播放**：`deliverByReturning` 把提示交回调用会话、下一轮再交答案（attribution 写 supplied-by-caller）⇒ `workShareOf` 计 **office-relayed** |
+| 其它具名（`activation` / `continuation` / `one-shot` / 宿主 seam 自有名） | **成员自己的会话跑了这一轮** ⇒ 计 **member** |
+| `null` | 台账没说谁跑的（旧行、沉默的 seam）⇒ 计 **unknown**，**绝不并入 member** |
+| （第四态，见下）`deliveryUnavailable:true` | 提示**根本没到成员手上** ⇒ 该行的写作计 **unknown** |
+
+`status().turnReceipts[]` 每行自开局起有 `deliveryPath:null` 槽位；`turnReceiptsMeans` 说明三义（不是「空白」）。
+
+**二、第四个可判态：`deliveryUnavailable`。** 投递 seam 抛错时，行不再只写 `status:"undelivered"`，还写：
+
+- `deliveryUnavailable:true` + `deliveryUnavailableWhy` ∈ `timeout`（seam 超时码）/ `error`（其它抛出，含兜底码 `VMU_TURN_DELIVERY_FAILED`）/ `not-configured`（没有 seam、没有可用工厂、没有截止期、没有 root Agent）/ `engine-lost-reply`（`VMU_ENGINE_UNAVAILABLE` 且 message 说宿主收了回合却交不回答案——第 65 次真机 1 125 039 ms 的形状，**不许糊成 timeout**）；
+- `deliveryUnavailableMeans`：一句中文「本轮成员未运行，任何写入都不是成员在自己的会话里完成的（所办代转或不可证）」；
+- **`deliveryPath` 保持 `null`**：`"caller"` 是所办**主动选择**，投递挂掉不是选择；
+- 成功结算的行**显式**写 `deliveryUnavailable:false`（四个状态因此可判，`null` 只表示「还没决定」）。
+- 同一行**不许**既 `ok:true` 又 `deliveryUnavailable:true`；`deliverMode:"caller"` 不是失败（awaiting 信封仍是 `"caller"`，不产生不可用行）。
+- 同样三键同时出现在：抛出的 seam 拒绝对象（`e.deliveryUnavailable/Why/Means`）、`counts.deliveryLastFail`、`step`/`drive` 的失败行（`failureFacts` 抬进回执）——一个事实，一个词汇。
+
+**三、`memberWorkShare`（状态面读数）。** `status().memberWorkShare = workShareOf({turns})`，形状 `{memberActs, officeRelayedActs, unknownActs, acts, provenActs, memberTurns, officeRelayedTurns, unknownTurns, deliveryUnavailableTurns, memberShare, classifiedBy, means}`：`memberShare = memberActs / (memberActs + officeRelayedActs)`，**分母不含 unknown**；两侧都为 0 ⇒ `memberShare:null`（具名缺席）。`classifiedBy` 逐类写出读的行字段；`means` 在存在不可用回合时追加「N 个回合投递不可用，成员未运行」。只读派生：不改调度、不写任何东西。
+
+**四、教训。** ①一个「未交付」若不说不「成员没跑」，读者就会把它当一轮发生过——**拒绝必须携带它否定掉了什么**；②第四个状态必须是**显式**的（true 与 false 都写），否则 `null` 会在成功行上被读成默认值；③「失败」与「路由」共用一个字段前，先说清哪个是选择、哪个不是（caller ≠ 挂掉）；④反假绿判据要能区分「分类器在工作」与「两边都 unknown」：同形状行把旗标置 false 后必须判成 member 或 office，否则是关灯。
+
+**五、判据与回归。** 新套件 `tests/vmu-run257-member-work-share.test.mjs`（37/0）与 `tests/vmu-run257-delivery-unavailable.test.mjs`（§0 源码形状、§1 真内核超时行三键齐且路由为 null、§2 无 seam ⇒ not-configured、§3 engine-lost-reply 独立命名、§4 未分类抛错 ⇒ error、§5 caller 不产不可用行、§6 不可用写作计 unknown 且 means 含「N 个回合投递不可用，成员未运行」、§7 反假绿四组、§8 外部独立复算与内核读数相等、§9 契约行存在）；改前红证据见收口记录（34 FAIL）。
+
+## ROUND 256 —— 状态板要读真论文/真蓝图：一个字段只答一个问题，缺数据要具名缺席
+
+**一、触发面。** TB-2621（`task-102`）。缺陷可以量化：同一个院士席，论文归档后 / 定稿 / 结题三个世界装配出的提示词 **sha256 全是 `cb9049528bcf`、55 826 B**。原因是 `statusReadingsFor`（`kernel/turn/index.js`）只读 `vmu.tasks` 与 `vmu.records` 的 progress 轨，`composeStatusBlock` 只有 `[状态]/[在册]/[表决]/[状态板]`；论文面与蓝图面没有去处，主席只能读一个静止的世界。
+
+**二、机制：三组 live 读数，一个读取函数。** 新增 `LIVE_STATUS_FIELDS`、`liveStatusReadings({records, rosterIds, votes, meeting, meetings, member})`、`renderLiveStatus(live)`；`composeStatusBlock` 只在非空时追加一行组，全 null ⇒ 块字节不变。三组都读**已有的 durable 行**，不开新查询路径：**论文** = `paper` 轨上 `paper-state` 最新行的 JSON body（`status/round/participants/parts`，`missing` 派生 = participants 里还没有 part 的成员；`toolchainAbsent` 具名缺席，不猜）；**蓝图** = `blueprint` 轨最新行的 md body，经 `records.mdParse` 取 fields，经 `records.mdDigest` 判「草案缺失/被改」——与 adopt 闸门**同一谓词**；**结题** = orchestrator 的 `closureVotes` 按 `turn.rosterIds` 计数 + 绑定会议 `vmu.meetings.summary({meeting})` 的未决动议数，分母具名（资格过滤在 balloting 面，本读数看不到，所以不缩小分母）。
+
+**三、为什么不是「再加一个 face」。** `turnFaces = facesFrom({tasks, records, library, meetings, ballotbox, formal, mathjobs})` 没有 paper/blueprint；`kernel/turn/index.js` 的设计不变式是**不 import**，所以「新开 §status.paper 查询」会在提示词路径上造第三个真相源。选择是只读 pack 已写进 records 的 durable 行，并让 `statusSources` 注入缝优先。蓝图行 body 是「字段块 + 正文」而非带 `vmuMd` 头的独立文件 ⇒ `mdParse` 对行 body 答 `ok:false`（无标记）但 fields 仍可用：读数接受 fields 并在 `detail.mdHasMarker` 明说，避免把行误当独立文件。
+
+**四、回执形状。** `turn.status()` 新增 `liveReadings` 与 `liveReadingsMeans`。每组 `{value|null, why, source, detail, at, atSource, timeWhy}`：`value` 是渲染串（null 不渲染），`why` 是具名缺席理由，`source` 是回答它的账本/面，`detail` 是派生读数，`at|timeWhy` 二者恒有其一（内容时间戳来自行 `updatedAt`，不是读取时刻）。读数**每次装配都从 durable 行派生、从不存储** ⇒ 提示词与回执同源，`status().liveReadings` 就是提示词那次渲染用的对象。
+
+**五、判据。** 新套件 `tests/vmu-run256-status-block-live.test.mjs`（**48/0**）：空世界四组 null+why 且不渲染空行、论文读数与行 body 外算逐字相等、蓝图「在位→删文件→外部改动」三世界（`draftMdMissing`/`mdChangedSinceIndex`）、结题票数与动议、§5 提示词文本 ↔ `status().liveReadings` 同值、§6 三世界三 sha。`docs/acceptance/prompt-timing-map.md` 新增 **T13**（无持久行 ⇒ 无 `[论文]`；有行 ⇒ 出现且含生命周期词），`tests/vmu-run256-prompt-timing.test.mjs` **25/0**（行数 12→13）。定向回归：`vmu-turn` 272/0、`sim-assembly-parity` 23/0、`vmu-run239-prompts` 155/0；`audit-prompt-budget --check` PASS（chair/meeting 34 669 < 36 500，cap 未动）。
+
+**六、教训。** ①**「静止世界」要用差值判据抓**：三世界同 sha 比「读起来不对」硬得多，凡是状态块类内容都该有「状态变、文本变」的断言；②**派生量要写下分母**：`missing` 只答「participants 里谁没有 part」，没有出现在别处（RUN 252 的一字段两义是反例）；③**缺数据要具名**：`toolchainAbsent:null` 加 why，比 `undefined` 或瞎填 false 都诚实；④**「不 import」的不变式决定修法**：它逼读数只走 durable 行与内核 md door，反而避免第三个真相源；⑤**行 body ≠ 独立文件**：区分「解析不出」与「不是独立 md」，判据才不会误红。
+
+---
+
+## 回合行的时钟字段：谁量的钟，谁说了算（RUN 259 / TB-2655）
+
+**一、规则。** 回合行上的时间戳只由**测量方**写：内核用自己的 `clock()` 量出 `at` 并同时写 `atSource`；调用方
+（工具参数、pack 模块入参）自己带的 `atSource` 一律不采信（要留痕就另存 `atSourceCaller`）。同一条规则也管
+`pack/v5r` 的蓝图时间戳——`clockReadingOf` 是唯一读数入口。
+
+**二、字段表。**
+
+| 字段 | 谁写 | 标签 | 读法 |
+|---|---|---|---|
+| 回合行 `at`、`dispatchStats.lastError.at`、`ledgerLastFail.at`、`deliveryLastFail.at` | 内核测量（`isoStampOf(clock())`） | `atSource:"kernel-clock"` | 同一次投递/结算的失败与窗口读数取同一口钟（RUN 245 H4） |
+| `queuedForMs` | 内核减（`nowMs - w.at`） | `queuedForMsSource:"kernel-clock"` | 两个时刻同源才有意义 |
+| 调用方 payload（如蓝图 `at`/`now`） | 调用方 | 整数毫秒（2000-01-01..2100-01-01）或带显式位移的 ISO ⇒ `kernel-clock`；不传 ⇒ `wall-clock`（唯一计数的墙钟兜底） | **非法值不回落墙钟**：`0`/负数/小数/超范围/纯日期 `2026-01-01`/斜杠 `2026/01/01`/垃圾串一律具名拒 `VMU_V5R_CLOCK_VALUE_INVALID`，hint 带 `REACHABLE INSTEAD:` |
+| 测试注入 `clock:()=>1000` 等 | 内核 seam（`{kernelClock:true}`，工具面硬编码） | `kernel-clock` + `clockValue:"kernel-clock-seam"` | seam 值只免「值域校验」，不免「来源标注」；`kernelClock` 不能从工具参数伪造（未声明的键会被具名拒，不静默丢） |
+
+**三、为什么不许静默顶替。** 坏时钟若被当成「读到值」，`atSource` 就会把「时钟坏了」和「时钟没问题」写成同一个
+样子（AUDIT-14 P1-2 实测：坏值曾自称 `kernel-clock`）。因此校验失败必须具名拒绝，让调用方看见「这个值我没收」。
+
+**四、判据。** `tests/vmu-run259-audit14.test.mjs`（P1-2/TB-2655 段）与 `tests/vmu-run256-clock-purity.test.mjs`
+（§8x 坏串被拒且墙钟增量 0）；指纹：`clockReadingOf` 的 `kernelClock` seam 与 `stampFromKernel` 转发。
+
+---
+
+## 跳过的会话总数：回合行被裁掉时，总数不许静默变化（RUN 260 / TB-2667）
+
+**一、规则。** 「这次会话一共跳过了多少字段」必须是一个**读数**，不是读者翻页的算术。但回合台账（`turnReceipts`）
+是有界的（`TURN_RECEIPT_CAP = 50` 行），所以这个读数**必须把界写在值里**：`scope:"retained-turn-rows"` 说明它只覆盖
+仍留在台账上的行，`evictedTurns` 说明有多少回合的行已经掉了，`evictedSkippedUnknown` 说明被裁掉那部分的跳过数
+**从这里不可知**。`evictedTurns === 0` 时才是「此刻等于全量」。
+
+**二、形状（`vibe_vmu_turn{op:'status'}` 的 `skippedTotals`，同时挂在 `status` 下）。**
+
+| 键 | 含义 |
+|---|---|
+| `fields` | 保留行上 `skipped` 条目的**事件数**（同名字段两回合跳过算两次；要字段名自己从 `turnReceipts` 去重） |
+| `fieldsDispatchThrown` | 其中 dispatch 真抛的子集（= 逐行 `skippedFields` 的条数）；两个数不等即说明有非抛出的跳过 |
+| `turnsWithSkips` | 至少跳过一个字段的行数 |
+| `scope` | 固定 `"retained-turn-rows"`：界写进值，不靠读者记住 |
+| `retainedTurns` / `evictedTurns` | 与台账**同一张行数组** +「开过多少回合」派生（`turns.size − rows.length`），不各自数一遍 |
+| `evictedSkippedUnknown` | `evictedTurns > 0`；为真时 `fields` **既不是会话总数也不是上限**，只是保留段 |
+| `means` | 一段话说清上面每一条，并点名 `counts.notExecuted` 是同一批事件的**进程生命周期**计数（不随淘汰缩小、但无逐回合归属） |
+
+**三、一个派生点。** `kernel/turn/index.js` 的 `skippedTotalsReading()` 是唯一实现；`status` 直接发布它，工具面
+`tools/turn.js` 只把它**提升到回执顶层**（同 `turns` 的做法），不在面上第二次聚合——「判据不许量自己」在这里的
+形式是：总和的唯一来源就是台账那一张数组。
+
+**四、判据与指纹。** `tests/vmu-run260-skipped-totals.test.mjs`：外部源复算（逐行求和 vs `fields`；`counts.notExecuted`
+vs `fields`）、51 回合淘汰一行的真实裁剪（68 事件 → 保留 67、`evictedSkippedUnknown:true`）、反关灯（`fields` 与行数
+3 / 开回合数 3 / 跳过行数 3 / 生命周期计数 68 全部不同）。指纹：`skippedTotalsReading`、`scope:'retained-turn-rows'`、
+`evictedSkippedUnknown: evictedTurns > 0`。
+
+## 预约的会议能被「现在开始」：一个承诺必须先有机制（RUN 262 / TB-2661）
+
+**一、触发面。** prompt-lane 用四个候选逐个实测，结论是**机制缺口**而非提示词问题：会议 `schedule` 到 `+1h` 后
+四席都已 `attend`，却没有任何动作能把它现在开始——`proceed` 只在 `waiting` 接受（`VMU_STATE`「proceed() only
+applies to a meeting WAITING for its scheduled start」），`beat` 只做 sweep、不推进会内时钟（`startsInMs` 不动），
+也没有 reschedule/advance。更刺眼的是 `startBlockOf(m, now)` 的 `nextActions` 早就承诺「the chair may open it early
+(chair-gated, and the receipt then reads startedLate:true)」——承诺在，机制不在。**人齐了也开不了会。**
+
+**二、修法（补出口，不改状态机）。** 不新增状态，只让 `scheduled → open` 走已有的 `proceed()`：
+- **权威**：仅该会**主席**（沿用既有 `VMU_NOT_PERMITTED`，无主席时消息说「无人被授权」）；出席用**唯一的**
+  `attendanceRuleMet(m)` 判定（不另写一遍出席算术）。
+- **拒绝要具名**：规则未满足 ⇒ `VMU_STATE` 拒绝，消息含 `X of Y present` 与缺谁，并带 `attendance.missing:[ids]`
+  （ electorate 里未到场者，来源是 `arrivalReadsOf(m).missing`）；该数组同时挂在抛出错误的 `attendance` 上，
+  `tools/meeting.js` 的 `refusalDetails` allow-list 增 `attendance` 一项把它送到工具面——只说「规则没满足」而不点名
+  是没用的。
+- **回执要说清是「提前」**：`startsEarly:true`、`earlyByMs = max(0, scheduledFor - at)`、`scheduledFor`、`startedAt`、
+  `attendance:{met:true,missing:[],electorateSize,electoratePresent,opensOn,means}`、`atSource`（内核钟 ⇒
+  `kernel-clock`，调用方给 at ⇒ `caller`）与 `atSourceMeans`；minutes 记 `kind:'proceeded'` + `startsEarly` + 该
+  `attendance`。`startedLate:false`：该字段只表示「在约定时刻之后开始」，提前开始是相反的事实。
+- **两个 `earlyByMs` 不是同一件事**：等待态的 `earlyByMs` 是 wait-relative（相对声明的等待起点），预约态的提前量相对
+  `scheduledFor`，所以 `earlyByMsMeans` 换成 `SCHEDULED_EARLY_MS_MEANS`，`waitedMs:0` 并具名说明等待量在这里不适用。
+- **提示词面（hint 不许再写「还没有」）**：`VMU_MEETING_NOT_STARTED` 的 REACHABLE INSTEAD 改成：`scheduled` 态现在就
+  可由主席 `vibe_vmu_meeting {action:"proceed", id, member:"<主席id>"}` 开始；未满足会被具名拒绝并列出
+  `attendance.missing`；「先 `attend` 补人、再 `proceed`」是完整序列；到点触碰只是可选第二条路。`startBlockOf` 的
+  scheduled `nextActions` 同步改为「仅当出席规则满足时主席可提前开始，否则拒绝并点名缺席」。
+
+**三、反关灯判据。** 新套件 `tests/vmu-run262-meeting-start-early.test.mjs`，**86/0**；改前跑同一套件
+**54/32** 红（`D:/_tmp/tb2661-red.txt`，`D:/_tmp/run262-red.sh` 用整文件备份 + `git checkout --` + 还原并核对
+sha1）。关键红行：`FAIL §1 TB-2661: proceed in 'scheduled' is ACCEPTED (was VMU_STATE) — code=VMU_STATE message=
+proceed() only applies to a meeting WAITING for its scheduled start: m1 is scheduled`。五组断言：① `+1h` 预约 + 四席
+到齐 + 主席 `proceed` ⇒ `ok:true` / `state:'open'` / `startsEarly:true` / `earlyByMs:3600000` / `startedAt
+=== now` / `startedLate:false` / `atSource:'kernel-clock'` / minutes 有 `proceeded` 行；② 只到 2 / 4 ⇒ 具名拒绝 +
+`attendance.missing:['r-2','r-3']` + 会议仍 `scheduled`、`startsInMs` 不变；③ 非主席 ⇒ `VMU_NOT_PERMITTED` 且点名
+主席；④ 已 `open` 再 `proceed` ⇒ 既有 `VMU_STATE`（hint 说「already running」），不开新分支、不重盖 `startedAt`；
+⑤ 半小时候 `beat` ⇒ `sweep.swept===0`、`transitions:[]`、回执无 `startedAt`/`state`，`startsInMs` 前后**逐字相等**。
+§6 再钉住 hint 真点名 `action:"proceed"` 与 `attendance.missing`，且旧假句「会被拒成 VMU_STATE」不再出现。
+
+**四、回归。** （见交付报告）`vmu-run256-meeting-wait-extend`、`vmu-run251-meeting-window`、
+`vmu-run239-meetings`、`vmu-run252-meeting-open-receipt`、`vmu-meetings`、`vmu-meeting`、
+`vmu-meeting-state-meaning`、`vmu-ab-v5r-meetings`、`vmu-run248-notice-delivery` 与本套件同批跑。
+
+**五、遗留（不在本车道写域）。** `packs/v5r` 侧把 `proceed` 标成 `notActable` 的提示词与
+`follows+followSkipped+notActable===12` 那条等式须由 prompt-lane 改（Lead 已协调：把 `notActable` 移回 `follows`
+并把 hint 换成点名 `proceed`）；本车道不改 `packs/v5r/**`。
+
+## ROUND 257 —— 同一条回执只能有一个生产者：宿主只许转发，不许补造
+
+**一、触发面。** 同一个工具回执有两个装配点：内核按「这次动作产生了什么」算全量，宿主按「提示词需要哪些键」逐键列出来。两边各写一遍，漂移就不出声。历史上以同一形状出过三次事故：`orderUnknown`（`vibe-math-vmu/host.js:1147` 事后转发）、`orphan`/`orphanWhy`（结算面补一个内核没写的理由）、`appliedPacks[].declarations`（`vibe-math-vmu/vibe-math-vmu.js:743` 与 `:785` 两次各写一遍）。三次都不是「忘了同步」，而是**第二个生产者本身**。
+
+**二、规则与形状。** 通则一行：`kernelKeys - hostKeys === 0`（`tests/audit-host-receipt-superset.mjs:11`）。做不到全等的地方必须进例外表，例外表本身要能被量：`REKEYED {from:{to,verify}}`（宿主改名，如 `items` → `records`）、`WRAPPED {ns,why,decidedBy}`（内核回执整包嵌在一个命名空间下）、`NOT_FROM_KERNEL {composedOf|parts,why}`（宿主用命名过的内核片段组合）、`PENDING_SCOPE {points,why}`（面已枚举、本阶段未测，计入并列出）。有意压掉的键单列 `HOST_HIDDEN_KEYS` 并写理由；`PENDING_SCOPE` 的条数**必须从注册表实算**，不许写字面常量（`tests/audit-host-receipt-superset.mjs:82` 的 R2）。两类「看起来合规、其实在躲」的形状会被点名并判红：`REKEYED` 的键在改名的同时仍以原名存活、`WRAPPED` 的命名空间键同时被平铺到顶层——自测里一形一例，防止例外表悄悄变成永久豁免。
+
+**三、判据。** `tests/audit-host-receipt-superset.mjs` 默认跑 explicit 模式：`coverage: all 7 in-scope faces published and measured (compared=7, points=27)`、`class A 0 missing keys / 0 points, class B 0 missing facts / 0 points`、`outOfScope=51 faces / 460 actions, pending=51/460`、`bounded summary: status/- suppresses exactly the documented 38 kernel keys`（20:4x 实跑，exit 0）。`vibe-math-vmu/host.js:180` 的 `TOOL_FACES` 是「有哪些面」的唯一注册表，`:278` 的 `FACE_KEYS` 由它派生。
+
+---
+
+## ROUND 258 —— 跳过测试比红更坏：缺语料必须红
+
+**一、触发面。** 索引门禁依赖 `D:/_tmp` 下的真机语料，而那个目录三小时一清。语料不在时旧实现打一行 SKIP、套件 exit 0：**门禁因为「没测」而变绿**，而且没人会注意到——红至少有人看。审计把这种形状叫 skip-as-pass，全仓 Lead 20:33 实测 8 条。
+
+**二、机制。** 语料缺失是**红色的测量失败**，不是「本机没条件」：`tests/_lib/corpus.mjs` 提供 `requireCorpusDir` / `requireCorpusFile`，缺语料时失败消息里带期望路径，让读者知道该去恢复什么。`tests/audit-portability.mjs` 的 P3 类把这条变成可扫的规则：凡文件里出现 `D:/_tmp` 或 `real-fields` / `pairs` / `receipts` 语料引用，就必须 import 上述 helper，否则判违规；允许行尾 `// PORTABLE-ALLOW: <why≥24>` 具名豁免。这样「本机跑得通」不再能靠环境侥幸。
+
+**三、判据与物证。** `tests/sim-vs-real.test.mjs:40-42` 的注释把事故写死：「缺真机语料是 RED，消息里带路径——这里的 SKIP 曾表示『测量没发生，但套件 exit 0』，正是审计抓到的假绿」。当日红证据 `D:/_tmp/tb2681-red.txt`（997 B）：故意移走语料后套件真的红、消息里真的出现路径。
+
+---
+
+## ROUND 259 —— 声明键只在解释真实缺口时才诚实
+
+**一、触发面。** `fidelity-declared.json` 的每个键是一张「仿真产不出这个字段」的免死金牌。缺口关掉之后键本身不会消失：`all.mjs` 的读数已经变成 `gaps 0 / staleBaseline 0`，而声明仍在——6 个键（`compiled, detail, job, partial, receipt, result`）在解释不存在的缺口。账面上全绿，因为**豁免比事实活得久**。
+
+**二、机制与不对称。** `scripts/sim/audit/all.mjs:215` 打印 `gaps absorbed by declarations: N path(s) from K key(s) across T tool(s)`；`:218` 对「已不对应任何缺口的声明」发 WARN；`:219` 对「点名了已不是缺口的键」发 WARN；而 `:217` 的「baseline 声明不再成立」是 `failures` 而不是 warning。这个不对称是有意的：baseline 断言是**正向事实声明**，错了就是错；声明键是**豁免**，过期只是债——但债不会自己消失，它会在下一次漂移时把真缺口吞掉。
+
+**三、判据与关闭条件。** 台账 `audit14-p2-1-stale-declaration-keys` 保持 open，条件是可执行的：删掉那 6 个键、重跑 `all.mjs`、证明 `gaps` 仍为 0；若删某个键后缺口冒出来，说明它承载着真实缺口，必须留下并在 `why` 里写清吸收的是哪一条。判据不看「删了几个键」，看「删完之后缺口读数」。
+
+---
+
+## ROUND 260 —— 一条断言只许量一个变量
+
+**一、触发面。** 本轮的四种假判据（TB-2679 立项书的原话）：空对空断言、只锁数量的 `CODES.length===12`、恒等式 `identity.holds`、把 `smoke` 当判据。共同点不是「断言写错了」，而是**一条断言同时量了两个变量**：两侧都空、数量对上、恒等式代数永真、冒烟通过——任一侧退化都被另一侧掩盖，于是「翻倍」也能判成通过。
+
+**二、机制。** 一条 `ok(...)` 一个变量；数量守恒升级为集合守恒（成员逐个相等，不是数个数）；整句 pin 必须带非空洞守卫（句子里必须含哪几个短语，删掉条件就红）；同一条规则有第二道守卫时，弄假必须同时改坏两处——单改一处不红不代表判据无牙。后者的物证在 `docs/acceptance/rules-ledger.json` 的 B3（规则 7「只有辩论能把 p 改为 1」）：`mechanism` 登记两处，`verification-gates.js` 的 `p1Intent` 兜底与 `tools.js` 的 promote 二次守卫；TB-2660 实测「两处同时改坏 ⇒ `vmu-run97-verified-gate` 5 failed（单改一处不红）」。
+
+**三、判据。** 集合相等：`tests/vmu-run257-refusal-hints.test.mjs:231`（十二码按 SET 钉住）。整句 + 非空洞守卫：`tests/vmu-turn-mainline.test.mjs:135`、`:137`。双守卫：B3 两处机制同改；这条判据的价值是**它知道自己有一条会被另一守卫掩盖的失败模式**。
+
+---
+
+## ROUND 261 —— 正文字面量 pin 与判据引用必须耦合
+
+**一、触发面。** 提示词里的一句话被 pin 钉住，pin 的实现是「把这个文件里这句原文逐字找出来」：`tests/vmu-ledger-teaching-pins.test.mjs:96` 的 `PIN('v5r-blocks-b.js', blocksB, '可用的命令随类型与身份不同', 'E12')`。于是这句话成了两个东西：正文里的语义、判据里的字面量。腾挪正文的人只要动一个字符，两者就脱钩——`E12` 那次把「与」改成了「/」，pin 立刻指向一句不再存在的原文，看到的是「这条判据怎么这么脆」，而不是「正文被改了」。正确词现在在 `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:939`（`:951` 另有一句更短的「命令随类型与身份不同」，不是同一 pin 的对象）。
+
+**二、机制。** pin 的唯一来源是那一句原文：`PIN(file, source, sentence, id)` 把句子当字面量、把 `id` 当报告名（清单见同文件 `:18`）；正文一改，失败消息直接点名 `E12` 和缺失的原句。要点是**判据引用的字符串必须与正文同源**，不能一边写「命令随身份不同」一边 pin「可用的命令随类型与身份不同」——同义不同字就是两条事实。
+
+**三、判据。** `tests/vmu-ledger-teaching-pins.test.mjs` 逐条把 93 条规则里被 pin 的正文句子取出比对；错一个字即红。这条规则与 TB-2665 的 PINS 方法学配套：pin 要能追到断言原文，再映射回源码行号，否则「有 pin」只是「有字符串」。
+
+---
+
+## ROUND 262 —— `[总任务]` 是所级单例，不是每人一份
+
+**一、触发面。** 状态板里 `[总任务]` 一行曾写成「**`[总任务]` 是「你」的总任务**（每人各自推进各自的）；①②③ 是**所级总量**」——同一段里既说它是「你的」，又说有「所级总量」，读者会以为自己有一份独立总任务。内核只有一份目标，这不是措辞问题：成员据此判断「我的任务完成了」，而所级目标其实无人推进。
+
+**二、机制。** 正文本义改成「**`[总任务]` 是本所的总任务**（内核只有一份，不按人分）」，并把「你的份额」指向状态板里属于本人的那一段；整句净 **−13 字符**（`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:86`，原 100 字符行改后 87 字符）。同一轮 D1 把「每人各自推进各自的总任务」从 PROSE-ONLY 迁到 CODE-BEHAVIOR：两名成员各读各的账本行，`④` 必须是本人最新 progress 而不是全局最新（后者会把 r-2 的进度同时发给 r-1）。
+
+**三、判据。** `tests/vmu-turn-mainline.test.mjs:171` 的 `test('D1 — two members advance their OWN task, off the real ledger')`：真 orchestrator + 真 records/tasks 句柄 + `loop.assemble` 真装配，9 组 / 36 次检查，4 个落点弄假全红；其中 `§D1b` 断言目标行显式自称「所级单例」并把成员指向本人份额（断言原文见 `:113`、`:114` 的整句 pin，`:49`、`:50` 是两个句子常量）。
+
+## ROUND 263 —— 可移植性：本机路径、CRLF、缺语料即 skip，这三类都必须会红
+
+**一、触发面。** TB-2677 体检出 31 条 BLOCKER：10 条 `file:///D:/` 绝对 import、写在代码里的绝对 checkout 常量、`C:/Users/admin` 兜底、2 个整文件 CRLF、8 条「语料被 tmp 清理后套件假绿」。这些在本机全绿，只在另一台机器或清理之后才爆——问题不是清一次，是没有判据。
+
+**二、机制。** `tests/audit-portability.mjs` 扫 `tests/**/*.mjs` 与 `scripts/sim/**`，分三类：P1 在可执行行出现绝对机器路径（`file:///D:/`、`D:/Users/`、绝对 checkout、`D:/_tmp`、`slvpNNN-ws`）即 BLOCKER（判据按自己的注释感知视图判定「可执行行」；唯一豁免是行尾 `// PORTABLE-ALLOW: <why≥24 字>`，逐行生效、理由太短也算红）；P2 `.mjs/.js/.json/.md` 出现 CRLF、`.ps1` 缺 BOM 即 BLOCKER；P3 skip-as-pass 即 BLOCKER——依赖语料的文件必须 import `tests/_lib/corpus.mjs` 的 `requireCorpusDir`，缺语料要 FAIL 且 exit 非 0，不许打印 SKIP 后 return（`tests/run-tests.mjs` 是 runner 不是套件，其增量 SKIP 报告被具名豁免，免得有人把 P3 放宽到把它消音）。判据按 git 分新旧两账：本轮新增违规才判死，tracked 既有违规记 `LEGACY`、只打印不拦（否则首跑就红上百条，没人能清）；退出码只反映本轮 BLOCKER（`docs/AUDIT-CHECKLIST.md:833`）。四态反关灯在 `tests/audit-portability.selftest.mjs` 里各配一个必红探针（绝对 `file://` import / 整文件 CRLF / 打印 SKIP 后 return / 理由太短），外加一个「理由足够长的 PORTABLE-ALLOW」控制组要求不报——实测 `=== PORTABILITY JUDGE SELFTEST: 8 passed, 0 failed ===`。
+
+**三、判据。** `scripts/preflight.mjs:197-219` 把它接成 PREFLIGHT 第 9 步，判据只存在 `tests/audit-portability.mjs` 一处，preflight 只负责跑它、缺文件即 FAIL、失败时把逐条具名输出原样带出（不是一句「portability failed」）。收尾实测 `--json`：`scanned 932` 文件、`blockers 38`（全部 P1）、`legacy 149`、`warnings 10`、`gitUsed true`；样例落点在 `tests/audit-prompt-names.mjs:52`、`:65`、`:72`、`:74`（该文件把 `D:/_tmp` 当默认语料根与证据目录），TB-2681 自己那 5 个文件 0 命中。另一个数不许拿来抵这个数：`D:/_tmp/precommit-audit/counts.json` 的 31 是体检报告的人工分型口径（只算可执行面），判据口径是 38——两个数回答不同问题，并排写，不互相解释掉。
+
+## ROUND 264 —— 成员级 ack 读数：一个字段不许同时答两个问题
+
+- **病不在「机制没算」，在「行级事实没交出来」。** `packs/v5r/prompts/v5r-blocks-b.js:1033` 把 `acked`/`ackRequired` 列为成员可用的具名读数，但没有任何工具回执按行返回它们：`noticeLines()`（`kernel/mailbox.js:1170`）只被 `kernel/index.js:3006` 取 `.lines` 渲染 `[新到的消息]`，`pending` 只回 entries、`list` 行只有 8 字段。
+- **任务书的假设被实现者纠正：view 级读数本来就有，病是「行级」与「同名异形」。** `status().notice` 早就有整箱级 `ackRequired`/`acked`（`kernel/mailbox.js:1204`、`:1439`），成员真正分不清的是哪一行欠 ack、哪一行只是 group 广播；同一份 `unackedRows` 在 `status.notice` 是**数字**、在 `noticeLines()` 行里是**数组**（更正写进 `docs/03-interface-contract.md:273` §3.1f 的 Q2 行）。
+- **修法：单一生产者，一个字段只答一个问题。** 新增 `settledByAckOf(member, entryId)`（`kernel/mailbox.js:442`）与 `ackReadsOf(member, e)`（`:461`）→ `{ackRequired: settled === null && channelOf(e) !== 'group', acked: settled !== null}`；`list`/`pending`/`noticeLines`/`ack` 四个出口全走它，任何面不重算判定；`list` 行由 `listRow` 升至 12 字段（`:465`）。
+- **判据钉的是「不同」与「翻转」，不是「字段存在」。** `tests/vmu-run268-mailbox-ack-reading.test.mjs`（实测 21 passed / 0 failed）：两个出口的键全为布尔、dm 行 `ackRequired:true` 与 group 广播行 `false` **必须不同**（防空洞）、ack 前 `acked:false`→ack 后 `true` 且 `ackRequired:false`（同一行、同一判据，不是第二套标准）。
+- **契约与提示词分开收，理由要写真的那一条。** `docs/03-interface-contract.md:273` 新增 §3.1f（两个键、谁算的、`unackedRows` 同名异形的更正），`vibe_vmu_mailbox` 工具行标为 12 字段；提示词侧删 `perBox`/`unackedRowsAllBoxes` 的理由是**教学经济**（`vibe_vmu_mailbox {action:"status"}.notice` 本来就能读到 view 级 `ackRequired`），不是「无面可读」；ack 回执的 rows 没有 `settledBy`，所以没为它新加抽取形式。
+- **回归与收口。** `tests/vmu-run248-notice-delivery.test.mjs` 117/0、`tests/audit-host-receipt-superset.mjs` class A 0、`tests/vmu-mailbox.test.mjs` 77/0；pin 同步 166/0、34/0、74/0、30/0；全量 T1 **836/0**、`regen-all --check` **17/17**、台账 26 条 = fixed 22 / open 2 / accepted 2。

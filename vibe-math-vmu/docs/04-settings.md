@@ -278,7 +278,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.wallClockMs` | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻） |
 | `vmu.limits.maxParallel` | int ≥1 | `3` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 并发上限（P3：吸收 v5r 的 maxParallel；机器强制） |
 | `vmu.records.tracks` | string[] | `[progress,routes,obstacles,rejected,state]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 记录分轨（负向知识有独立档） |
-| `vmu.records.headListAt` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `host.js` | 头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数 |
+| `vmu.records.headListAt` | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数 |
 | `vmu.records.truncateMode` | enum | `keepChars` | `keepChars`∣`keepHeadTail`∣`dropMiddle` | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 截断策略（必须计数，禁静默） |
 | `vmu.records.fingerprintPolicy` | enum | `content-only` | `content-only`∣`content+display` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 内容指纹口径（默认排除展示头） |
 | `vmu.data.requireParent` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 数据集必须有 parent（§L128：路径＋指纹＋参数＋parent；true ⇒ 无 parent 即具名拒） |
@@ -334,7 +334,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.wakeupPolicy` | enum | `round-robin` | `round-robin`∣`least-recent` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 下一轮唤醒谁：round-robin＝按在册次序轮转；least-recent＝最少被唤醒者优先（同票按在册次序，确定性） |
 | `vmu.turn.deliverMode` | enum | `subagents` | `subagents`∣`caller` | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | capability-default: 这是交付【传输】的选择，不是研究该怎么进行的政策 —— 默认值 subagents＝宿主把成员回合当作子代理运行，是宿主协作得了的那条路（caller 那条要求部署把提示词交回调用会话）。交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 vibe_vmu_turn { reply } 送回答复 |
 | `vmu.turn.deliverProvider` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径 |
-| `vmu.turn.deliveryTimeoutMs` | number | `180000` | — | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 成员回合 one-shot 交付的 deadline（毫秒）。★ 超时后该回合以 VMU_TURN_DELIVERY_TIMEOUT 具名失败（带 turn/member/已等毫秒/最后一次交付阶段），并释放串行队列；★ 正常回合只要在 deadline 内返回就不受影响。★ SLV 实测（opencode，v3）：正常成员回合 5–44 秒；异常回合在 180 秒时超时（deliveryTimeoutMs 即由此定） |
+| `vmu.turn.deliveryTimeoutMs` | number | `1800000` | — | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 成员回合 one-shot 交付的 deadline（毫秒）。★ 超时后该回合以 VMU_TURN_DELIVERY_TIMEOUT 具名失败（带 turn/member/已等毫秒/最后一次交付阶段），并释放串行队列；★ 正常回合只要在 deadline 内返回就不受影响。★ 默认 1800000 ms（30 分钟）：RUN 74 实测一个合法单体研究回合交付用了 982572 ms（16.4 分钟），旧的 900000 ms／180000 ms 会把长回合当成卡死；deadline 只决定「停止等待」，晚收割的回复仍是成员的真工作（deliveredLate + deliveredLateMeans）。★ 这是 SEAM 与状态面共读的同一个声明，不是两处字面量 |
 | `vmu.turn.abandonAfterMs` | number | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/turn/index.js` | ★ RUN 241：一轮“开着但在途”多久之后，允许下一次 step/drive 把它弃掉（具名 VMU_TURN_ABANDONED）；0＝未显式配置，此时按 vmu.turn.deliveryTimeoutMs 加十分钟、且不低于十分钟。任何时候都可以用 vibe_vmu_turn { op:"abandon" } 立即关掉它 |
 | `vmu.turn.childPreset` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 成员子代理会话所使用的 agent preset 名（宿主 SubagentStartRequest.agentPreset）：★ 空＝沿用调用方自己的 preset（历史行为）；★ 非空则成员席位由该 preset 的组合决定 —— 配套的 vibe-math-vmu-member 席位没有 shell/后台作业/自我分派/联网/问用户/目标环，因为实测发现那条逃逸是通过 pwsh 读到了宿主 app.asar；★ 组合由 scripts/build-preset-rows.mjs 的 MEMBER_DROP 表生成并有门禁 |
 | `vmu.turn.closureVotePermission` | string | `vote` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | capability-default: 值只是一个权限字符串的【名字】，谓词拿它去问谁能结题；换名不改机制，而名字本身是部署词汇（v5r 交给 member 槽位）。哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 vote（★ v5r pack 把 vote 给 member 槽位，chair 与 temp 都没有）；★ 另一家机构可以改名 |
@@ -1307,6 +1307,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.speechExtendMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
 | `vmu.meetings.speechMaxMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
 | `vmu.meetings.speechQuotaPerMember` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.startEarlyRequiresChair` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
 | `vmu.meetings.typeCatalog` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
 | `vmu.meetings.unansweredInDenominator` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
 | `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
@@ -1571,7 +1572,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1168** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1169** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1632,7 +1633,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 105 |
-| `vmu.meetings.*` | 70 |
+| `vmu.meetings.*` | 71 |
 | `vmu.members.*` | 1 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |

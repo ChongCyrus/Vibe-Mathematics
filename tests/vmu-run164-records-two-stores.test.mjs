@@ -31,6 +31,7 @@ const ok = (cond, label, detail) => {
 const entry = await import(pathToFileURL(ENTRY).href)
 const { readFile } = await import('node:fs/promises')
 const source = await readFile(HOST, 'utf8')
+const KERNEL_SRC = await readFile(new URL('../vibe-math-vmu/kernel/records.js', import.meta.url), 'utf8')
 
 const roots = []
 const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r164-')); roots.push(d); return d }
@@ -61,7 +62,10 @@ try {
   // ── §0 source reading: the two-store answer is written where a reader looks for it
   {
     console.log('§0 the face says its two sources and its cap out loud (source reading)')
-    ok(/rowsFrom: \{ records: recRows\.length, library: libKept\.length \}/.test(source),
+    // RUN 256 (TB-2617): the merge and the per-source counts moved to ONE arithmetic site
+    // (`kernel.records.list`), so this face now FORWARDS `listed.rowsFrom` instead of building it from
+    // `recRows`/`libKept` locals. The reading still promises the same fact: the receipt counts each source.
+    ok(/rowsFrom: listed\.rowsFrom/.test(source) && /rowsFrom: \{ records: rowsFromRecords, library: rowsFromLibrary \}/.test(KERNEL_SRC),
       '§0a list reports rowsFrom {records, library} (so a merged answer is never mistaken for one store)')
     ok(/trackFilterMeans/.test(source) && /library head rows carry no track/.test(source),
       '§0b list NAMES the track filter and says library heads carry no track (a filter is applied or explained, never silently skipped)')
@@ -104,7 +108,15 @@ try {
       '§1f a second track answers its own row (two different tracks cannot answer the same list)', obsRows.map((r) => r && r.track))
 
     // ★ the hard half of FEEDBACK12 item 2: an id this face PRINTED must be READABLE by this face
-    const mixed = await call(b, 'vibe_vmu_records', { action: 'list', limit: 0 })
+    // ★★★ RUN 256 (TB-2624 item 2): the plain page no longer mixes in the library head (whose `track` is undefined);
+    // it is counted in `excluded.untracked`, and `includeUntracked:true` is the documented opt-in. The invariant below
+    // still holds for the page the face actually prints in either mode.
+    const plainPage = await call(b, 'vibe_vmu_records', { action: 'list', limit: 0 })
+    const plainIds = ((plainPage.parsed && plainPage.parsed.records) || []).map((r) => r && r.id)
+    const plainEx = (plainPage.parsed && plainPage.parsed.excluded) || {}
+    ok(plainPage.parsed && plainPage.parsed.ok === true && !plainIds.includes(lib.id) && plainEx.untracked >= 1 && plainEx.untrackedIds.includes(lib.id),
+      '§1g0 the plain page excludes the untracked library head BY NAME and counts it (RUN 256 default)', { ids: plainIds, excluded: plainEx })
+    const mixed = await call(b, 'vibe_vmu_records', { action: 'list', limit: 0, includeUntracked: true })
     const printed = (mixed.parsed && mixed.parsed.records) || []
     let readable = 0
     let firstRefusal = null

@@ -125,7 +125,8 @@ let office = null
 // ── §4 the `read` receipt carries the md/index comparison AND the draft-file facts (`state` did; `read` used to drop) ──
 {
   console.log('\n=== §4 blueprint read forwards the md fields state prints (the draft file included) ===')
-  const proposed = await call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '# 公共蓝图\n- 命题：前 n 个奇数之和 = n²。\n- 步骤：归纳。' })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const proposed = await call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '# 公共蓝图\n- 命题：前 n 个奇数之和 = n²。\n- 步骤：归纳。', materialize: true })
   ok(proposed && proposed.ok === true, 'the blueprint accepts a proposal', proposed)
   const id = proposed && typeof proposed.id === 'string' ? proposed.id : ''
   ok(id !== '', 'the proposal names the row it created', proposed && Object.keys(proposed))

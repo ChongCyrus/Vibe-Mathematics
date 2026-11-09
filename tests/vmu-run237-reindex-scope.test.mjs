@@ -93,7 +93,17 @@ const b = await boot('scope')
   writeFileSync(foreignAbs, '# 我的推导草稿\n\n随便写写，不打算进索引。\n', 'utf8')
 
   const dry = b.handle.kernel.records.mdReindex({ dryRun: true })
-  ok(dry && dry.ok === true, 'reindex (dryRun) answers ok')
+  // ★ RUN 259 / AUDIT-14 P0-3: a reindex that leaves a file unindexed is NOT a success — the old `ok:true` + skipped
+  // pair let callers (and hints) treat "nothing happened" as "done". The skip is still named in `skipped`, and the
+  // refusal is named in blocked[] with a reachable repair.
+  ok(dry && dry.ok === false, 'reindex (dryRun) answers ok:false when a file was skipped for a SHAPE reason')
+  ok(dry && dry.code === 'VMU_RECORDS_REINDEX_BLOCKED', '...by name (VMU_RECORDS_REINDEX_BLOCKED)', dry && dry.code)
+  ok(dry && dry.partial === true, '...and marks the receipt partial', dry && dry.partial)
+  const dryBlocked = (dry && dry.blocked) || []
+  ok(dryBlocked.some((x) => String(x.path || '').indexOf('notes.md') !== -1),
+    '...and blocked[] NAMES the file it could not index', dryBlocked.map((x) => x.path))
+  ok(dryBlocked.every((x) => typeof x.reachableInstead === 'string' && x.reachableInstead.length > 0),
+    '...and every blocked entry says what would unblock it')
   ok(dry.walked >= 1, 'the walk reports how many md files it visited', { walked: dry.walked })
   const foreign = (dry.skipped || []).filter((s) => String(s.path || '').indexOf('notes.md') !== -1)[0]
   ok(!!foreign, 'the foreign md is named in skipped', { skipped: (dry.skipped || []).map((s) => s.path) })
@@ -111,7 +121,12 @@ const b = await boot('scope')
   console.log('\n=== §2 track narrows the accounting, not the walk — and the receipt states it ===')
   const dryAll = b.handle.kernel.records.mdReindex({ dryRun: true })
   const dryBp = b.handle.kernel.records.mdReindex({ dryRun: true, track: 'blueprint' })
-  ok(dryBp && dryBp.ok === true, 'reindex with a track filter answers ok')
+  // A track filter narrows ACCOUNTING, not the walk: the foreign file is still walked, still cannot be indexed,
+  // so the receipt is still a named refusal (RUN 259 / AUDIT-14 P0-3).
+  ok(dryBp && dryBp.ok === false && dryBp.code === 'VMU_RECORDS_REINDEX_BLOCKED',
+    'reindex with a track filter refuses by name for the same unindexable file', dryBp && dryBp.code)
+  ok(dryBp && ((dryBp.blocked || []).some((x) => String(x.path || '').indexOf('notes.md') !== -1)),
+    '...and names that file in blocked[] through the filtered scan too')
   ok(!!dryBp.scanScope && dryBp.scanScope.recursive === true, 'scanScope says the walk is recursive', dryBp.scanScope)
   ok(dryBp.scanScope && dryBp.scanScope.trackFilter === 'blueprint', 'scanScope names the filter it was given', dryBp.scanScope)
   ok(dryBp.scanScope && /whole root/.test(String(dryBp.scanScope.trackNarrows)),
@@ -133,7 +148,10 @@ const b = await boot('scope')
 {
   console.log('\n=== §3 the public face relays what the kernel now knows (not only the kernel method) ===')
   const viaTool = await b.call('vibe_vmu_records', { action: 'reindex', dryRun: true, track: 'blueprint' })
-  ok(viaTool && viaTool.ok === true, 'vibe_vmu_records reindex answers ok', viaTool && viaTool.code)
+  ok(viaTool && viaTool.ok === false && viaTool.code === 'VMU_RECORDS_REINDEX_BLOCKED',
+    'vibe_vmu_records reindex refuses by name when it left a file unindexed', viaTool && viaTool.code)
+  ok(viaTool && (viaTool.blocked || []).every((x) => typeof x.reachableInstead === 'string' && x.reachableInstead.length > 0),
+    '...and the tool receipt relays blocked[].reachableInstead (the repair crosses the face)')
   ok(viaTool && typeof viaTool.walked === 'number', 'the tool receipt carries `walked`', viaTool && viaTool.walked)
   ok(viaTool && !!viaTool.scanScope && viaTool.scanScope.trackFilter === 'blueprint',
     'the tool receipt carries scanScope.trackFilter', viaTool && viaTool.scanScope)

@@ -135,7 +135,8 @@ const kb = B.handle.kernel
 for (const [id, slot] of [['r-acad', 'chair'], ['r-1', 'member'], ['r-2', 'member']]) await kb.members.hire({ id, slot })
 ok(kb.members.roster().length === 3, 'three real members are seated (RULE E)', kb.members.roster().length)
 const BASE = 'RUN 217 诊断草案第一段。'
-const p1 = await B.call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: BASE })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const p1 = await B.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: BASE })
 ok(p1.ok === true && typeof p1.id === 'string', 'a first proposal is written', { ok: p1.ok, id: p1.id, code: p1.code })
 ok(p1.continued === false && p1.continuedBase && p1.continuedBase.continued === false && p1.continuedBase.actual === null,
   '★★ ② a call that continues NOTHING says so: `continuedBase.actual` is null, not a draft id', p1.continuedBase)
@@ -144,7 +145,7 @@ ok(typeof p1.bodyPrefixDroppedMeans === 'string' && p1.bodyPrefixDroppedMeans.in
 ok(typeof p1.continuedBase.means === 'string' && p1.continuedBase.means.includes('continued:false is a FACT'),
   '★ ② the block explains that continued:false is a fact about the call, not a failure', p1.continuedBase.means)
 
-const p2 = await B.call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', draft: p1.id, text: '1.1b 续写：复核归纳步。' })
+const p2 = await B.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', draft: p1.id, text: '1.1b 续写：复核归纳步。' })
 ok(p2.ok === true && p2.continued === true, 'a continuation is written', { ok: p2.ok, continued: p2.continued, code: p2.code })
 ok(p2.continuedBase && p2.continuedBase.continued === true && p2.continuedBase.actual === p1.id,
   '★★ ② a continuation names the row it joined (requested = actual here)', p2.continuedBase)

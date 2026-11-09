@@ -82,10 +82,13 @@ const RULING_BOARD_POINTER = Object.freeze({
 // ★ ROUND 96 (real machine): the boundary refusal carried `boundaryOnly`/`askedAction`/`registry`/`actionCrosses`
 // on the ERROR object, but the receipt was rebuilt from code/message/hint alone — so docs/03 promised fields a
 // program never received, and the message named the verb "this action" because `live()` was called without one.
+// ★★★ RUN 262 / TB-2661: `attendance` joins the list for the same reason: proceed() refuses an early start whose
+// attendance rule is unmet and attaches the named missing ids; a receipt rebuilt without them would say "not met"
+// without ever naming WHO, which is exactly the silent refusal the naming rule forbids.
 export function refusalDetails(e) {
   if (!e || typeof e !== 'object') return null
   const out = {}
-  for (const k of ['registry', 'askedAction', 'actionCrosses', 'boundaryOnly']) {
+  for (const k of ['registry', 'askedAction', 'actionCrosses', 'boundaryOnly', 'attendance']) {
     if (e[k] !== undefined) out[k] = e[k]
   }
   return Object.keys(out).length ? out : null
@@ -196,7 +199,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         type: param('string', 'appoint/schedule：会议类型（服务 open 的 type：ordinary｜debate｜academic 等，按部署的 typeCatalog）'),
         title: param('string', 'appoint/schedule：会议标题（通知与纪要里显示的名字）'),
         materials: param('string', 'appoint/schedule：议题/材料文本（通知正文与纪要引用）'),
-        lateAdmission: param('string', 'appoint/schedule：迟到入席策略 open｜chair｜refuse（缺省由内核取 open）', { enum: ['open', 'chair', 'refuse'] }),
+        lateAdmission: param('string', 'appoint/schedule：迟到入席策略 open｜chair｜refuse（缺省由内核取 chair：迟到须主席 admit 才入席）', { enum: ['open', 'chair', 'refuse'] }),
         wallLimitMs: param('number', 'appoint/schedule：本场会议的墙钟上界（毫秒；内核按声明的区间校验）'),
         formalAgenda: param('boolean', 'appoint/schedule：是否声明正式议程（声明后纪要按议程条目推进）'),
         roster: param('array', 'open 的成员清单（默认取该会议的既定语料）'),

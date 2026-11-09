@@ -25,7 +25,7 @@ export function makeTopologySpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'status') return Object.assign({ ok: true, action }, await topology.status())
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
-        return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        return refused(e.code || 'VMU_STATE', String(e.message), e.hint, e)
       }
     },
   }

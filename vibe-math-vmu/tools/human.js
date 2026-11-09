@@ -436,10 +436,25 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (report.ok === false) {
             const bad = (Array.isArray(report.steps) ? report.steps : []).filter((s) => s && s.ok === false)
             out.code = report.code || (bad[0] && bad[0].code) || 'VMU_STATE'
-            out.message = 'the recovery did not fully succeed: ' + bad.map((s) => String(s.step) + (s.code ? ' (' + s.code + ')' : '')).join(', ')
+            out.message = 'the recovery did not fully succeed: ' + bad.map((s) => String(s.name || s.step) + (s.code ? ' (' + s.code + ')' : '')).join(', ')
               + (bad.length ? '' : ' (the report says ok:false but no step names itself — that is a bug in the report, not a clean recovery)')
-            out.hint = 'read `recovery.steps`: every step carries its own code and note, and `unhydrated` names each ledger that could not be restored. `nothingToRestore` is NOT one of these: it lists ledgers that had nothing projected yet (a first run). A step that failed is reported, never retried silently — fix the named precondition (a seam, a version, a lock) and run recover again'
-            out.failedSteps = bad.map((s) => String(s.step))
+            out.hint = 'read `recovery.steps`: every step carries its own name, code and note, and `unhydrated` names each ledger that could not be restored. `nothingToRestore` is NOT one of these: it lists ledgers that had nothing projected yet (a first run). A step that failed is reported, never retried silently — fix the named precondition (a seam, a version, a lock) and run recover again'
+            // ★★★ RUN 259 / TB-2647: DRIFT IS NOT A FAILURE OF THIS PROCESS. The report derives both lists from its own
+            // step rows (one derivation, `derivedStepFactsOf`); this face only PRINTS them. A recovery whose ONLY bad
+            // step is read-back drift is a receipt about somebody else moving the bytes, so it carries `driftedSteps`
+            // and NOT `failedSteps` (MEASURED: all four real drift receipts had no `failedSteps` key; the two paths had
+            // two fields for one sentence). Mixed failures keep `failedSteps` — a step that really failed is still named.
+            const drifted = Array.isArray(report.driftedSteps) ? report.driftedSteps.map(String) : []
+            if (drifted.length > 0) {
+              out.driftedSteps = drifted
+              out.secondWriter = report.readBack && report.readBack.secondWriter !== undefined ? report.readBack.secondWriter : 'unknown'
+              out.secondWriterMeans = report.readBack && report.readBack.secondWriterMeans ? report.readBack.secondWriterMeans : null
+            }
+            const driftOnly = drifted.length > 0 && bad.length > 0 && drifted.length === bad.length
+            if (!driftOnly) out.failedSteps = Array.isArray(report.failedSteps) ? report.failedSteps.map(String) : bad.map((s) => String(s.name || s.step))
+            if (driftOnly) {
+              out.hint = 'read `recovery.driftedSteps` and `recovery.readBack`: this recovery did not fail at anything — the bytes it wrote moved under it. `readBack.secondWriter` says whether that needs a second writer to explain it (true: this process wrote nothing and somebody else did, so find that writer; false: the store lost or rolled back our own last write; "unknown": it cannot be told apart without guessing). Do NOT rewrite the key to make the digest agree, and do NOT "fix" this kernel'
+            }
           }
           return out
         }
@@ -454,14 +469,27 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
             const keys = (Array.isArray(rb.drift) ? rb.drift : []).map((d) => String(d && d.key)).filter(Boolean)
             out.message = 'read-back drift on ' + (keys.length ? keys.join(', ') : 'a key this process wrote')
               + ': the stored value no longer hashes to what THIS process wrote (' + String(rb.writesBetween === undefined ? 'writesBetween unknown' : 'this process performed ' + rb.writesBetween + ' durable write(s) while holding the expectation') + ')'
+            // ★★★ RUN 259 / TB-2647: the drift names the STEP, and `secondWriter` names whether a second writer is
+            // needed — with the evidence, never a guessed false. The hint is built from that field, so a reader who
+            // sees `true` is told to find the writer and a reader who sees it cannot be told to "fix the kernel".
             out.hint = 'do NOT rewrite the key to make the digest agree — that would overwrite whatever moved it. Read the durable value and decide which copy is the institute\'s: `writesBetween:0` means somebody ELSE wrote it (a second kernel, a restore, a hand edit) and the value on disk is that writer\'s fact; a nonzero count with no other writer points at the store seam itself. Then run the recovery (`action:"recover"`) and read back again'
             out.driftKeys = keys
+            out.driftedSteps = Array.isArray(rb.driftedSteps) ? rb.driftedSteps.map(String) : ['readback']
+            out.secondWriter = rb.secondWriter === undefined ? 'unknown' : rb.secondWriter
+            out.secondWriterMeans = rb.secondWriterMeans || null
+            if (out.secondWriter === true) {
+              out.hint = 'a SECOND WRITER moved these bytes and this process wrote nothing between its expectation and the read-back (`secondWriter:true`): find that writer first (another kernel on the same root, a restore, or a hand edit) and let IT answer for the value — do NOT "fix" this kernel and do NOT rewrite the key to make the digest agree. Then run the recovery (`action:"recover"`) and read back again'
+            } else if (out.secondWriter === false) {
+              out.hint = 'the durable bytes are a value THIS process wrote EARLIER in this session and not the one it wrote last (`secondWriter:false`): the store dropped or rolled back our own write — inspect the store seam (patch/merge/flush ordering) instead of hunting a writer that does not exist. Do NOT rewrite the key to make the digest agree; run the recovery (`action:"recover"`) and read back again'
+            } else if (out.secondWriter === 'unknown') {
+              out.hint = '`secondWriter:"unknown"` is an honest answer, not a failure to look: this process performed durable writes while it held the expectations, so the moved bytes could be its own write that did not land or another writer\'s, and the store exposes no cross-process provenance. Compare the durable value with the institute\'s record before either reading; do NOT guess a writer and do NOT rewrite the key to make the digest agree'
+            }
           }
           return out
         }
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
-        return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        return refused(e.code || 'VMU_STATE', String(e.message), e.hint, e)
       }
     },
   }

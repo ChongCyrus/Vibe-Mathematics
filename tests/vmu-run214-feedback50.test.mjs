@@ -80,7 +80,8 @@ test('RUN 214 §1 — a dropped heading is described against the call that dropp
     const { call } = await assemble(dir)
     ok((await call('vibe_v5_start', { problem: 'RUN 214 标题口径', researcherCount: 2 })).ok === true, 'premise: founded')
     const first = await call('vibe_v5_blueprint', {
-      action: 'propose', path: 'p-214', member: 'r-1',
+      // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+      action: 'propose', materialize: true, path: 'p-214', member: 'r-1',
       text: '## 共同设计补充｜r-1\n- 节点 1：把命题拆成归纳基与归纳步',
     })
     ok(first.ok === true, '§1a premise: the first proposal is written', first)
@@ -91,7 +92,7 @@ test('RUN 214 §1 — a dropped heading is described against the call that dropp
     const readBack = await call('vibe_v5_blueprint', { action: 'read', id: String(first.id) })
     ok(String((readBack && readBack.text) || '').split('## 共同设计补充｜').length - 1 === 0, '§1f ★★ and the stored base really has no heading (so the old sentence was false)', readBack && readBack.text)
     const second = await call('vibe_v5_blueprint', {
-      action: 'propose', path: 'p-214', member: 'r-2',
+      action: 'propose', materialize: true, path: 'p-214', member: 'r-2',
       text: '## 共同设计补充｜r-2\n- 节点 3：把归纳步写成可核验的等式链',
     })
     ok(second.ok === true, '§1g premise: a co-designer continues the same draft', second)

@@ -135,7 +135,12 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r89-'))
   ok(src.includes('"+120s"'), 'the schedule teaching shows the relative form', src.length)
   ok(/没有自己的钟/.test(src), 'the teaching says WHY (an agent has no clock of its own)')
   ok(/相对偏移/.test(src), 'and it names the capability that reason implies (a relative offset, converted by the kernel)')
-  ok(/治理动作都被具名拒/.test(src) && /attend` 是座位登记/.test(src), 'the pre-start sentence names the governance refusal AND the attend exemption (run 92 F-89a)')
+  // ★ RUN 262 过期 pin 更正（旧值 → 新值 → 依据）：旧正则要求 ``/attend` 是座位登记/``，prompt 车道把「开会前
+  // 只许座位登记」这句改写成「例外：`attend` 可提前签到（不开会）」——语义没变（开会前 attend 是允许的唯一动作，
+  // 且它不会提前开会），只是措辞从「座位登记」换成「可提前签到（不开会）」。强度保留：仍要求同一句话同时点名
+  // ①治理动作被具名拒 ②attend 的豁免，两者缺一即红。
+  ok(/治理动作都被具名拒/.test(src) && /attend` 可提前签到（不开会）/.test(src),
+    'the pre-start sentence names the governance refusal AND the attend exemption (run 92 F-89a)', { governance: /治理动作都被具名拒/.test(src), exemption: /attend` 可提前签到（不开会）/.test(src) })
 }
 
 for (const d of roots) await rm(d, { recursive: true, force: true, maxRetries: 10 })

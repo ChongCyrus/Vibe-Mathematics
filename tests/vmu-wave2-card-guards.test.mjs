@@ -114,7 +114,8 @@ console.log('\n=== WAVE2 CARD GUARDS (literal p / proof state / lean claim / ado
   const k = b.kernel
   await k.members.hire({ id: 'r-acad', slot: 'chair' })
   await k.members.hire({ id: 'r-1', slot: 'member' })
-  const proposed = base(await call(b, 'vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: '# 协议\n正文一' },
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const proposed = base(await call(b, 'vibe_v5_blueprint', { action: 'propose', materialize: true, path: 'Shared/Protocol.md', member: 'r-1', text: '# 协议\n正文一' },
     { kernel: k, agent: { id: 'agent-r-1' } }))
   ok(proposed.ok === true, '§4.1 a member can still propose', proposed)
   const draftId = proposed.id || (proposed.proposed && proposed.proposed.id)
@@ -124,7 +125,7 @@ console.log('\n=== WAVE2 CARD GUARDS (literal p / proof state / lean claim / ado
   ok(imposter.ok === false && imposter.code === 'VMU_NOT_PERMITTED', '§4.2 a resident cannot adopt by naming the chair (the CALL is the seat)', imposter)
   ok(/cannot adopt in another member/.test(String(imposter.message)), '§4.3 the refusal says the seat came from the call', imposter.message)
   // B5 requires BOTH seats to have written their own design section before adopt; add the resident's section first.
-  const second = base(await call(b, 'vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '## 院士的设计·正文二' },
+  const second = base(await call(b, 'vibe_v5_blueprint', { action: 'propose', materialize: true, path: 'Shared/Protocol.md', member: 'r-acad', text: '## 院士的设计·正文二' },
     { kernel: k, agent: { id: 'session-r-acad' } }))
   ok(second.ok === true, '§4.4a the chair writes its own design section (continues the same draft)', second)
   const chair = base(await call(b, 'vibe_v5_blueprint', { action: 'adopt', path: 'Shared/Protocol.md', draft: draftId, member: 'r-acad' },

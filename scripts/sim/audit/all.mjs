@@ -16,14 +16,20 @@
 // mean "0 checks".
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { REPO } from '../harness.mjs'
 import { audit as auditReceipts } from './receipts.mjs'
+// ★ TB-2648 §7 MIXED-GEN — the audit's numbers are only about the CODE if every corpus it reads is one generation: a
+// receipts file from run A next to a pairs file from run B would make coverage and fidelity describe two trees at once.
+import { checkCorpus } from '../corpus-stamp.mjs'
+import { treeHashOf } from './release-ready.mjs'
+import { RICH_REAL, loadRich, loadSimFields, withoutGlossary, readBaseline, measureFidelity } from './fidelity-measure.mjs'
 
 const argv = process.argv.slice(2)
 const flag = (n) => argv.includes('--' + n)
-const opt = (n, d) => { const i = argv.indexOf('--' + n); return i === -1 ? d : argv[i + 1] }
+const opt = (n, d) => { const eq = argv.find((a) => a.startsWith('--' + n + '=')); if (eq !== undefined) return eq.slice(('--' + n + '=').length); const i = argv.indexOf('--' + n); return i === -1 ? d : argv[i + 1] }
 const STRICT = flag('strict')
 const KEEP = flag('keep')
 const BASE = opt('out', 'D:/_tmp/sim')
@@ -38,6 +44,8 @@ const readJson = (p, def = null) => { try { return JSON.parse(readFileSync(p, 'u
 const failures = []
 const warnings = []
 const lines = []
+let fidelitySummary = { liveToolsWithFieldList: 0, compared: 0, gaps: null }
+let measuredGapPaths = []
 const say = (s) => { lines.push(s); console.log(s) }
 
 // ── 1) run every scenario against the REAL kernel and keep the corpus ────────────────────────────────────────────
@@ -63,6 +71,11 @@ for (const s of scenarios) {
     failures.push('scenario ' + s + ' exited ' + r.status + ' (a mechanism refusal is a defect, not a nuisance): ' +
       String(r.stdout || '').split(String.fromCharCode(10)).filter((l) => /REFUSED|refusal|mechanism/.test(l)).slice(0, 6).join(' | '))
   }
+  // A run that FAILED may leave a partial corpus, and the scenario failure above already says so: only a corpus whose
+  // run exited 0 is asked to prove its own generation. The code is printed verbatim (`MIXED-GEN CORPUS` / `UNSTAMPED
+  // CORPUS`) so the failure names the defect instead of "checks failed".
+  const generation = checkCorpus(out)
+  if (ok && !generation.ok) failures.push('corpus ' + s + ': ' + generation.code + ' — ' + generation.message)
 }
 
 // ── 2) receipt audit (A1–A5) on every corpus ─────────────────────────────────────────────────────────────────────
@@ -162,92 +175,49 @@ if (!actionCov) {
 // ── 5) FIDELITY: simulator receipts vs the field names a LIVE run really produced ───────────────────────────────
 say('')
 say('## 5. fidelity vs live receipts')
-const realFieldset = readJson('D:/_tmp/sim/real-fieldset.json', null)
-if (!realFieldset) {
-  const m = 'no D:/_tmp/sim/real-fieldset.json yet — fidelity cannot be measured (run scripts/sim/harvest/real.mjs)'
+// ONE RULER (TB-2653): the measurement lives in ./fidelity-measure.mjs, and the release gate imports the same module
+// to RECOMPUTE what a report claims. When the judge and the auditor each had their own copy, the copies drifted and
+// the audit reported seven stale baseline claims against a ledger that was in fact current. One module, one answer.
+const rich = loadRich(RICH_REAL, readFileSync)
+if (!rich.ok) {
+  const m = 'no ' + RICH_REAL + ' — the rich live corpus is the only ruler here (run scripts/sim/compare/run.mjs --harvest); the shallow real-fieldset.json is not a substitute'
   say('- ' + m)
-  ;(STRICT ? failures : warnings).push(m)
+  failures.push(m)
 } else {
-  const simFieldset = {}
-  for (const s of scenarios) {
-    for (const r of corpora[s].receipts) {
-      const t = r.tool || (r.receipt && r.receipt.tool) || '?'
-      if (!simFieldset[t]) simFieldset[t] = new Set()
-      for (const k of Object.keys((r.receipt && typeof r.receipt === 'object' && r.receipt) || {})) simFieldset[t].add(k)
-    }
-  }
-  // A gap that CANNOT be closed by writing a better scenario has to be declared, with a reason and a kind — the
-  // same discipline `action-coverage.json` uses for verbs. Undeclared gaps stay failures; a declaration that no
-  // longer matches a gap is itself a warning (a stale excuse is how an allowlist rots).
+  const simFields = loadSimFields(scenarios.map((s) => ({ receiptsPath: join(corpora[s].out, 'receipts.jsonl') })), readFileSync)
   const declaredRaw = readJson(join(REPO, 'scripts', 'sim', 'audit', 'fidelity-declared.json'), {}) || {}
-  // Keys that start with an underscore are documentation for the human editing the file (`_why`, `_kinds`), not
-  // declarations about a tool. Counting them as declarations made the gate demand a reason for its own glossary.
-  const declared = {}
-  for (const [k, v] of Object.entries(declaredRaw)) if (!k.startsWith('_')) declared[k] = v
-  let compared = 0
-  const missing = []
-  const declaredHits = new Set()
-  const staleKeyDeclarations = []
-  for (const [tool, set] of Object.entries(realFieldset)) {
-    const keys = Array.isArray(set) ? set : (set && Array.isArray(set.keys) ? set.keys : [])
-    if (!keys.length) continue
-    // ★★★ RUN 240: a declaration can name WHICH keys it covers. Declaring a whole tool to silence one unreachable
-    // field was the gateway to hiding every future regression of that tool: the entry said "we cannot reach this
-    // here" and the gate stopped looking at the other keys. `keys: [...]` keeps the exemption at the size of the
-    // fact. A tool gap (no scenario calls it at all) must have every one of its keys declared.
-    const declRow = declared[tool]
-    const declKeys = declRow !== null && typeof declRow === 'object' && Array.isArray(declRow.keys)
-      ? declRow.keys.map(String) : null
-    const declaredGapKeys = []
-    const residualOf = (gapKeys) => {
-      if (declRow === undefined) return gapKeys
-      if (declKeys === null) { declaredGapKeys.push(...gapKeys); return [] }
-      const residual = []
-      for (const k of gapKeys) (declKeys.includes(k) ? declaredGapKeys : residual).push(k)
-      return residual
-    }
-    if (!simFieldset[tool]) {
-      if (declRow !== undefined) {
-        declaredHits.add(tool)
-        declaredGapKeys.push(...keys)
-        staleKeyDeclarations.push(...declKeys === null ? [] : declKeys.filter((k) => !keys.includes(k)))
-        continue
-      }
-      missing.push(tool + ' (live called it, no scenario ever does)')
-      continue
-    }
-    compared += 1
-    const gap = keys.filter((k) => !simFieldset[tool].has(k))
-    if (!gap.length) continue
-    const residual = residualOf(gap)
-    if (declaredGapKeys.length) {
-      declaredHits.add(tool)
-      if (declKeys !== null) staleKeyDeclarations.push(...declKeys.filter((k) => keys.includes(k) && !gap.includes(k)))
-    }
-    if (residual.length) missing.push(tool + ' missing ' + residual.join('/'))
+  const declared = withoutGlossary(declaredRaw)
+  // THE BASELINE (TB-2653): a per-field, per-class ledger of gaps that are real today and owned elsewhere. It is not
+  // a second declaration file: every row says WHO closes it and WHAT would make the row wrong, a closed row FAILS as
+  // a stale claim, and a class cannot be renamed to hide a row (each class has a checkable definition in the file).
+  const baselinePath = opt('baseline', join(REPO, 'docs', 'acceptance', 'fidelity-branch-baseline.json'))
+  const baselineRaw = readJson(baselinePath, null)
+  const baseline = readBaseline(baselineRaw)
+  if (!baselineRaw) failures.push('no fidelity baseline at ' + baselinePath + ' — unclassified fidelity gaps cannot be reported as owned')
+  else if (baseline.bad.length) failures.push('fidelity baseline rows that do not say what they allow (' + baseline.bad.length + '): ' + baseline.bad.slice(0, 8).join(', '))
+  const reading = measureFidelity({ rich, simFields, declared, baseline })
+  measuredGapPaths = reading.candidateGaps
+  say('- live fields: ' + rich.rowsUsed + ' rich row(s) across ' + reading.liveToolsWithFieldList + ' tool(s); compared: ' + reading.compared + '; gaps: ' + reading.gaps)
+  if (reading.gaps) {
+    say('  ' + reading.gapList.slice(0, 12).map((g) => g.tool + '.' + g.field).join(' | '))
+    failures.push('fidelity gaps: ' + reading.gaps)
   }
-  say('- live tools with a field list: ' + Object.keys(realFieldset).length + '; compared: ' + compared + '; gaps: ' + missing.length)
-  // A live receipt carrying a field the simulator never emits is a FIDELITY gap, not a style question: the scenario
-  // is not producing the shape the live machine produces, so anything it proves about that field proves nothing.
-  if (missing.length) { say('  ' + missing.slice(0, 15).join(' | ')); failures.push('fidelity gaps: ' + missing.length) }
-  const declaredRows = Object.keys(declared)
-  const badDecl = declaredRows.filter((k) => {
+  const badDecl = Object.keys(declared).filter((k) => {
     const row = declared[k]
     const note = row !== null && typeof row === 'object' ? String(row.note || '') : ''
     return note.trim().length < 20
   })
   if (badDecl.length) failures.push('fidelity declarations without a real reason (>=20 chars): ' + badDecl.join(', '))
-  if (declaredRows.length) say('- declared-unreachable gaps: ' + declaredRows.length + ' (with a filed reason); matched: ' + declaredHits.size)
-  const staleDecl = declaredRows.filter((k) => !declaredHits.has(k))
-  if (staleDecl.length) warnings.push('fidelity declarations that no longer match any gap (drop them): ' + staleDecl.join(', '))
-  if (staleKeyDeclarations.length) {
-    warnings.push('fidelity declarations that name keys which are no longer gaps (narrow or drop them): ' + Array.from(new Set(staleKeyDeclarations)).sort().join(', '))
-  }
-  const declaredKeyCount = declaredRows.reduce((n, k) => {
+  const declaredKeyCount = Object.keys(declared).reduce((n, k) => {
     const row = declared[k]
     return n + (row !== null && typeof row === 'object' && Array.isArray(row.keys) ? row.keys.length : 0)
   }, 0)
-  if (declaredKeyCount) say('- declarations are key-scoped: ' + declaredKeyCount + ' key(s) exempted across ' + declaredRows.length + ' tool(s)')
+  if (declaredKeyCount) say('- gaps absorbed by declarations: ' + reading.declaredGapPaths.length + ' path(s) from ' + declaredKeyCount + ' key(s) across ' + Object.keys(declared).length + ' tool(s)')
+  if (baseline.items.length) say('- gaps absorbed by baseline: ' + reading.baselineUsed + ' field(s), pending-fix ' + reading.pendingFixUsed.length + ' of ' + reading.pendingFixTotal + ' (count pinned by tests/sim-fidelity-baseline.test.mjs)')
+  if (reading.staleBaseline.length) { say('- stale baseline claims: ' + reading.staleBaseline.length + ' (the gap is closed or never observed)'); failures.push('fidelity baseline claims that no longer hold: ' + reading.staleBaseline.length + ' — ' + reading.staleBaseline.slice(0, 8).join(', ')) }
+  if (reading.staleDeclarations.length) warnings.push('fidelity declarations that no longer match any gap (drop them): ' + reading.staleDeclarations.join(', '))
+  if (reading.staleDeclaredKeys.length) warnings.push('fidelity declarations that name keys which are no longer gaps (narrow or drop them): ' + reading.staleDeclaredKeys.join(', '))
+  fidelitySummary = { liveToolsWithFieldList: reading.liveToolsWithFieldList, compared: reading.compared, gaps: reading.gaps, gapList: (reading.gapList || []).map((g) => String(g.tool) + '.' + String(g.field)), baselineRows: baseline.items.length, baselineUsed: reading.baselineUsed, pendingFix: reading.pendingFixTotal, staleBaseline: reading.staleBaseline.length, richRows: rich.rowsUsed }
 }
 
 // ── verdict ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -256,7 +226,52 @@ const verdict = failures.length === 0 ? 'AUDIT: PASS' : 'AUDIT: FAIL'
 say(verdict + ' — ' + failures.length + ' failure(s), ' + warnings.length + ' warning(s)')
 for (const f of failures) say('  FAIL ' + f)
 for (const w of warnings) say('  WARN ' + w)
+// ── provenance stamp (AUDIT-14 / P0-2) ─────────────────────────────────────────────────────────────────────────
+// A verdict line and five headings are typable in twelve lines, so prose alone cannot prove a report came from this
+// tool. The machine-readable block below is what the release gate parses: who wrote the report, a fresh audit id, the
+// CONTENT-bound hash of the tree it actually read (dirty PATH sets are blind to edits -- the audit itself saw the diff
+// grow while the porcelain sha stayed identical), the corpus it measured, and every P0-class finding, each of which
+// must have a row in docs/acceptance/sim-audit-open-items.json.
+const receiptsTotal = scenarios.reduce((n, s) => n + (corpora[s].receipts || []).length, 0)
+// The corpus this report measured, named file by file: the release gate re-reads these exact files, so "the corpus"
+// is a list a reader can re-hash, not a number in a sentence.
+const corpusFileList = scenarios.map((s) => ({
+  scenario: s,
+  receipts: join(corpora[s].out, 'receipts.jsonl'),
+  bytes: (() => { try { return statSync(join(corpora[s].out, 'receipts.jsonl')).size } catch { return 0 } })(),
+}))
+const corpusDigest = createHash('sha256')
+for (const s of scenarios) {
+  let body = Buffer.from('')
+  try { body = readFileSync(join(corpora[s].out, 'receipts.jsonl')) } catch { body = Buffer.from('') }
+  corpusDigest.update(s + ' ' + createHash('sha256').update(body).digest('hex') + String.fromCharCode(10))
+}
+const corpusId = 'sha256:' + corpusDigest.digest('hex')
+const tree = treeHashOf(REPO)
+const p0 = failures.map((f, i) => ({ id: 'audit-finding-' + String(i + 1).padStart(2, '0'), title: f, severity: 'P0', owner: 'see the FAIL line in this report' }))
+// The audit id is DERIVED, not minted: sha256(corpus bytes | tree hash). The release gate recomputes both inputs and
+// therefore the id itself, so an id can no longer be "declared" by whoever wrote the file. This is not an
+// unforgeability claim -- the formula is public and anyone can compute it. It is a binding: the id, the corpus and
+// the tree cannot disagree, and the gate's independent fidelity recomputation (R3) is what makes a forgery worthless.
+const derivedAuditId = 'aid-' + createHash('sha256').update(corpusId + '|' + String(tree.hash || '(no tree)')).digest('hex').slice(0, 32)
+const auditManifest = {
+  tool: 'scripts/sim/audit/all.mjs',
+  auditId: derivedAuditId,
+  generatedAt: new Date().toISOString(),
+  tree: { ok: tree.ok, head: tree.head, hash: tree.hash, changed: tree.changed },
+  corpus: { scenarios: scenarios.length, receipts: receiptsTotal, corpusId, corpusFiles: corpusFileList },
+  fidelity: fidelitySummary,
+  checks: { verdict: failures.length === 0 ? 'PASS' : 'FAIL', failures: failures.length, warnings: warnings.length },
+  p0,
+}
+say('')
+say('```json audit-report')
+say(JSON.stringify(auditManifest, null, 2))
+say('```')
 mkdirSync(BASE, { recursive: true })
 writeFileSync(join(BASE, 'AUDIT.md'), lines.join(String.fromCharCode(10)) + String.fromCharCode(10))
+// The measured gap set, as DATA: scripts/sim/audit/refresh-fidelity-baseline.mjs reads this file instead of
+// recomputing the same measurement a second time. Two recomputations of one measurement is two rulers.
+writeFileSync(join(BASE, 'fidelity-gaps.json'), JSON.stringify({ generatedAt: auditManifest.generatedAt, corpusId, tree: auditManifest.tree, gaps: measuredGapPaths }, null, 2) + String.fromCharCode(10))
 console.log(String.fromCharCode(10) + 'report: ' + join(BASE, 'AUDIT.md'))
 process.exitCode = failures.length === 0 ? 0 : 1

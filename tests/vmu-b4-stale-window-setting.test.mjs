@@ -100,7 +100,14 @@ ok(BLUEPRINT.staleWindowOf(0).ms === 0 && BLUEPRINT.staleWindowOf(0).source === 
 await rm(plain.root, { recursive: true, force: true, maxRetries: 5 }).catch(() => {})
 
 console.log('=== 2. A SETTING OF 1 ms MAKES THE OVERDUE PATH OBSERVABLE IN A LIVE RUN ===')
-const tuned = await boot({ vmu: { blueprint: { staleAfterMs: 1 } } })
+// ★ RESOLUTION FLOOR (RUN 259 / b4 adjudication). Age is `now - adoptedAt`, and since RUN 256 both sides are read on
+// the SAME clock (the injected one); before that the read fell back to the wall clock while the adoption was stamped
+// from the injected clock — that mixed-clock accident is the ONLY reason this fixture used to pass on a frozen clock.
+// A 1 ms window is therefore observable only if the clock ADVANCES between the adoption and the read: the fixture moves
+// the injected clock (never the window). Measured resolution of the injected clock is 1 ms here; on a wall clock whose
+// granularity is 1 ms or coarser, a window at or below the tick is UNMEASURABLE and must not be dressed up as a pass.
+let tunedNow = 1000
+const tuned = await boot({ vmu: { blueprint: { staleAfterMs: 1 } }, clock: () => tunedNow })
 const tunedKernel = tuned.handle.kernel
 const tunedSpec = tuned.specOf('vibe_v5_blueprint')
 const tunedCall = callOn(tunedSpec, tunedKernel)
@@ -109,9 +116,10 @@ await tunedKernel.members.hire({ id: 'acad', slot: 'chair' })
 await tunedKernel.members.hire({ id: 'r-1', slot: 'member' })
 const roster = tunedKernel.members.roster()
 ok(roster.length === 2, 'roster is non-empty before any identity assertion (RULE E)', roster.length)
-const draft1 = await tunedCall({ action: 'propose', member: 'r-1', path: PATH, text: '第一版：每周复查一次。' })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const draft1 = await tunedCall({ action: 'propose', materialize: true, member: 'r-1', path: PATH, text: '第一版：每周复查一次。' })
 ok(draft1.ok === true && typeof draft1.parsed.id === 'string' && draft1.parsed.id !== '', 'a resident can propose (a draft is not in force)', draft1.code || draft1.message)
-const draft1b = await tunedCall({ action: 'propose', member: 'acad', path: PATH, text: '院士补充：里程碑按月切分。' })
+const draft1b = await tunedCall({ action: 'propose', materialize: true, member: 'acad', path: PATH, text: '院士补充：里程碑按月切分。' })
 ok(draft1b.ok === true && draft1b.parsed.continued === true && draft1b.parsed.id === draft1.parsed.id,
   'the second seat continues the same draft (co-design, B5) so the adopt below is legal', draft1b.parsed && { id: draft1b.parsed.id, continued: draft1b.parsed.continued })
 const adopted1 = await tunedCall({ action: 'adopt', member: 'acad', path: PATH, draft: draft1.parsed.id })
@@ -119,6 +127,15 @@ ok(adopted1.ok === true && adopted1.parsed.status === 'current', 'the chair adop
 ok(adopted1.parsed && adopted1.parsed.staleAfterMs === 1 && adopted1.parsed.staleAfterMsSource === 'setting',
   '★ the ADOPT receipt already reports the tuned window and its source (a later read cannot use a different number)',
   adopted1.parsed && { staleAfterMs: adopted1.parsed.staleAfterMs, source: adopted1.parsed.staleAfterMsSource })
+// ★ FROZEN CLOCK: ageMs is 0 by construction, so the honest reading is "not overdue YET" — it must not be turned into
+// a violation (and the old assertion could only pass on a frozen clock because the read used a DIFFERENT clock than the
+// stamp). This is the negative side of the 1 ms window, asserted rather than skipped.
+const frozen = await tunedCall({ action: 'state', path: PATH })
+ok(frozen.ok === true && frozen.parsed.hasCurrent === true && frozen.parsed.ageMs === 0 && frozen.parsed.stale === false,
+  '★ at the very instant of adoption (ageMs=0, same clock) a 1 ms window is NOT overdue: staleness is elapsed time, not a clock accident',
+  frozen.parsed && { stale: frozen.parsed.stale, ageMs: frozen.parsed.ageMs, window: frozen.parsed.staleAfterMs })
+// advance the injected clock by 3 ticks — every reading below is still measured on the same clock as its stamp
+tunedNow += 3
 const staleState = await tunedCall({ action: 'state', path: PATH })
 ok(staleState.ok === true && staleState.parsed.hasCurrent === true, 'state reads a CURRENT revision (the overdue claim needs one to be about)', staleState.parsed && { hasCurrent: staleState.parsed.hasCurrent })
 ok(staleState.parsed && staleState.parsed.stale === true && staleState.parsed.ageMs > 1,
@@ -136,10 +153,39 @@ const idempotent = await tunedCall({ action: 'state', path: PATH })
 ok(idempotent.ok === true && idempotent.parsed.freshness && idempotent.parsed.freshness.persist && idempotent.parsed.freshness.persist.written === false,
   'the second overdue read writes NOTHING (one mark per adoption: the read stays idempotent)', idempotent.parsed && idempotent.parsed.freshness && idempotent.parsed.freshness.persist)
 
+// ★ TWO-SIDED CONTROL (a fixture that can only say "stale", or only "fresh", proves nothing). The same measurement is
+// taken on two windows: 3 ms of elapsed time under 60 000 ms must read fresh, and 1 500 ms under 1 000 ms must read
+// overdue. Both use an injected clock that ADVANCES (see the resolution-floor note in §2), so the 1 ms boundary is not
+// the only evidence and neither answer is hard-wired.
+async function windowReading(tag, windowMs, elapsedMs) {
+  let t = 1000
+  const b = await boot({ vmu: { blueprint: { staleAfterMs: windowMs } }, clock: () => t })
+  const call = callOn(b.specOf('vibe_v5_blueprint'), b.handle.kernel)
+  const path = 'Shared/Window-' + tag + '.md'
+  await b.handle.kernel.members.hire({ id: 'acad', slot: 'chair' })
+  await b.handle.kernel.members.hire({ id: 'r-1', slot: 'member' })
+  const d1 = await call({ action: 'propose', materialize: true, member: 'r-1', path, text: '一版：目的。' })
+  const d2 = await call({ action: 'propose', materialize: true, member: 'acad', path, text: '二签：补充。' })
+  if (d1.ok !== true || d2.ok !== true) return { ok: false, why: { d1: d1.code || d1.message, d2: d2.code || d2.message } }
+  const ad = await call({ action: 'adopt', member: 'acad', path, draft: d1.parsed.id })
+  t += elapsedMs
+  const s = await call({ action: 'state', path })
+  await rm(b.root, { recursive: true, force: true, maxRetries: 5 }).catch(() => {})
+  return Object.assign({ adoptOk: ad.ok === true, ok: s.ok === true }, s)
+}
+const wide = await windowReading('wide', 60000, 3)
+ok(wide.ok === true && wide.adoptOk === true && wide.parsed.stale === false && wide.parsed.ageMs === 3,
+  '★ two-sided control: 3 ms of elapsed time under a 60 000 ms window is NOT overdue (a large window still suppresses)',
+  wide.parsed && { stale: wide.parsed.stale, ageMs: wide.parsed.ageMs, window: wide.parsed.staleAfterMs })
+const late = await windowReading('late', 1000, 1500)
+ok(late.ok === true && late.adoptOk === true && late.parsed.stale === true && late.parsed.ageMs === 1500,
+  '★ and 1 500 ms under a 1 000 ms window IS overdue — the stale=true side is exercised on a human-scale window too',
+  late.parsed && { stale: late.parsed.stale, ageMs: late.parsed.ageMs, window: late.parsed.staleAfterMs })
+
 console.log('=== 3. ADOPTING A NEW REVISION AFTER AN OVERDUE ONE IS RECORDED AS overdueUpdate ===')
-const draft2 = await tunedCall({ action: 'propose', member: 'r-1', path: PATH, text: '第二版：每周复查 + 每季重估路线。' })
+const draft2 = await tunedCall({ action: 'propose', materialize: true, member: 'r-1', path: PATH, text: '第二版：每周复查 + 每季重估路线。' })
 ok(draft2.ok === true && draft2.parsed.revision === 2, 'a NEW revision can be proposed after adoption (revision increments)', draft2.parsed && { revision: draft2.parsed.revision, id: draft2.parsed.id })
-const draft2b = await tunedCall({ action: 'propose', member: 'acad', path: PATH, text: '院士补充：季度重估由所办主持。' })
+const draft2b = await tunedCall({ action: 'propose', materialize: true, member: 'acad', path: PATH, text: '院士补充：季度重估由所办主持。' })
 ok(draft2b.ok === true && draft2b.parsed.continued === true && draft2b.parsed.id === draft2.parsed.id,
   'the second seat continues revision 2 as well (the codesign gate is the same on every revision)', draft2b.parsed && { id: draft2b.parsed.id, continued: draft2b.parsed.continued })
 const adopted2 = await tunedCall({ action: 'adopt', member: 'acad', path: PATH, draft: draft2.parsed.id })

@@ -23,7 +23,7 @@
 // only be refused in this deployment is reported as refused, with the reason, and is listed in the finish message.
 
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const NOW = 1_800_000_000_000
 const MANIFEST = JSON.stringify({ id: 'sim-probe-pack', name: '仿真探测包', version: '0.0.1', tools: [] })
@@ -113,8 +113,29 @@ export async function scenario(h, { log = () => {} } = {}) {
     log(name + (out && out.ok === false ? '  [' + (out.code || 'refused') + ']' : ''))
     return out
   }
-  /** Announce a refusal the scenario PREDICTS (policy evidence, not a defect). */
-  const expect = (tool, code, why) => { expectedRefusals.push({ tool, code, why }) }
+  /**
+   * Announce a refusal the scenario PREDICTS (policy evidence, not a defect).
+   * ★ TB-2625 - A PREDICTION HAS TO NAME ITS OWN REFUSAL. The runner used to treat `{tool, code}` as a PREDICATE, so one
+   * entry forgave every later refusal of that tool+code - which is exactly how this file's `blueprint read/adopt` drift
+   * (null draft id after a text-only propose) stayed green: the missing-argument probes at the end of the file declared
+   * `vibe_v5_blueprint`/`VMU_INVALID_ARGUMENT` once and that entry also excused the two earlier drift refusals. `seq`
+   * pins the declaration to the receipt it predicts. It defaults to the newest receipt because every call site here
+   * declares immediately after the call that produced the refusal.
+   */
+  const lastSeq = () => (h.receipts.length ? h.receipts[h.receipts.length - 1].seq : null)
+  const expect = (tool, code, why, seq) => {
+    const entry = { tool, code, why }
+    const pinned = Number.isInteger(seq) ? seq : lastSeq()
+    if (Number.isInteger(pinned)) entry.seq = pinned
+    expectedRefusals.push(entry)
+  }
+  // ★ TB-2625 - a contract check has to be able to turn the run red by name; `failures` is that channel (run.mjs).
+  const failures = []
+  // RUN 255 made `blueprint propose` fs-first: a text-only propose answers `{ok:true, filed:false, id:null,
+  // draftMdMissing:true}` and every later step that needs the id refuses VMU_INVALID_ARGUMENT. The successful path does
+  // NOT carry `filed:true` (only the refused path carries `filed:false`), so the reading has to be normalized here
+  // rather than assuming either shape.
+  const filedOf = (r) => Boolean(r && r.ok !== false && r.filed !== false && r.draftMdMissing !== true && typeof r.id === 'string' && r.id !== '')
   const as = (id) => ({ as: { agent: { id } } })
 
   // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -170,22 +191,63 @@ export async function scenario(h, { log = () => {} } = {}) {
   //    chair proposes, a RESIDENT researcher proposes the same path, and only then does the chair adopt.
   // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
   const bpEmpty = await step('B/blueprint/state-before', () => h.call('vibe_v5_blueprint', { action: 'state' }))
+  // ★ TB-2625 - THE DRAFT IS A MEMBER FILE (fs-first, RUN 255). This block used to propose `text` only and then call
+  // `read`/`adopt` with `firstId(...)` = null; both answered VMU_INVALID_ARGUMENT and the refusals were invisible
+  // because the missing-argument probes further down the file had declared that tool+code in advance. Now the member
+  // (chair, seat `r-acad`) writes the draft where `mdPath` resolves (`<workspace>/VibeMath/Members/<seat>/Drafts/...`),
+  // proposes THAT path, and the shape is checked instead of assumed.
+  const bpDraftRel = 'Members/r-acad/Drafts/protocol-r1.md'
+  const bpDraftAbs = join(h.root, 'VibeMath', bpDraftRel)
+  const bpDraftBody = '# 公共蓝图\n- 命题：待复核的 n 个结论。\n- 路线：先证引理，再合并。\n'
+  const bpDraftFile = await step('B/blueprint/draft-md', () => {
+    mkdirSync(dirname(bpDraftAbs), { recursive: true })
+    writeFileSync(bpDraftAbs, bpDraftBody)
+    return { ok: true, path: bpDraftRel, absPath: bpDraftAbs, bytes: Buffer.byteLength(bpDraftBody) }
+  })
   const bpDraft = await step('B/blueprint/propose', () => h.call('vibe_v5_blueprint', {
     action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad',
-    text: '# 公共蓝图\n- 命题：待复核的 n 个结论。\n- 路线：先证引理，再合并。',
+    mdPath: bpDraftRel,
+    text: bpDraftBody,
   }))
-  const bpDraftId = firstId(bpDraft)
+  if (!filedOf(bpDraft)) {
+    failures.push({
+      code: 'SIM_BLUEPRINT_FS_FIRST_CONTRACT',
+      step: 'B/blueprint/propose',
+      message: 'blueprint propose did not FILE the draft: this scenario is behind the fs-first contract (write the md first, pass the same mdPath)',
+      means: 'the next read/adopt would refuse VMU_INVALID_ARGUMENT for a null id, and the refusal would be excused by a blanket prediction',
+      receipt: pick(bpDraft, ['ok', 'filed', 'id', 'status', 'draftMdMissing', 'mdPath', 'code', 'message', 'hint']),
+    })
+  }
+  const bpDraftId = filedOf(bpDraft) ? bpDraft.id : null
   const bpRead = await step('B/blueprint/read', () => h.call('vibe_v5_blueprint', { action: 'read', id: bpDraftId }))
+  // The resident co-signs the SAME draft: rewrite the member file (base text + its own section) and propose again with
+  // the same `mdPath` plus `draft`, so the row keeps one id and gains a second author.
+  const bpCodesignBody = bpDraftBody + '\n## 共同设计补充｜r-1\n- 同意主席的路线；把引理步拆成两步检查。\n'
+  const bpCodesignFile = await step('B/blueprint/codesign-md', () => {
+    writeFileSync(bpDraftAbs, bpCodesignBody)
+    return { ok: true, path: bpDraftRel, absPath: bpDraftAbs, bytes: Buffer.byteLength(bpCodesignBody) }
+  })
   const bpCodesign = await step('B/blueprint/codesign-by-resident', () => h.call('vibe_v5_blueprint', {
-    action: 'propose', path: 'Shared/Protocol.md', member: 'r-1',
-    text: '# 公共蓝图（常驻研究员补签）\n- 同意主席的路线；把引理步拆成两步检查。',
+    action: 'propose', draft: bpDraftId, path: 'Shared/Protocol.md', member: 'r-1', mdPath: bpDraftRel,
   }, as('r-1')))
+  if (!filedOf(bpCodesign)) {
+    failures.push({
+      code: 'SIM_BLUEPRINT_FS_FIRST_CONTRACT',
+      step: 'B/blueprint/codesign-by-resident',
+      message: 'the co-sign did not continue the same draft (no id): it is behind the fs-first contract too',
+      means: 'the chair cannot adopt a draft the resident co-signed if the co-sign created no row to adopt',
+      receipt: pick(bpCodesign, ['ok', 'filed', 'id', 'draft', 'continued', 'draftMdMissing', 'code', 'message', 'hint']),
+    })
+  }
   const bpAdopt = await step('B/blueprint/adopt', () => h.call('vibe_v5_blueprint', { action: 'adopt', path: 'Shared/Protocol.md', draft: bpDraftId, member: 'r-acad' }))
   const bpStale = await step('B/blueprint/state-after', () => h.call('vibe_v5_blueprint', { action: 'state' }))
   highlights.blueprint = {
     empty: pick(bpEmpty, ['ok', 'hasCurrent', 'current', 'drafts', 'track', 'code']),
+    draftFile: bpDraftFile,
+    draft: pick(bpDraft, ['ok', 'id', 'recordId', 'revision', 'status', 'mdPath', 'mdFingerprint', 'filed', 'draftMdMissing']),
     read: pick(bpRead, ['ok', 'id', 'path', 'kind', 'code']),
-    codesign: pick(bpCodesign, ['ok', 'id', 'draft', 'code', 'hint']),
+    codesignFile: bpCodesignFile,
+    codesign: pick(bpCodesign, ['ok', 'id', 'draft', 'continued', 'authors', 'mdFingerprint', 'code', 'hint']),
     adopt: pick(bpAdopt, ['ok', 'id', 'adopted', 'current', 'code']),
     state: pick(bpStale, ['ok', 'hasCurrent', 'current', 'ageMs', 'staleNote', 'nodes', 'drafts', 'kind']),
   }
@@ -223,6 +285,12 @@ export async function scenario(h, { log = () => {} } = {}) {
   })()
   const recRestore = await step('C/records/restore', () => h.call('vibe_vmu_records', { action: 'restore', id: prunedIds.join(','), by: 'r-acad' }))
   const recReindexDry = await step('C/records/reindex-dry', () => h.call('vibe_vmu_records', { action: 'reindex', dryRun: true }))
+  // TB-2650 (MEASURED): this workspace holds the member's plain md draft (the fs-first contract), and RUN 259 made
+  // `not-a-vmu-md` a blocking class. The refusal is predicted BY SEQ (one prediction, one refusal) so a later change in
+  // that policy shows up as `declared-but-never-hit` instead of slipping through as an unexplained mechanism refusal.
+  if (recReindexDry && recReindexDry.ok === false && recReindexDry.code === 'VMU_RECORDS_REINDEX_BLOCKED') {
+    expect('vibe_vmu_records', 'VMU_RECORDS_REINDEX_BLOCKED', '成员 plain md 草案在盘上 ⇒ reindex（含 dryRun）按名拒并点名 not-a-vmu-md（RUN 259/TB-2650 政策）')
+  }
   highlights.records = {
     append: pick(recAppend, ['ok', 'id', 'recordId', 'track', 'code']),
     rows: rowIds,
@@ -349,6 +417,29 @@ export async function scenario(h, { log = () => {} } = {}) {
     action: 'reopen', task_id: task3Id, expected_revision: await revNow(), why: '仿真：重开（CAS）',
   }, as('r-acad')))
   if (taskUpdateReopen && taskUpdateReopen.ok === false) expect('vibe_v5_task_update', taskUpdateReopen.code, 'reopen 由 done→open 实现，但内核转移表把 done/cancelled 声明为终态：动词在、边不存在')
+  // TB-2637 fixture (#4): the LIVE side reassigned an ALREADY-ASSIGNED task and the state stayed `assigned`
+  // (kernel/tasks.js: only open→assigned moves the state; assigned/doing keep it). The chain above reassigns a
+  // `doing` task, so the two corpora never shared a pre-state and the comparator saw a contradiction where the
+  // real difference was the lifecycle. This second chain reproduces the live pre-state exactly: create (open) →
+  // assign (open→assigned) → reassign (assigned→assigned); the assertion is the resulting `task.state`.
+  const task4 = await step('F/task/create-4', () => h.call('vibe_vmu_task', {
+    action: 'create', title: '仿真任务：改派链（前置态）', objective: '让 reassign 从 assigned 出发', owner: 'r-1',
+    write_scopes: ['Shared/'], priority: 2,
+  }))
+  const task4Id = firstId(task4)
+  const task4Assign = await step('F/task_update/assign-before-reassign', () => h.call('vibe_v5_task_update', {
+    action: 'assign', task_id: task4Id, expected_revision: 1, owner: 'r-2', why: '仿真：先让任务处于 assigned',
+  }, as('r-acad')))
+  const task4Reassign = await step('F/task_update/reassign-from-assigned', () => h.call('vibe_v5_task_update', {
+    action: 'reassign', task_id: task4Id, expected_revision: 2, owner: 'r-1', why: '仿真：改派 assigned 任务（前置态与真机一致）',
+  }, as('r-acad')))
+  if (task4Assign && task4Assign.ok === false) expect('vibe_v5_task_update', task4Assign.code, 'assign 是 open→assigned 的唯一写；拒收时必须具名')
+  if (task4Reassign && task4Reassign.ok === false) expect('vibe_v5_task_update', task4Reassign.code, 'reassign 从 assigned 出发应被接受（内核只在 open→assigned 改状态）')
+  // hard fixture check: the step must have really produced the live reading (state=assigned), not merely been called
+  if (task4Reassign && task4Reassign.ok === true) {
+    const st = task4Reassign.task && task4Reassign.task.state
+    if (st !== 'assigned') throw new Error('F/task_update/reassign-from-assigned: expected task.state=assigned (live pre-state), got ' + JSON.stringify(st))
+  }
   const taskPri = await step('F/prioritize', () => h.call('vibe_v5_prioritize', {
     order: [{ task_id: taskId, priority: 5 }, { task_id: task2Id, priority: 1 }], why: '仿真：优先级落板',
   }))
@@ -371,7 +462,7 @@ export async function scenario(h, { log = () => {} } = {}) {
     advance: pick(taskAdvance, ['ok', 'from', 'to', 'code']),
     get: pick(taskGet, ['ok', 'id', 'revision', 'status', 'code']),
     listPack: pick(taskListPack, ['ok', 'count', 'tasks', 'code']),
-    update: { assign: pick(taskUpdateAssign, ['ok', 'code']), transition: pick(taskUpdateTransition, ['ok', 'code']), reassign: pick(taskUpdateReassign, ['ok', 'code']), complete: pick(taskUpdateComplete, ['ok', 'code']), reopen: pick(taskUpdateReopen, ['ok', 'code']) },
+    update: { assign: pick(taskUpdateAssign, ['ok', 'code']), transition: pick(taskUpdateTransition, ['ok', 'code']), reassign: pick(taskUpdateReassign, ['ok', 'code']), reassignFromAssigned: pick(task4Reassign, ['ok', 'task', 'code']), complete: pick(taskUpdateComplete, ['ok', 'code']), reopen: pick(taskUpdateReopen, ['ok', 'code']) },
     prioritize: pick(taskPri, ['ok', 'applied', 'order', 'code']),
     assignPack: pick(taskAssignPack, ['ok', 'assigned', 'code']),
   }
@@ -1187,6 +1278,10 @@ export async function scenario(h, { log = () => {} } = {}) {
     notes,
     refusals,
     expectedRefusals,
+    // ★ TB-2625 - the scenario's own contract checks. A non-empty list is a mechanism failure even though every call
+    // answered `ok:true`; run.mjs carries it into the headline and the exit code.
+    failures,
+    contract: { fsFirst: Boolean(bpDraftId) && filedOf(bpCodesign), draftMdPath: bpDraftRel, chain: { propose: filedOf(bpDraft), codesign: filedOf(bpCodesign), adopt: Boolean(bpAdopt && bpAdopt.ok !== false), read: Boolean(bpRead && bpRead.ok !== false) } },
     stopped: pick(ctlStop, ['ok', 'stopped', 'code']),
   }
 }

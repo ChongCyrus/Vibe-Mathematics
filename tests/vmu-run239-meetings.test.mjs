@@ -232,7 +232,10 @@ console.log('\n=== 7. source pins: one waiters vocabulary, ONE settle hinge, BOT
   has(src, "Object.freeze(['speak', 'vote', 'motion', 'poll', 'phase', 'attend-all', 'hand', 'deadline', 'meeting-closed'])",
     '★ WAIT_UNTIL_MODES lists all nine events (the refusal names them, so the list is the contract)')
   has(src, 'const settleReceipt = (m, event, now, receipt)', '★ the ONE hinge: settle then push, so a receipt cannot fire waiters and not say so')
-  ok(countIn(src, 'settleReceipt(m, ') === 12, '★★ every event point settles waiters through the same call (11 events + close)', countIn(src, 'settleReceipt(m, '))
+  // RUN 256 / F-MX-01 added a thirteenth event point: a WAIT extension (extendlimit on a waiting meeting) now settles
+  // waiters through the very same hinge — the count is the contract "every event point settles", so it moves with the
+  // product instead of being pinned to a stale total by accident.
+  ok(countIn(src, 'settleReceipt(m, ') === 13, '★★ every event point settles waiters through the same call (11 events + close + wait extension)', countIn(src, 'settleReceipt(m, '))
   ok(countIn(src, '...waitersBlockOf(m)') === 2, '★★ summary() and the status view spread the SAME waiters block', countIn(src, '...waitersBlockOf(m)'))
   has(src, 'const WAIT_MEANS = ', 'premise: waitMeans is a declared sentence, not an inline string')
   has(src, 'END YOUR TURN', '★ the registration sentence tells the caller the turn may END (a wait is not a poll)')

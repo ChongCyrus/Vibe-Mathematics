@@ -55,6 +55,17 @@ const RING = 200
 // `actor`, so a caller who had passed `member:` was told to pass a parameter it had already passed. One phrase,
 // used by every rail, so the vocabulary cannot drift rail by rail.
 const ACTOR_ALIASES = 'the actor is accepted as actor, by or member (the three names are the same person)'
+// ★★ RUN 256 / F-MX-03 (TB-2619): TWO READINGS, TWO NAMES. `waitedMs` used to be `now - waitStartedAt` verbatim, so
+// a chair who called proceed() BEFORE the declared wait began got a NEGATIVE duration (`-60001` in the matrix) and the
+// same field was silently answering two different questions. The two answers are now two fields, each with its own
+// sentence: how long the waiting actually ran, and how much of the declared wait was skipped.
+const WAITED_MS_MEANS = 'waitedMs is HOW LONG THE WAITING ACTUALLY RAN: max(0, at - waitStartedAt), i.e. the time between the moment the meeting parked in `waiting` and this call. It is 0 when this call happened BEFORE the declared wait began — a chair who overrides before the wait has run waited zero milliseconds, and a negative duration would be a reading of the clock skew, not of the wait.'
+const EARLY_BY_MS_MEANS = 'earlyByMs is HOW EARLY this call came relative to the declared wait: max(0, waitStartedAt - at). It is 0 when the wait had already started (on time or after the deadline). waitedMs and earlyByMs cannot both be positive: the first says how much waiting happened, the second how much of it was skipped.'
+// ★★★ RUN 262 / TB-2661: a SCHEDULED meeting can be started early by its chair, and there `earlyByMs` answers a
+// DIFFERENT question than the wait-relative one above: how far before `scheduledFor` the start happened. Reusing the
+// wait sentence would describe a wait that never began — two meanings under one name is exactly the defect TB-2619 fixed
+// for waitedMs/earlyByMs, so the reading carries its own sentence on this path.
+const SCHEDULED_EARLY_MS_MEANS = 'earlyByMs is HOW EARLY the chair started a SCHEDULED meeting relative to its scheduledFor: max(0, scheduledFor - at). It is > 0 only when the meeting was started BEFORE the time it was appointed for; the receipt also carries startsEarly:true and startedAt. This is NOT the wait-relative earlyByMs of a waiting meeting: here no wait had begun, the chair decided to start early and the minutes record that decision (kind:"proceeded", startsEarly:true).'
 
 /**
  * ROUND 107 / F-108b — MERGING TWO DURABLE MEETINGS VALUES, not replacing one with the other.
@@ -418,17 +429,28 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       : (m.subject !== null && m.subject !== undefined ? String(m.subject) : '（主席未声明议程）')
     const whenText = when === null ? '已开始（openedAt ' + isoOf(m.openedAt) + '）' : isoOf(when) + '（scheduledFor）'
     const seat = seatLabelOf(to)
+    // ★★★ RUN 256 / F-MX-02 (TB-2619): THE FOUR ELEMENTS COME FROM ONE PLACE. Pre-fix the body carried
+    // type/agenda/time/seat while the notice line carried chair/title/time/attend — two assemblers reading the same
+    // meeting, so the line a member actually sees on their turn was free to drift from the letter (and it did: the
+    // notice had no type, no agenda, no seat). The tokens below are consumed by BOTH channels verbatim, so the notice
+    // fragment contains the very strings the body carries and a test can assert string equality, not "both non-empty".
+    const typeToken = 'type ' + String(m.type) + (m.kind === null || m.kind === undefined ? '' : '，kind ' + String(m.kind))
+    const seatText = seat === null ? '（成员服务未登记席位）' : seat
+    const agendaToken = '议题：' + agenda
+    const seatToken = '席位：' + seatText
     const subject = ('会议预约：' + title + (when === null ? '' : ' @ ' + isoOf(when))).slice(0, 120)
     const text = [
-      '会议 ' + String(m.id) + ' 已由主席 ' + String(m.chair) + (when === null ? ' 召集并开始' : ' 预约') + '（type ' + String(m.type) + (m.kind === null || m.kind === undefined ? '' : '，kind ' + String(m.kind)) + '）。',
-      '议题：' + agenda,
+      '会议 ' + String(m.id) + ' 已由主席 ' + String(m.chair) + (when === null ? ' 召集并开始' : ' 预约') + '（' + typeToken + '）。',
+      agendaToken,
       '时间：' + whenText,
-      '主席：' + String(m.chair) + '；你的席位：' + (seat === null ? '（成员服务未登记席位）' : seat) + '。',
+      '主席：' + String(m.chair) + '；你的' + seatToken + '。',
       '入席（会议开始后）：' + attendCallOf(m.id, to),
       '当前内核面等价的入席调用：' + kernelAttendCallOf(m.id, to),
       '读完这封邮件后请结算：mailbox ack（报回本条邮件 id；未 ack 之前它会一直出现在你的回合提示里）。',
     ].join('\n')
-    const notice = '【会议预约·' + String(m.chair) + '】' + title + (when === null ? '' : ' @ ' + isoOf(when)) + ' — ' + attendCallOf(m.id, to) + '；读后 mailbox ack {id}'
+    // The SAME tokens on the notice line (type/agenda/seat are literal substrings of the body above); the attend call
+    // and the ack instruction keep the RUN 248 shape.
+    const notice = '【会议预约·' + String(m.chair) + '】' + title + (when === null ? '' : ' @ ' + isoOf(when)) + ' — ' + attendCallOf(m.id, to) + '（' + typeToken + '，' + agendaToken + '，' + seatToken + '）；读后 mailbox ack {id}'
     return { to, text, subject, kind: 'meeting-appointment', channel: 'mail', dedupeKey: 'meeting-appoint:' + String(m.id), notice }
   }
   // ★★★ RUN 254-E / F-73-05 (live run 73, MEASURED): the appointment notice went to EVERY roster member except the
@@ -632,14 +654,26 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   //   · refuse — a late arrival is refused by name (`VMU_LATE_ADMISSION_REFUSED`), with the two repairs in the hint.
   // The vocabulary is closed and an unknown word is refused BY NAME with the legal list printed, because falling back
   // to the default silently is how a house rule disappears.
+  // ★ RUN 255 / TB-2610 (policy decision, WRITTEN DOWN HERE SO THE DEFAULT HAS A REASON): the DEFAULT late-admission
+  // policy is "chair", not "open". A late arrival is, institutionally, a person who missed the opening and asks to be
+  // seated - so the chair must approve it (admit()), and the hold is visible (pendingLate) instead of a silent entrance.
+  // "open" and "refuse" remain selectable per meeting; the DEFAULT is a decision about the house rule, not a rule about
+  // what a caller may ask for. Existing meeting rows keep whatever they were opened with (the policy is a carried fact of
+  // the row - see `lateAdmissionOf`), so this changes what NEW meetings get, never what an old one meant.
   const LATE_ADMISSION_MODES = ['open', 'chair', 'refuse']
   const LATE_ADMISSION_MEANS = 'lateAdmission is THIS meeting policy for a late arrival (a late arrival is decided by ' +
     'vmu.meetings.lateAfterMs against openedAt): "open" seats a late member and records late:true; "chair" holds the ' +
     'member at the door (pendingLate) until the chair calls admit(); "refuse" refuses the late arrival by name and ' +
-    'names the two repairs (the chair admits, or the member joins the next meeting).'
+    'names the two repairs (the chair admits, or the member joins the next meeting). THE DEFAULT IS "chair": a late ' +
+    'arrival is institutionally a request to be seated, so the chair decides it, and the hold is readable as pendingLate ' +
+    'instead of the member slipping in unseen. "open" is the permissive policy and "refuse" the closed one; a meeting ' +
+    'row that was opened before this default carries its own recorded value and is not retroactively changed.'
   const lateAdmissionOf = (m) => {
-    const v = (m && typeof m.lateAdmission === 'string') ? m.lateAdmission : 'open'
-    return LATE_ADMISSION_MODES.includes(v) ? v : 'open'
+    // Migration rule, in one place: the policy is a CARRIED fact of the meeting row. A row that recorded one keeps it
+    // (an old "open" meeting stays open); a row with no record - a snapshot from before the field existed, or a row
+    // hand-built by a caller - gets the CURRENT default, which is "chair".
+    const v = (m && typeof m.lateAdmission === 'string') ? m.lateAdmission : 'chair'
+    return LATE_ADMISSION_MODES.includes(v) ? v : 'chair'
   }
   const pendingLateOf = (m) => (m && Array.isArray(m.pendingLate)) ? m.pendingLate : []
   const pendingLateMembers = (m) => pendingLateOf(m).map((r) => String(r && typeof r === 'object' ? r.member : r)).filter((s) => s !== '')
@@ -790,6 +824,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     scheduleAllowed: sget('vmu.meetings.scheduleAllowed') !== false,
     waitOnDueMs: Math.min(86400000, Math.max(0, msOr('vmu.meetings.waitOnDueMs', 300000))),
     waitDecisionRequiresChair: sget('vmu.meetings.waitDecisionRequiresChair') !== false,
+    // ★ RUN 262 / TB-2661 (declared in settings/schema.js, wired in meetings-defaults.js): may only the chair start a
+    // SCHEDULED meeting before its due time? Default true reproduces the measured behaviour; `false` removes the SEAT
+    // rail only — `attendanceRuleMet` still decides whether the meeting may open at all.
+    startEarlyRequiresChair: sget('vmu.meetings.startEarlyRequiresChair') !== false,
     // ★★ R3 OF THE PHASE-12 LIVE RUN: 「未到齐」的判据是**出勤完整性**，不是表决下限。
     // 实测：三个会议的 quorum 块全是 `min:0, required:0, met:true`（框架默认 quorumMin=0＝不设下限），
     // 于是「到点未到齐 ⇒ 等待」永远不成立，`waiting` 状态不可达 ⇒ 「未到齐超时自决」这条规则整条空转。
@@ -1510,10 +1548,27 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           '★ it does NOT start by itself. At the due time the NEXT TOUCH (a beat(), a read, or an attend) evaluates the '
           + 'attendance rule ONCE: if that rule is satisfied at that moment the meeting opens, otherwise it moves to '
           + '`waiting` — and from `waiting` ONLY the chair can open it (proceed({ meeting, actor | by | member }); lapse() '
-          + 'and recess() are the other two named exits). The framework keeps no timer, so a process nobody touches never '
-          + 'wakes: beat() is the clock. reads (status/summary/meetingView/quorum) work now and show startsInMs.'
+          + 'and recess() are the other two named exits). The framework keeps no timer AND DOES NOT ADVANCE THE CLOCK: '
+          + 'beat() is only a touch, so when the clock is held by the caller and is not moving a beat leaves startsInMs '
+          + 'unchanged. reads (status/summary/meetingView/quorum) work now and show startsInMs.'
           + ' the institution rule is not what blocks this act either — the framework opens nothing on its own, and even a '
-          + 'satisfied attendance rule is only acted on when the clock reaches the start time', [])
+          + 'satisfied attendance rule is only acted on by a touch (the due-time touch, or the chair proceeding early)'
+          // ★★★ RUN 257 / D-2 (task-94 D-1 red list, Lead m07398): the hint above was true but never named ONE tool
+          // call, so a model holding only this receipt had to invent the surface. `REACHABLE INSTEAD:` is the ASCII
+          // contract marker (same shape as kernel/turn/index.js); after it the description may be Chinese. Every
+          // name/param below is copied from the tool schemas: `vibe_vmu_control` action enum has `beat`
+          // (tools/control.js); `vibe_vmu_meeting` has `attend` needing {id, member} and `proceed` accepting
+          // {id, member} (member is the chair alias, tools/meeting.js); `status` is a read-only action.
+          // ★★★ RUN 262 / TB-2661: this block used to say "现在没有——proceed 在 scheduled 态不可用（会被 VMU_STATE 拒）". After
+          // the fix that sentence is FALSE: the chair can start the meeting NOW, and when the attendance rule is unmet
+          // the refusal names the missing members on attendance.missing. The hint now names that real exit.
+          + ' REACHABLE INSTEAD: 主席现在就能开始这场会议：vibe_vmu_meeting {action:"proceed", id:"' + m.id + '", member:"<主席id>"} '
+          + '在 scheduled 态可用（这是主席的提前开始权）；若出席规则未满足，回执会具名 attendance.missing 列出还缺谁，'
+          + '先让这些成员 vibe_vmu_meeting {action:"attend", id:"' + m.id + '", member:"<成员id>"} 再 proceed。'
+          + '也可以等持钟方把时钟推进到 scheduledFor（' + new Date(m.scheduledFor).toISOString() + '）后重试一次触碰：'
+          + '到点触碰按当刻出席规则决定自动开始还是转入 waiting。vibe_vmu_control {action:"beat"} 只是碰一下、不推进钟'
+          + '（startsInMs 不变）。只读不改状态用 vibe_v5_meeting {action:"status", id:"' + m.id + '"}：'
+          + 'startsInMs / waitingFor / state 会说明还差什么', [])
       }
       // ★ LIVE RUN 13 (the institute's own report, item 3 under "与规则不符"): the message quoted the FLOOR as the reason
       // ('quorum requires 0') while refusing — the floor was MET, and the real blocker was the INSTITUTION rule (unanimity).
@@ -1580,9 +1635,27 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
    * the declared `vmu.meetings.waitOnDueMs`), so this adds no state: a value that cannot be re-derived would be a second
    * copy of the truth.
    */
+  /**
+   * ★★ RUN 256 / F-MX-01 (TB-2619): THE DECLARED WAIT IS EXTENDABLE, AND THE EXTENSION LIVES ON THE ONE DEADLINE.
+   *
+   * `extendWall` only accepted an open/recessed meeting, so a chair whose room was still filling had NO way to push
+   * the declared wait: the only exits were proceed() (start without the people the wait was for), lapse or close.
+   * The deadline is a DERIVED value (`waitStartedAt + vmu.meetings.waitOnDueMs`) and has no stored field, so making it
+   * extendable could easily have introduced a SECOND deadline (a stored `waitDueAt` beside the derived one) — the
+   * two-writers bug this repository keeps recording. The extension is therefore a STEP (`waitExtendedMs`, absent/0 by
+   * default): the deadline stays derived, now as `waitStartedAt + waitOnDueMs + step`, so every face that already
+   * read `waitDueAt` reads the extended instant without a second copy of the truth.
+   */
+  const waitExtendedOf = (m) => (m && Number.isFinite(Number(m.waitExtendedMs)) && Number(m.waitExtendedMs) > 0 ? Number(m.waitExtendedMs) : 0)
+  /**
+   * RUN 255 / TB-2619: the wait deadline is DERIVED, never stored as a timestamp of its own.
+   * 到点判据：等待从 waitStartedAt 起算，判据是 `waitStartedAt < K`（K = 等待窗口 waitOnDueMs + 已延长 waitExtendedMs）。
+   * 延长等待不是改期：scheduledFor 不动，只把 K 变大；因此这里保留原始措辞，让「等待何时到期」仍是一个可 grep 的机制句。
+   */
   const waitDueOf = (m) => {
     if (!m || m.state !== 'waiting' || !Number.isFinite(m.waitStartedAt)) return null
-    return K.waitOnDueMs > 0 ? m.waitStartedAt + K.waitOnDueMs : null
+    const total = K.waitOnDueMs + waitExtendedOf(m)
+    return total > 0 ? m.waitStartedAt + total : null
   }
 
   /**
@@ -1940,7 +2013,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         ? [
             { action: 'beat', why: 'the start time is evaluated only on a TOUCH — the framework keeps no timer, so a process nobody touches never wakes' },
             { action: 'attend', why: 'members may register presence now; the due-time evaluation reads the present set' },
-            { action: 'proceed', why: 'the chair may open it early (chair-gated, and the receipt then reads startedLate:true)' },
+            // ★ RUN 262 / TB-2661: this used to promise "the receipt then reads startedLate:true" — that was the
+            // reading of a WAITING path, and while no mechanism existed it also was the only hint of a start. Now the
+            // early start is real, so the promise states the two facts it actually produces.
+            { action: 'proceed', why: 'the chair may open it early, and only when the attendance rule is met: the receipt then reads startsEarly:true with earlyByMs — or refuses and names the missing members on attendance.missing' },
           ]
         : (quorumMet === true
           ? [
@@ -1979,7 +2055,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
               ? 'false in practice: every member of the ELECTORATE (' + String(arrival.electorateSize) + ' — the roster minus the seats vmu.meetings.attendDeniedSeats forbids to attend) is already present, so the next touch opens the meeting'
               : 'true: this meeting opens on the ATTENDANCE RULE over its ELECTORATE (' + String(arrival.electoratePresent) + ' of ' + String(arrival.electorateSize) + ' present; ' + String(arrival.missing.length) + ' still missing: ' + arrival.missing.join(', ') + '). The touch that completes that set opens the meeting — the chair\'s proceed() (or lapse()/recess()) is the OTHER way, and the framework never opens on the chair\'s behalf'))),
       nextActions,
-      startReadsMeans: 'startsInMs is non-null ONLY while the meeting has not started (positive = the start time is still in the future, negative = it is overdue); elapsedSinceMs is non-null ONLY once it has started (>= 0, measured from the moment it ACTUALLY opened, i.e. activatedAt — not from scheduledFor); elapsedMs is an alias of elapsedSinceMs kept for old readers (null while not started, never negative)',
+      startReadsMeans: 'startsInMs is non-null ONLY while the meeting has not started (positive = the start time is still in the future, negative = it is overdue); elapsedSinceMs is non-null ONLY once it has started (>= 0, measured from the moment it ACTUALLY opened, i.e. activatedAt — not from scheduledFor); elapsedMs is an alias of elapsedSinceMs kept for old readers (null while not started, never negative). TWO instants are in play and they are NOT the same fact: `openedAt` is the ATTENDANCE BASELINE (the due time, i.e. scheduledFor, fixed when the meeting was scheduled) and `activatedAt` is when the meeting REALLY became runnable (the touch that completed the attendance rule, or the chair proceed). A scheduled meeting that had to wait therefore has openedAt earlier than activatedAt, and `startedLate` says so; `lateReads.openedAt` on an attend receipt is the baseline, and null while the meeting has not started',
     }
   }
 
@@ -2053,14 +2129,17 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       m.state = 'open'
       m.startedLate = true
       markState(m, 'open')
-      say({ type: 'meetings/started', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: now - (Number.isFinite(m.waitStartedAt) ? m.waitStartedAt : now), quorum: quorumOf(m), via: 'latecomer', enforcedScope: ENFORCED_SCOPE })
+      say({ type: 'meetings/started', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: Math.max(0, now - (Number.isFinite(m.waitStartedAt) ? m.waitStartedAt : now)), quorum: quorumOf(m), via: 'latecomer', enforcedScope: ENFORCED_SCOPE })
       return 'started'
     }
     if (m.waitDecisionDue === true) return null
-    if (K.waitOnDueMs > 0 && now - m.waitStartedAt < K.waitOnDueMs) return null
+    // ★★ RUN 256 / F-MX-01: the deadline this branch compares against is the EXTENDED one — the extension is a step
+    // on the same derived deadline (see `waitDueOf`), so an extended wait does not fall due at the original instant.
+    const waitTotalMs = K.waitOnDueMs + waitExtendedOf(m)
+    if (waitTotalMs > 0 && now - m.waitStartedAt < waitTotalMs) return null
     m.waitDecisionDue = true
-    say({ type: 'meetings/wait-expired', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: now - m.waitStartedAt,
-      waitOnDueMs: K.waitOnDueMs, quorum: quorumOf(m), enforcedScope: ENFORCED_SCOPE,
+    say({ type: 'meetings/wait-expired', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: Math.max(0, now - m.waitStartedAt),
+      waitOnDueMs: K.waitOnDueMs, waitExtendedMs: waitExtendedOf(m), waitTotalMs, quorum: quorumOf(m), enforcedScope: ENFORCED_SCOPE,
       note: 'the framework does not decide: the chair proceeds (proceed), lapses (lapse) or recesses (recess)' })
     return 'wait-expired'
   }
@@ -2444,12 +2523,70 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           }
         }
       }
-      if (m.state !== 'waiting') {
-        throw deny('VMU_STATE', 'proceed() only applies to a meeting WAITING for its scheduled start: ' + mid + ' is ' + m.state,
-          m.state === 'scheduled' ? 'its start time has not arrived yet; nothing is late' : 'the meeting is already running — just act in it', enforced)
+      // ★★★ RUN 262 / TB-2661 (taskbook TB-2661, prompt-lane measured "预约的会议开不了"): a SCHEDULED meeting had NO
+      // way to be started NOW. proceed() only accepted `waiting`; beat() only touches the sweep; there was no
+      // reschedule/advance. So a chair whose people had all arrived at T-1h could not open the meeting it appointed.
+      // The promise already existed in the reading: startBlockOf() nextActions for `scheduled` says "the chair may open
+      // it early" — a promise with no mechanism behind it. Two gates, both reused rather than re-derived: the chair is
+      // the only authority that can start early (the same authority act as proceed after a wait), and the ATTENDANCE
+      // RULE is the ONE predicate `attendanceRuleMet` — never a second calculation of who counts as present.
+      let earlyAttendance = null
+      const startsEarly = m.state === 'scheduled'
+      if (startsEarly) {
+        // ★ RUN 262 / TB-2661 + R240: the early-start authority is a SETTING, declared in settings/schema.js and
+        // wired in meetings-defaults.js (`K` is the construction-time snapshot, hot class H2). Default TRUE
+        // reproduces the measured behaviour — only the chair may start a scheduled meeting early. `false` removes
+        // the SEAT rail only: the attendance rule below still decides whether the meeting may open at all, so the
+        // setting never turns "can it start" into a free-for-all.
+        if (K.startEarlyRequiresChair !== false) {
+          mark(enforced, 'vmu.meetings.startEarlyRequiresChair')
+          if (m.chair === null || who !== m.chair) {
+            throw deny('VMU_NOT_PERMITTED',
+              m.chair === null
+                ? 'proceed() cannot start ' + mid + ' before its scheduled time: the meeting has no chair, so nobody is authorised to start it early'
+                : 'only the meeting chair may start ' + mid + ' before its scheduled time: actor ' + String(who) + ' != chair ' + m.chair,
+              m.chair === null
+                ? 'a meeting with no chair can only start at its scheduled time: the due-time touch evaluates the attendance rule and opens it when that rule is met'
+                : 'pass { actor: "' + m.chair + '" } - ' + ACTOR_ALIASES + ' (this is the chair authority act; the scheduled time is the other way in)',
+              enforced)
+          }
+        }
+        const arrival = arrivalReadsOf(m)
+        earlyAttendance = {
+          met: attendanceRuleMet(m) === true,
+          missing: arrival.missing.slice(),
+          electorateSize: arrival.electorateSize,
+          electoratePresent: arrival.electoratePresent,
+          opensOn: arrival.opensOn,
+          means: 'attendance.missing names the ELECTORATE members who have not attended yet (the same list arrivalReadsOf publishes); the chair may start a scheduled meeting early only when the attendance rule is met, so an empty missing list is the precondition for startsEarly:true',
+        }
+        if (earlyAttendance.met !== true) {
+          const e = deny('VMU_STATE',
+            'proceed() cannot start ' + mid + ' early: the attendance rule is not met (' + String(arrival.electoratePresent) + ' of ' + String(arrival.electorateSize) + ' present; missing: ' + (arrival.missing.join(', ') || '(none named)') + ')',
+            'the chair may start a scheduled meeting as soon as the attendance rule is met: the missing members must first attend (vibe_vmu_meeting {action:"attend", id:"' + mid + '", member:"<成员id>"}), then proceed({ meeting, actor | by | member }) opens it; the missing ids are also carried on the refusal as attendance.missing',
+            enforced)
+          e.attendance = earlyAttendance
+          throw e
+        }
+        // the early branch continues into the ONE opening code below; nothing about the state machine is duplicated
+      }
+      if (m.state !== 'waiting' && m.state !== 'scheduled') {
+        throw deny('VMU_STATE', 'proceed() only applies to a SCHEDULED or WAITING meeting: ' + mid + ' is ' + m.state,
+          m.state === 'open' ? 'the meeting is already running — proceed() has nothing left to open; act in it (speak/vote/hand)' : 'the meeting is closed: reopen it first', enforced)
       }
       const beforeDeadline = m.waitDecisionDue !== true
-      const waitedMs = Number.isFinite(m.waitStartedAt) ? now - m.waitStartedAt : 0
+      // ★★ RUN 256 / F-MX-03 (TB-2619): ONE FIELD, ONE MEANING. `waitedMs` is the time the waiting ACTUALLY RAN and
+      // can never be negative; the earliness (proceed before the declared wait began) is `earlyByMs`, >0 only in that
+      // case. Measured pre-fix on the meeting matrix: chair proceed() at NOW against waitStartedAt NOW+60001 answered
+      // `waitedMs: -60001` — a negative duration under a name that promises "how long did we wait".
+      // ★★★ RUN 262 / TB-2661: on the scheduled path there is NO wait to describe, so both readings are computed from
+      // the OTHER clock: waitedMs is 0 (nothing waited) and earlyByMs is scheduledFor - now (how early the chair jumped
+      // the appointment). Each path carries its own means sentence; one field never silently answers two questions.
+      const waitedRawMs = Number.isFinite(m.waitStartedAt) ? now - m.waitStartedAt : 0
+      const waitedMs = startsEarly ? 0 : Math.max(0, waitedRawMs)
+      const earlyByMs = startsEarly
+        ? Math.max(0, (Number.isFinite(m.scheduledFor) ? m.scheduledFor : now) - now)
+        : Math.max(0, -waitedRawMs)
       // ★★★ PHASE 12 / R17 (the institute's own run-16 report, item 1): the state DID move here, and the bounded
       // transition history did not see it. The recorder sat inside syncMeeting, so the touch path through
       // syncMeeting (attend/speak) was recorded while proceed() — which assigns m.state directly — was not. Measured
@@ -2459,11 +2596,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const beforeState = m.state
       m.state = 'open'
       m.activatedAt = now
-      m.startedLate = true
+      // ★ RUN 262 / TB-2661: startedLate means "started AFTER the appointed time", and an early start is the opposite
+      // fact. It was hard-coded true because proceed() only existed on the waiting path (always after the due time).
+      m.startedLate = startsEarly !== true
       markState(m, 'open')
       recordTransition(m, beforeState, now)
       const whyText = (why === null || why === undefined) ? null : String(why)
-      m.minutes.entries.push({ at: now, kind: 'proceeded', by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m) })
+      m.minutes.entries.push({ at: now, kind: 'proceeded', by: who, why: whyText, waitedMs, earlyByMs, beforeDeadline, startsEarly, attendance: earlyAttendance, quorum: quorumOf(m) })
       // ★ LIVE RUN 9, finding E: the agent read "proceed succeeded" and asked whether the roster had been checked.
       // Refusing would be wrong (proceeding IS the chair's override of an unmet quorum — that is what 等待 exists for),
       // but the receipt has to SAY so: `quorum.met` alone is easy to read as "the institution rule was satisfied".
@@ -2486,18 +2625,18 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // so 'started early' and 'started after the deadline' are distinguishable without arithmetic on the clock.
       const unanimityUnmet = !!(qAfter.unanimity && qAfter.unanimity.met !== true)
       const overrodeRecord = overrodeQuorum
-        ? { by: who, rule: 'meetings.proceed: the chair may start a meeting after its declared wait even when the floor is unmet', whichRule: 'floor', floor: qAfter.required, present: qAfter.present, waitedMs, beforeDeadline }
+        ? { by: who, rule: 'meetings.proceed: the chair may start a meeting after its declared wait even when the floor is unmet', whichRule: 'floor', floor: qAfter.required, present: qAfter.present, waitedMs, earlyByMs, beforeDeadline }
         : (unanimityUnmet
-            ? { by: who, rule: 'meetings.proceed: the chair may start a meeting before the institution rule is met (unanimity of attendance/votes)', whichRule: 'institution-rule', unmetRule: 'unanimity', floor: qAfter.required, floorMet: qAfter.met === true, present: qAfter.present, roster: qAfter.roster, unanswered: (qAfter.unansweredList || []).slice(), waitedMs, beforeDeadline }
+            ? { by: who, rule: 'meetings.proceed: the chair may start a meeting before the institution rule is met (unanimity of attendance/votes)', whichRule: 'institution-rule', unmetRule: 'unanimity', floor: qAfter.required, floorMet: qAfter.met === true, present: qAfter.present, roster: qAfter.roster, unanswered: (qAfter.unansweredList || []).slice(), waitedMs, earlyByMs, beforeDeadline }
             : null)
-      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum: overrodeRecord, overrodeQuorumFlag: overrodeRecord !== null, overrode: overrodeRecord, overrodeNote: overrodeRecord === null ? null : (overrodeRecord.whichRule === 'floor' ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : 'the meeting started with the FLOOR met but the institution rule (unanimity) unmet: the chair used proceed() to start it early, which is the same authority act and is recorded here so it is not read as "nothing was overridden"'), enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, earlyByMs, earlyByMsMeans: startsEarly ? SCHEDULED_EARLY_MS_MEANS : EARLY_BY_MS_MEANS, waitedMsMeans: startsEarly ? 'waitedMs is 0 on the scheduled path: no declared wait had begun — the chair started the meeting before its appointed time, and that earliness is read through earlyByMs' : WAITED_MS_MEANS, beforeDeadline, startsEarly, startedAt: now, scheduledFor: m.scheduledFor, attendance: earlyAttendance, atSource: at === null || at === undefined ? 'kernel-clock' : 'caller', atSourceMeans: at === null || at === undefined ? 'atSource:"kernel-clock": the instant was read from the kernel clock, not supplied by the caller' : 'atSource:"caller": the instant was supplied through the at argument (resolved by the kernel clock seam); the receipt still states the resolved instant', quorum: qAfter, overrodeQuorum: overrodeRecord, overrodeQuorumFlag: overrodeRecord !== null, overrode: overrodeRecord, overrodeNote: overrodeRecord === null ? null : (overrodeRecord.whichRule === 'floor' ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : 'the meeting started with the FLOOR met but the institution rule (unanimity) unmet: the chair used proceed() to start it early, which is the same authority act and is recorded here so it is not read as "nothing was overridden"'), enforced, enforcedScope: ENFORCED_SCOPE }
       // ★★★ RUN 251 / F71-13: the start window rides on the proceed receipt (and on the return value, which spreads
       // this receipt): after a proceed the meeting IS started, so `elapsedSinceMs` is 0 here and `startsInMs` is null —
       // the reader can see the two states with two named fields instead of one `elapsedMs` that changed meaning.
       Object.assign(receipt, startBlockOf(m, now))
       pushReceipt(settleReceipt(m, "proceed", now, receipt))
-      say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
-      return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: true, receipt }, receipt)
+      say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, earlyByMs, beforeDeadline, startsEarly, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
+      return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: startsEarly !== true, startsEarly, receipt }, receipt)
     },
 
     /** Join. `lateAfterMs` decides whether a late arrival is allowed/recorded/refused. */
@@ -2593,10 +2732,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           }
           const q0 = quorumOf(m)
           const held = pendingLateMembers(m)
-          const receipt = { at: ms, action: 'attend', meeting: m.id, member, late: true, lateReads, lateMeans, lateAdmission: 'chair', pendingLate: true, alreadyPending: already, pendingLateMembers: held, pendingLateCount: held.length, quorum: q0, state: m.state, settled: null, enforced, enforcedScope: ENFORCED_SCOPE }
+          const receipt = { at: ms, action: 'attend', meeting: m.id, member, late: true, lateReads, lateMeans, lateAdmission: latePolicy, pendingLate: true, alreadyPending: already, pendingLateMembers: held, pendingLateCount: held.length, quorum: q0, state: m.state, settled: null, enforced, enforcedScope: ENFORCED_SCOPE }
           pushReceipt(receipt)
           say({ type: 'meetings/latePending', at: ms, meeting: m.id, member, state: m.state, enforced, enforcedScope: ENFORCED_SCOPE })
-          return { ok: true, late: true, lateAdmission: 'chair', pendingLate: true, alreadyPending: already,
+          return { ok: true, late: true, lateAdmission: latePolicy, pendingLate: true, alreadyPending: already,
             ...lateReads, lateMeans,
             pendingLateMembers: held, pendingLateCount: held.length,
             alreadyPresent: false, alreadyPresentMeans: 'this member is NOT seated: lateAdmission is "chair", so the arrival waits at the door until the chair calls admit()',
@@ -3802,12 +3941,19 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
      * names both numbers, so "how far can I go" is answerable before the call rather than after it.
      */
     extendWall({ meeting, ms = null, at = null, actor = null, why = null } = {}) {
-      const m = requireMeeting(meeting)
+      // ★★ RUN 256 / F-MX-01 (TB-2619): allowPending — the state rail refuses every act on a waiting meeting by
+      // design, so without this flag extendlimit() could never reach the wait branch below (it answered VMU_STATE
+      // before the chair gate, which also made a NON-chair caller read as "wrong phase" instead of "not permitted").
+      const m = requireMeeting(meeting, { allowPending: true, at: at === null || at === undefined ? null : atMs(at) })
       const enforced = []
       const now = at === null ? clock() : atMs(at)
-      if (m.state !== 'open' && m.state !== 'recess') {
-        throw deny('VMU_STATE', 'only an open (or recessed) meeting can be extended: ' + m.id + ' is ' + m.state,
-          'reopen() it first, or open a new meeting', enforced)
+      // ★★ RUN 256 / F-MX-01 (TB-2619): a WAITING meeting is now extendable too — the thing being moved is its
+      // DECLARED WAIT, not its wall clock. Before this, the only answer to "the room is filling, give them more time"
+      // was proceed() (start the meeting WITHOUT the people the wait exists for), lapse or close: three wrong tools.
+      const waiting = m.state === 'waiting'
+      if (!waiting && m.state !== 'open' && m.state !== 'recess') {
+        throw deny('VMU_STATE', 'only a waiting, open (or recessed) meeting can be extended: ' + m.id + ' is ' + m.state,
+          'a scheduling meeting has not reached its start yet; a closed one cannot be extended — open a new meeting instead', enforced)
       }
       mark(enforced, 'vmu.meetings.extendRequiresChair')
       if (K.extendRequiresChair) {
@@ -3830,6 +3976,36 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       if (!Number.isFinite(Number(ms)) || Number(ms) <= 0) {
         throw deny('VMU_INVALID_ARGUMENT', 'extend needs a positive step in ms; got ' + String(ms),
           'e.g. { ms: 600000 } adds ten minutes to this meeting wall bound (vmu.meetings.extendCeilingMs caps the total)', enforced)
+      }
+      // ★★ RUN 256 / F-MX-01: WAIT EXTENSION — the declared wait gets a step; the wall clock is untouched.
+      if (waiting) {
+        const step = Number(ms)
+        const usedMs = (Number(m.extendedMs) || 0) + waitExtendedOf(m)
+        const leftMs = Math.max(0, K.extendCeilingMs - usedMs)
+        if (step > leftMs) {
+          mark(enforced, 'vmu.meetings.extendCeilingMs')
+          // ★ NAMED BY ITS OWN CODE (TB-2619): a wait extension past `extendCeilingMs` is not a generic state error —
+          // the caller needs to know WHICH declaration ran out, and `VMU_STATE` would say the meeting is in the wrong
+          // phase, which it is not. The open-case wall refusal keeps VMU_RESOURCE_BUDGET (that is the wall clock's
+          // documented answer); the two bounds now have two names because they are two different budgets' remainders.
+          throw deny('VMU_EXTEND_CEILING', 'the extended wait would pass the extension ceiling: ' + (usedMs + step) + ' / ' + K.extendCeilingMs + ' ms (used ' + usedMs + ' + ' + step + ')',
+            'wait and wall extensions share ONE budget (vmu.meetings.extendCeilingMs); ' + leftMs + ' ms remain — close this meeting and open a new one instead of extending without bound', enforced)
+        }
+        const startsIn = startBlockOf(m, now).startsInMs
+        const dueBefore = waitDueOf(m)
+        const before = { startsInMs: startsIn, waitStartedAt: Number.isFinite(m.waitStartedAt) ? m.waitStartedAt : null, waitDeadlineIso: dueBefore === null ? null : isoOf(dueBefore), waitRemainingMs: dueBefore === null ? null : Math.max(0, dueBefore - now), waitDecisionDue: m.waitDecisionDue === true }
+        m.waitExtendedMs = waitExtendedOf(m) + step
+        m.extensions = (Number(m.extensions) || 0) + 1
+        const afterDue = waitDueOf(m)
+        // NOTE: `startsInMs` is the distance to the SCHEDULED start and must NOT move (the appointment is fixed); the
+        // thing the extension grows is the WAIT window — `waitRemainingMs`/`waitDeadlineIso` in the same receipt. A
+        // reader who wants "how much longer may the room fill" reads those two, not the appointment clock.
+        const after = { startsInMs: startBlockOf(m, now).startsInMs, waitStartedAt: Number.isFinite(m.waitStartedAt) ? m.waitStartedAt : null, waitDeadlineIso: afterDue === null ? null : isoOf(afterDue), waitRemainingMs: afterDue === null ? null : Math.max(0, afterDue - now), waitDecisionDue: m.waitDecisionDue === true }
+        const extensionsLeft = Math.max(0, K.extendCeilingMs - ((Number(m.extendedMs) || 0) + waitExtendedOf(m)))
+        const receipt = { at: now, action: 'extend', kind: 'wait', meeting: m.id, ms: step, extendedByMs: step, waitExtendedMs: waitExtendedOf(m), waitRemainingMs: after.waitRemainingMs, extensionsUsed: m.extensions, extensionsLeft, before, after, waitDeadlineIso: after.waitDeadlineIso, waitDeadlineAt: afterDue, actor: (actor === null || actor === undefined) ? null : String(actor), why: why === null ? null : String(why), enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+        pushReceipt(settleReceipt(m, 'extendwait', now, receipt))
+        say({ type: 'meetings/wait-extended', at: now, meeting: m.id, ms: step, waitExtendedMs: waitExtendedOf(m), waitDeadlineIso: after.waitDeadlineIso, extensions: m.extensions, actor: receipt.actor, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
+        return { ok: true, kind: 'wait', meeting: m.id, ms: step, extendedByMs: step, waitExtendedMs: waitExtendedOf(m), waitRemainingMs: after.waitRemainingMs, extensionsUsed: m.extensions, extensionsLeft, before, after, waitDeadlineIso: after.waitDeadlineIso, waitDeadlineAt: afterDue, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
       }
       const before = wallLimitOf(m)
       const after = before + Number(ms)
@@ -4385,7 +4561,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       subjectGate = null,
     // ★ the recommended procedure the convenor was shown, for the same reason: it is not a gate, but it IS part of
     // what the convention promised at the moment it was made, and a read face should be able to say what that was.
-      procedure = null, lateAdmission = 'open', wallLimitMs = null,
+      procedure = null, lateAdmission = 'chair', wallLimitMs = null,
     // ★★★ ROUND 240 (FEEDBACK63 ①6): the FORMAL AGENDA used to be a pack-only boolean that reached no kernel field.
     // `formalAgenda` accepts the declaration the pack already forwards (`true`) and, now, a per-item LIST — the caller
     // that wants "a formal agenda" to mean "these items were registered" must be able to say so. `formal_agenda` and
@@ -4654,7 +4830,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // ★★★ RUN 225-B — the late-admission policy is a CLOSED vocabulary carried ON THE MEETING ROW. An unknown word is
     // refused BY NAME (and the legal list printed): silently falling back to the default is how a house rule the
     // caller asked for disappears without a trace.
-    const lateAdmissionRef = (lateAdmission === null || lateAdmission === undefined) ? 'open' : String(lateAdmission)
+    const lateAdmissionRef = (lateAdmission === null || lateAdmission === undefined) ? 'chair' : String(lateAdmission)
     if (!LATE_ADMISSION_MODES.includes(lateAdmissionRef)) {
       throw deny('VMU_INVALID_ARGUMENT',
         'unknown lateAdmission: ' + JSON.stringify(lateAdmission) + ' (typeof ' + typeof lateAdmission + ')',
@@ -4732,6 +4908,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // "everyone was invited and nobody answered".
       targets: appointment.targets, targetsMeans: appointment.targetsMeans,
       skipped: appointment.skipped, skippedMeans: appointment.skippedMeans,
+      // ★ RUN 255 / TB-2606-A (FEEDBACK74 #10): the SAME list under the name the quorum block uses. Derived from
+      // `appointment.skipped.attendDenied` (never recomputed here), so a reader who compares the two names cannot find
+      // them disagreeing - one computation of `attendanceScopeOf`, two spellings.
+      nonAttending: appointment.skipped.attendDenied.slice(),
+      nonAttendingMeans: 'the roster members whose seat vmu.meetings.attendDeniedSeats forbids to attend: the SAME list as `skipped.attendDenied` (derived from it, not computed a second time), and the list the quorum block also prints as `nonAttending` - they are on the roster and in no invitation',
       notifyMeans: 'one durable mailbox row per invited member (channel "mail", kind "meeting-appointment", dedupeKey meeting-appoint:<meeting id>): an invitation is MAIL, not a wake, so the member sees it in the notice block of their next turn and settles it with mailbox ack',
       // ★★★ ROUND 240: the SAME formal-agenda reading `summary`/`status` spread, so the open receipt and the later
       // read faces cannot disagree about what was declared (the defect: the receipt carried a boolean, the read face
@@ -4768,6 +4949,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // ★★★ RUN 254-E / F-73-05: the same exclusions, at the top level (the same reason `notified` is here).
       targets: appointment.targets, targetsMeans: appointment.targetsMeans,
       skipped: appointment.skipped, skippedMeans: appointment.skippedMeans,
+      // ★ RUN 255 / TB-2606-A (FEEDBACK74 #10): same name as the quorum block, derived from the invitation computation
+      // (one computation, two spellings - see the receipt note).
+      nonAttending: appointment.skipped.attendDenied.slice(),
       // ★★★ ROUND 240: same formal-agenda reading as the receipt (one projection, no second wording).
       ...formalAgendaOf(m),
       sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt,

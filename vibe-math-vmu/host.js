@@ -1011,7 +1011,9 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
-          return refused(e.code || 'VMU_NO_SUCH_OBJECT', String(e.message), e.hint)
+          // ★★★ RUN 263 / TB-2668: the kernel attaches its refusal facts to the thrown error; this catch dropped them
+          // (`refused(code, message, hint)` has no 4th argument), so a caller read a named refusal with no names in it.
+          return refused(e.code || 'VMU_NO_SUCH_OBJECT', String(e.message), e.hint, e)
         }
       },
     })
@@ -1023,7 +1025,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       name: TOOL_NAMES.records,
       description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）｜reindex（★ md 是正文真相、行是索引：扫描库根下的 md，把「磁盘被外部改过」「md 有而索引没有」「索引有而 md 不在」逐项对账——改过的认成新索引行（旧行与旧正文留在历史里，不删），没有的补行，缺的文件具名报告；只加不改，dryRun:true 只预告）',
       parameters: {
-        action: param('string', 'list（默认）｜expand｜append｜status｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）｜reindex（扫描库根下的 md 并让索引承认磁盘：md 被外部改过→换新索引行且旧行与旧正文留在历史里；md 有而索引无→补行；索引有而 md 不在→具名报告，不删行）', { required: true, enum: ['list', 'expand', 'append', 'status', 'prune', 'restore'].concat(['reindex']) }),
+        action: param('string', 'list（默认）｜get（按 id 取正文，与 expand 是同一个实现——任务书里的 records.get 就是这个动作）｜expand（按 id 取正文，超限计数）｜append｜status｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）｜reindex（扫描库根下的 md 并让索引承认磁盘：md 被外部改过→换新索引行且旧行与旧正文留在历史里；md 有而索引无→补行；索引有而 md 不在→具名报告，不删行）', { required: true, enum: ['list', 'get', 'expand', 'append', 'status', 'prune', 'restore'].concat(['reindex']) }),
         id: param('string', '记录 id（expand 必填；restore 必填，可传多个用逗号分隔）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
         track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）；reindex：只对账这一轨的 md（省略＝全部声明轨）'),
@@ -1037,34 +1039,38 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         since: param('string', 'list：时间窗下界（ISO 时间戳，按行最后一次写入 updatedAt 比较；直接抄回执里的 writesWindow.from）'),
         until: param('string', 'list：时间窗上界（ISO 时间戳；直接抄回执里的 writesWindow.to）'),
         dryRun: param('boolean', 'prune：true = 只预告会移哪些行，不动数据；reindex：true = 只对账并列出会补/会换哪些索引行，不写任何行'),
+        includeUntracked: param('boolean', 'list：默认 false —— `track` 为 undefined 的行（图书馆的 ruling 卡与其它无轨头）不进页面；true 时显式带出它们。被排除的数量与 id 在 excluded.untracked / excluded.untrackedIds，绝不静默丢'),
       },
-      run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, since, until, dryRun } = {}, exec = null) => {
+      run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, since, until, dryRun, includeUntracked } = {}, exec = null) => {
         try {
+          // ★★★ RUN 256 (TB-2624 item 2): the taskbooks say `records.get` and this face refused `unknown action: get`
+          // even though `expand` has always been the by-id read. The alias is ONE line into the SAME branch — copying
+          // the expand body would create a second implementation of one action, which is the drift this round removes.
+          if (action === 'get') action = 'expand'
           // ★ SLV (measured): this face read `kernel.library` while the v3 data plane writes `kernel.records` - two
           // different stores, so every card was invisible here (`records: []` beside a non-zero journal). The RECORDS
           // projection is the authority for record tracks; the library remains the append/archival face (its `append`
           // has its own kind model). Read records first, library only as the zero-mechanism fallback.
           const rc = kernel && kernel.records ? kernel.records : null
           if (action === 'list') {
-            // ★ RUN 164 (measured, FEEDBACK12 item 2): this branch AWAITED `kernel.library.list()` FIRST and, whenever it
-            // answered non-empty, returned those rows and NOTHING ELSE — so `track:"paper"`, `track:"obstacles"` and no
-            // track at all answered the SAME 7 ruling heads (`total` 7) while `status.byTrack` said paper 212 / obstacles 1,
-            // and the ids it printed were refused by `expand` (they live in the pack library, not in the records projection).
-            // A filter the caller passed must be APPLIED, and an id this face printed must be READABLE by this face.
-            // So: read BOTH stores, say where each row came from, apply track/kind/limit, and report caps honestly.
-            const libItems = await kernel.library.list({ withWriter: true })
-            const libRows = Array.isArray(libItems) ? libItems : []
+            // RUN 256 / TB-2617 (P0-3, MEASURED): ONE FACE, ONE ARITHMETIC SITE.
+            // This branch used to read the ledger, read the pack library, filter/merge/page both sides and compute its
+            // OWN `excluded` / `total`. For the same instant and the same query the kernel answered
+            // `excluded:{shapeMismatch:1,noWriter:['rec-1']}` while this face answered all-zero excluded and had no
+            // `totalUniverse` - two faces, two truths. It now hands the library heads to `kernel.records.list` as
+            // `external` rows and forwards that ONE receipt: exclusions, totals, page cap and identity are computed
+            // there; this face only renames the row list (`records`) and keeps its explanatory readings.
+            if (!rc || typeof rc.list !== 'function') {
+              return refused('VMU_NO_SUCH_OBJECT', 'this kernel has no records face',
+                'the records projection is not attached in this deployment, so the record tracks cannot be listed')
+            }
             const trackArg = (typeof track === 'string' && track.trim() !== '') ? track.trim() : null
             const kindArg = (typeof kind === 'string' && kind.trim() !== '') ? kind.trim() : null
-            // ★ RUN 164b: the FIRST cut passed `limit` into the store read, so `total` became the page size and the
-            // receipt could no longer say "5 of 21" (a one-line regression of the G7 accounting rule). Read the store
-            // UNCAPPED and cap only the answer, so `total` is the size of the set the filters cover.
-            // `limit:0` is the caller's escape hatch: it must fetch the WHOLE set from the store (the head list caps at
-            // headListAt otherwise), while the default read stays capped and still reports the real `total`.
-            // ★★★ RUN 254 / P1-2 (audit13 brief): a `limit` that is not a usable page size used to be SILENTLY DROPPED
-            // here (`limit:-3` fell through to "no cap", so the caller got every row and could not tell its own argument
-            // had been ignored). The kernel `records.list` now refuses that shape by name; this face must not launder the
-            // refusal back into a plausible answer, so it validates the argument BEFORE reading either store.
+            const byFilterArg = (typeof by === 'string' && by.trim() !== '') ? by.trim() : null
+            const sinceFilterArg = (typeof since === 'string' && since.trim() !== '') ? since.trim() : null
+            const untilFilterArg = (typeof until === 'string' && until.trim() !== '') ? until.trim() : null
+            // `limit` is validated here only so the refusal names the argument BEFORE either store is read; the
+            // meaning (0 = every row, 1..n = page, omitted = vmu.records.headListAt) lives in the kernel.
             const limitArg = (() => {
               if (limit === undefined || limit === null) return null
               const numeric = typeof limit === 'number' ? limit : Number(String(limit).trim())
@@ -1076,140 +1082,87 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 'limit is not a usable page size: ' + JSON.stringify(limit),
                 'pass a non-negative integer (0 = every row, 1..n = page size), or omit `limit` to use vmu.records.headListAt')
             }
+            const libItems = await kernel.library.list({ withWriter: true })
+            const libRows = Array.isArray(libItems) ? libItems : []
+            const query = { external: libRows, externalSource: 'library', includeUntracked: includeUntracked === true, limit: limitArg }
+            if (trackArg !== null) query.track = trackArg
+            if (kindArg !== null) query.kind = kindArg
+            if (byFilterArg !== null) query.by = byFilterArg
+            if (sinceFilterArg !== null) query.since = sinceFilterArg
+            if (untilFilterArg !== null) query.until = untilFilterArg
+            let listed
+            try {
+              listed = rc.list(query)
+            } catch (e) {
+              // RUN 256: `ok:false` is forwarded with the SAME code, message and facts - never laundered into a
+              // plausible empty page. The kernel's refusal IS this face's refusal.
+              return refused(e && e.code ? e.code : 'VMU_INVALID_ARGUMENT', String((e && e.message) || e), e && e.hint)
+            }
+            const rows = Array.isArray(listed.items) ? listed.items : []
+            const excluded = listed.excluded
+            const total = listed.total
+            const returned = rows.length
+            // RUN 254 / P1-2 compatibility: the FACE reports whose cap applied, and "no caller page cap"
+            // is its own answer (`limitUsed:null`). The kernel inside applies vmu.records.headListAt as its
+            // own default page size; that is the store's cap, not a cap this call asked for, so it must not
+            // be laundered into `limitUsed`. A caller that passed `limit` still gets their own number back.
             const wantAll = limitArg === 0
-            // RUN 243 (FEEDBACK65 1.8): the three filters the writesWindow hint needs. A filter the caller passed is
-            // APPLIED; a time that does not parse is refused by the kernel by name, never silently ignored.
-            const byFilterArg = (typeof by === 'string' && by.trim() !== '') ? by.trim() : null
-            const sinceFilterArg = (typeof since === 'string' && since.trim() !== '') ? since.trim() : null
-            const untilFilterArg = (typeof until === 'string' && until.trim() !== '') ? until.trim() : null
-            const query = Object.assign({},
-              trackArg === null ? {} : { track: trackArg },
-              byFilterArg === null ? {} : { by: byFilterArg },
-              sinceFilterArg === null ? {} : { since: sinceFilterArg },
-              untilFilterArg === null ? {} : { until: untilFilterArg })
-            const listed = rc && typeof rc.list === 'function'
-              ? rc.list(wantAll ? Object.assign({}, query, { limit: 0 }) : query)
-              : null
-            const recRows = listed && Array.isArray(listed.items) ? listed.items : []
-            // the store's own accounting: `available` is the size of the set BEFORE the head cap (count = page size).
-            const recTotal = listed && Number.isInteger(listed.available) ? listed.available
-              : (listed && Number.isInteger(listed.count) ? listed.count : recRows.length)
-            const seen = new Set(recRows.map((r) => r && r.id))
-            // A library head carries no `track` field (its tracks live in the store path), so when the caller asked for a
-            // track the library cannot answer it — it is EXCLUDED BY NAME rather than returned as if it matched.
-            // ★★★ RUN 254 / P0-2 (L1, MEASURED): RUN 243 extended that same rule to the WRITER and the TIME WINDOW, and
-            // that was wrong for the writer: a library head DID carry `owner` (and now carries `writer`), so a `by` query
-            // excluded every card wholesale and answered total:0 while the card sat in the store — the very silent
-            // exclusion this action exists to prevent. The rule now judges each row: a row that carries the fact is
-            // filtered by it, and a row that does NOT is excluded BY NAME with a count, never dropped without a reading.
-            const parseTimeArg = (s) => {
-              const n = Number(s)
-              if (Number.isFinite(n)) return n
-              const p = Date.parse(String(s))
-              return Number.isFinite(p) ? p : null
-            }
-            const sinceMs = sinceFilterArg === null ? null : parseTimeArg(sinceFilterArg)
-            const untilMs = untilFilterArg === null ? null : parseTimeArg(untilFilterArg)
-            if ((sinceFilterArg !== null && sinceMs === null) || (untilFilterArg !== null && untilMs === null)) {
-              return refused('VMU_INVALID_ARGUMENT',
-                'this face cannot parse the time window: since=' + JSON.stringify(sinceFilterArg) + ' until=' + JSON.stringify(untilFilterArg),
-                'pass epoch milliseconds (number or numeric string) or an ISO-8601 timestamp; a window that does not parse is refused by name, never ignored')
-            }
-            const libWriterOf = (r) => {
-              if (!r) return null
-              for (const f of ['writer', 'by', 'owner']) {
-                const v = r[f]
-                if (typeof v === 'string' && v.trim() !== '') return { writer: v.trim(), source: f }
-              }
-              return null
-            }
-            const libTimeOf = (r) => {
-              const v = r && r.updatedAt
-              // ★ RUN 254: a MISSING time is not 1970. `Number(null)` and `Number('')` are 0, so the naive
-              // coercion turned an unreadable row into "written at the epoch" and let it pass every window.
-              if (v === null || v === undefined || v === '') return null
-              if (typeof v === 'number' && Number.isFinite(v)) return v
-              const n = Number(v)
-              if (Number.isFinite(n)) return n
-              const p = Date.parse(String(v))
-              return Number.isFinite(p) ? p : null
-            }
-            const excluded = { shapeMismatch: 0, noWriter: [], timeUnknown: [] }
-            const libKept = []
-            if (trackArg === null) {
-              for (const r of libRows) {
-                if (!r || seen.has(r && r.id)) continue
-                const w = libWriterOf(r)
-                if (byFilterArg !== null) {
-                  if (w === null) { excluded.shapeMismatch += 1; excluded.noWriter.push(String(r.id || '(no id)')); continue }
-                  if (w.writer !== byFilterArg) continue
-                }
-                if (sinceMs !== null || untilMs !== null) {
-                  const t = libTimeOf(r)
-                  if (t === null) { excluded.shapeMismatch += 1; excluded.timeUnknown.push(String(r.id || '(no id)')); continue }
-                  if (sinceMs !== null && t < sinceMs) continue
-                  if (untilMs !== null && t > untilMs) continue
-                }
-                libKept.push(Object.assign({}, r, { writer: w === null ? null : w.writer, writerSource: w === null ? null : w.source }))
-              }
-            }
-            let rows = recRows.concat(libKept)
-            if (kindArg !== null) rows = rows.filter((r) => r && typeof r.kind === 'string' && r.kind === kindArg)
-            const cap = limitArg !== null && limitArg > 0 ? limitArg : null
-            const returnedRows = wantAll || cap === null ? rows : rows.slice(0, cap)
-            // ★ RUN 254 / P1-2: the receipt says WHICH page size it used and WHERE it came from, so a caller whose
-            // argument was dropped (or never given) can see the ceiling instead of guessing why the page is short.
-            const limitUsed = wantAll ? 0 : (cap === null ? null : cap)
+            const limitUsed = wantAll ? 0 : (limitArg === null ? null : limitArg)
             const limitSource = wantAll
               ? 'caller (0 = every row)'
-              : (cap === null ? 'no caller page cap: the stores apply their own caps (vmu.records.headListAt)' : 'caller')
-            // `total` is the size of the set the filters COVER, not the size of the page: the store reports its own
-            // count (which is uncapped) and the library contributes its heads.
-            const total = Math.max(kindArg === null ? recTotal + libKept.length : 0, rows.length)
-            const truncated = returnedRows.length < total || (listed && listed.truncated === true)
-            // ★★ RUN 175 (run 20 FEEDBACK20 ④): `truncated:true` used to come with a hint that named two possible
-            // cause families ("cap 或轨/类型过滤"), so a reader holding `total:66, returned:7` could not act: was the
-            // page cut by THEIR `limit`, by `vmu.records.headListAt`, or by the store's own head cap? The receipt now
-            // names the ceiling that actually bit, with the numbers it used.
-            const headListAt = (() => {
-              try {
-                const s = kernel && kernel.settings
-                if (s && typeof s.get === 'function') {
-                  const v = s.get('vmu.records.headListAt')
-                  if (typeof v === 'number' && Number.isFinite(v)) return v
-                  const n = Number(v)
-                  if (Number.isFinite(n) && n > 0) return n
-                }
-              } catch (e) { return null }
-              return null
-            })()
+              : (limitArg === null ? 'no caller page cap: the stores apply their own caps (vmu.records.headListAt)' : 'caller')
+            const limitMeans = limitUsed === null
+              ? 'no `limit` was passed: the page size is the STORES` own cap (vmu.records.headListAt), not a size this call asked for; pass a non-negative integer (0 = every row) to choose it yourself'
+              : (limitUsed === 0
+                ? 'this call asked for EVERY row (limit:0): no page cap was applied'
+                : 'this page holds at most ' + String(limitUsed) + ' row(s), the page size this call asked for')
+            const truncated = listed.truncated === true
             const truncatedBy = []
             if (truncated) {
-              if (cap !== null && rows.length > returnedRows.length) truncatedBy.push('limit (this call asked for ' + String(cap) + ')')
-              if (listed && listed.truncated === true) truncatedBy.push('vmu.records.headListAt (the records head list was itself capped at ' + String(headListAt === null ? 'its declared cap' : headListAt) + ')')
-              if (libRows.length > 0 && libKept.length === 0 && trackArg !== null) truncatedBy.push('track filter (library heads carry no track, so they are excluded by name)')
-              if (excluded.shapeMismatch > 0) truncatedBy.push('writer/time filter (' + String(excluded.shapeMismatch) + ' library row(s) carry neither a writer nor a readable last-write time, so they are named in `excluded` instead of being returned as if they matched)')
+              if (limitUsed !== null && limitUsed !== 0 && rows.length < total) truncatedBy.push('limit (this call asked for ' + String(limitUsed) + ')')
+              if (listed.suppressed === true) truncatedBy.push('vmu.records.pointerPropagation=false (the head list is muted by settings)')
+              if (excluded && excluded.shapeMismatch > 0) truncatedBy.push('writer/time filter (' + String(excluded.shapeMismatch) + ' row(s) carry neither a writer nor a readable last-write time, so they are named in `excluded` instead of being returned as if they matched)')
               if (kindArg !== null) truncatedBy.push('kind filter (only rows whose own `kind` is ' + JSON.stringify(kindArg) + ' are counted)')
+              if (trackArg !== null) truncatedBy.push('track filter (library heads carry no track, so they are excluded by name)')
             }
-            return Object.assign({
-              ok: true, action, total, returned: returnedRows.length, truncated,
-              rowsFrom: { records: recRows.length, library: libKept.length },
-              rowsFromMeans: 'this face reads TWO stores: the records projection (rows addressed by track) and the pack library head list (cards addressed by kind, carrying no track) — each row is counted where it was found and ids are de-duplicated',
+            // ★★★ RUN 263 / TB-2668: ONE PRODUCER. This branch rebuilt the kernel receipt by hand, and 21 of its keys
+            // (enforced/enforcedScope/fired/at/heads/count/available/externalSource/externalRows/dropped/suppressed/
+            // fields/sort/filter/filterMeans/note/ownerMeans/writerMeans/byMeans/threeNames) never reached this face;
+            // `items` was renamed but the rest was dropped, so a caller here saw a narrower answer than the kernel
+            // gave. The receipt is now the KERNEL receipt spread whole: this face renames the row list and adds the
+            // readings the kernel does not have, and it does not list kernel keys at all.
+            const out = Object.assign({}, listed, {
+              ok: true, action, total,
+              // RUN 256 / TB-2617: the SAME universe and the SAME identity the kernel face reports. A reader can now
+              // check the accounting on either face and get the same numbers: page + pageDropped + excluded counts
+              // === totalUniverse.
+              totalUniverse: listed.totalUniverse,
+              // RUN 256: the mute holds back ROWS, never the question`s denominator - `mutedDropped` names those rows
+              // and the kernel`s identity counts them, so a muted page can still be checked against `totalUniverse`.
+              mutedDropped: listed.mutedDropped,
+              identity: listed.identity,
+              // RUN 259 / P1-4: the kernel ALREADY names the rows whose time stamp it could not read, and this face must
+              // not make that reading disappear by picking keys: a caller here would otherwise believe the page is
+              // time-ordered even when some rows could only be placed LAST by id. Forwarded verbatim, never recomputed.
+              orderUnknown: listed.orderUnknown,
+              orderUnknownMeans: listed.orderUnknownMeans,
+              returned, truncated,
+              rowsFrom: listed.rowsFrom,
+              rowsFromMeans: 'this face reads TWO stores: the records projection (rows addressed by track) and the pack library head list (cards addressed by kind, carrying no track) - both are handed to the kernel as `external` rows so the merge, the filters and the counts are computed ONCE',
               libraryExcludedBy: trackArg !== null ? 'track filter' : null,
               libraryExcludedMeans: trackArg !== null
-                ? 'the pack library head list was EXCLUDED by name because a library head carries no `track`, so it cannot answer a track question — those rows are not hidden results of the filter, they are rows the filter cannot judge'
+                ? 'the pack library head list was EXCLUDED by name because a library head carries no `track`, so it cannot answer a track question - those rows are not hidden results of the filter, they are rows the filter cannot judge'
                 : null,
               excluded,
-              excludedMeans: excluded.shapeMismatch === 0
-                ? 'no row was dropped for a shape reason: every row this face read could answer the filters it was given'
-                : 'these are the rows a filter could NOT judge, named by id and counted — a row is excluded only when the fact the filter asks about is missing from it (noWriter: no writer/owner on the row; timeUnknown: no readable updatedAt), never because the row happened to be in the other store',
-              limitUsed,
-              limitSource,
-              limitMeans: limitUsed === null
-                ? 'no page cap was applied by this call: `limit` was omitted, so the page is whatever the two stores returned under their own caps (vmu.records.headListAt) — pass limit:0 to ask for the whole set, or a positive integer for a page'
-                : (limitUsed === 0
-                  ? 'limit:0 means EVERY row: the stores were read uncapped and nothing was cut by this call'
-                  : 'this page holds at most ' + String(limitUsed) + ' row(s), the page size this call asked for'),
+              excludedMeans: excluded && excluded.shapeMismatch === 0 && excluded.untracked === 0
+                ? 'no row was dropped: every row both stores answered could answer the filters it was given, and every row carried a track'
+                : 'these are the rows a filter could NOT judge or that carry no track, named by id and counted - a row is excluded only when the fact the filter asks about is missing from it (noWriter: no writer/owner on the row; timeUnknown: no readable updatedAt; untracked: no `track` name, which is what the pack library ruling heads look like), never because the row happened to be in the other store. Pass includeUntracked:true to page the untracked rows too',
+              includeUntracked: includeUntracked === true,
+              includeUntrackedMeans: includeUntracked === true
+                ? 'the untracked rows were ASKED FOR (includeUntracked:true), so they are in this page; excluded.untracked counts nothing on this call'
+                : 'the untracked rows were excluded BY DEFAULT (a row with no `track` name cannot answer a track question); excluded.untracked/untrackedIds name how many and which. Pass includeUntracked:true to see them',
+              limitUsed, limitSource,
+              limitMeans,
               byFilter: byFilterArg,
               byFilterMeans: byFilterArg === null
                 ? 'no writer filter was given'
@@ -1224,17 +1177,22 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 ? 'no track filter was given'
                 : 'only rows of the RECORDS projection whose own `track` is ' + JSON.stringify(trackArg) + ' are here; library head rows carry no track, so they are excluded by name instead of returned as if they matched',
               libraryHeads: libRows.length,
-              libraryHeadsMeans: 'how many rows the pack library head list answered — it is capped by vmu.records.headListAt, so this is NOT a catalog total',
+              libraryHeadsMeans: 'how many rows the pack library head list answered - it is capped by vmu.records.headListAt, so this is NOT a catalog total',
               kindFilter: kindArg,
               kindFilterMeans: kindArg === null
                 ? 'no kind filter was given'
                 : 'only rows whose own `kind` equals ' + JSON.stringify(kindArg) + ' are here',
               truncatedBy,
               truncatedByMeans: truncated
-                ? 'the ceilings that actually cut this page (' + (truncatedBy.length ? truncatedBy.join('; ') : 'none identified — total came from a filter set larger than the page') + '); pass limit:0 to fetch the whole filtered set, or narrow by track/kind and read bodies with action:expand + id'
+                ? 'the ceilings that actually cut this page (' + (truncatedBy.length ? truncatedBy.join('; ') : 'none identified - total came from a filter set larger than the page') + '); pass limit:0 to fetch the whole filtered set, or narrow by track/kind and read bodies with action:expand + id'
                 : 'nothing was cut: this page holds the whole set the filters cover',
-              hint: truncated ? '回了 ' + returnedRows.length + '/' + total + ' 条（' + (truncatedBy.length ? truncatedBy.join('; ') : 'cap 或轨/类型过滤') + '）：传 limit:0 取全部，或先按 track 收窄，再用 action:expand + id 取正文' : null,
-            }, { records: returnedRows })
+              hint: truncated ? 'returned ' + returned + '/' + total + ' rows (' + (truncatedBy.length ? truncatedBy.join('; ') : 'cap or track/kind filter') + '): pass limit:0 for every row, or narrow by track and read bodies with action:expand + id；或先按 track 收窄' : null,
+            })
+            // TB-2668: the kernel row list is named `items`; this face has always called it `records`. Rename, never
+            // duplicate: both names in one receipt would be two places to read the same page.
+            delete out.items
+            out.records = rows
+            return out
           }
           if (action === 'prune') {
             // ★ RUN 165 (measured, run 13): a full track's refusal said "or compact/remove records" while NO tool face
@@ -1476,8 +1434,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                   const viaLibrary = await kernel.library.expand(id)
                   return Object.assign({ ok: true, action, expandedFrom: 'library' }, viaLibrary)
                 } catch (e2) {
+                  // ★★★ TB-2673 Phase 2: the kernel refusal carries the facts it already computed before throwing
+                  // (enforced/enforcedScope/wouldEvaluate/op live on the records error `e`, not in its message). This
+                  // branch rebuilt a refusal from code+message+hint alone, so those facts were lost here even though
+                  // `refused()` (host.js:497 -> refusalFacts) has always accepted them as its 4th argument. Forward
+                  // BOTH errors: the first is the records projection's verdict, the second the library's.
                   return refused((e2 && e2.code) || 'VMU_NO_SUCH_OBJECT', String((e2 && e2.message) || e2),
-                    'this face reads TWO stores — the records projection and the pack library head list — and neither knows that id; `action:list` prints the ids that exist here')
+                    'this face reads TWO stores — the records projection and the pack library head list — and neither knows that id; `action:list` prints the ids that exist here',
+                    Object.assign({}, e && typeof e === 'object' ? e : null, e2 && typeof e2 === 'object' ? e2 : null))
                 }
               }
             }
@@ -1496,9 +1460,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const shared = st.shared && typeof st.shared === 'object' ? st.shared : {}
             const recs = st.records && typeof st.records === 'object' ? st.records : {}
             const foldSt = typeof kernel.recordsFoldStatus === 'function' ? kernel.recordsFoldStatus() : null
-            return {
-              ok: true, action,
-              shared: {
+            // ★★★ RUN 263 / TB-2668: same defect as `list`. This branch rebuilt the kernel receipt and dropped
+            // apiVersion/declaredKeys*/wired*/unwired*/extraWired*/partitionOk/complementOk/registry/counters/refusals/
+            // unwired/historyRows/historyRingDropped — the kernel answered them, the face did not. The receipt is now
+            // the kernel receipt spread whole; the two sub-views keep their names and are spread whole too, never
+            // key-listed, and this face adds only its own explanations.
+            const out = Object.assign({}, st, {
+              action,
+              shared: Object.assign({}, shared, {
                 attached: shared.attached === true, key: shared.key === undefined ? null : shared.key,
                 scope: shared.scope === undefined ? 'this-kernel-instance' : shared.scope,
                 scopeMeans: shared.scopeMeans,
@@ -1515,18 +1484,18 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 staleLiveRows: shared.staleLiveRows, staleLiveRowsMeans: shared.staleLiveRowsMeans,
                 staleTombstones: shared.staleTombstones, staleTombstonesMeans: shared.staleTombstonesMeans,
                 lastWhy: shared.lastWhy === undefined ? null : shared.lastWhy,
-              },
+              }),
               // ★★ RUN 170 (run 16 / FEEDBACK16 F16-3): `prune` promised "action status counts them under
               // records.trashed" and this receipt printed only total/live/byTrack — a promise with no field behind it.
-              records: {
+              records: Object.assign({}, recs, {
                 total: recs.total, live: recs.live, trashed: recs.trashed,
                 byTrack: recs.byTrack, trashedByTrack: recs.trashedByTrack,
-              },
+              }),
               recordsMeans: 'the row counts are what THIS kernel sees after its own folds; a second kernel over the same store reports its own view, so compare row ids (or the store file) when two kernels must agree',
               // ★★ RUN 171 (run 16 / FEEDBACK16 F16-4): `status` pulls the fold before counting, and this stamp says
               // when. A count that trails another kernel's prune is then a named older statement instead of a silence.
               asOf: st.asOf && typeof st.asOf === 'object'
-                ? { viewAt: st.asOf.viewAt, foldPullAt: st.asOf.foldPullAt, foldSyncAt: st.asOf.foldSyncAt }
+                ? Object.assign({}, st.asOf, { viewAt: st.asOf.viewAt, foldPullAt: st.asOf.foldPullAt, foldSyncAt: st.asOf.foldSyncAt })
                 : null,
               asOfMeans: st.asOfMeans,
               // ★★ RUN 171 (F16-4): writes THIS instance has started but not had acknowledged. A reader comparing two
@@ -1535,12 +1504,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               foldWritesMeans: foldSt ? foldSt.means : null,
               // ★ RUN 164 (FEEDBACK12 item 1): the per-track cap was real but this receipt never printed it, so a caller
               // could not tell "written at startup" from "read at write time" without tripping the refusal. Print it.
+              // ★★★ RUN 263 / TB-2668: the kernel`s caps object carries 31 named limits; this face used to keep three
+              // of them and drop the rest. Spread whole, then annotate - a status face must not shrink the kernel view.
               caps: st.caps && typeof st.caps === 'object'
-                ? {
+                ? Object.assign({}, st.caps, {
                     headMaxItems: st.caps.headMaxItems,
                     headMaxItemsAtStart: st.caps.headMaxItemsAtStart,
                     headMaxItemsMeans: st.caps.headMaxItemsMeans,
-                  }
+                  })
                 : null,
               capsMeans: 'headMaxItems is read at WRITE time (raising vmu.records.head.maxItems takes effect on the next put, no restart), headMaxItemsAtStart is the value this kernel started with — they differ only after a live change',
               // ★ RUN 164 (FEEDBACK12 item 9): a fresh kernel folds the shared store lazily, so its FIRST status can print
@@ -1557,8 +1528,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               // means says the histogram above stays counts-only.
               lastRefusal: st.lastRefusal === undefined ? null : st.lastRefusal,
               lastRefusalMeans: st.lastRefusalMeans === undefined ? null : st.lastRefusalMeans,
-              note: 'bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.',
-            }
+              // ★★★ RUN 263 / TB-2668: this sentence describes the FACE, so it does not take the kernel`s own `note`
+              // key (the kernel receipt is spread whole and its note travels under `note`).
+              faceNote: 'bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.',
+            })
+            return out
           }
           // ★ RUN 113 (measured on a real machine): the pack says "a temp worker does not write these libraries", its
           // tool face denies `vibe_v5_record_proposition`, and a temp worker still wrote a proposition — through THIS
@@ -1616,9 +1590,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               track: typeof track === 'string' && track.trim() !== '' ? track.trim() : null,
             })
           }
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action),
+            'pass one of: list｜get｜expand｜append｜status｜prune｜restore｜reindex — "get" and "expand" are the SAME by-id read (get is the name the taskbooks use; both take `id`), and "list" prints the ids this face can read')
         } catch (e) {
-          return refused(e.code || 'VMU_INVALID_ARGUMENT', String(e.message), e.hint)
+          // ★★★ RUN 263 / TB-2668: same defect as the middleware face above: the kernel names its refusal facts on the
+          // error and this catch rebuilt the refusal without the 4th argument, silently dropping them.
+          return refused(e.code || 'VMU_INVALID_ARGUMENT', String(e.message), e.hint, e)
         }
       },
     })
@@ -1723,7 +1700,9 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'apply') return Object.assign({ ok: true, action }, await loader.apply(resolved))
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
-          return refused(e.code || 'VMU_PACK_MISSING', String(e.message), e.hint)
+          // TB-2649: the declaration refusals carry facts (which key, which consumer) on the error object; the face
+          // forwarded only code/message/hint, so a caller could not read the fact the kernel had already named.
+          return refused(e.code || 'VMU_PACK_MISSING', String(e.message), e.hint, e)
         }
       },
     })

@@ -94,6 +94,22 @@ try {
   ok(s1 && s1.lastAttribution && s1.lastAttribution.slot === 'single', 'the slot is still declared single after a delivery', s1 && s1.lastAttribution && s1.lastAttribution.slot)
   ok(s1 && s1.lastAttribution && s1.lastAttribution.deliveryPath === 'caller', 'the slot reports HOW the delivery went (caller-played here, not invented as a child)', s1 && s1.lastAttribution)
 
+  // ★★ RUN 256 / TB-2616 (task-97): THE CALLER ROUTE PARKS ONE PROMPT, AND THE SECOND DOOR MUST ANSWER IT FIRST. This
+  // suite used to walk away from the first delivery's parked prompt and open a second turn for another member; since
+  // RUN 256 that is refused by name (`VMU_TURN_ALREADY_PARKED`) instead of silently replacing the prompt a live caller
+  // would still be holding. The reply goes through the same text channel a live caller uses, and the member comes FROM
+  // the receipt (`memberPrompt.member`) — no id is written by hand, and nothing is bypassed with settings.
+  const parked1 = (t1.parsed && t1.parsed.memberPrompt) || {}
+  ok(typeof parked1.turnId === 'string' && parked1.turnId !== '',
+    'the first delivery names the turn whose prompt is parked (so it can be answered, not replaced)', parked1.turnId)
+  const answered1 = await callJSON(k, 'vibe_vmu_turn', {
+    op: 'step', member: parked1.member, reply_for: parked1.member, why: 'answer the first parked turn',
+    reply: 'work first\n\n```json\n' + JSON.stringify({ say: '第57轮：第一个成员的回合按 caller 路线答完。' }) + '\n```\n',
+  })
+  ok(answered1.parsed && answered1.parsed.ok === true && answered1.parsed.receipt && answered1.parsed.receipt.turn === parked1.turnId,
+    '★★ the parked turn is RESUMED under the same turn id (not replaced, not left open)',
+    answered1.parsed && { ok: answered1.parsed.ok, code: answered1.parsed.code, turn: answered1.parsed.receipt && answered1.parsed.receipt.turn, parked: parked1.turnId })
+
   // ── 3: second delivery REPLACES the slot, and the tally still counts both ────────────────────────────────────
   const t2 = await callJSON(k, 'vibe_vmu_turn', { op: 'step', member: ids[1], why: 'second delivery for the slot test' })
   ok(t2.parsed && t2.parsed.ok !== false, 'the second step is accepted', t2.parsed || t2)

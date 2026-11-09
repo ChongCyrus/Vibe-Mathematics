@@ -89,7 +89,7 @@ const call = async (specs, name, args) => {
 }
 
 // ── §0 the three filters exist where the hint points ────────────────────────────────────────────────────────────
-has(RECORDS_SRC, 'list({ track = null, limit = null, fields = null, by = null, since = null, until = null } = {}) {',
+has(RECORDS_SRC, 'list({ track = null, limit = null, fields = null, by = null, since = null, until = null, external = null, externalSource = null, kind = null, includeUntracked = false } = {}) {',
   '§0a ★★★ the kernel head list accepts a WRITER and a TIME WINDOW (run 65\'s hint named a query no face could make)')
 // §0b/§0c/§0d (RUN 254): each filter must (1) read the row through the ONE reader (`writerOf`/`updatedMsOf`), (2) make
 // the boundary comparison the question needs (`=== byArg`, `>=`, `<=`), and (3) NAME every row it drops for a shape
@@ -119,7 +119,7 @@ has(HOST_SRC, "        until: param('string', 'list：时间窗上界",
   '§0i ★★ and the upper bound')
 has(HOST_SRC, "action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, since, until, dryRun",
   '§0j ★★★ and FORWARDS both into the kernel (RUN 242 taught this twice: a face that drops a noun makes it unreachable)')
-has(HOST_SRC, 'byFilterArg === null ? {} : { by: byFilterArg },', '§0k ★★ the by filter reaches the store query')
+has(HOST_SRC, 'if (byFilterArg !== null) query.by = byFilterArg', '§0k ★★ the by filter reaches the store query')
 has(HOST_SRC, 'timeFilterMeans:', '§0l ★ the face explains the window it applied')
 has(TURN_SRC, "readWith: 'vibe_vmu_records { action:\"list\", by:\"<the by above>\", since:\"<the from above>\", until:\"<the to above>\", limit:0 }'",
   '§0m ★★★★ the failed-delivery window NAMES the exact invocation that answers it (run 65 named a query no face could make)')

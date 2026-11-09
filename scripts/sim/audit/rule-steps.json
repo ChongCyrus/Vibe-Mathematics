@@ -422,10 +422,10 @@
         {
           "scenario": "mainline",
           "step": "record/reindex",
-          "side": "allow"
+          "side": "refuse"
         }
       ],
-      "notes": ""
+      "notes": "record/reindex now carries a named refusal: since RUN 259 a reindex blocks on a member plain markdown draft (VMU_RECORDS_REINDEX_BLOCKED), so the rule is evidenced by blueprint/propose and blueprint/adopt; the refused step is kept (side=refuse) because deleting it would hide that the scenario still reindexes."
     },
     "B5": {
       "rule": "蓝图由院士+常驻研究员共同设计",

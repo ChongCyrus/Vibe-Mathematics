@@ -393,6 +393,20 @@ export function createResume({ store = null, work = null, control = null, identi
   // a mechanism instead of a promise). The mapping lives in the `resume` key.
   const reassignAttempts = new Map()
   const expectations = new Map()   // key -> digest of what we last wrote (read-back compares against it)
+  // ★★★ RUN 259 / TB-2647: WHAT THIS PROCESS ITSELF WROTE, per key (bounded). The read-back needs this to answer
+  // `secondWriter` without guessing: if the durable bytes now equal a value THIS process wrote earlier in the session
+  // (and not the one it wrote last), no second writer is needed to explain the drift — the store dropped or rolled
+  // back our own last write. Without this history the only two honest answers would be "somebody else wrote"
+  // (writesBetween === 0) and "cannot tell" — and "cannot tell" would be claimed even when the bytes are literally ours.
+  const writtenDigests = new Map()
+  const WRITTEN_DIGESTS_KEEP = 8
+  const noteWrittenDigest = (key, digest) => {
+    const k = String(key)
+    let list = writtenDigests.get(k)
+    if (!list) { list = []; writtenDigests.set(k, list) }
+    if (list[list.length - 1] !== digest) list.push(digest)
+    while (list.length > WRITTEN_DIGESTS_KEEP) list.shift()
+  }
   // ★★ RUN 158 (N6): the read-back answer say WHEN it sampled and HOW MANY durable writes happened since the read
   // snapshot — a bare digest mismatch leaves the reader unable to tell a real divergence from a writer that ran in
   // between (the measured drift was exactly that: another writer moved the key while this process held its own digest).
@@ -518,6 +532,9 @@ export function createResume({ store = null, work = null, control = null, identi
     writes += 1
     writesSinceRead += 1
     expectations.set(String(key), contentDigest(payload))
+    // RUN 259 / TB-2647: remember WHAT we wrote (per key, bounded) so a read-back can tell "the store lost or rolled
+    // back our own last write" (no second writer needed) from "somebody else moved the bytes" without guessing.
+    noteWrittenDigest(String(key), contentDigest(payload))
     return { ok: true, key: String(key), at, digest: contentDigest(payload) }
   }
 
@@ -809,6 +826,12 @@ export function createResume({ store = null, work = null, control = null, identi
     readBacks += 1
     const sampledAt = stamp()
     const writesBetween = writesSinceRead
+    // ★★★ RUN 259 / TB-2647: the counter now means what every reader already assumed — durable writes since the
+    // PREVIOUS read-back (or since the fold was read). MEASURED: it was never reset, so it counted the whole session
+    // (real receipt: `writesBetween:190` for a drift no write of that session caused) and the documented reading
+    // "`writesBetween:0` means somebody else wrote it" was practically unreachable. Resetting here is what makes
+    // `secondWriter:true` a fact instead of a guess.
+    writesSinceRead = 0
     if (!store || typeof store.read !== 'function') return { ok: false, code: CODE.unavailable, consistent: false, note: 'no durable store to read back' }
     const drift = []
     for (const [key, expected] of expectations) {
@@ -827,14 +850,37 @@ export function createResume({ store = null, work = null, control = null, identi
     }
     const consistent = drift.length === 0
     if (!consistent) { readBackFailures += 1; lastDrift = drift }
+    // ★★★ RUN 259 / TB-2647: DRIFT IS NOT A FAILURE OF THIS KERNEL, and "somebody else wrote it" is not a guess.
+    // Three facts are now separate: (a) which STEP drifted (`driftedSteps`, never `failedSteps` — a failed step is
+    // something THIS process got wrong); (b) whether a second writer is needed to explain the drift; (c) the evidence
+    // for (b). The evidence is this process's OWN write history: if the durable bytes are a value this process wrote
+    // earlier in the session (and not the one it wrote last), the store dropped or rolled back our own write and a
+    // second writer is NOT needed. If this process wrote nothing while holding the expectations, the bytes moved
+    // without it — a second writer DID write them. Anything else is "unknown" with the reason, never a guessed false.
+    const ownedEarlier = !consistent && drift.every((d) => {
+      const list = writtenDigests.get(String(d.key)) || []
+      return typeof d.actual === 'string' && list.indexOf(d.actual) !== -1 && d.actual !== expectations.get(String(d.key))
+    })
+    const secondWriter = consistent ? null : ownedEarlier ? false : writesBetween === 0 ? true : 'unknown'
+    const secondWriterMeans = consistent
+      ? 'not applicable: every expectation still matched, so no bytes moved (neither this process nor another)'
+      : secondWriter === false
+        ? 'the durable bytes are a value THIS process itself wrote earlier in this session, and not the one it wrote last: the store dropped or rolled back our own last write, so no second writer is needed to explain this drift (a second writer that happened to write those exact bytes cannot be told apart — that coincidence is the only hole)'
+        : secondWriter === true
+          ? 'this process performed ZERO durable writes since its previous read-back, so the bytes moved without it: a second writer (another kernel, a restore, or a hand edit) wrote them — find that writer before touching this kernel'
+          : 'this process performed ' + String(writesBetween) + ' durable write(s) since its previous read-back, so the moved bytes could be its own write that did not land, or another writer\'s: the store exposes no cross-process provenance, so this is reported as "unknown" rather than guessed false'
     return { ok: consistent, consistent, checked: expectations.size, drift, code: consistent ? null : CODE.readbackDrift,
       // ★★ RUN 158 (N6): the sample's own time and the number of durable writes this process performed since it started
       // tracking — both facts a reader needs before calling a digest mismatch "data loss".
       sampledAt,
       writesBetween,
+      // RUN 259 / TB-2647: the drift names the STEP that saw it, and whether a second writer is needed (see above).
+      driftedSteps: consistent ? [] : ['readback'],
+      secondWriter,
+      secondWriterMeans,
       driftMeans: consistent
         ? 'every key this process wrote still hashes to what it wrote'
-        : 'the stored value of the named key(s) no longer hashes to what THIS process wrote — a concurrent writer or a restore moved it; `writesBetween` says how many durable writes this process performed while it held those expectations, so a mismatch after zero writes means somebody else wrote' }
+        : 'the stored value of the named key(s) no longer hashes to what THIS process wrote — a concurrent writer or a restore moved it; `writesBetween` says how many durable writes this process performed since its previous read-back (the counter resets on every sample), so a mismatch after zero writes means somebody else wrote' }
   }
 
   // ── the recovery itself ────────────────────────────────────────────────────────────────────────────────────
@@ -881,6 +927,32 @@ export function createResume({ store = null, work = null, control = null, identi
     return fromKey() || { attached: false, source: null, pending: null }
   }
 
+  /**
+   * ★★★ RUN 259 / TB-2647: ONE place that says what each step row means, and ONE place that derives the lists from
+   * the rows. MEASURED (real machine, run 69 / slvp157, slvp194, slvp195): a `VMU_RESUME_READBACK_DRIFT` receipt carried
+   * `drift` + `driftMeans` and NO `failedSteps`, while a `VMU_STATE` receipt carried `failedSteps:["ledgers","readback"]`
+   * — the same sentence ("which step is not right") had two different fields, and one path had neither a code on the row
+   * nor a name. Every row now carries `{name, ok, code}` and both lists are DERIVED here from those rows: a second
+   * derivation is how the two paths drift apart again.
+   */
+  const nameStepsOf = (rows) => {
+    const list = Array.isArray(rows) ? rows : []
+    for (const s of list) {
+      if (!s || typeof s !== 'object') continue
+      s.name = String(s.step)
+      if (s.code === undefined) s.code = s.ok === false ? 'VMU_STATE' : null
+    }
+    return list
+  }
+  const derivedStepFactsOf = (rows) => {
+    const failed = (Array.isArray(rows) ? rows : []).filter((s) => s && s.ok === false)
+    return {
+      failedSteps: failed.map((s) => String(s.name || s.step)),
+      // A drift is named as a DRIFT, not as a failure of this process: it is a step that saw the bytes move.
+      driftedSteps: failed.filter((s) => String(s.code) === CODE.readbackDrift).map((s) => String(s.name || s.step)),
+    }
+  }
+
   /** Read-only: what WOULD happen. No writes, no side effects (safe to call from an operator surface). */
   function recoverPlan({ reason = 'host-ended' } = {}) {
     const plan = { ok: true, reason: String(reason), steps: [], storeAttached: !!store, willWrite: false,
@@ -892,10 +964,11 @@ export function createResume({ store = null, work = null, control = null, identi
     // own receipt said a third thing. `ok` is now DERIVED from the steps (the same conjunction the act uses), and
     // `blocking` names the steps in the way using the SAME step names the act reports.
     const settlePlan = (p) => {
-      const failed = p.steps.filter((s) => s && s.ok === false)
+      const rows = nameStepsOf(p.steps)
+      const failed = rows.filter((s) => s && s.ok === false)
       p.ok = failed.length === 0
-      p.failedSteps = failed.map((s) => String(s.step))
-      p.blocking = failed.map((s) => ({ step: String(s.step), code: s.code === undefined || s.code === null ? 'VMU_STATE' : String(s.code), why: s.note || s.message || null }))
+      p.failedSteps = failed.map((s) => String(s.name))
+      p.blocking = failed.map((s) => ({ step: String(s.name), code: s.code === undefined || s.code === null ? 'VMU_STATE' : String(s.code), why: s.note || s.message || null }))
       p.okMeans = failed.length === 0
         ? 'every planned step could run: no step of this plan is blocking, and the act reports the same step names'
         : 'at least one planned step could NOT run (' + p.failedSteps.join(', ') + '): `blocking` names each one by the same step name the act reports, so the plan and the act cannot disagree about which step is in the way'
@@ -1057,6 +1130,10 @@ export function createResume({ store = null, work = null, control = null, identi
       report.code = CODE.unavailable
       report.steps.push({ step: 'read', ok: false, code: CODE.unavailable, note: 'no durable store: nothing to resume (a claim of recovery would be a lie)' })
       report.note = 'no durable store was injected; the recovery is a no-op and says so'
+      // RUN 259 / TB-2647: even this early-exit report derives its lists from its own step rows (see `nameStepsOf`).
+      nameStepsOf(report.steps)
+      report.failedSteps = derivedStepFactsOf(report.steps).failedSteps
+      report.driftedSteps = derivedStepFactsOf(report.steps).driftedSteps
       // ★★ RUN 249-D / F-06: the separation of "a seat was lost" from "a ledger did not fully restore" must exist on
       // EVERY receipt, including the ones that fail before reading anything. With no store there is no durable roster to
       // compare against, so `rosterIntact` cannot be CLAIMED — it is `false` with `rosterMeasured:false` and a sentence
@@ -1397,9 +1474,13 @@ export function createResume({ store = null, work = null, control = null, identi
       outcome: 'the outcome guard could not be evaluated',
     }
     const settleReport = () => {
+      // RUN 259 / TB-2647: rows are stamped (name + code) and BOTH lists are derived from them — one derivation.
+      nameStepsOf(report.steps)
       const failed = report.steps.filter((s) => s && s.ok === false)
       report.ok = failed.length === 0
-      report.failedSteps = failed.map((s) => String(s.step))
+      const derived = derivedStepFactsOf(report.steps)
+      report.failedSteps = derived.failedSteps
+      report.driftedSteps = derived.driftedSteps
       report.needsHuman = failed.map((s) => {
         const step = String(s.step)
         const row = { step, code: s.code || 'VMU_STATE', why: needsHumanWhy[step] || ('the step "' + step + '" reported ok:false') }

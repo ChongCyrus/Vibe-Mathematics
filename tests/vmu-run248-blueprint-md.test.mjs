@@ -131,7 +131,8 @@ let p1
   const started = await b.call('vibe_v5_start', { problem: '前 n 个奇数之和 = n²，用归纳法验证。', researcherCount: 2 })
   ok(started && started.ok === true, 'the round starts (so the blueprint seats exist)', started)
 
-  p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: R1_TEXT })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: R1_TEXT, materialize: true })
   ok(p1 && p1.ok === true, 'propose returns a receipt', p1)
   ok(p1 && p1.status === 'draft' && p1.revision === 1, 'propose is r1 draft', { revision: p1 && p1.revision, status: p1 && p1.status })
   ok(p1 && p1.md && p1.md.available === true, 'the receipt says the md face is available and used', p1 && p1.md)
@@ -167,7 +168,8 @@ let p2
 {
   console.log('\n=== §2 continuation rewrites the SAME draft md and keeps the same row ===')
   const before = shaOf(b.draftAbs(1))
-  p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT })
+  // legacy path: the continuation rewrites the kernel-materialized draft only when materialize:true is explicit
+  p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT, materialize: true })
   ok(p2 && p2.ok === true && p2.continued === true, 'the second member continues the r1 draft', p2)
   ok(p2 && p2.id === p1.id, 'continuation keeps the same index row', { before: p1.id, after: p2 && p2.id })
   ok(p2 && p2.md && p2.md.written === true, 'the continuation rewrites the draft md', p2 && p2.md)
@@ -255,11 +257,13 @@ let p3
 let EDITED_R2
 {
   console.log('\n=== §4 drift is refused by name; reindex admits the draft file; adopt then succeeds ===')
-  p3 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '# 公共蓝图 r2\n- 命题：待复核。' })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  p3 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '# 公共蓝图 r2\n- 命题：待复核。', materialize: true })
   ok(p3 && p3.ok === true, 'propose r2 ok', p3)
   ok(p3 && p3.md && p3.md.mdPath === 'Shared/Drafts/Protocol-r2.md', 'r2 draft gets its OWN file', p3 && p3.md)
   ok(existsSync(b.draftAbs(2)) === true, 'the r2 draft md exists', { abs: b.draftAbs(2) })
-  const sign = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT })
+  // legacy path: the r2 continuation rewrites the kernel-materialized draft only when materialize:true is explicit
+  const sign = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT, materialize: true })
   ok(sign && sign.ok === true, 'r2 co-design continuation ok', sign)
 
   const doc2 = b.records.mdParse(readFileSync(b.draftAbs(2), 'utf8'))
@@ -332,11 +336,13 @@ let EDITED_R2
   const d = await boot('already')
   const started = await d.call('vibe_v5_start', { problem: '已经写好。', researcherCount: 2 })
   ok(started && started.ok === true, 'the round starts', started)
-  const dp = await d.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: R1_TEXT })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const dp = await d.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: R1_TEXT, materialize: true })
   ok(dp && dp.ok === true, 'draft proposed', dp)
-  const sign = await d.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT })
+  const sign = await d.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT, materialize: true })
   ok(sign && sign.ok === true, 'co-design continuation ok', sign)
-  const AT = 5000
+  // a caller payload that is written into the row header: it must be a REAL instant (2000-2100), not a harness tick.
+  const AT = Date.parse('2026-01-01T00:00:00Z')
   const st = await d.call('vibe_v5_blueprint', { action: 'state', path: 'Shared/Protocol.md' })
   const draftDoc = d.records.mdParse(readFileSync(join(d.root, 'VibeMath', 'Shared', 'Drafts', 'Protocol-r1.md'), 'utf8'))
   const fields = BP.blueprintMdHeaderOf({

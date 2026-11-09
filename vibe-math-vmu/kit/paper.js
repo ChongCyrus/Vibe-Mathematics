@@ -14,6 +14,49 @@ export const PAPER_STATES = Object.freeze(['writing', 'reviewing', 'awaiting-edi
 export const PAPER_ARTIFACTS = Object.freeze(['md', 'tex', 'pdf', 'meta'])
 const str = (v) => (v === undefined || v === null ? '' : String(v))
 const has = (v) => v !== undefined && v !== null && String(v).trim() !== ''
+/**
+ * ★★★ RUN 256 (TB-2624 item 3, MEASURED in run 74): a request id is an ADDRESS, not a title. The consult id used to be
+ * `consult-<target>-<n>`, and the target IS the paper title, so a paper titled 「端到端占位论文」 minted
+ * `consult-端到端占位论文-1` — a CJK/slash-bearing string that is hard to type, hard to match and changes if the title
+ * changes. The shape is now `consult-<seq4>-<hex4>`: a zero-padded MONOTONIC sequence plus four derived hex chars (a
+ * RANDOM suffix was the first version of this fix; RUN 257 / TB-2634 below made the suffix reproducible — the shape is the
+ * one thing that stayed). The title still travels as the state's `target`/`title`; it never enters an id. OLD ids are
+ * still readable: a request is
+ * identified by exact string, and nothing here validates a format, so a legacy `consult-<title>-<n>` row answers by its
+ * own id (the suite proves it).
+ */
+/**
+ * ★★★ RUN 257 (TB-2634): A MINTED ID IS NOT AN EXTERNAL INPUT — it must not be read from `Math.random()`. The suffix here
+ * used to be four random hex chars, which made the SAME input mint a DIFFERENT id on every run: two corpora over the same
+ * calls disagreed byte-for-byte, and TB-2602's "two runs, identical sha256" and TB-2605's determinism gate went randomly
+ * red. Random ids are the same class of defect as wall-clock stamps (RUN 256): an unreproducible judgement is not a
+ * judgement. The suffix is now DERIVED from facts the caller already has (the paper title + the per-paper monotonic
+ * `ledger.opened`), and randomness is a SEAM like the clock: pass `rand` to perturb the derivation deliberately (tests
+ * inject a fixed one), never to make the default unreproducible.
+ *
+ * Shape is unchanged — `consult-<seq4>-<hex4>` — because the shape is an address that receipts, hints and tests already
+ * point at. Uniqueness and determinism are two different promises and both are checked: same input ⇒ same id; different
+ * title or different sequence ⇒ different id (the 32-bit FNV-1a fold below, four lowercase hex chars).
+ */
+const consultSeedHex4 = (material) => {
+  // FNV-1a over the UTF-16 code units: dependency-free, deterministic across processes, and stable for CJK titles (the
+  // title is a fact, so hashing it is not "using randomness" — the same title always folds to the same nibbles).
+  let h = 0x811c9dc5
+  const s = String(material)
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return (h >>> 0).toString(16).padStart(8, '0').slice(0, 4)
+}
+export const consultRequestId = (seq, { seed = '', rand = null } = {}) => {
+  const n = Number.isFinite(Number(seq)) && Number(seq) > 0 ? Math.floor(Number(seq)) : 1
+  // The material is the id's whole claim to being reproducible: sequence + title, plus an INJECTED draw when the caller
+  // wants a perturbed-but-still-deterministic id. A random draw without injection never happens here.
+  let material = String(seed) + '#' + String(n)
+  if (typeof rand === 'function') material += '#' + String(rand())
+  return 'consult-' + String(n).padStart(4, '0') + '-' + consultSeedHex4(material)
+}
 
 function refuse(code, message, hint, extra = null) {
   const e = new Error(message)
@@ -57,6 +100,11 @@ export function createPaperFlow({
   // The clock is a seam: the consult ledger records WHEN the office was asked (durability ⇒ the question survives a
   // crash) and the timeout is measured against it, so tests need to move time without sleeping.
   clock = () => Date.now(),
+  // ★★★ RUN 257 (TB-2634) — RANDOMNESS IS A SEAM TOO. `consultRequestId` derives its suffix from the title + sequence, so
+  // the default already reproduces; a deployment that wants a perturbed id passes `rand` (a `() => number` in [0,1)) and
+  // the derivation folds that draw in. Absent this, nothing in the consult path reads a random source — id minting is a
+  // judgement over facts, not a dice roll (see the comment on `consultRequestId`).
+  rand = null,
   // ★ E1 — THE ARTEFACT-MARKDOWN SEAM. `render` / `PaperTex` / `PaperArtifacts` all build from the closure `PaperMd`, so a
   // pack whose record-driven sections are filled AFTER the kit assembles its outline could only ever fill the TOOL RECEIPT,
   // never the .md/.tex written to `Paper/`. That was a real gap (E1: three sections were structurally empty in the archive).
@@ -595,18 +643,18 @@ export function createPaperFlow({
       return { allowed: false, policy, ledger, reason: 'awaiting', requestCleared: false,
         error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
           '定稿前必须问所办（vmu.paper.officeConsult="required"）：这道提问还没有答复（' + (awaiting.id || '?') + '）',
-          '由所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；**不要**用「把 vmu.paper.officeConsult 设成 "off"」绕过它：那是部署方的闸门配置（设置面会明确劝阻），待答的咨询要有人答',
+          'REACHABLE INSTEAD: 让所办用 vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" } 答复（先用 action: "consult_state" 读 awaiting.id），答完重试 action: "final"；**不要**用「把 vmu.paper.officeConsult 设成 "off"」绕过它：那是部署方的闸门配置（设置面会明确劝阻），待答的咨询要有人答',
           { ...base, reason: 'awaiting', target: str(state.target), paperId: str(state.id) }) }
     }
     ledger.opened += 1
-    const request = { id: 'consult-' + str(state.target) + '-' + ledger.opened, by: str(member), at: now, note: '', status: 'awaiting', policy: 'required' }
+    const request = { id: consultRequestId(ledger.opened, { seed: str(state.target), rand }), by: str(member), at: now, note: '', status: 'awaiting', policy: 'required' }
     ledger.requests.push(request)
     if (ledger.requests.length > MAX_CONSULT_REQUESTS) ledger.requests.splice(0, ledger.requests.length - MAX_CONSULT_REQUESTS)
     writeState(state)
     return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,
       error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
         '定稿前必须问所办（vmu.paper.officeConsult="required"）：已向所办(' + (CONSULT_ROLES.join('|') || '未声明') + ')提出问询 ' + request.id + '，还没有答复',
-        '所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；**不要**用「把 vmu.paper.officeConsult 设成 "off"」绕过它——那是部署方的闸门配置（设置面会明确劝阻），不是 agent 的通行路径，而这条咨询是等一个真人回答',
+        'REACHABLE INSTEAD: 让所办用 vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" } 答复（先用 action: "consult_state" 读 awaiting.id），答完重试 action: "final"；**不要**用「把 vmu.paper.officeConsult 设成 "off"」绕过它——那是部署方的闸门配置（设置面会明确劝阻），不是 agent 的通行路径，而这条咨询是等一个真人回答',
         { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], currentValue: String(policy.raw), settingValues: policy.values,
           requestId: request.id, requestedAt: now, actedBy: str(member), answerRoles: CONSULT_ROLES.slice(),
           // ★★ RUN 154 (G9): the key the fix has to carry is `target` (the answer call's argument), and it is now on the
@@ -636,7 +684,7 @@ export function createPaperFlow({
     let request = awaiting
     if (!request) {
       ledger.opened += 1
-      request = { id: 'consult-' + str(state.target) + '-' + ledger.opened, by: str(by), at: now, note: '', status: 'awaiting', policy: 'required' }
+      request = { id: consultRequestId(ledger.opened, { seed: str(state.target), rand }), by: str(by), at: now, note: '', status: 'awaiting', policy: 'required' }
       ledger.requests.push(request)
       if (ledger.requests.length > MAX_CONSULT_REQUESTS) ledger.requests.splice(0, ledger.requests.length - MAX_CONSULT_REQUESTS)
     }

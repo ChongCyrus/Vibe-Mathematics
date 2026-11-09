@@ -570,8 +570,35 @@ export function apply(ctx, config = {}) {
         : 'no pack is declared, so createKernel received sectionPolicy:null and the turn loop never asks: the framework switches no prompt section (zero mechanism)',
     }
   }
-  const noticeBlock = (packRuntime.find((r) => r.noticeBlock) || {}).noticeBlock || null
-  const extraPhases = packRuntime.length ? [...new Set(packRuntime.flatMap((r) => r.phases || []))] : null
+  // TB-2618 / RUN 256 - A PACK DECLARATION THAT MUST ACT BEFORE THE KERNEL EXISTS IS FOLDED HERE, ONCE.
+  //
+  // Measured defect: a manifest declaring phases/recordTracks/meetingTypeCatalog/slots/noticeBlock was accepted by
+  // validatePack and changed NOTHING, because every consumer snapshot is fixed inside createKernel while packs apply
+  // after it. The entry is the only layer that knows the manifests BEFORE construction, so it is the layer that folds
+  // them: `config.packManifests` is the declared door, and kernel/pack.js owns the fold table (one implementation).
+  // A manifest that is NOT listed here and declares one of those keys is refused by name at apply() instead
+  // (VMU_PACK_DECLARATION_TOO_LATE), never silently dropped.
+  const declaredPackManifests = Array.isArray(config.packManifests)
+    ? config.packManifests.filter((m) => m && typeof m === 'object')
+    : []
+  const foldedDeclarations = typeof packModule.foldPackDeclarations === 'function'
+    ? packModule.foldPackDeclarations(declaredPackManifests, settingsWithPackDefaults)
+    : null
+  // ★ TB-2649: the fold names what it could NOT carry (office / agendaStateMachine, wrong shapes, a second
+  // noticeBlock). That view used to be write-only; the loader now hands it to apply(), which refuses by name and
+  // keeps it in the receipt, so a deployment can see why a declaration did nothing.
+  const unsupportedDeclarations = foldedDeclarations ? foldedDeclarations.unsupportedByManifest : null
+  // The resolved settings handed to the kernel now include the pack's folded declarations (record tracks, meeting type
+  // catalog, task stages). Where no manifest is declared this is the SAME object identity as before - zero mechanism.
+  const settingsWithPackDeclarations = foldedDeclarations ? foldedDeclarations.settings : settingsWithPackDefaults
+  const noticeBlock = (foldedDeclarations && foldedDeclarations.options.noticeBlock)
+    || ((packRuntime.find((r) => r.noticeBlock) || {}).noticeBlock || null)
+  const extraPhases = (() => {
+    const runtimePhases = packRuntime.length ? packRuntime.flatMap((r) => r.phases || []) : []
+    const declaredPhases = foldedDeclarations ? foldedDeclarations.options.stages : []
+    const all = [...new Set([...runtimePhases, ...declaredPhases])]
+    return all.length > 0 ? all : null
+  })()
   // ★ A1 STEP 1 · PART B: THE FEEDBACK STATE IS COMPUTED ONCE, OUTSIDE THE PROVIDER, AND BOTH HALVES OF THAT SENTENCE
   // MATTER. OUTSIDE, because the receipt is what CALLS the provider - a provider that read `report.status()` would
   // recurse forever, which is what happened when this was made lazy. ONCE, here, because the switch is read from the
@@ -596,7 +623,12 @@ export function apply(ctx, config = {}) {
     : (String(settingsWithPackDefaults['vmu.report.transport'] || '') === 'mailbox'
         ? createMailboxReportTransport({ getKernel: () => kernelBox.value, officeSeats: OFFICE_SLOTS })
         : null)
-  const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+  const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDeclarations, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+    // TB-2618: a folded manifest's role slots / record tracks / task stages reach the CONSTRUCTORS (roster at build
+    // time is also what makes the audience seam resolvable at all - `{to:'all'}` used to refuse in every real entry).
+    ...(foldedDeclarations && foldedDeclarations.options.slots.length > 0 ? { slots: foldedDeclarations.options.slots } : {}),
+    ...(foldedDeclarations && foldedDeclarations.options.tracks.length > 0 ? { tracks: foldedDeclarations.options.tracks } : {}),
+    ...(foldedDeclarations && foldedDeclarations.options.stages.length > 0 ? { stages: foldedDeclarations.options.stages } : {}),
     // ★★ ROUND 52: the DSH session this kernel serves. Settings resolve per kernel, and the status board names WHOSE
     // resolution it prints; without this id a member cannot tell "the board and my own status read disagree" from "two
     // kernels, two honest resolutions" (run 52's measured confusion).
@@ -1000,6 +1032,12 @@ export function apply(ctx, config = {}) {
   // is the same "无残留" contract the loader's own docs state for this seam.
   const packLoader = createPackLoader({ kernel, registry: kernel.registry,
     settingSource: (key) => kernel.settingSource(key),
+    // TB-2618: the ids/keys the entry folded BEFORE createKernel; any other declaration of those keys is refused
+    // by name (VMU_PACK_DECLARATION_TOO_LATE) instead of being accepted with zero effect.
+    foldedDeclarations: foldedDeclarations ? foldedDeclarations.declaredKeysByManifest : null,
+    // TB-2649: the per-manifest view of declarations the fold could not carry (key + why), so apply() can refuse
+    // with the real reason and the receipt can show it.
+    unsupportedDeclarations,
     onPromptPolicy: (p) => {
       promptPolicies.push(p)
       return () => {
@@ -1164,13 +1202,13 @@ export function apply(ctx, config = {}) {
         for (const b of declaredBindings) kernel.prompt.bind(b)
       }
     }
-            appliedPacks.push({ id: res.id, applied: res.applied })
+            appliedPacks.push({ id: res.id, applied: res.applied, ...(res.declarations ? { declarations: res.declarations } : {}) })
             // D1: record the correspondence AT THE POINT IT BECOMES KNOWABLE (request -> manifest id). `wanted` is
             // what the deployment/switch wrote; `res.id` is the manifest's own id.
             appliedIdMap.push({ requestId: typeof wanted === 'string' ? wanted : (wanted && wanted.id) || null, manifestId: res.id })
           } catch (e) {
             const id = typeof wanted === 'string' ? wanted : (wanted && wanted.id)
-            packErrors.push({ id, code: (e && e.code) || 'VMU_PACK_MISSING', message: String((e && e.message) || e) })
+            packErrors.push({ id, code: (e && e.code) || 'VMU_PACK_MISSING', message: String((e && e.message) || e), ...(e && e.facts ? { facts: e.facts } : {}) })
             try { process.stderr.write('vmu: pack ' + id + ' was not applied: ' + ((e && e.code) || '') + ' ' + String((e && e.message) || e) + '\n') } catch { /* stderr may be gone */ }
           }
         }

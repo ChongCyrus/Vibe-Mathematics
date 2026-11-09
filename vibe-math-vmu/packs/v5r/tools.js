@@ -48,7 +48,7 @@ import { leadershipReading, leadershipWarning, LEADER_SLOT } from './leadership.
 // ★ R18-B2: the public blueprint carrier. `vmu.turn.protocolPath` had two prompt interpolations and no writer, so the
 // blueprint was a path with no edit right attached. `./blueprint.js` is the data face (a records track + propose/adopt);
 // this import is its REACHABLE consumer (red line ④).
-import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_OUTLINE_REQUIRE_KEY, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintState, outlineRequireOf, proposeBlueprint, readBlueprint, staleWindowOf } from './blueprint.js'
+import { BLUEPRINT_MD_PATH_KEY, BLUEPRINT_ADOPT_SLOT, BLUEPRINT_OUTLINE_REQUIRE_KEY, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintMdProvenanceOf, blueprintState, listBlueprints, mdOwnerOf, outlineRequireOf, proposeBlueprint, readBlueprint, staleWindowOf } from './blueprint.js'
 // ★ A7 (round 31 follow-up): WHO IS CALLING, read from the one non-forgeable source there is. `vibe_v5_fire` has to
 // know whether the caller is a member seat (whose dismissal right is scoped to its own temp worker) or the office /
 // a chair (unscoped), and the ONLY trustworthy answer is the agent→member resolution the seat face gate itself uses:
@@ -57,6 +57,12 @@ import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_OUTLINE_REQUIRE_KEY, BLUEPRINT_PATH_KEY
 // run-29 lesson member-scope.js records for `verdict_ask`. `host-pack-tools.js` imports nothing, so this edge adds no
 // cycle (it cannot import this file back).
 import { resolveTurnMember } from '../../host-pack-tools.js'
+import { ENV_NEEDS_DEFAULTS } from '../../settings/env-needs.js'
+// ★★★ RUN 258 / AUDIT-14 (P1-8): a hint may name an environment need - and `latex` is NOT one (the registry knows
+// xelatex / latexmk / pdflatex / lualatex / tectonic). Deriving the sentence FROM the table is the point: a renamed row
+// cannot leave the prose teaching a string the env face refuses as VMU_ENV_UNKNOWN_NEED.
+const ENGINE_NEEDS = Object.keys(ENV_NEEDS_DEFAULTS).filter((k) => /latex|tectonic/.test(String((ENV_NEEDS_DEFAULTS[k].probe || {}).command || '')))
+const ENGINE_NEED = ENGINE_NEEDS.indexOf('xelatex') >= 0 ? 'xelatex' : (ENGINE_NEEDS[0] || 'xelatex')
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
 const { str, has, refuse, refusalReceipt, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
@@ -421,6 +427,49 @@ async function toolReport(args = {}, { kernel } = {}) {
 }
 
 /**
+ * ★★★ RUN 255 / TB-2613: the office-side aggregate of md OWNERSHIP — how many of the institute's blueprint md files were
+ * written by the seat itself, how many exist, and the ratio between them. ONE computation, from the same `mdOwnerOf` the
+ * per-row receipts use, over the blueprint rows that name a file; the ratio is null (never 0) when nothing names a file,
+ * because "no file yet" is not "nobody owns anything". READ-ONLY: it walks the rows and the disk, it writes no mark.
+ */
+function mdOwnedBySeatsOf(kernel) {
+  const records = recordsOf(kernel)
+  const meansTail = 'counted over the BLUEPRINT rows that name their own md file (the rows `vibe_v5_blueprint` lists), one entry per file, deduplicated by path'
+  if (records === null) {
+    return { memberFiles: 0, total: 0, ratio: null, means: 'this kernel exposes no records face, so md ownership cannot be counted: ' + meansTail }
+  }
+  let rows = []
+  try {
+    // ★★★ RUN 255: `listBlueprints` refuses without a `path` (a blueprint read is about ONE path), so an institute-wide
+    // aggregate cannot use it. The rows are listed directly and each body is read through the SAME `cardMdOwnerOf`
+    // reader the card face uses — one provenance reader, two faces, never a second parse.
+    const listed = records.list({ track: BLUEPRINT_TRACK, limit: 0 })
+    const items = listed && Array.isArray(listed.items) ? listed.items : []
+    for (const item of items) {
+      if (!item || item.id === undefined || item.id === null) continue
+      const got = records.get({ id: item.id })
+      const body = got && got.record ? got.record.body : (got ? got.body : null)
+      if (typeof body === 'string' && body.trim() !== '') rows.push({ id: item.id, body })
+    }
+  } catch (e) {
+    return { memberFiles: 0, total: 0, ratio: null, means: 'the blueprint rows could not be listed (' + String((e && e.message) || e) + '), so this aggregate reports no numbers rather than a false zero: ' + meansTail }
+  }
+  const owners = []
+  for (const row of rows) {
+    const owner = cardMdOwnerOf(records, row.body)
+    if (owner !== null && owners.every((o) => o.path !== owner.path)) owners.push(owner)
+  }
+  const memberFiles = owners.filter((o) => o.writtenBy === 'member-file').length
+  const total = owners.length
+  return {
+    memberFiles,
+    total,
+    ratio: total === 0 ? null : memberFiles / total,
+    means: 'memberFiles = the md files whose row records writtenBy:"member-file" (the seat wrote its own file); total = the distinct files the blueprint rows name; ratio = memberFiles/total, null when total is 0 (no md has been named yet — that is absence, not a zero ratio). Written by the seat, kernel-materialized and fs-untracked are all counted as files, only the first counts as owned. ' + meansTail,
+  }
+}
+
+/**
  * THE INSTITUTE-WIDE VIEW, academician-only in the original ("(academician) Institute-wide view"). The ROLE CHECK is
  * the pack's: the slot vocabulary is the pack's own declaration, so the pack is where "only the chair seat" belongs.
  */
@@ -505,6 +554,9 @@ async function toolOverview(args = {}, { kernel } = {}) {
         addedFromService: openMeetings.addedFromService === undefined ? null : openMeetings.addedFromService,
       }
       : null,
+    // ★★★ RUN 255 / TB-2613: the office-side aggregate of md OWNERSHIP (seats writing their own md files), computed once
+    // from the same `mdOwnerOf` the per-row receipts use. `ratio:null` when no md has been named yet — absence is not 0%.
+    mdOwnedBySeats: mdOwnedBySeatsOf(kernel),
     leadership }
   // A warning is a TOP-LEVEL field, not a line inside `leadership`: a caller that reads only the warned shape cannot
   // mistake "no warning" for "no field" — absent means consistent, and the note says which code it was.
@@ -580,7 +632,7 @@ export function sessionRefusalOf({ view = null, member = '' } = {}) {
       cause: cause === '' ? null : cause,
       childId: null,
       message: 'member "' + who + '" has NEVER opened a session, so there is no wire to read a visible tool set from — nothing has failed that a session could have shown',
-      hint: 'a session has to exist first: seat the member (vibe_vmu_control {action:"hire", slot:"chair"|"member", ...}), give it work (vibe_v5_assign or vibe_vmu_turn {op:"drive", member:"' + who + '"} so a child session is opened), then call tool_help again; until then `declarationSet` is the honest reading of what it may call',
+      hint: 'a session has to exist first — TWO steps, and both acts are on faces this receipt names: (1) read a REAL id with vibe_vmu_control {action:"roster"} (its `roster[]` carries id/slot/state); (2) seat that id with vibe_vmu_control {action:"hire", slot:"chair"|"member", member_id:"<roster id>", institution:"<this deployment name>"} — member_id, slot and institution are EACH required, the face invents none of them. Then give the member work (vibe_v5_assign or vibe_vmu_turn {op:"drive", member:"' + who + '"} so a child session opens) and call tool_help again; until then `declarationSet` is the honest reading of what it may call. REACHABLE INSTEAD: 两步都落在本回执点到的面上——① 读真 id：vibe_vmu_control {action:"roster"}，回执 roster[i].id 就是真实成员 id（别自己编）；② 入席：vibe_vmu_control {action:"hire", slot:"member", member_id:"<roster 里那个 id>", institution:"<本部署的机构名>"}（member_id / slot / institution 三个都必填，机构是部署的决定，内核没有缺省）；随后 vibe_v5_assign 或 vibe_vmu_turn {op:"drive", member:"<同一 id>"} 派活开子会话，再调 vibe_v5_tool_help {member:"<id>"}；没有会话时 declarationSet 本身就是可读的声明集',
       means: 'this code means "there has NEVER been a wire" — distinct from VMU_MEMBER_SESSION_NOT_LIVE ("the wire existed and closed"): there is no session to reopen, only one to open (RUN 251 / F71-8)',
     }
 }
@@ -3386,7 +3438,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         }
         return 'vibe_v5_record_proposition { id: "' + propositionId + '", statement: ' + quoted(f && f.statement)
           + ', value: ' + valueLiteral(f && f.value) + ', motive: ' + quoted(f && f.motive)
-          + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "' + new Date().toISOString() + '", ballotId: "' + tallyId + '", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
+          + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "' + kernelClockIsoOf(kernel).iso + '", ballotId: "' + tallyId + '", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
       })()
       : (cardPath.path
         ? 'edit the card FILE at ' + cardPath.path + ' and set its probability to p = ' + String(ruled.value) + ' (this proposition is a library card, not a records row: no records face owns it, so the edit is a file edit by its holder)'
@@ -4567,18 +4619,21 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       'pass at:"<ISO-8601 time>" or scheduledFor:"<the same time>" — use `op:"appoint"` (or plain convene) for a meeting that starts now')
   }
   const at = atRaw === null ? null : atRaw
-  // ★★★ RUN 225-B: per-meeting late-admission policy - forwarded when given, left to the kernel default (open) when not.
+  // ★★★ RUN 225-B / RUN 255 rev3: per-meeting late-admission policy - forwarded when given, left to the kernel default
+  // when not. The kernel default is "chair" (kernel/meetings.js lateAdmissionOf: `typeof m.lateAdmission === 'string' ?
+  // ... : 'chair'`): a late arrival is HELD AT THE DOOR until the chair calls admit(). The old comment said "open" —
+  // the wording had drifted from the mechanism, so a caller was told the opposite of what would happen.
   // The default lives in ONE place (kernel/meetings.js) or the same default drifts in two layers. A non-string is refused
   // here by name: a type error should not travel into the kernel and come back as a vague complaint.
   const lateAdmissionRaw = has(args.lateAdmission) ? args.lateAdmission : null
   if (lateAdmissionRaw !== null && typeof lateAdmissionRaw !== 'string') {
     throw refuse('VMU_INVALID_ARGUMENT', 'lateAdmission must be a string; got ' + typeof lateAdmissionRaw,
-      'pass lateAdmission:"open"|"chair"|"refuse" - open seats a late arrival (late:true), chair holds it at the door until the chair calls admit(), refuse refuses it by name with the two repairs')
+      'pass lateAdmission:"open"|"chair"|"refuse" - open seats a late arrival (late:true), chair holds it at the door until the chair calls admit() (this is the DEFAULT), refuse refuses it by name with the two repairs')
   }
   const lateAdmission = lateAdmissionRaw === null ? null : lateAdmissionRaw.trim()
   if (lateAdmission === '') {
     throw refuse('VMU_INVALID_ARGUMENT', 'lateAdmission was given but names no policy',
-      'pass lateAdmission:"open"|"chair"|"refuse" - or omit lateAdmission entirely (the kernel default is "open")')
+      'pass lateAdmission:"open"|"chair"|"refuse" - or omit lateAdmission entirely (the kernel default is "chair": a late arrival is held at the door until the chair calls admit())')
   }
   // ★★ ROUND 33 / P2-③: 「允许一次性连排多会议」was a MECHANISM THE RULE NAMES AND NO FACE COULD REACH. The kernel
   // side has been there since D6 — `kernel/meetings.js:2100 openSeq({ sequence })` takes the list of meetings that
@@ -4687,7 +4742,7 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // 时钟会自动开会。这里改成内核的真话，并把内核回执字段透出（requiresChairProceed / waitingFor / startsInMs / nextActions /
   // atSource / scheduledForIso）；pack 回执里不再允许出现「到点自动开会」的表述。
   const scheduleNote = state === 'scheduled'
-    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '，解析后的开始时刻见 scheduledForIso）：status/summary/meetingView 现在就能读；开始时间之前的**治理动作**（发言、动议、表决、结会、会长动作）都会被内核具名拒绝。有两件事要说清：① `attend` 是座位登记，内核按设计**允许提前签到**（预约/等待状态里唯一被豁免的动作），它不会让会议提前开始；② **到点不会自己开会——框架不替主席开会**（没有定时器，没人触碰的进程不会自己醒）。到点后的下一次触碰（beat/status/summary/meetingView 等）把考勤规则结算一次：规则当时已满足就开会，否则转入 waiting，此后只有主席的 proceed() 能开会（主席也可以提前 proceed()，回执会写 startedLate）。所以预约回执带着 `requiresChairProceed`/`requiresChairProceedMeans`、`waitingFor`、`startsInMs`、`nextActions`：要开会就按 nextActions 里的 proceed 行动，不要假设时钟会替主席做决定。'
+    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '，解析后的开始时刻见 scheduledForIso）：status/summary/meetingView 现在就能读；开始时间之前的**治理动作**（发言、动议、表决、结会、会长动作）都会被内核具名拒绝；例外是主席的 proceed()（可提前开会，回执记 startsEarly/earlyByMs）。有两件事要说清：① `attend` 是座位登记，内核按设计**允许提前签到**（预约状态里被豁免的动作之一，另一个是主席的 proceed()），它不会让会议提前开始；② **到点不会自己开会——框架不替主席开会**（没有定时器，没人触碰的进程不会自己醒）。到点后的下一次触碰（beat/status/summary/meetingView 等）把考勤规则结算一次：规则当时已满足就开会，否则转入 waiting，此后只有主席的 proceed() 能开会（主席也可以提前 proceed()，回执会写 startedLate）。所以预约回执带着 `requiresChairProceed`/`requiresChairProceedMeans`、`waitingFor`、`startsInMs`、`nextActions`：要开会就按 nextActions 里的 proceed 行动，不要假设时钟会替主席做决定。'
     : null
   // ★ GOAL ROUND 3 — THE RECOMMENDED PROCEDURE. A type that the rule gave a skeleton gets it in the receipt, labelled
   // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY
@@ -4986,10 +5041,35 @@ function blueprintStaleWindowOf(kernel) {
   return staleWindowOf(raw)
 }
 
+/**
+ * ★★★ RUN 256 / TB-2623 (clock purity): the pack face reads the KERNEL clock once and hands it to the
+ * blueprint module. `kernel.clockguard.now()` is the guarded accessor the kernel exposes; reading `Date.now()` here
+ * (or letting `blueprint.js` fall back to it) is how an injected clock and the wall clock ended up mixed in one receipt
+ * (`authors[].at` wall time beside a `scheduledFor` from the injected clock). `null` = this deployment has no usable
+ * clock, and the module then NAMES the wall-clock fallback (`atSource:'wall-clock'`) instead of hiding it.
+ */
+function kernelClockMsOf(kernel) {
+  try {
+    const guard = kernel && kernel.clockguard
+    if (guard && typeof guard.now === 'function') {
+      const v = Number(guard.now())
+      if (Number.isFinite(v)) return v
+    }
+  } catch (e) { /* no clock: report null; the module names the fallback, it does not borrow the wall clock here */ }
+  return null
+}
+/** An ISO stamp for TEXT the pack prints (an example call); the source is named, never silently the wall clock. */
+function kernelClockIsoOf(kernel) {
+  const ms = kernelClockMsOf(kernel)
+  if (ms !== null) return { iso: new Date(ms).toISOString(), atSource: 'kernel-clock' }
+  return { iso: new Date().toISOString(), atSource: 'wall-clock' }
+}
+
 function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   const action = str(args.action || 'state').trim()
   const staleWindow = blueprintStaleWindowOf(kernel)
   const records = recordsOf(kernel)
+  const clockMs = kernelClockMsOf(kernel)
   // ★★★ RUN 236 (G8 outline / G11 revision reason, run 60 / FEEDBACK60 P-series): `blueprint.js` learned to store and
   // publish both facts, but THIS face neither declared the parameters nor forwarded them - so the very call the prompt
   // teaches (propose a revision with its 由粗到细 outline) could not record one. A field the row keeps and the face
@@ -5017,7 +5097,7 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     ? 'argument'
     : (action === 'adopt' && adoptDraftArg !== '' ? 'draft' : 'setting:' + BLUEPRINT_PATH_KEY)
   if (action === 'state') {
-    const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
+    const state = blueprintState({ records, path, now: clockMs, nowFromKernel: true, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, state, {
       tool: 'vibe_v5_blueprint', action, pathSource, staleAfterMsSource: staleWindow.source,
       readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
@@ -5052,6 +5132,10 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       // `read` receipt could not say where the draft file is nor whether it is on disk until these two names existed here.
       draftMdPath: read.draftMdPath === undefined ? null : read.draftMdPath,
       mdWritten: read.mdWritten === undefined ? null : read.mdWritten,
+      // ★★★ RUN 255 / TB-2613: WHO wrote the file this revision indexes. This branch copies a FIXED subset, so a reading
+      // the module publishes is silent here until it is named — the same lesson RUN 248-M2 pinned for draftMdPath.
+      mdWrittenBy: read.mdWrittenBy === undefined ? null : read.mdWrittenBy,
+      mdOwner: read.mdOwner === undefined ? null : read.mdOwner,
       // ★★★ RUN 236 / task-26 (G8, G11): `read` forwarded the md facts but not the two fields RUN 236 added to the row
       // itself — so `state` (which spreads the readings) could name an outline while `read` — the surface a member quotes
       // when it reports back — stayed silent about it. Same source, both surfaces: the readings come from `readBlueprint`,
@@ -5074,15 +5158,15 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   }
   if (action === 'propose') {
     const member = requireSeat(kernel, args.member || args.by, 'blueprint (proposal)')
-    // ★★★ RUN 248-M2: `mdPath` names a draft md the MEMBER wrote with the fs tool (task-64 made the draft a real file).
-    // It is declared in the schema below and forwarded here; without it the kernel materializes
-    // Shared/Drafts/<stem>-r<N>.md itself. The old gate read `text` alone, which would refuse exactly the shape the new
-    // contract teaches (the file carries the prose), so the gate reads BOTH sources: text, or an mdPath that resolves.
+    // ★★★ RUN 255 / TB-2613 (default flipped to fs-first): `mdPath` names the draft md the MEMBER wrote with the fs tool.
+    // Omitting it no longer means "the kernel writes the draft": the module returns `draftMdMissing` naming the file the
+    // member still owes. Kernel materialization is an explicit request (`materialize:true`), never a silent default.
     const mdPathArg = str(args.mdPath || args.md_path || '').trim()
+    const materializeArg = args.materialize === true
     const text = str(args.text || args.body || '').trim()
     if (text === '' && mdPathArg === '') {
       throw refuse('VMU_INVALID_ARGUMENT', '蓝图提案需要正文 text（或一个用 fs 写好的草案 mdPath）',
-        'pass text:<完整的一版蓝图>，或先用 fs 工具把草案 md 写成 Members/<seat>/Drafts/<slug>-r<N>.md 再传 mdPath —— 空提案等于悄悄落成"什么都没有"')
+        '先用 fs 工具把草案 md 写成 Members/<seat>/Drafts/<slug>-r<N>.md（或 Shared/Drafts/…）再传 mdPath；也可传 text 让回执告诉你缺哪个文件；materialize:true 是显式请内核代写（RUN 255 默认 fs-first，不再自动写）')
     }
     // ★★ RUN 205 (run 43 / FEEDBACK42 1.5, MEASURED): every `authors[].seat` was null because this face forwarded only the
     // member id while `codesignMeans` claims adopt needs a chair author AND a member author — the check read a field nobody
@@ -5099,17 +5183,34 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     // (`md.written`/`md.writtenBy`/`md.mdPath`/`draftMdPath`/`mdWritten`/`verified`), so this face forwards the name and
     // does not restate it; a path that is not on disk is refused by NAME by the module (VMU_PACK_V5R_BLUEPRINT_MD_MISSING).
     const proposed = proposeBlueprint({
+      at: clockMs,
+      atKernel: true,
       records, path, text, by: String(member.id), seat: authorSeat, note: str(args.note || ''), draft: namedDraft,
       outline: outlineArg, revisionReason: reasonArg, requireOutline, mdPath: mdPathArg,
+      // ★★★ RUN 255 / TB-2613: the ownership the row will record. `inOwnTurn` is a fact of THIS CALL: the kernel resolves
+      // which member turn is speaking, and only a call made from the member own turn claims wroteInOwnTurn:true. An office
+      // call naming the member is not the member acting (false is still unknown-in-a-direction: the caller was not that
+      // member; true is reserved for the member turn itself).
+      materialize: materializeArg,
+      inOwnTurn: (() => {
+        const caller = resolveTurnMember(kernel, exec)
+        if (caller === null) return null
+        return caller === String(member.id) ? true : false
+      })(),
     })
-    const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
+    const state = blueprintState({ records, path, now: clockMs, nowFromKernel: true, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
+    const filed = proposed.filed !== false
     return Object.assign({}, proposed, {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
       inForce: state.current,
       staleAfterMs: state.staleAfterMs,
       staleAfterMsSource: staleWindow.source,
       draftsWaiting: state.draftsWaiting,
-      note: '★ 草案已登记但**没有生效**：只有主席席可以 adopt（机构政策：' + BLUEPRINT_ADOPT_SLOT + ' 席）。',
+      // ★★★ RUN 255 / TB-2613: when the default returned `draftMdMissing` NOTHING was filed, so the "已登记" sentence
+      // would be a lie; the module note (which names the file to write) is kept in that case.
+      note: filed
+        ? '★ 草案已登记但**没有生效**：只有主席席可以 adopt（机构政策：' + BLUEPRINT_ADOPT_SLOT + ' 席）。'
+        : proposed.note,
     })
   }
   if (action === 'adopt') {
@@ -5134,10 +5235,16 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     // ★★★ RUN 224 (run 59 / FEEDBACK58 1.7): the ADOPT branch gets the path AS THE CALLER SPELLED IT, not the resolved
     // setting default — a draft names its own path, and the setting is a fallback for readers, not a claim about which draft
     // is being adopted. Passing the resolved value here made `pathFrom` say "argument" about a path nobody passed.
+    // ★★★ RUN 259 / AUDIT-14 P0-3: `refreshFingerprint` is the repair the drift refusal NAMES: "the file is the truth,
+    // take its current bytes". It is forwarded as a boolean fact, and the receipt carries `mdDrift` (the two sha256s)
+    // so a reader never has to guess whether an adoption admitted a drift.
     const adopted = adoptBlueprint({
+      at: clockMs,
+      atKernel: true,
       records, path: pathFromArg, draft, by: String(member.id), note: str(args.note || ''),
       staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source,
       outline: outlineArg, revisionReason: reasonArg, requireOutline,
+      refreshFingerprint: args.refreshFingerprint === true,
     })
     return Object.assign({}, adopted, {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id), staleAfterMsSource: staleWindow.source,
@@ -6054,6 +6161,52 @@ function toolchainAbsentMeans(list) {
 }
 
 /**
+ * ★★★ RUN 256 (TB-2624 item 1, MEASURED in run 74): ONE LaTeX-absent fact, THREE shapes. The finalisation receipt put
+ * it under `final.{toolchainAbsent,pdfEnvironmentMissing,finalized}`, `compile` kept a `code` at top level and had no
+ * `toolchainAbsent` at all, and `status` printed the literal `toolchainAbsent: []` — the same environment fact could not
+ * be compared across the three doors, so a reader could not tell "the engine is missing" from "this read never asked".
+ * The reader below is the ONE producer: same four keys, same names, at the TOP level of `final`, `compile` and `status`,
+ * and the values are byte-equal inside one session because the first observation is memoised on the kernel object (the
+ * WeakMap key is the assembly, not the paper) and later reads reuse it. `latexAvailable:null` is the honest word for
+ * "this session did not ask" — it is never an installed-engine claim.
+ */
+const ENVIRONMENT_KEYS = Object.freeze(['latex'])
+const environmentObserved = new WeakMap()
+
+function environmentReadingsOf(observed, fallback) {
+  const memo = fallback && typeof fallback === 'object' ? fallback : null
+  const known = !!(observed && typeof observed === 'object')
+  let toolchainAbsent = memo && Array.isArray(memo.toolchainAbsent) ? memo.toolchainAbsent.slice() : []
+  let pdfEnvironmentMissing = memo && typeof memo.pdfEnvironmentMissing === 'boolean' ? memo.pdfEnvironmentMissing : null
+  let latexAvailable = memo && typeof memo.latexAvailable === 'boolean' ? memo.latexAvailable : null
+  if (known) {
+    const pdf = observed.pdf && typeof observed.pdf === 'object' ? observed.pdf : null
+    const observedAbsent = toolchainAbsentOf(pdf)
+    const missingFlag = observed.pdfEnvironmentMissing === true
+    const hasVerdict = pdf !== null || typeof observed.pdfEnvironmentMissing === 'boolean'
+    if (hasVerdict) {
+      toolchainAbsent = observedAbsent.length > 0 ? observedAbsent.slice() : (missingFlag ? ENVIRONMENT_KEYS.slice() : [])
+      pdfEnvironmentMissing = toolchainAbsent.length > 0 || missingFlag
+      latexAvailable = toolchainAbsent.length > 0 ? false : (pdf !== null && pdf.ok === true ? true : null)
+    }
+  }
+  const means = latexAvailable === false
+    ? 'the COMPILER toolchain itself lacks ' + (toolchainAbsent.join(', ') || 'latex') + ' — an environment fact, not an input any action failed to get: read it here, never as the reason a document was refused'
+    : (latexAvailable === true
+      ? 'the engine ran in this session, so ' + ENVIRONMENT_KEYS.join(', ') + ' was not absent when this assembly asked: this is an OBSERVATION from a compile/finalisation, not an installation claim made by a read'
+      : 'this session has not asked the engine question yet (no compile/finalisation observed one): absent unknown, never "none installed" — `latexAvailable:null` names the absence of a verdict, and `toolchainAbsent:[]` means not-reported, not installed')
+  return { toolchainAbsent, pdfEnvironmentMissing, latexAvailable, environmentMeans: means }
+}
+
+function environmentReadingsAt(kernelObj, observed = null) {
+  const memoKey = kernelObj && typeof kernelObj === 'object' ? kernelObj : null
+  const prior = memoKey !== null && environmentObserved.has(memoKey) ? environmentObserved.get(memoKey) : null
+  const reading = environmentReadingsOf(observed, prior)
+  if (memoKey !== null && (observed || prior === null)) environmentObserved.set(memoKey, reading)
+  return reading
+}
+
+/**
  * ★★ RUN 155 (audit of c5d356b9, problem 2): ONE pdf block, TWO doors. `final` and `compile` describe the
  * same compile, and they used to describe it in two different shapes: `final` returned a body, `compile` THREW, and the
  * keys differed even when both answered. The doc claimed they "share one structure", which was false on both halves.
@@ -6132,6 +6285,16 @@ function projectPdfBlock(pdf, target) {
     math: p.math && typeof p.math === 'object' ? p.math : null,
   }
 }
+
+/**
+ * ★★★ RUN 258 (TB-2638 / P43+P45, MEASURED on the 47-pair corpus): ONE sentence for the one confusion the audit
+ * found — a top-level `ok:true` was read as 「事情成了」 while the SAME receipt carried `missing:["pdf"]` and
+ * `toolchainAbsent:["latex"]`. `ok` is the REQUEST verdict; completion has its own name on these receipts
+ * (`complete` on final/render, `renderOk` on render, `missing`/`toolchainAbsent` for what was absent). No
+ * capability was added here: a finalisation without a PDF is an honest outcome on a machine with no LaTeX — what
+ * the corpus measured missing was the READING, not the ability.
+ */
+const PAPER_OK_MEANS = 'ok:true means the REQUEST was accepted and executed; it does NOT mean the paper is done. Read `complete` (final/render), `renderOk` (render), `missing` (what this request needed and did not get) and `toolchainAbsent` (what the MACHINE lacks). `ok:true` with `complete:false` is a normal reading — e.g. a finalisation on a machine with no LaTeX.'
 
 async function toolPaper(args = {}, { kernel } = {}) {
   const action = str(args.action || 'status')
@@ -6238,6 +6401,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // ★★ RUN 174 (run 19 FEEDBACK19 F4): every part slot carried `at: <round>` next to `round: <round>` — a field named
       // like a timestamp holding the round, so a reviewer counted "at 1" as an epoch. This subsystem keeps ROUNDS, not wall
       // time: the receipt now names the round once (`round`) and says so, and the review rows carry the round they judge.
+      // ★★★ RUN 256 (TB-2624 item 1): the SAME environment reader the compile/final doors use. `status` never sees a
+      // compile refusal itself, so it reports what this session OBSERVED (memoised on the kernel) and says "not asked yet"
+      // when nothing did — the literal `toolchainAbsent: []` below used to read as "engine installed".
+      const envRead = environmentReadingsAt(kernel)
       const paperView = (() => {
         const st = got && got.state ? got.state : null
         if (!st) return null
@@ -6257,6 +6424,8 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const compiledRow = (() => { try { return got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null } catch (e) { return null } })()
       const compiledProduced = compiledRow !== null
       return { ok: true, tool, action, target, exists,
+        // ★★★ RUN 256 (TB-2624 item 1): the same four environment keys, same names, at the TOP level of this door too.
+        ...envRead,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
         // ★★ RUN 182 (run 27 / FEEDBACK27 F27-10, MEASURED): `final{decision:"revise"}` is the ONLY way back to writing, and
@@ -6316,15 +6485,18 @@ async function toolPaper(args = {}, { kernel } = {}) {
           }
         })(),
         // ★★ RUN 175 (run 20 FEEDBACK20 ⑤): this view carries three clocks — `parts[].round`, `reviews[].round` and
-        // `consult.requests[].at` — two measured in ROUNDS and one in wall-clock milliseconds, and nothing said which was
+        // `consult.requests[].at` — two measured in ROUNDS and one in milliseconds, and nothing said which was
         // which. One sentence now states the convention for the whole view (the old `at` on a part slot was already
         // removed in RUN 174; this names what remains).
+        // ★★ RUN 256 (TB-2623): that millisecond "clock" is no longer assumed to be the wall clock — it is the subsystem
+        // clock (`paperClock`: kernel clock when the kernel carries one), so the sentence names the source instead of
+        // promising a wall-clock number the way it used to.
         // ★★ RUN 189 (run 33 / FEEDBACK33 1.4): `warnings` was a GROWING list read as if it described NOW. Run 33's
         // status printed the 3-round-cap disagreement next to two `deliverable:true` reviews of the SAME round. Each entry
         // now carries the round it belongs to; this sentence is the reading rule.
         warningsMeans: '`warnings` is HISTORY, not a verdict about the current state: each entry is tagged with the round it was written in (`（第 N 轮）`), and `forcedAfterCapRound` names the round whose cross-review hit the cap — a later round can agree and this list does not shrink (it is the record), so compare `forcedAfterCapRound` with the current `round` before reading it as now',
-        roundMeans: 'every `round` in this view (parts, reviews) is the paper ROUND the row was written in — an ordinal, not an instant; `consult.requests[].at` is wall-clock milliseconds (the only true time in the view), and the paper itself carries `createdRound`/`updatedRound`',
-        partsMeans: 'each part slot says which ROUND it was written in (`round`); this subsystem counts rounds, it does not stamp wall-clock time on a part',
+        roundMeans: 'every `round` in this view (parts, reviews) is the paper ROUND the row was written in — an ordinal, not an instant; `consult.requests[].at` is the subsystem clock in milliseconds (the only true time in the view — `paperClock` says whether that is the injected kernel clock or the counted wall-clock fallback), and the paper itself carries `createdRound`/`updatedRound`',
+        partsMeans: 'each part slot says which ROUND it was written in (`round`); this subsystem counts rounds, it does not stamp a clock time on a part',
         reviewsMeans: 'each review row says which ROUND of the cross-review it belongs to (`round`); a row of another round is durable history, not a vote on this round',
         // ★★★ RUN 252 (run 72 / F72-7, MEASURED): the mutual exclusion is STRUCTURAL on this face too: a paper with a
         // compiled pdf answers `missing: []` (the compile needed no archive row), and the artifact ROWS travel as
@@ -6336,10 +6508,28 @@ async function toolPaper(args = {}, { kernel } = {}) {
           ? 'empty because a compile IS on file for this paper: nothing this read needed is missing. The artifact ROWS are `archiveArtifacts` (e.g. `tex` is absent there for an md-format paper even after a successful compile) — two different questions (RUN 252 / F72-7)'
           : 'no compile is on file for this paper, so this list names the artifact ROWS that are absent (a write-stage paper reports md, tex, pdf, meta until render writes them). `archiveArtifacts` carries the same rows under their own name; `pdfCompiled.produced` is the file question, not this one',
         archiveArtifacts: archiveArtifactsReading(artifacts),
+        // ★★★ RUN 255 / TB-2613: the OWNERSHIP question, under the same name on every read face. A paper artifact is a
+        // LEDGER ROW (md/tex/pdf/meta), and a row names an md FILE only when its body carries `mdPath`; paper rows do not,
+        // so the honest answer is null — the uniform shape, not an invented writer.
+        mdOwner: null,
+        mdOwnerMeans: 'a paper artifact is a LEDGER ROW (md/tex/pdf/meta), not an md file it owns: no paper row names `mdPath`, so there is no ownership evidence to report — null is the honest absence (the same null `vibe_v5_read_library` prints for a card that names no md file). Blueprint rows DO name their md file and carry `mdOwner` with bytes/sha256 read from the disk (RUN 255 / TB-2613)',
+        // ★★ RUN 256 (TB-2623 clock purity): the paper subsystem is built per call, and both product sites passed no
+        // clock — so it silently used the wall clock. It now resolves the kernel guarded clock first; this field is how a
+        // receipt reader learns WHICH clock stamped the paper (injected:true names the kernel clock; the fallback is
+        // counted and reported, never indistinguishable from it).
+        paperClock: (() => {
+          try { return typeof paper.clockSource === 'function' ? paper.clockSource() : null } catch (e) { return null }
+        })(),
+        paperClockMeans: 'the clock THIS paper face used: `injected:true` + `source:"kernel-clock"` means every paper timestamp came from the injected kernel clock (reproducible); `source:"wall-clock"` names the counted fallback, so no receipt can mistake a wall stamp for an injected one',
         // ★★ RUN 252: status reads the LEDGER, not a compile refusal, so the toolchain question is answered where the
         // refusal exists (`compile` / `final` receipts). An empty list here means "not reported", never "engine installed".
-        toolchainAbsent: [],
-        toolchainAbsentMeans: 'status reads the LEDGER and never sees a compile refusal, so it reports no absent toolchain piece here: the engine question is answered on the refusal that asks it (`compile`/`final` receipts, `pdfEnvironmentMissing`). An empty list means not-reported, not installed',
+        // ★★★ RUN 256 (TB-2624 item 1): the environment reading is the SAME one `compile`/`final` print at top level
+        // (one reader, three doors). `latexAvailable:null` means this session never asked; an empty list means
+        // not-reported, never "installed".
+        toolchainAbsent: envRead.toolchainAbsent,
+        pdfEnvironmentMissing: envRead.pdfEnvironmentMissing,
+        latexAvailable: envRead.latexAvailable,
+        toolchainAbsentMeans: envRead.environmentMeans,
         // ★★ RUN 183 (run 29 / FEEDBACK29 D9, MEASURED): a finalized paper read `complete:true` beside `pdf:null` and
         //   a reader took it as "no PDF but the paper is complete". `complete` speaks only about the ARCHIVE artifacts
         //   row (md/tex/pdf/meta as NAMED rows); the file a compile produced is `pdfCompiled` below, and the two are
@@ -6620,8 +6810,44 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // serializer labels a second occurrence of the same value "[circular]". A face that hands out a receipt full of
       // "[circular]" would make a reader think the receipt is broken.
       const finProduced = !!(finalized.pdf && finalized.pdf.ok === true && (finalized.pdf.produced === true || Boolean(finalized.pdf.pdfPath)))
-      return { ok: true, tool, action, final: {
+      // ★★★ RUN 256 (TB-2624 item 1): ONE environment reading, TOP level, same four names as `compile`/`status`. The
+      // nested `final.toolchainAbsent`/`final.pdfEnvironmentMissing` below stay for compatibility (RUN 252 pins read them),
+      // but the authoritative, comparable reading is this one.
+      const envFin = environmentReadingsAt(kernel, {
+        pdf: finalized.pdf || null,
+        pdfEnvironmentMissing: finalized.pdfEnvironmentMissing === true,
+      })
+      // ★★★ RUN 258 (TB-2638 / P43): `ok:true` on THIS door was read as "the paper is finalised and done", while the
+      // same receipt carried `missing:["pdf"]`. Completion is a different question from acceptance, so it gets its own
+      // name, its own sentence, and a list of the calls that answer the difference. `ok` stays true (RUN 155/252 forbid
+      // demoting it to false: the finalisation really was accepted; what was absent is a downstream fact).
+      const finComplete = finalized.finalized === true && finProduced
+      const finUnfinished = finComplete ? [] : [finalized.finalized === true ? 'pdf' : 'final']
+      const finCompleteMeans = finComplete
+        ? 'complete:true — the finalisation ran AND the pdf exists. The archive ROW set is a separate question: read `archiveArtifacts.complete`'
+        : 'complete:false — `ok:true` says the finalisation REQUEST was accepted, NOT that the paper is complete: ' + (finalized.finalized === true
+          ? 'the finalisation ran but the pdf is absent (`missing:["pdf"]`). On a machine with no LaTeX that is an ENVIRONMENT fact, not a retry: read `toolchainAbsent`/`pdfEnvironmentMissing`, and `reachableInstead` for the calls that answer it'
+          : 'the finalisation itself did not happen (see `rolledBack`/`reviseAvailable`/`pdf`)')
+      const finReachable = finComplete ? [] : [
+        { call: 'vibe_v5_paper { action: "status", target }', reads: 'toolchainAbsent / pdfEnvironmentMissing — the environment fact, without retrying a compile' },
+        // RUN 258 / AUDIT-14 P1-7 (lead-approved 4th site): the same false value lived here too — the legal needs are
+        // the registry keys below, and a registered name is the only thing `vibe_vmu_env` accepts.
+        { call: 'vibe_vmu_env { action: "probe", need: "' + ENGINE_NEED + '" }', reads: 'ok / installCommand; a failed probe is a NORMAL result (this framework never installs anything for you); legal document-engine needs: ' + ENGINE_NEEDS.join(' / ') },
+        { call: 'nothing further — final is already accepted', reads: 'complete:false + missing:["pdf"] is the honest completion reading on an md-only or engine-less machine' },
+      ]
+      return { ok: true, tool, action,
+        okMeans: PAPER_OK_MEANS,
+        complete: finComplete,
+        completeMeans: finCompleteMeans,
+        unfinished: finUnfinished,
+        reachableInstead: finReachable,
+        ...envFin, final: {
         ok: finalized.ok === true, finalized: finalized.finalized === true, target: finalized.target,
+        // ★★★ RUN 258 (TB-2638 / P43): the same two facts INSIDE the nested block, because that is where a reader who
+        // looks at `receipt.final` first will ask the question. One value, two projections — not a second estimate.
+        complete: finComplete,
+        completeMeans: finCompleteMeans,
+        unfinished: finUnfinished,
         final: finalized.final || null,
         // ★★★ RUN 252 (run 72 / F72-7, MEASURED): the finalisation receipt carried `missing: ["tex"]` beside
         // `pdf.produced: true` — the archive-row list was being read as "what finalisation lacked". It is not: a
@@ -6707,6 +6933,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const rendered = paper.render({ target })
       const arts = rendered.artifacts || null
       return { ok: true, tool, action, target, renderOk: rendered.ok === true,
+        // ★★★ RUN 258 (TB-2638 / P45): `renderOk` is the ARCHIVE ROW question, not "did the render fail" — the kit
+        // answers it with `artifacts.complete` (md/tex/meta/pdf), so on a machine without LaTeX it is false even when
+        // the render request was ACCEPTED and wrote md/tex/meta. The corpus measured the word being read as "the
+        // render succeeded"; it never meant that. One sentence each, no renaming (callers already read `renderOk`).
+        okMeans: PAPER_OK_MEANS,
+        renderOkMeans: rendered.ok === true
+          ? 'renderOk:true — the ARCHIVE ROW SET (md/tex/meta/pdf) is complete after this render; `ok:true` was only the request being accepted'
+          : 'renderOk:false — the archive ROW SET is INCOMPLETE (`missing` names the absent rows; typically the pdf row, which only `compile` writes). The render REQUEST was accepted and wrote the rows in `wroteToLedger`; renderOk:false is NOT "the .tex failed" and NOT a retryable error',
         // ★★★ RUN 221 (run 57 / FEEDBACK56 1.4, MEASURED): `wrote: ["md","tex","meta"]` beside `wroteWhere.disk: []`
         // reads as "wrote and did not write". The list is RECORD KINDS; the primary key now says so, the filesystem
         // answer is its own field, and `wrote` survives as a deprecated alias that names itself as one.
@@ -6739,6 +6973,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // refuse (a paper being written must stay renderable) — it SAYS it did not judge, and names what `final` would.
         qualityGate: rendered.qualityGate || null,
         complete: arts ? arts.complete === true : false,
+        // ★★★ RUN 258 (TB-2638 / P45): `complete` here is the SAME value as `renderOk` by construction (the kit returns
+        // ok = artifacts.complete), so the sentence says which question both answer instead of leaving two names for
+        // one fact to be read as two successes.
+        completeMeans: 'same value as `renderOk` on this door BY CONSTRUCTION: both answer the archive ROW question (the kit returns ok = artifacts.complete). `complete:false` with `ok:true` is the normal reading of "rendered, but the row set is not finished yet"',
+        unfinished: arts && Array.isArray(arts.missing) ? arts.missing.slice() : [],
         present: arts && arts.present ? Object.assign({}, arts.present) : null,
         pdf: rendered.pdf ? { ok: rendered.pdf.ok === true, code: rendered.pdf.code || null,
           needsKernel: rendered.pdf.needsKernel || null, message: rendered.pdf.message || null } : null }
@@ -6756,11 +6995,26 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // raise. Turning a compile failure into a receipt is right; turning "no such paper" (requireState) and "this
         // assembly has no LaTeX face" (CODES.EXECUTOR) into `ok:true` is not - those are named refusals the caller must
         // see, and RUN 155's unconditional catch silently reclassified them as success.
+        // ★★★ RUN 258 (TB-2638 / P44): the engine question is an ENVIRONMENT fact, and the 47-pair corpus measured the
+        // refusal as readable but not actionable for a seat that had just been told "compile the paper" — its hint named
+        // the mechanism (the host spawn seam) but no call the seat COULD make. The refusal stays a refusal (RUN 157
+        // forbids turning it into a receipt); its hint gains the three reachable reads, APPENDED after the kit sentence
+        // so the mechanism explanation still comes first.
+        if (e && String(e.code || '') === 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING') {
+          const e2 = refuse(String(e.code), String(e.message || ''),
+            String(e.hint || '') + ' REACHABLE INSTEAD: 不用重试 compile —— ① 先 vibe_v5_paper { action: "status", target } 读 toolchainAbsent/pdfEnvironmentMissing（这是环境事实，不是参数错误）；② vibe_vmu_env { action: "probe", need: "' + ENGINE_NEED + '" } 探本机有没有引擎（探测失败是正常结果，框架不会替你安装）；本框架的文档引擎 need 只有注册表里这些真值：' + ENGINE_NEEDS.join(' / ') + '（换一种引擎就换这个词；注册表外的字符串会被判 VMU_ENV_UNKNOWN_NEED）；③ 没有引擎时 final 仍可收口，pdf 会记在 final 的 missing 里，先交能交的部分')
+          e2.faceCode = e && e.faceCode
+          throw e2
+        }
         if (!e || String(e.code || '') !== 'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED') throw e
         // ★ RUN 155: `message` is NON-ENUMERABLE on an Error, so `{ ok: false, ...(e || {}) }` silently dropped it and
         // the receipt answered with an empty message - the very "a receipt that cannot be acted on" this round removes.
         // The projection is fed the named fields EXPLICITLY, and it keeps its own `missing: ['pdf']`.
-        return { ok: true, tool, action, target, compiled: projectPdfBlock({
+        // ★★★ RUN 256 (TB-2624 item 1): this refusal is where the engine question is actually ASKED, so it carries the
+        // same four top-level environment keys as `final`/`status` — byte-equal readings inside one session.
+        return { ok: true, tool, action, target,
+          ...environmentReadingsAt(kernel, { pdf: { ok: false, code: (e && e.code) || null, faceCode: (e && e.faceCode) || null } }),
+          compiled: projectPdfBlock({
           ok: false,
           code: (e && e.code) || null,
           message: (e && e.message) || null,
@@ -6782,7 +7036,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
       }
       // RUN 217: the repair counts reach this door through the ONE projection above (they ride on `compiled.math`),
       // so `compile` and `final` keep the same key set on success and on failure.
-      return { ok: true, tool, action, target, compiled: projectPdfBlock(compiled, target) }
+      // ★★★ RUN 256 (TB-2624 item 1): same four top-level environment keys, read by the same producer.
+      return { ok: true, tool, action, target,
+        ...environmentReadingsAt(kernel, { pdf: compiled }),
+        compiled: projectPdfBlock(compiled, target) }
     }
     case 'consult_state':
       // Read side (the same discipline as `order` on the meeting face): the ledger was WRITE-ONLY from the tool face, so
@@ -6902,6 +7159,24 @@ function verifiedRefOf(records, cardId, kernel) {
   }
 }
 
+/**
+ * ★★★ RUN 255 / TB-2613: the ownership evidence of a CARD row that indexes a md file of its own. Cards usually have no
+ * file (the body is the holder), and then this returns null — the honest absence, not an empty object. When the body
+ * carries `- mdPath：`, the writer comes from the body header and the bytes/sha256 are read from the disk JUST NOW.
+ */
+function cardMdOwnerOf(records, body) {
+  const header = (key) => {
+    const re = new RegExp('^-\\s*' + key + '[：:]\\s*(.*)$', 'm')
+    const m = re.exec(String(body === undefined || body === null ? '' : body))
+    return m === null ? '' : String(m[1]).trim()
+  }
+  const mdPath = header('mdPath')
+  if (mdPath === '') return null
+  const writtenBy = header('mdWrittenBy')
+  const inTurn = header('mdWroteInOwnTurn')
+  return mdOwnerOf({ records, mdPath, writtenBy: writtenBy === '' ? null : writtenBy, wroteInOwnTurn: inTurn === '' ? null : inTurn === 'true' })
+}
+
 async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
   const out = await toolReadLibrary(args, { kernel })
   if (!out || out.ok !== true) return out
@@ -6925,6 +7200,7 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
     // gate and its note are therefore answered HERE, by the same `proofGateOfStoredCard` the settlement read-back uses.
     const storedProofState = text(fields.proofState)
     const storedGate = proofGateOfStoredCard(fields)
+    const cardOwner = cardMdOwnerOf(records, body)
     const next = Object.assign({}, row, {
       // ★★★ RUN 252 (F72-2): the stored row's proof line, NAMED, with the sentence that says what `null` means — a
       // reader no longer has to know that "no line" and "draft" are the same fact.
@@ -6947,6 +7223,12 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
         proofRef: text(fields.proofRef), proofState: text(fields.proofState),
       },
       cardFieldsMeans: "`cardFields` are the fields of the card BODY, parsed by the one authority the debate/verified gates use (verified.js#parseCardBody). `card.body` stays the author's text — these are the same facts as program values, not a second declaration. `cardFields.p === null` with `cardUnjudgeable` set means the body could not be judged; it does NOT mean p is zero.",
+      // ★★★ RUN 255 / TB-2613: WHO owns this card md, with bytes and sha256 read from the disk right now. A card that
+      // names no md path carries `mdOwner:null` — the honest absence, never an object that invents a writer.
+      mdOwner: cardOwner,
+      mdOwnerMeans: cardOwner === null
+        ? 'this card names no md file of its own (the body is the holder), so there is no md ownership to report: null, not an empty object'
+        : 'mdOwner is the ownership EVIDENCE of the md file this card names: writtenBy comes from the row header (member-file | kernel-materialized | fs-untracked), bytes/sha256 were read from the disk by this read, and atSource says whether the row provenance or only the disk decided it (RUN 255 / TB-2613)',
     })
     if (parsed && parsed.ok !== true) {
       next.cardUnjudgeable = (Array.isArray(parsed.problems) && parsed.problems.length > 0)
@@ -7114,11 +7396,12 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / a passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier and is REFUSED by name (`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`). ★ `title` is an OPTIONAL separate name; `id` optionally NAMES the meeting (omit both and the service mints an id; an id held by another registry is refused by name). ★ `at` SCHEDULES it (epoch ms or ISO-8601): a future time puts the meeting in `scheduled` — reads work right away, every action before the start is refused by name, and a latecomer attending then starts it; the receipt reads `state` and `scheduledFor` back. ★ The institution\'s recommended procedure comes back in `procedure` — a RECOMMENDATION, never a gate; steps the framework has not implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES, plus ONE read (`action:"rulings"` lists the ruling cards the members filed for a debate — id + proposition_id); status/summary/close/flow live on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face — on vibe_vmu_meeting it is a VOTE\'s object, so do not carry the habit between faces. ★ `sequence` convenes the meetings that FOLLOW this one (an array of descriptors, each validated and refused by name); omitting `at` convenes them now, `at` schedules this one and the declared run follows it. ★ `durationMs` sets THIS meeting\'s own upper bound (integer ms, 30 minutes .. 2 hours; outside the range is refused by name); omit it and `vmu.meetings.hardLimitMs` applies — the receipt reads back `wallLimitMs` and `wallLimitMsSource`. ★ RUN 225-B: `lateAdmission` (open|chair|refuse, default open) decides a LATE ARRIVAL (late = vmu.meetings.lateAfterMs against openedAt; the default 0 means nobody is ever late): open seats it (late:true), chair holds it at the door (`pendingLate:true`, released only by the chair with vibe_vmu_meeting { action: "admit", id, member, actor }), refuse refuses it by name (`VMU_LATE_ADMISSION_REFUSED`, naming the two repairs). ★ RUN 248-N: `op` IS AN ALIAS of `action` (one word, two spellings; giving BOTH with different words is refused by name), and the appointment notice teaches three words of it: `{op:"appoint"}` convenes/预约 in one word, `{op:"schedule", scheduledFor:"<ISO-8601 time>"}` requires the start time (alias `at`; missing is refused by name), and `{op:"attend", id:"<meeting>", member:"<id>"}` takes the seat the notice promised. The receipt echoes the KERNEL delivery verdict — `notified` / `notifyRows` / `notifyFailed` are the kernel `open()` fields passed through unchanged — because ONE convene writes exactly ONE durable row per invited member (and renders ONE notice line); this face sends no invitation of its own.',
+    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / a passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier and is REFUSED by name (`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`). ★ `title` is an OPTIONAL separate name; `id` optionally NAMES the meeting (omit both and the service mints an id; an id held by another registry is refused by name). ★ `at` SCHEDULES it (epoch ms or ISO-8601): a future time puts the meeting in `scheduled` — reads work right away, every action before the start is refused by name, and a latecomer attending then starts it; the receipt reads `state` and `scheduledFor` back. ★ The institution\'s recommended procedure comes back in `procedure` — a RECOMMENDATION, never a gate; steps the framework has not implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES, plus ONE read (`action:"rulings"` lists the ruling cards the members filed for a debate — id + proposition_id); status/summary/close/flow live on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face — on vibe_vmu_meeting it is a VOTE\'s object, so do not carry the habit between faces. ★ `sequence` convenes the meetings that FOLLOW this one (an array of descriptors, each validated and refused by name); omitting `at` convenes them now, `at` schedules this one and the declared run follows it. ★ `durationMs` sets THIS meeting\'s own upper bound (integer ms, 30 minutes .. 2 hours; outside the range is refused by name); omit it and `vmu.meetings.hardLimitMs` applies — the receipt reads back `wallLimitMs` and `wallLimitMsSource`. ★ RUN 225-B / RUN 255 rev3: `lateAdmission` (open|chair|refuse, DEFAULT chair — a late arrival must be admitted by the chair) decides a LATE ARRIVAL (late = vmu.meetings.lateAfterMs against openedAt; the default 0 means nobody is ever late): open seats it (late:true), chair holds it at the door (`pendingLate:true`, released only by the chair with vibe_vmu_meeting { action: "admit", id, member, actor }), refuse refuses it by name (`VMU_LATE_ADMISSION_REFUSED`, naming the two repairs). ★ RUN 248-N: `op` IS AN ALIAS of `action` (one word, two spellings; giving BOTH with different words is refused by name), and the appointment notice teaches three words of it: `{op:"appoint"}` convenes/预约 in one word, `{op:"schedule", scheduledFor:"<ISO-8601 time>"}` requires the start time (alias `at`; missing is refused by name), and `{op:"attend", id:"<meeting>", member:"<id>"}` takes the seat the notice promised. The receipt echoes the KERNEL delivery verdict — `notified` / `notifyRows` / `notifyFailed` are the kernel `open()` fields passed through unchanged — because ONE convene writes exactly ONE durable row per invited member (and renders ONE notice line); this face sends no invitation of its own.',
     parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: ['boolean', 'array'], items: { type: ['string', 'object'] }, description: 'true = declare that this meeting has a formal agenda; an ARRAY = the agenda items themselves (each a non-empty line, or {title|text, kind, id}); the kernel stores either and the read faces return `formalAgendaItems` rows with `formalAgendaItemsWhy` naming why they are empty' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' }, op: { type: 'string' }, scheduledFor: { type: 'string' }, materials: { type: 'string' }, wallLimitMs: { type: 'integer' },
-    // ★ RUN 225-B: lateAdmission is THIS meeting's policy for a LATE arrival; the default (open) lives in the kernel,
-    //   not here. Undeclared keys are refused generically by the host funnel BEFORE the handler runs, so being able to
-    //   say it at all has to be a declaration.
+    // ★ RUN 225-B / RUN 255 rev3: lateAdmission is THIS meeting policy for a LATE arrival; the default (chair — a
+    //   late arrival is held at the door until the chair admits it) lives in the kernel, not here. Undeclared keys are
+    //   refused generically by the host funnel BEFORE the handler runs, so being able to say it at all has to be a
+    //   declaration.
     lateAdmission: { type: 'string', enum: ['open', 'chair', 'refuse'] } },
     handler: toolMeeting,
     // ★ LIVE RUN 29: the funnel refuses undeclared keys generically; this face can say WHY it is the wrong face.
@@ -7195,10 +7478,12 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_blueprint',
-    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision — and a DRAFT OWNS ITS OWN md FILE: pass `text` and the kernel writes Shared/Drafts/<stem>-r<N>.md (receipt writtenBy:"kernel-materialized"), or pass `mdPath` naming a draft md you wrote with the fs tool (its bytes become the row prose, sha256 indexed; a missing file is refused VMU_PACK_V5R_BLUEPRINT_MD_MISSING; plain markdown accepted); `draft` OPTIONAL names which OPEN draft of this path the text continues — omit it and the open draft is continued, or a new revision is started when none is open; a draft is never in force, and `adopt` promotes the DRAFT FILE bytes to the canonical path after checking they are still the bytes the row indexed (a changed draft is refused by name VMU_PACK_V5R_BLUEPRINT_MD_DRIFT; a canonical file a member already wrote with exactly those bytes is verified, not rewritten); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one; "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (reported in bodyPrefixDropped), and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft, and then nothing was compared. A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues. Every change is one record row (who proposed, who adopted, when, fingerprint), and the rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
+    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision — and a DRAFT OWNS ITS OWN md FILE: fs-first by DEFAULT: write Shared/Drafts/<stem>-r<N>.md with fs and pass `mdPath` (its bytes become the row prose; plain markdown accepted; a missing file is refused by name); omitting mdPath writes NOTHING — the receipt is draftMdMissing + nextActions naming the file (pass materialize:true only to ask the kernel to write it); `draft` OPTIONAL names which OPEN draft of this path the text continues — omit it and the open draft is continued, or a new revision is started when none is open; a draft is never in force, and `adopt` promotes the DRAFT FILE bytes to the canonical path after checking they are still the bytes the row indexed (a changed draft is refused by name; a canonical file already holding those bytes is verified, not rewritten); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one; "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (reported in bodyPrefixDropped), and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft, and then nothing was compared. A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues. Every change is one record row, also readable via vibe_v5_read_library { track: "blueprint" }.',
     parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' },
       // ★★★ RUN 248-M2: a DRAFT revision owns a real md file (task-64). `mdPath` lets the MEMBER be its writer.
-      mdPath: { type: 'string', description: 'OPTIONAL: the draft md YOU wrote with the fs tool, as a workspace relative path (e.g. Members/<seat>/Drafts/<slug>-r<N>.md). The kernel reads it back, records its sha256 on the draft row, and the row text becomes the file prose — the file and the index cannot diverge. OMIT it and the kernel materializes the draft itself at Shared/Drafts/<stem>-r<N>.md (receipt: writtenBy:"kernel-materialized"). A path that is NOT on disk is refused by name (VMU_PACK_V5R_BLUEPRINT_MD_MISSING) with the reachable fix: write the file first with the fs tool, then propose again with the same mdPath. Refused by name too: an empty file.' },
+      mdPath: { type: 'string', description: 'OPTIONAL: the draft md YOU wrote with the fs tool, workspace relative (e.g. Members/<seat>/Drafts/<slug>-r<N>.md). The kernel reads it back, records its sha256 and WHO wrote it (mdOwner), and the row prose becomes the file text. OMIT it: fs-first returns draftMdMissing + nextActions naming the file and writes nothing. A path not on disk is refused by name (VMU_PACK_V5R_BLUEPRINT_MD_MISSING); an empty file too.' },
+      materialize: { type: 'boolean', description: 'OPTIONAL (default false): true = the kernel writes the draft md for you (receipt writtenBy:"kernel-materialized"). The default never writes a file.' },
+      refreshFingerprint: { type: 'boolean', description: 'OPTIONAL (adopt only): true = take the draft file CURRENT bytes when it changed after indexing (receipt mdDrift names both sha256s).' },
       outline: { type: 'array', description: 'OPTIONAL ordered outline of this revision: [{id,title,depth}] with depth 1 (粗) or 2 (细). Read back as outline/outlineCount/outlineDepthMax on state, read and every propose/adopt receipt; a malformed entry is refused by name, never dropped.' },
       revision_reason: { type: 'string', description: 'OPTIONAL one line: WHY this revision exists (G11). Read back as revisionReason/revisionReasonSource. An alias of revisionReason.' } },
     handler: toolBlueprint,

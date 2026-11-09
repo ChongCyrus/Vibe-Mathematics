@@ -18,6 +18,18 @@
    （见 §2.4）。"退出码 0"不是验收，"人能读到正确的原文"才是。
 4. **探针必须真的能变红。** 一个灵敏度探针如果始终为绿，说明它守的那条不变式**其实没被测到**——
    这比没有探针更糟（它给人虚假的安全感）。
+5. **先过零 token 放行闸，再花 token（TB-2609）。** 任何真机运行之前必须先跑
+   `node scripts/sim/audit/release-ready.mjs`：它把四条事实合成一个判定——
+   ① `tests/sim-gate.test.mjs` **本次真的跑过且绿**（`--no-gate` 跳过的一律算未跑）；
+   ② 最新的 `D:/_tmp/sim/**/AUDIT.md` **比 HEAD 新、也比工作树里最新一次代码改动新**
+   （本仓多车道并行、不提交，只比 HEAD 证明不了审计读过当前代码）；
+   ③ 报告是 `AUDIT: PASS`、五节齐全、fidelity `gaps: 0`；
+   ④ `docs/acceptance/sim-audit-open-items.json` 里**没有 `status: open` 的 P0**（open 的 P1 必须带
+   owner + condition）。
+   NOT READY ⇒ 驱动 `slv-p14-cc.ps1` 以 **exit 7** 拒绝起跑（2 = 参数/路径错，6 = preflight/build 断言，
+   7 = 零 token 证据不新）。只有 `-OverrideReleaseGate "<理由>"` 能跳过，且理由会打印并写进运行结果——
+   **绕过必须是响的，不能是静默的**。放行闸只回答「这份零 token 证据是不是现在的」，
+   不证明模型行为，也不替代 §2.4 的原文落盘与 §9.5 的真机抽样。
 
 ---
 
@@ -216,8 +228,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **393** 项（**文件计数**；其中 `.test.mjs` **288** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **784 项作业（job count）= 704 套件 + 80 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **431** 项（**文件计数**；其中 `.test.mjs` **322** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **836 项作业（job count）= 751 套件 + 85 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -545,6 +557,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | **临时目录卫生（task-12）** | 被杀死的套件会泄漏临时目录（实测 `%TEMP%` 顶层 24 万项、其中我们 24.5 万项）⇒ 门禁启动时清扫**陈旧**目录：仅 `os.tmpdir()` **顶层** ＋ 前缀**从套件自动提取**（88 个）＋ `mtime` 早于阈值（默认 6 h）；并把临时根**优先指向 `D:\_tmp`**（`os.tmpdir()` 自动跟随 ⇒ 零产品改动）| **随包** `node scripts/clean-temp.mjs --self-test`（四条：新鲜目录绝不清理／陈旧且前缀匹配才清理／只匹配精确前缀／前缀表来自套件）＋ `node tests/temp-hygiene.mutants.mjs`（**2/2** 具名红：去掉年龄阈值 ⇒"新鲜目录不得被删"按名红、去掉前缀判断 ⇒"只匹配精确前缀"按名红）；`--dry-run` 实测"扫 160,923 项 ⇒ 计划 144,404 项" |
 | **发布前检查（可执行化）** | 版本**三处一致**（`package.json`／lock 顶层／`packages[""]`）、当前版本的中英两份发布说明存在且**章节顺序符合模板**、两份都登记进 `files[]`、`compatNote` 提到当前版本、tarball **声明了但缺失 = 0**、开发专用文件（`.gitattributes`）**不随包**、包内**无 CRLF** | **随包** `node scripts/release-check.mjs`（对 2.8.0 实跑 `ALL CHECKS PASSED`，扫 179 个文本文件）＋ `--self-test`（**15** 条）＋ `node tests/release-check.mutants.mjs`（**4/4** 具名红：分别去掉版本一致性／章节数量／章节顺序／CRLF 扫描 ⇒ 对应自检**按名**变红）。发布后加 `--registry` 比对线上 `dist.shasum` 与本地 tarball |
 | **v4 交付物必须说明编译结果** | 论文正文在**编译之前**组装，因此"局限与未决"里那两条依赖 `ps.compile` 的 bullet 只在**重入**时才有值 ⇒ 交付的 `paper.md`／`paper.tex` 必须**各自写明**"未检测到引擎（只产出 tex+md）"或"PDF 编译失败"，且**恰好一次**（finalize 可重入 ⇒ 幂等；`.tex` 以注释插在 `\end{document}` 之前）| **随包** `node tests/legacy/v4-final-paper.test.mjs`（`★ [deliverable/v4] … (once each; md=1 tex=1)`）＋ `node tests/legacy/v4-final-paper.mutants.mjs`（**3/3** 具名红：把中文说明置空 ⇒ 该断言按名红，实测 `md=0 tex=0`）|
+| **零 token 模拟门禁（TB-2605 / task-87）** `tests/sim-gate.test.mjs` | 三段门禁（`run.mjs --scenario end-to-end` / `--scenario meeting-matrix` / `audit/all.mjs`）必须全绿：每段 exit 0、**机制拒绝 0**、账本 `advisory 0`、`selfChecks.failed 0`、`receipts.jsonl` 行数与 manifest 一致、`pairs.jsonl` 的 `receiptText` 在其提示词里**逐字节**可定位（span 切片相等）、同一输入两跑归一化后逐字节相同；总 150 s 硬超时 + **每段 ≤ 文档基线 × 1.25 的漂移闸**（超了报哪段慢多少 ms）、**不许 skip**、**门禁不许自带豁免**（不设已知红名单） | **随包** 门禁内三段自证：① 临时场景副本把 `expectedRefusals` 改成一条「全赦免」声明 ⇒ 账本把多出的拒绝记为 `advisory`/`unpredicted` 且 exit 1（旧谓词匹配器会在同一语料上 exit 0）；② 在语料副本里把某行 `receiptSpan` 偏移 1 字节 ⇒ 逐字节比对命中该行（注入前 0 finding、注入后恰好 1）；③ `SIM_SELFTEST_FAILURE=<CODE>` ⇒ `scenario self-checks: 1 FAILED` 具名红；另 A2 的三种泄漏形状（`undefined`/`[object Object]`/`NaN`）与散文负例双向自证（`scripts/sim/audit/receipts.mjs` 的 `__test.leaks`）|
 | **维护方针（文档）** | `vibe-math-v4`／`vibe-math-v5` 是**主要维护方向**（新能力、新守卫、提示词强化、重构只落这两套）；`vibe-math-v2`／`vibe-math-v3` 已**成熟定型**，只接受**适配兼容**改动：宿主适配、共享模块的正确性/安全修复、行为不变的回归修复。共享模块（`vibe-math-v{2,3,4,5}/math-computation.js` 等）是**四份复制型** ⇒ 修复必须**同批传播**且四份**字节一致**，否则 v2/v3 会在宿主升级后腐坏；**明显的正确性/安全缺陷无论落在哪套都修**（"冻结"= 停止功能投资，不是放任缺陷）| **随包文档** `docs/maintenance-policy.md`（中英同页）＋ `README.md`／`README.en.md` 各一行指引；`node scripts/release-check.mjs` 核对随包清单与 `files[]` 一致（声明了但缺失 = 0）|
 
 > **运行方式（本轮核实）**：`tests/run-tests.mjs:93-110` 收集 `tests/` 下**每一个** `.mjs`（仅跳过自身、`NEEDS_ARGS` 清单与 `replacedBare` 变体），因此 `audit-path-discipline.mjs` 是**门禁内的 probe**，不是"只能手动跑"；未随包发布的守卫（见 `package.json#files` 的 tests 子集）在安装树里不可运行。
@@ -723,7 +736,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 784`（704 套件 + 80 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 393（**文件计数**：288 个套件 + 105 个探针/脚本）。
+- **计数（实测）**：`TOTAL 836`（751 套件 + 85 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 431（**文件计数**：322 个套件 + 109 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的派生总数**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**19+** 条断言：README/EN/test-timing/checklist 的派生形状、旧读数的消失，以及 **F-C 的全 `docs/**`（live 文档）`TOTAL <n>` 扫描** —— 每个 occurrence 必须等于 `--counts` 的派生值，冻结的 `docs/release-notes/**` 按名排除并在输出里报数）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 
@@ -770,3 +783,90 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 
 ★ G7 真机判据：`slv-inspect` 5 sessions / 0 RED；root prompt 不含 `【本轮你实际能调用的工具｜member】`；会议 ballot/service tally 互为镜像；`close.enforced` 是数组；`cast:true`；四类错误 0。
 ★ 证据：`D:\_tmp\slv-v5r\g7-verify.txt`（仓库外实测文件）。
+
+## 10. 仓库卫生（repo hygiene，2026-11-09 / TB-2657）
+
+**为什么有这一节**：2026-11-09 15:12:12，仓库根出现了 3 个 **0 字节、以中文句子片段为文件名**的 untracked 文件（`三张表分别是「sim`、`不在此重复（避免两处真相）。`、`本文件是**唯一出处**；`）。它们不是手滑命名，而是 `docs/acceptance/sim-gate-scope.md` 第 4–6 行的 **markdown 引用块**被 bash 当脚本执行：行首 `> ` 被解析成**重定向**，`> ` 之后到第一个空格之间的词就成了**新文件名**，于是产出 0 字节文件。代价不是磁盘占用，而是 `git status` 被污染、收口哈希不稳定、审计时难以分辨哪些 untracked 是有意的。
+
+**判据（三类，只针对 untracked）** —— 由 `scripts/check-repo-hygiene.mjs` 执行（Node，无新依赖）：
+
+| 编号 | 机器名（`--json` 稳定键） | 判据 |
+|---|---|---|
+| H1 | `root-non-ascii-untracked` | 仓库**根目录**下、文件名含非 ASCII 字节的 untracked 条目 |
+| H2 | `zero-byte-untracked` | untracked 且 **0 字节**的普通文件（目录不参与；git 也不列空目录） |
+| H3 | `tree-non-ascii-untracked` | **整棵树**里、文件名含非 ASCII 字节的 untracked 条目 |
+
+命令与退出码：`node scripts/check-repo-hygiene.mjs [--json] [--root <dir>]`；**0 = 干净，1 = 有可疑，2 = 用法错误 / 不是 git 仓库**。每条可疑**逐条具名**（path + 字节数 + 能否 UTF-8 解码），绝不只报「发现 N 个」。自测：`node tests/repo-hygiene.test.mjs`（真实临时 git 仓库夹具，覆盖「0 字节中文名」「有内容中文名」「已 tracked 中文名」三种边界）。
+
+**为什么「中文 tracked 文档名」不算违规**：本仓库本来就有中文文档（`vibe-math-vmu/docs/*.md`）。判据的敌人不是中文，而是 **untracked 的中文命名的意外产物**：一旦 `git add`，它就是有意提交的内容，review 里看得见、哈希里算得清。所以 H1/H3 只对 `??` 生效，**tracked 的中文名必须 exit 0**（测试 ④ 钉住这条，防止守卫退化成噪音）。
+
+**★ 一个曾踩的坑**：`git status` 默认 `core.quotepath=true`，中文路径会被输出成 `\344\270\211...` 这样的**八进制转义**（纯 ASCII 字节）。因此 `git status --porcelain | grep -P '^\?\? [^\x00-\x7F]'` 这类一行命令**永远漏报**；判据必须在 Node 里用 `git -c core.quotepath=false status --porcelain -z` 拿 NUL 分隔的**原始字节**再判 `>= 0x80`。一行版只作人工排查：`git -c core.quotepath=false status --porcelain | grep -P '^\?\? .*[^\x00-\x7F]'`。
+
+**五条硬规则（本次事故的直接防线）**：
+
+1. **文档只走 `write` 工具落盘**（或编辑器）；不要用 `cat > file`、`echo > file`、`printf > file` 写文档 —— 中文文件名与 markdown 结构在 shell 里都是"数据"，容易在拼接中被当语法。
+2. **禁止用 shell 重定向写文件**（`>` / `>>`）产出仓库里的文档；临时文件必须落在 `D:\_tmp`（3 小时清理器会清）。
+3. **heredoc 结束符必须顶格、独占一行**；嵌套 heredoc 时，结束符与正文任何缩进都会让 shell 继续执行正文（正文里的 `> ` 就成了重定向）。
+4. **绝不对 `.md`/`.txt` 执行 `bash`/`sh`/`source`**：`bash doc.md` 的等价事故就是本节的起点。要执行代码就执行 `.sh`/`.mjs` 文件。
+5. **收口前跑守卫**：`node scripts/check-repo-hygiene.mjs` exit 0 才算干净；有 H1/H2/H3 先判断「误落的重定向产物」还是「合法文件」，前者删除、后者 `git add` 转 tracked。
+
+**接线状态**：**已接进 `scripts/preflight.mjs` 硬门禁（2026-11-09，TB-2657 接线，Lead 裁定）**——它是 PREFLIGHT 的最后一步（`--for-t3` 的干净工作树检查之后），失败时**把守卫的逐条具名输出原样带出**（不写「hygiene failed」这种要人手动重跑的话）；`--json` 时该条结果多一个 `output` 字段，内容同上。理由：PREFLIGHT 的语义是"开始干活之前环境是干净的"，而这类残留文件的本质是**环境被污染**，软接（警告）＝第三条没人看。**仍未**接进 `tests/run-tests.mjs` / `scripts/regen-all.mjs` —— 不动五门禁脚本语义、不动 `regen-all.mjs` 的 17 项；要归进全量 T1 时只需在 runner 增加一个作业名。
+
+## 11. 可移植性（P1/P2/P3，2026-11-09 / TB-2681）
+
+**为什么有这一节**：TB-2677 收口体检量到 31 条 BLOCKER，全是同一种错的三种外衣——①可执行面写死本机（`file:///D:/...` 绝对 import、`const REPO = 'D:/wd/...'`、`C:/Users/<author>` 兜底）：本机永远绿，换机器/换 checkout 直接 `ERR_MODULE_NOT_FOUND`；②整文件 CRLF 与仓库 LF 约定冲突，还会让按行窗口的判据算错偏移；③语料在 `D:/_tmp` 的套件在语料被清掉后打印 SKIP 并 exit 0——门禁因为「没测」而变绿，这是最坏的形状（比红更坏，因为读者以为测过了）。清理一次会被下一次提交长回来，所以交付的是**判据**。
+
+**判据（`tests/audit-portability.mjs`，Node，无新依赖）**：
+
+| 编号 | 机器名（`--json` 稳定键） | 判据 |
+|---|---|---|
+| P1 | `p1-file-url-absolute` / `p1-drive-users` / `p1-drive-tmp` / `p1-absolute-checkout` / `p1-session-workspace` | `tests/**/*.mjs` 与 `scripts/sim/**/*.{mjs,js}` 的**非注释行**出现绝对机器路径 ⇒ BLOCKER，逐条 `file:line + 命中片段` |
+| P1 | `p1-allow-why-too-short` | `PORTABLE-ALLOW` 的 `why` 少于 24 字符 ⇒ 同样 BLOCKER（豁免不是贴标签） |
+| P2 | `p2-crlf` / `p2-nul` / `p2-bom` / `p2-ps1-bom-missing` | `.mjs/.js/.json/.md` 出现 CR（CRLF 或孤立 CR）、NUL、BOM ⇒ BLOCKER；`.ps1` 反过来：没有 BOM ⇒ BLOCKER |
+| P3 | `p3-skip-as-pass` / `p3-skip-on-missing-corpus` | 套件里 `console.log('SKIP...` ⇒ BLOCKER；判定「依赖外部语料」是机判：源码出现 `real-fields.jsonl`/`pairs.jsonl`/`receipts.jsonl` 或 `D:/_tmp` ⇒ 必须 import `tests/_lib/corpus.mjs` 的 `requireCorpusDir`（缺语料抛错、exit 非 0），**不许 return null、不许让调用方 skip** |
+| P3 | `p3-vacuous-ok-true`（WARN） | 断言体恒真的 `ok(true, ...)`：真空通过与 skip-as-pass 同宗，先 WARN 不硬判（歧义留给 Lead 裁） |
+
+**唯一豁免：行尾 `// PORTABLE-ALLOW: <why ≥24 字>`，逐行、且必须写清「为什么缺了它仍能测到东西」**。豁免不是逐文件的免死金牌；同一条规则下 `why` 太短照样红。P3 的环境类豁免（如本机无 xelatex）可以走 `PORTABLE-ALLOW`，但**不许**把 P3 放宽成「只要写了 skip 就不红」。
+
+**BLOCKER 与 LEGACY 的分界**：判据只把**本轮新增行**当 BLOCKER（untracked 整文件 + `git diff HEAD` 的新侧行），tracked 未改行里的历史违规计为 LEGACY（打印计数，不判关门）。理由与 §10 相同：判据要能落地；`--all` 可做整树一次性读数，让「历史欠账」显形但不必永远红。
+
+**命令与退出码**：`node tests/audit-portability.mjs [--json] [--all]`；**0 = 本轮无 BLOCKER，1 = 有**（LEGACY/WARN 不影响退出码，但永远打印）。自测：`node tests/audit-portability.selftest.mjs` —— 在临时树里种四个探针（绝对 `file://` import / 整文件 CRLF / 打印 SKIP 后 return / `PORTABLE-ALLOW` 理由太短），要求判据**逐条点名**；再种一个「理由足够长的 PORTABLE-ALLOW」控制组，要求**不**报——证明它不是见路径就红。
+
+**接线状态**：**已接进 `scripts/preflight.mjs` 硬门禁（TB-2681 接线，Lead 裁定）**，位置在最后（repo-hygiene 之后），形状照抄 TB-2657：判据只在 `tests/audit-portability.mjs` 一处，preflight 只负责跑它、缺文件即 FAIL、失败时把逐条具名输出**原样**带出。**仍未**接进 `tests/run-tests.mjs` / `scripts/regen-all.mjs`（不动五门禁脚本语义与 regen-all 的 17 项）。
+
+**`p1-drive-tmp` 的三分口径（Lead 细化，2026-11-09）**：同一条正则背后是三种东西，不能混改——
+(a) **真缺陷，必须改代码**：`file:///D:/…` 绝对 ESM import、写死的 checkout 根常量（`const REPO = 'D:/wd/vibemath…'`）。改法：相对 import / `import.meta.url` 派生 + `process.env.VMU_REPO` 覆盖。
+(b) **合法的开发默认值，可逐行豁免**：`D:/_tmp/sim/…` 这类**数据/语料根默认值**，必须同时满足「有 env 或 argv 覆盖」+「该目录缺失时 FAIL 而不是 skip/return null」才允许 `PORTABLE-ALLOW`，理由模板：`default dev corpus root; overridable via VMU_SIM_ROOT, and a missing corpus FAILS the suite`。豁免要回答的是「为什么这里写死是安全的」，不是「它一直都在」。
+(c) **记录而非执行面**：出现在拒因文案/`readyIf` 文字里的 `D:/_tmp`（告诉人语料到哪找）⇒ 加豁免并注明 `in refusal text, not an execution path`。
+换机器判断法（Lead 抽查口径）：读那行代码，问「按这个 why，换台机器真的还能跑到东西吗」——答不上就改代码。
+
+**自测教训（写死这次的坑）**：**判据的自测数据不能长得像被测对象**。`tests/audit-portability.selftest.mjs` 第一版在探针源码里字面写了绝对路径和 `console.log('SKIP`，结果自测自己被判成第 5 个 BLOCKER（首跑自命中 3 条）。正确解法是把探针文本按字符拼出来（`String.fromCharCode(68)` 拼 `D`、`String.fromCharCode(39)` 拼 `'`），让「探针的源码」和「探针要模拟的坏代码」在字节层不同形。任何「用坏样本测判据」的测试都会踩这个坑：样本生成器必须自己不是样本。
+
+## 12. 包成员长尾判据（package membership，2026-11-09 / TB-2674）
+
+**为什么有这一节**：旧判据（`tests/audit-package-membership.mjs`）只 `walk(VMU, 0)` 深度 4、只收 `/^vmu-.*\.test\.mjs$/`，于是它常年 **29 项全绿**；而把判据面扩到 `tests/**/*.test.mjs` + `tests/**/audit-*.mjs` + `tests/_lib/**` + `scripts/sim/**` 的代码文件后，同一棵树立刻 **527 条未决定**（目标 898 / 已决定 371）。**教训（这句要留着）：旧判据测的不是它声称的事** —— 「29/0 绿」曾被当成「包成员完整」的证据，实际它只覆盖了 `vmu-*.test.mjs` 这一小撮。判据的绿色只在它的**扫描面**内有效，扩大面之前的那张绿卡什么也没证明。
+
+**`files[]` 的语义（Lead 裁定原句，2026-11-09）**：
+
+> `files[]` 是**显式登记的发布面**；未登记**不等于**错误，但**本轮新增的每个代码文件**必须被显式决定：进 `files[]`，或进 `tests/package-membership-dev-only.json` 具名 dev-only（`why` ≥24 字 + `owner`）。存量未登记项冻结成基线，只许缩小。
+
+**三态判据**（`node tests/audit-package-membership.mjs`，exit 0 全绿 / 1 有红；逐条具名打印）：
+
+| 态 | 判定 | 相对 import 闭包规则 |
+|---|---|---|
+| `inFiles` | 路径在 `package.json#files`（精确匹配，本仓 0 条 glob） | 解析出的相对 import 目标也必须是 `inFiles`（或 `devOnly`），否则红 |
+| `devOnly` | 在 `tests/package-membership-dev-only.json` 具名登记：`path` + `why`（≥24 码点）+ `owner`（+ 可选 `hintKinds`） | 同上；`why` 空/过短/`owner` 缺失 ⇒ `dev-only invalid` 红；文件已删除 ⇒ `dev-only gone` 红 |
+| `inLegacyBaseline` | 在冻结基线 `tests/_lib/package-membership-legacy.json` 的 `paths`（`sha256OfPaths` 校验清单未被手改） | 基线项可以指向未登记文件（它记录的是**存量**），但**不会**替新文件兜底 |
+
+三态之外 ⇒ `MISS (undecided long-tail code)`，逐条列出路径。**基线只许缩小**：基线里的路径如果文件已不存在 ⇒ `stale baseline entry` 红（要求同步删行）；如果某个路径在基线里、但文件的**出生时间晚于基线 `generatedAt`** ⇒ `legacy baseline may not swallow new surface` 红 —— 没有这条，基线就是新的垃圾桶（该守卫必须用 `birthtimeMs`，不能只用 `ctimeMs`：Windows 上 ctime 是最后改动时间，改写旧文件会被误判成新面）。
+
+**基线重生成**：**只在收口窗口、由 Lead 触发**（`node tests/_lib/…` 无自动重生成；生成脚本与口径见 TB-2674 任务书）。任何 agent 不得为了换绿自行重生成基线 —— 那是把「冻结」改回「随手改」。
+
+**它会咬人（三条反关灯，2026-11-09 实测全红，`D:\_tmp\pkgclosure\antilamp.py` 可复跑）**：
+1. 造一个未登记的新套件文件（`tests/` 下、名字带 `zzz-anti-lamp-probe`，跑完即删）⇒ `MISS (1)` **点名该文件**、exit 1；删后复绿。
+2. 给 dev-only 台账加一条 `why: ""` ⇒ `dev-only invalid why/owner (1): tests/_lib/why-probe.mjs`、exit 1；按字节还原后 sha256 一致。
+3. 把**新的**临时文件（`tests/` 下、名字带 `zzz-anti-lamp-smuggled`，跑完即删）塞进 legacy 基线（并同步 `sha256OfPaths`，让只有 swallow 规则能响）⇒ `legacy swallowed new surface (1)` 并点名该文件、exit 1；还原后基线字节一致（`bf6e0d77…`）。
+
+**判据自身的两个解析缺陷（真 bug，已修，别再写回 regex 版）**：旧的 `relativeImportsOf = (src) => { IMPORT_STATEMENT…; SIDE_EFFECT_IMPORT… }` 有两种错读——①**无分号代码跨语句**：`import x from 'node:fs'` 后没有分号时，`[^;]*?` 会跨到下一句的 `from './x'` 并把它配给上一条（`tests/_lib/falsify.mjs`、`tests/legacy/formal-verify-v2.test.mjs` 各中一枪）；②**模板串里的 fixture 文本**被当成语句级 import（`tests/_lib/falsify.mjs` 的 `import './_lib/falsify.mjs'` 示例）。修法（已写进 `tests/audit-package-membership.mjs`）：`stripNonCode()`（模板串/块注释/行注释置空格，保留换行与列位）→ **逐语句扫描**（行首列 0 的 `import|export` 起，括号不平衡则续行）→ **token 化 specifier**（只有 `from` 是 word token 且紧跟 `.` 开头的字符串才算；裸 `import './x'` 单独放行）。附 8 条 self-probe（数据串/注释/块注释不读；statement/bare/reexport/`from 'node:fs'` 之后都读）。
+
+**当前终态（2026-11-09 21:35 复跑）**：`=== PACKAGE MEMBERSHIP: 52 passed, 0 failed ===`（`MISS 0` / `closureMiss 0` / `staleLegacy 0`）；`package.json#files` 854 条；legacy 基线 473 条；dev-only 20 条（其中 `tests/_lib/corpus.mjs` 与 `scripts/sim/scenarios/meeting-matrix.mjs` 因被**已登记测试**相对 import ⇒ 取消 dev-only、直接进 `files[]`，否则装包会 `MODULE_NOT_FOUND`）；`git diff --numstat package.json` = 46/1（本任务追加 35 条 + 1 行尾逗号；其余 11 条是 audit/notice/sim 车道同一未提交窗口写的）。**21:40 复跑时另一车道新建了一个未登记套件（`tests/vmu-run268-mailbox-ack-reading.test.mjs`）⇒ 判据如实变红并点名它**——这正是本节要的行为：新面不决定就红；该条的决定权属于它自己的车道/Lead 收口，不在本判据实现者的写域内。

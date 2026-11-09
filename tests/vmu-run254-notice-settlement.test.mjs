@@ -77,7 +77,8 @@ const ASSEMBLY = { seat: 'member', roleLabel: '常驻研究员', phase: 'normal'
 
 try {
   console.log('=== 0. SOURCE PINS: the criterion and the producer are named where they live ===')
-  ok(MAILBOX_SRC.includes('const want = box.slice()'), 'mailbox.noticeLines has no read filter: the box only holds un-acked rows')
+  ok(MAILBOX_SRC.includes('const want = box.filter((e) => !settledIds.has(String(e.id)))'),
+    'mailbox.noticeLines has no read filter: the box only holds un-acked rows (TB-2606-B narrows the same criterion: rows the ACK LEDGER already settled are not rendered either)')
   ok(MAILBOX_SRC.includes('acked: want.length === 0') && MAILBOX_SRC.includes('ackRequired: want.length > 0'),
     'and the receipt NAMES the criterion (acked / ackRequired) instead of leaving the reader to infer it from wording')
   ok(MAILBOX_SRC.includes('settledBy: \'ack\'') && MAILBOX_SRC.includes('unackedRows: want.map('),
@@ -181,8 +182,8 @@ try {
   ok(!h2.delivered.some((d) => d.reply === '[object Object]'), 'no delivered reply is the literal [object Object] (the 15-char fabrication is gone)')
   const shapeReceipt = (driveShape && driveShape.receipts && driveShape.receipts[0]) || {}
   ok(driveShape && driveShape.roundsRun === 0, 'no round is claimed to have run on a shape this boundary cannot read', driveShape && driveShape.roundsRun)
-  ok(shapeReceipt.failed === true && typeof shapeReceipt.code === 'string' && shapeReceipt.code === 'VMU_ENGINE_UNAVAILABLE',
-    'the end-to-end receipt says the host handed back no reply BY NAME (the adapter refuses before the kernel door)', shapeReceipt && { code: shapeReceipt.code, message: String(shapeReceipt.message || '').slice(0, 120) })
+  ok(shapeReceipt.failed === true && typeof shapeReceipt.code === 'string' && shapeReceipt.code === 'VMU_TURN_DELIVERY_SHAPE',
+    'the end-to-end receipt carries the ADAPTER\'S OWN code (RUN 256 起透传: the retry wrapper no longer relabels VMU_TURN_DELIVERY_SHAPE as VMU_ENGINE_UNAVAILABLE)', shapeReceipt && { code: shapeReceipt.code, message: String(shapeReceipt.message || '').slice(0, 120) })
 
   // The kernel door itself: the SAME envelope, handed back by a RAW delivery seam, must be refused by name. This is the
   // half the host adapter currently cannot reach (it throws `handed back no reply` first); it is pinned here so the code

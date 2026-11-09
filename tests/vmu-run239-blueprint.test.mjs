@@ -109,9 +109,10 @@ await kernel.members.hire({ id: 'acad', slot: 'chair' })
 await kernel.members.hire({ id: 'r-1', slot: 'member' })
 
 console.log('=== 1. A CONTINUATION MERGES THE OUTLINE BY ID (RUN 236 REPLACED IT) ===')
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
 const p1 = BLUEPRINT.proposeBlueprint({
   records: kernel.records, path: PATH_MAIN, text: '第 1 版正文：先给粗骨架，再补细部。', by: 'r-1', seat: 'member', at: T0,
-  outline: [node('1', '总体路线', 1), node('1.1', '第一阶段', 2)], revisionReason: 'RUN 239 的基线',
+  outline: [node('1', '总体路线', 1), node('1.1', '第一阶段', 2)], revisionReason: 'RUN 239 的基线', materialize: true,
 })
 ok(p1 && p1.ok === true && typeof p1.id === 'string', 'fixture: the base revision landed on disk (a row id proves the draft exists)', p1 && p1.id)
 ok(ids(p1.outline).join(',') === '1,1.1' && p1.outlineMerged && ids(p1.outlineMerged.added).join(',') === '1,1.1',
@@ -120,9 +121,10 @@ ok(ids(p1.outline).join(',') === '1,1.1' && p1.outlineMerged && ids(p1.outlineMe
 ok(p1.outlineMerged && ids(p1.outlineMerged.kept).length === 0 && ids(p1.outlineMerged.updated).length === 0 && /起新 revision|覆盖/.test(String(p1.outlineMerged.means)),
   '★ the merge block says which rule ran (new revision: taken as given), not just counts', p1 && p1.outlineMerged && String(p1.outlineMerged.means).slice(0, 60))
 
+// legacy path: the continuation rewrites the kernel-materialized draft only when materialize:true is explicit
 const p2 = BLUEPRINT.proposeBlueprint({
   records: kernel.records, path: PATH_MAIN, draft: p1.id, text: '共同设计：补一条复查节奏。', by: 'acad', seat: 'chair', at: T0 + 1000,
-  outline: [node('2', '运行阶段', 1), node('2.1', '复查节奏', 2)],
+  outline: [node('2', '运行阶段', 1), node('2.1', '复查节奏', 2)], materialize: true,
 })
 ok(p2 && p2.ok === true && p2.id === p1.id && p2.continued === true, 'fixture: the chair continued the SAME draft (one draft per unadopted revision)', p2 && { id: p2.id, continued: p2.continued })
 ok(ids(p2.outline).join(',') === '1,1.1,2,2.1' && p2.outlineCount === 4,
@@ -138,15 +140,17 @@ ok(countField(row2 && row2.body, 'outline') === 1 && ids(parse2.outline).join(',
   '★ the ROW itself now carries all four nodes in one outline line (the merge is on disk, not only in the receipt)',
   { lines: countField(row2 && row2.body, 'outline'), outline: ids(parse2.outline) })
 
+// legacy path: the first proposer's continuation rewrites the kernel-materialized draft only when materialize:true is explicit
 const p3 = BLUEPRINT.proposeBlueprint({
   records: kernel.records, path: PATH_MAIN, draft: p1.id, text: '第一提案人修订粗骨架的措辞。', by: 'r-1', seat: 'member', at: T0 + 1500,
-  outline: [node('1', '总体路线（修订）', 1)],
+  outline: [node('1', '总体路线（修订）', 1)], materialize: true,
 })
 ok(p3 && p3.ok === true && ids(p3.outlineMerged.updated).join(',') === '1' && ids(p3.outlineMerged.kept).join(',') === '1.1,2,2.1' && ids(p3.outlineMerged.added).length === 0,
   '★ SAME ID under a continuation UPDATES in place: updated 1 / kept 1.1,2,2.1 / added none', p3 && p3.outlineMerged)
 ok(p3.outline[0] && p3.outline[0].title === '总体路线（修订）' && p3.outline[0].depth === 1 && p3.outline.length === 4,
   '★ the updated node keeps its position and depth (a merge does not reshuffle the skeleton)', p3 && p3.outline)
-const noOutline = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_MAIN, draft: p1.id, text: '续写但没有重述骨架。', by: 'acad', seat: 'chair', at: T0 + 1800 })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const noOutline = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_MAIN, draft: p1.id, text: '续写但没有重述骨架。', by: 'acad', seat: 'chair', at: T0 + 1800, materialize: true })
 ok(ids(noOutline.outline).join(',') === '1,1.1,2,2.1' && ids(noOutline.outlineMerged.kept).join(',') === '1,1.1,2,2.1' && noOutline.outlineSource === 'draft',
   '★ a continuation that passes NO outline keeps every node (kept lists them; source draft says where they came from)',
   noOutline && { outline: ids(noOutline.outline), merged: noOutline.outlineMerged })
@@ -167,16 +171,18 @@ ok(ids(rd.parsed.outline).join(',') === '1,1.1,2,2.1' && rd.parsed.outlineSource
   '★ read reports the merged outline and prints the enum sentence from the one constant', rd.parsed && ids(rd.parsed.outline))
 
 console.log('=== 3. A NEW REVISION STILL COVERS ITS OUTLINE (AND SAYS SO) ===')
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
 const p4 = BLUEPRINT.proposeBlueprint({
   records: kernel.records, path: PATH_MAIN, text: '第 2 版：只带新骨架。', by: 'r-1', seat: 'member', at: T0 + 3000,
-  outline: [node('n1', '第二版路线', 1), node('n1.1', '第二版细部', 2)],
+  outline: [node('n1', '第二版路线', 1), node('n1.1', '第二版细部', 2)], materialize: true,
 })
 ok(p4 && p4.ok === true && p4.continued === false && p4.revision === a1.revision + 1,
   'fixture: a NEW revision was started (continued:false, revision advanced)', p4 && { revision: p4.revision, continued: p4.continued })
 ok(ids(p4.outline).join(',') === 'n1,n1.1' && p4.outlineCount === 2 && ids(p4.outlineMerged.added).join(',') === 'n1,n1.1' && ids(p4.outlineMerged.kept).length === 0 && ids(p4.outlineMerged.updated).length === 0,
   '★ a NEW revision does NOT merge with the previous revision: it carries exactly its own 2 nodes', p4 && { outline: ids(p4.outline), merged: p4.outlineMerged })
 ok(/起新 revision/.test(String(p4.outlineMerged.means)), '★ and says so in words (a reader does not have to know the merge rule is continuation-only)', p4 && String(p4.outlineMerged.means).slice(0, 50))
-const p5 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, text: '全新路径，没有骨架。', by: 'r-1', seat: 'member', at: T0 })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const p5 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_FRESH, text: '全新路径，没有骨架。', by: 'r-1', seat: 'member', at: T0, materialize: true })
 ok(p5 && p5.ok === true && p5.outlineCount === 0 && ids(p5.outlineMerged.added).length === 0 && ids(p5.outlineMerged.kept).length === 0 && /起新 revision/.test(String(p5.outlineMerged.means)),
   '★ a new revision with no outline is an explicit empty list + added/kept none (not a missing block)', p5 && p5.outlineMerged)
 
@@ -199,9 +205,10 @@ ok(stMain.ok === true && stMain.parsed.md && stMain.parsed.md.written === false 
 ok(typeof stMain.parsed.md.mdMeans === 'string' && /available/.test(stMain.parsed.md.mdMeans) && /written/.test(stMain.parsed.md.mdMeans) && /不是一回事/.test(stMain.parsed.md.mdMeans),
   '★★ state md block: mdMeans says available and written are NOT the same question (RUN 239-B fix ③)',
   stMain.parsed && stMain.parsed.md && String(stMain.parsed.md.mdMeans).slice(0, 80))
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
 const proposedDraft = BLUEPRINT.proposeBlueprint({
   records: kernel.records, path: PATH_DRAFT, text: '只有草案的一条路径。', by: 'r-1', seat: 'member', at: T0,
-  outline: [node('d1', '草案骨架', 1)],
+  outline: [node('d1', '草案骨架', 1)], materialize: true,
 })
 ok(proposedDraft && proposedDraft.ok === true, 'fixture: the draft on the draft-only path exists', proposedDraft && proposedDraft.id)
 const stDraft2 = await call({ action: 'state', path: PATH_DRAFT })

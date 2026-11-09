@@ -83,8 +83,14 @@ hasNot(SRC_CORE, '研究所的正式记录本读不到它',
   '★ ① the false sentence ("the institute cannot read your record book") is GONE — run 56 read rec-21 across kernels')
 has(SRC_CORE, 'libraryRoot',
   '★ ① the contract names the receipt field that decides which branch applies')
-has(SRC_CORE, '采纳之前',
-  '★ ③ the cleanup advice names the window where pruning a draft is still reachable')
+// ★ T1 pin refresh (old '采纳之前' → current '采纳前'): the advice is STILL in the prompt and still names the
+// BEFORE-adoption window (采纳前 … prune); only the wording moved when the draft-sharing text was rewritten to also
+// point at blueprint.js's BEFORE/AFTER windows. Same claim, so the pin follows the wording — and the failure echo is
+// now the matching line itself instead of the whole corpus file (a failed `has` used to dump it all).
+const adviceLines = SRC_CORE.split('\n').filter((line) => line.includes('采纳前') && line.includes('prune'))
+ok(adviceLines.length === 1 && /采纳前[^。]*prune/.test(adviceLines[0]) && adviceLines[0].includes('共享草案'),
+  '★ ③ the cleanup advice names the window where pruning a draft is still reachable (采纳前 … prune)',
+  adviceLines.length === 1 ? adviceLines[0].slice(0, 400) : adviceLines.length + ' matching line(s)')
 hasNot(SRC_CORE, '不想要就在 note 里说明并让所办 prune，不要把共享草案当草稿纸。',
   '★ ③ the old advice that only worked BEFORE adoption is gone')
 
@@ -149,9 +155,10 @@ console.log('\n=== 2. draftSharing.means names the adoption boundary (FEEDBACK55
   const { call } = await boot()
   const started = await call('vibe_v5_start', { researcherCount: 2, problem: 'run220 蓝图窗口' })
   ok(started.ok === true, '§2 premise: the institute starts', started)
-  const first = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: '第 220 次演练：草案一' })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const first = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: '第 220 次演练：草案一' })
   ok(first.ok === true, '§2a premise: the first proposal opens a draft', first)
-  const second = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', text: '草案二：续写' })
+  const second = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', text: '草案二：续写' })
   ok(second.ok === true, '§2b premise: the second proposal continues it', second)
   const sharing = second.draftSharing || {}
   has(String(sharing.means), 'The AFTER-adoption window is stated only so the future is not a surprise',
@@ -168,17 +175,17 @@ console.log('\n=== 3. a positional prune warns before it trashes the CURRENT row
   const { call } = await boot()
   const started = await call('vibe_v5_start', { researcherCount: 2, problem: 'run220 prune 现行版' })
   ok(started.ok === true, '§3 premise: the institute starts', started)
-  const first = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: '第 220 次演练：将被采纳的草案' })
+  const first = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: '第 220 次演练：将被采纳的草案' })
   ok(first.ok === true, '§3a premise: a NEW draft exists (appendedTo is null on a first proposal)',
     first.draftSharing && first.draftSharing.appendedTo !== undefined ? first.draftSharing : first)
   const draftId = typeof first.id === 'string' ? first.id : null
   ok(typeof draftId === 'string' && draftId !== '', '§3b premise: the draft row id is printed at the top level', { draftId })
-  const chairDesign = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-acad', text: '院士席的设计 section：第 220 次演练' })
+  const chairDesign = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-acad', text: '院士席的设计 section：第 220 次演练' })
   ok(chairDesign.ok === true, '§3b2 premise: the chair writes its own design section (adopt cannot substitute for co-design)',
     chairDesign.ok === true ? true : { code: chairDesign.code, message: chairDesign.message })
   const adopted = await call('vibe_v5_blueprint', { action: 'adopt', member: 'r-acad', draft: draftId })
   ok(adopted.ok === true, '§3c premise: the draft becomes the current protocol', adopted)
-  const newer = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', text: '第 220 次演练：更晚的一份草案' })
+  const newer = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', text: '第 220 次演练：更晚的一份草案' })
   ok(newer.ok === true, '§3d premise: a NEWER row now sits above the current one', newer)
 
   const dry = await call('vibe_vmu_records', { action: 'prune', track: 'blueprint', keep: 1, dryRun: true })

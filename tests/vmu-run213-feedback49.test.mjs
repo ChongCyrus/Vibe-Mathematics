@@ -54,7 +54,12 @@ test('RUN 213 §0 — the source carries the five readings (pins)', async () => 
   has(BP, 'headingDroppedMeans', '§0i ★★ the drop is REPORTED, not silent')
   has(TURN, 'memberActsMeans:', '§0j ★★★ the turn receipt says where a member\'s work is readable')
   has(TURN, 'vibe_vmu_chat', '§0k ★ naming the faces')
-  has(TOOLS, 'at: "\' + new Date().toISOString() + \'"', '§0l ★★★ the printed call carries a REAL timestamp')
+  // ★ CLOCK PURITY (RUN 245/RUN 236 lineage): the printed call used to read the WALL clock (`new Date().toISOString()`),
+  // so one receipt could compare two clocks and call it an order — the agent's own turn stamp and the printed repair
+  // could disagree by milliseconds. It now reads the KERNEL clock via `kernelClockIsoOf(kernel).iso` (that helper names
+  // its source: `atSource:'kernel-clock'`, falling back to the wall clock only when the kernel has no clock seam, which
+  // is a deployment fact it DISCLOSES rather than a silent borrow). The call is still a real ISO time, never a placeholder.
+  has(TOOLS, 'at: "\' + kernelClockIsoOf(kernel).iso + \'"', '§0l ★★★ the printed call carries a REAL timestamp')
   ok(!TOOLS.includes('at: \\"<ISO time>\\"') && !TOOLS.includes('at: "<ISO time>"'), '§0m ★★ the placeholder is gone from the printed call')
   has(TOOLS, 'is optional: omit it and the write uses the current time', '§0n ★ and callMeans says it is optional')
 })
@@ -115,7 +120,8 @@ test('RUN 213 §2 — a repeated co-design heading is dropped, and the receipt s
     ok((await call('vibe_v5_start', { problem: '蓝图标题复验', researcherCount: 2 })).ok === true, 'premise: founded')
     // the member repeats the heading the tool owns
     const prop = await call('vibe_v5_blueprint', {
-      action: 'propose', path: 'p-213', member: 'r-1',
+      // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+      action: 'propose', materialize: true, path: 'p-213', member: 'r-1',
       text: '## 共同设计补充｜r-1\n- 节点 1：把命题拆成归纳基与归纳步\n- 节点 2：核验可证幅度',
     })
     ok(prop.ok === true, '§2a premise: the draft is written', prop)
@@ -132,7 +138,7 @@ test('RUN 213 §2 — a repeated co-design heading is dropped, and the receipt s
     has(baseText, '节点 1', '§2e ★ the member\'s own prose survived the normalization')
     // a CO-DESIGNER that repeats the heading: the tool writes one, so the stored body must carry exactly one
     const second = await call('vibe_v5_blueprint', {
-      action: 'propose', path: 'p-213', member: 'r-2',
+      action: 'propose', materialize: true, path: 'p-213', member: 'r-2',
       text: '## 共同设计补充｜r-2\n- 节点 3：把归纳步写成可核验的等式链',
     })
     ok(second.ok === true, '§2f premise: the second author continues the draft', second)

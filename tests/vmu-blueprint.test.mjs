@@ -99,7 +99,8 @@ ok(before.parsed && before.parsed.readSurface && before.parsed.readSurface.inclu
   'the read-out NAMES the surface that lists the rows (read_library + track)', before.parsed && before.parsed.readSurface)
 
 const DRAFT1_TEXT = '第一版蓝图：\n1. 每轮先报进度。\n2. 命题必须可证伪。'
-const draft1 = await call({ action: 'propose', member: 'r-1', text: DRAFT1_TEXT })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const draft1 = await call({ action: 'propose', materialize: true, member: 'r-1', text: DRAFT1_TEXT })
 ok(draft1.ok && draft1.parsed.ok === true, '★ 正：ANY live member may propose (a draft is not in force)', draft1.parsed || draft1.text)
 ok(draft1.parsed && draft1.parsed.revision === 1 && draft1.parsed.status === 'draft', 'the proposal is revision 1 and status draft', draft1.parsed && { revision: draft1.parsed.revision, status: draft1.parsed.status })
 ok(draft1.parsed && draft1.parsed.inForce === null,
@@ -143,8 +144,8 @@ ok(/还缺[^。]*院士席/.test(codesignMessage) && /chair/.test(codesignMessag
   '★ the refusal NAMES the seat that is missing（院士席/chair）— a refusal a member cannot act on is a wall', codesignMessage)
 ok(codesignMessage.includes(String(draft1.parsed.id)) && (codesignMessage + codesignHint).includes(PATH),
   'the refusal names the draft it inspected, and the path is in the actionable half (caller never has to guess)', { draft: draft1.parsed.id, path: PATH })
-ok(/action: "propose"/.test(codesignHint) && /action: "adopt"/.test(codesignHint) && codesignHint.includes(String(draft1.parsed.id)) && codesignHint.includes(PATH),
-  '★ the hint carries COPY-PASTEABLE next calls (propose for the missing seat, then adopt this draft at this path)', codesignHint)
+ok(/action: "propose"/.test(codesignHint) && /action: "adopt"/.test(codesignHint) && codesignHint.includes(PATH) && /fs-first/.test(codesignHint) && /mdPath/.test(codesignHint),
+  '★ the hint carries COPY-PASTEABLE next calls (fs write, propose for the missing seat with the same mdPath, then adopt this draft at this path) — RUN 256: the hint is ONE shared template identical to the one on the propose receipts, so the draft id it names is the placeholder `<filed 回执里的 draft id>`; the CONCRETE id is asserted on the message line above, and the walkability itself is pinned by tests/vmu-run256-blueprint-hint.test.mjs', codesignHint)
 ok(/院士|chair/.test(codesignHint) && /研究员|member/.test(codesignHint),
   'the hint asks for the two SEATS by role (not just "find another member")', codesignHint)
 const afterCodesign = await call({ action: 'state' })
@@ -154,7 +155,7 @@ ok(afterCodesign.parsed && afterCodesign.parsed.hasCurrent === false && afterCod
 
 console.log('=== 3b. THE OTHER SEAT CONTINUES THE SAME DRAFT (ONE DOCUMENT, NOT TWO) ===')
 const CHAIR_NOTE = '院士席的设计补充：除每轮报进度外，还要公布本轮判定阈值，便于复核。'
-const continued1 = await call({ action: 'propose', member: 'acad', text: CHAIR_NOTE })
+const continued1 = await call({ action: 'propose', materialize: true, member: 'acad', text: CHAIR_NOTE })
 ok(continued1.ok && continued1.parsed && continued1.parsed.continued === true && continued1.parsed.id === draft1.parsed.id,
   '★ 正：the 院士 propose CONTINUES the open draft (same id) instead of opening a competing r1',
   continued1.parsed && { id: continued1.parsed.id, continued: continued1.parsed.continued, revision: continued1.parsed.revision })
@@ -196,11 +197,11 @@ ok(state1.parsed && Number.isFinite(state1.parsed.updatedAt) && state1.parsed.st
 
 console.log('=== 4. A SECOND REVISION: "IN FORCE" IS DERIVED, NOT A STORED POINTER ===')
 const DRAFT2_TEXT = '第二版蓝图：\n1. 每轮先报进度。\n2. 命题必须可证伪。\n3. 结论必须可复现。'
-const draft2 = await call({ action: 'propose', member: 'r-2', text: DRAFT2_TEXT })
+const draft2 = await call({ action: 'propose', materialize: true, member: 'r-2', text: DRAFT2_TEXT })
 ok(draft2.ok && draft2.parsed.revision === 2, 'a second proposal is revision 2 (the revision counts the ADOPTED history)', draft2.parsed && draft2.parsed.revision)
 // B5 applies to EVERY round: r2 was written by r-2 alone, so the chair writes its own section before adopting.
 const CHAIR_NOTE2 = '院士席的设计补充：自第二版起，每条结论都附复现命令与运行时长。'
-const continued2 = await call({ action: 'propose', member: 'acad', text: CHAIR_NOTE2 })
+const continued2 = await call({ action: 'propose', materialize: true, member: 'acad', text: CHAIR_NOTE2 })
 ok(continued2.ok && continued2.parsed && continued2.parsed.continued === true && continued2.parsed.id === draft2.parsed.id,
   'the co-design round repeats on r2 (the gate is not a one-off on the first revision)',
   continued2.parsed && { id: continued2.parsed.id, continued: continued2.parsed.continued })
@@ -230,8 +231,8 @@ console.log('=== 5. STALENESS IS A COMPUTED SIGNAL (hint, not a refusal) ===')
 const adoptedAt = state2.parsed.current.adoptedAt
 const freshAt = adoptedAt + 1000
 const staleAt = adoptedAt + BLUEPRINT.BLUEPRINT_STALE_AFTER_MS + 1
-const fresh = BLUEPRINT.blueprintState({ records: kernel.records, path: PATH, now: freshAt })
-const stale = BLUEPRINT.blueprintState({ records: kernel.records, path: PATH, now: staleAt })
+const fresh = BLUEPRINT.blueprintState({ records: kernel.records, path: PATH, now: freshAt, nowFromKernel: true })
+const stale = BLUEPRINT.blueprintState({ records: kernel.records, path: PATH, now: staleAt, nowFromKernel: true })
 ok(fresh.stale === false && stale.stale === true,
   '★ the SAME rows answer fresh/stale differently only because the clock moved (the flag is computed, not stored)', { fresh: fresh.stale, stale: stale.stale })
 ok(stale.ageMs > BLUEPRINT.BLUEPRINT_STALE_AFTER_MS && stale.staleAfterMs === BLUEPRINT.BLUEPRINT_STALE_AFTER_MS,
@@ -242,12 +243,12 @@ ok(stillAdoptable.parsed && stillAdoptable.parsed.hasCurrent === true,
   '★ staleness does NOT delete or demote the revision in force: it is old, not absent', stillAdoptable.parsed && stillAdoptable.parsed.hasCurrent)
 
 console.log('=== 6. NAMED REFUSALS: NOTHING IS GUESSED, NOTHING IS HALF-WRITTEN ===')
-const noText = await call({ action: 'propose', member: 'r-1', text: '   ' })
+const noText = await call({ action: 'propose', materialize: true, member: 'r-1', text: '   ' })
 ok(noText.ok === false && noText.code === 'VMU_INVALID_ARGUMENT',
   '★ an empty proposal is refused (a blank revision would silently adopt "nothing")', noText.code)
-const noAuthor = await call({ action: 'propose', text: 'x' })
+const noAuthor = await call({ action: 'propose', materialize: true, text: 'x' })
 ok(noAuthor.ok === false && noAuthor.code === 'VMU_INVALID_ARGUMENT', 'a proposal needs its author', noAuthor.code)
-const ghost = await call({ action: 'propose', member: 'r-ghost', text: 'x' })
+const ghost = await call({ action: 'propose', materialize: true, member: 'r-ghost', text: 'x' })
 ok(ghost.ok === false && ghost.code === 'VMU_NO_SUCH_OBJECT', 'an unknown proposer is refused by name (no invented seats)', ghost.code)
 const unknownDraft = await call({ action: 'adopt', member: 'acad', draft: 'no-such-row' })
 ok(unknownDraft.ok === false && unknownDraft.code === 'VMU_NO_SUCH_OBJECT', 'adopting an unknown row is refused by name', unknownDraft.code)

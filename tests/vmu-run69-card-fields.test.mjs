@@ -136,8 +136,13 @@ try {
     'and the counter says what it counts (a row that did not name its writer)', stp && stp.shared.adoptedWithoutAuthorMeans)
   ok(stp && stp.records && typeof stp.records.total === 'number' && stp.records.byTrack && typeof stp.records.byTrack === 'object',
     'the view reports the row counts per track', stp && stp.records)
-  ok(stp && typeof stp.note === 'string' && /bounded/.test(stp.note),
-    'and it declares itself bounded (a status is not a dump)', stp && stp.note)
+  // ★ RUN 263 / TB-2668: the kernel receipt is spread WHOLE, so the kernel's own `note` (the `wired`/`enforced[]`/
+  // `fired[]` sentence) now travels under `note`. The sentence that says THIS FACE is bounded moved to `faceNote`:
+  // the pin follows the CLAIM (this receipt is a status, not a dump) into its new key instead of pinning the old home.
+  ok(stp && typeof stp.faceNote === 'string' && /bounded/.test(stp.faceNote),
+    'and it declares itself bounded (a status is not a dump)', stp && stp.faceNote)
+  ok(stp && typeof stp.note === 'string' && /enforced/.test(stp.note),
+    'and the kernel\'s own note is still forwarded, not replaced by the face sentence', stp && stp.note)
 
   // ── ⑤b ROUND 70 / F-66: those counters are THIS kernel's folds, not the ledger's global numbers ─────────────
   // Run 70 read the same ledger from two kernels: office said adoptedWithoutAuthor 0 (pulls 17), the member's own kernel

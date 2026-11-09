@@ -46,10 +46,20 @@ const settingsOf = (map) => ({ get: (k) => (Object.prototype.hasOwnProperty.call
 // ── §0 the source says what the receipts claim ────────────────────────────────────────────────────────────────
 has(TURN_SRC, 'const ABANDON_AFTER_MS = (() => {', '§0a ★★ the abandon deadline is a NUMBER the loop knows, not a comment')
 has(TURN_SRC, "settingOf(settings, 'vmu.turn.abandonAfterMs')", '§0b ★★ and a deployment can SET it (vmu.turn.abandonAfterMs)')
-has(TURN_SRC, "Math.max(600000, delivery + 600000)", '§0c ★ the default is derived from the delivery deadline, floored at ten minutes')
-has(TURN_SRC, 'const abandonTurn = ({ turn = null, why = null } = {}) => {', '§0d ★★★ the escape is a function with a name: abandonTurn')
-has(TURN_SRC, "if (turn !== null && turn !== undefined && String(turn).trim() !== '' && String(turn).trim() !== turnId)", '§0e ★★ a caller that names the WRONG turn closes nothing (a stale caller cannot kill a live turn)')
-has(TURN_SRC, "noteTurnReceipt(t, { status: 'abandoned', code: 'VMU_TURN_ABANDONED' })", '§0f ★★★ the closed row says "abandoned" with its own code — it does not pretend to have settled')
+has(TURN_SRC, "Math.max(600000, DELIVERY_TIMEOUT_MS + 600000)", '§0c ★ the default is derived from the delivery deadline, floored at ten minutes')
+// RUN 256 / TB-2616: `abandonTurn` grew a `settledBy` argument (the three exits of a parked turn must be told apart:
+// resumed / released / timed-out). The invariant is unchanged — the escape is still ONE named function — so the pin
+// moves with the signature instead of being dropped.
+has(TURN_SRC, 'const abandonTurn = ({ turn = null, why = null, settledBy = null } = {}) => {', '§0d ★★★ the escape is a function with a name: abandonTurn')
+// ★ RUN 258 / TB-2651 (AUDIT-14 P1-5): the same invariant ("a stale caller cannot kill a live turn") is now written as
+// the named-row gate, which is the ONE place that decides a name is not the in-flight turn. Pinning the new expression
+// keeps the invariant while allowing the named-row door to run while a turn is in flight (it never touches the lock).
+has(TURN_SRC, 'if (namedTurnId !== null && namedTurnId !== inFlightId)', '§0e ★★ a caller that names a turn is only closed by the row door when it is NOT the in-flight turn (a stale caller cannot kill a live turn)')
+// RUN 256 / TB-2616: the row now also records WHICH exit closed the turn (`settledBy`), which is the opposite of
+// pretending it settled: "abandoned" stays its own status with its own code, and the settledBy word says released vs
+// timed-out. Both halves are pinned so a later edit cannot collapse them into one.
+has(TURN_SRC, "noteTurnReceipt(t, { status: 'abandoned', code: 'VMU_TURN_ABANDONED', settledBy: settled })", '§0f ★★★ the closed row says "abandoned" with its own code — it does not pretend to have settled')
+has(TURN_SRC, "const settled = settledBy === 'timed-out' ? 'timed-out' : 'released'", '§0f2 ★★ and settledBy names the exit (timed-out vs released), one place')
 has(TURN_SRC, 'void pumpWakeQueue()', '§0g ★★ closing a turn hands the lock to the queued wake immediately')
 has(TURN_SRC, 'const queueWake = (spec = {}) => {', '§0h ★★★ a wake that fires while the loop is busy is QUEUED')
 has(TURN_SRC, "if (isBusy()) break", '§0i ★★ and the queue only runs when the loop is actually free')
@@ -95,8 +105,15 @@ const neverReturns = () => new Promise(() => {})
   ok(nested !== null && nested.code === 'VMU_TURN_REENTRANT', '§2b ★★ a nested run is still refused by name (the lock is intact)', nested && nested.code)
   ok(nested !== null && /abandon/.test(String(nested.hint)), '§2c ★★★ and its hint points at the escape, so a caller is not trapped', nested && String(nested.hint).slice(0, 120))
 
-  const named = t.abandon({ turn: 't-999', why: 'wrong turn on purpose' })
-  ok(named.abandoned === false && named.inFlight === t.turnLoop().inFlightTurn, '§2d ★★ naming the WRONG turn closes nothing and says which turn IS in flight', named)
+  // ★ RUN 258 / TB-2651 (AUDIT-14 P1-5): naming a row is now a LEDGER operation, so an id the ledger never held is a
+  // NAMED refusal (VMU_NO_SUCH_OBJECT) instead of `abandoned:false` — the old answer let a caller read "handled" while
+  // nothing happened. The discoverability this case pinned is preserved IN THE HINT: it names the turn in flight.
+  const namedErr = (() => { try { t.abandon({ turn: 't-999', why: 'wrong turn on purpose' }); return null } catch (e) { return e } })()
+  ok(namedErr !== null && namedErr.code === 'VMU_NO_SUCH_OBJECT',
+    '§2d ★★ naming an id this ledger never held is refused by name (a no-op must not answer ok:true)', namedErr && namedErr.code)
+  ok(namedErr !== null && String(namedErr.hint).includes(String(t.turnLoop().inFlightTurn)),
+    '§2d2 ★★★ and the hint names the turn that IS in flight, so a caller is not left guessing', namedErr && String(namedErr.hint).slice(0, 180))
+  ok(t.turnLoop().inFlight === true, '§2d3 the refusal closed nothing — the stuck turn still holds the loop', t.turnLoop().inFlightTurn)
 
   const closed = t.abandon({ turn: t.turnLoop().inFlightTurn, why: 'the delivery seam never returned' })
   ok(closed.ok === true && closed.abandoned === true && closed.closedWith === 'VMU_TURN_ABANDONED', '§2e ★★★ op:"abandon" closes the stuck turn BY NAME', closed)

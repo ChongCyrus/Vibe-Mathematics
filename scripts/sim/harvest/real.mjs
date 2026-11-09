@@ -28,6 +28,17 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 
+// TB-2637/TB-2641: a corpus row is only comparable to a BUILD. The authoritative source is now the driver's sealed
+// `run-metadata` event, prepended as the FIRST frame of each journal it produced (slv-p14-cc.ps1 -> journal-build-stamp.mjs).
+// The older `BUILD REV: <sha>` text grep stays as a fallback for journals written before the metadata event existed,
+// and every row records WHY it carries the build it carries - never an invented sha, never a silently dropped field.
+const META_TYPE = 'run-metadata';
+const META_WHY_PREFIX = 'run-metadata:';
+const BUILD_STAMP_RE = /\bBUILD REV:\s*([0-9a-f]{7,40})\b/i;
+const BUILD_JSON_RE = /"build"\s*:\s*"([0-9a-f]{7,40})"/;
+const BUILD_WHY_NONE = 'the session journal carries neither a run-metadata event nor a BUILD REV line';
+const BUILD_WHY_GREP = 'grep:BUILD REV (journal predates the run-metadata event)';
+
 const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu';
 const WS_ROOT = process.env.VMU_REAL_WS_ROOT || 'D:/_tmp/slv-phase5';
 const SESSIONS_ROOT = process.env.VMU_SESSIONS_ROOT || path.join(os.homedir(), '.dsh', 'sessions');
@@ -154,7 +165,7 @@ async function main() {
   const truncatedByTool = new Map();
   const unknownToolByTool = new Map();
   const seenWorkspaces = new Set();
-  let sessionFiles = 0, events = 0, results = 0, orphanResults = 0, badFrames = 0, parseFailed = 0;
+  let sessionFiles = 0, events = 0, results = 0, orphanResults = 0, badFrames = 0, parseFailed = 0, stampedRows = 0, metaSessions = 0;
 
   const bump = (map, key, n = 1) => map.set(key, (map.get(key) || 0) + n);
 
@@ -169,11 +180,37 @@ async function main() {
       sessionFiles++;
       seenWorkspaces.add(run);
       const eventsOf = [];
+      let sessionBuild = null;
+      let sessionBuildWhy = null;
+      let sessionMeta = null;
       for (const item of readSessionLines(file)) {
         if (typeof item !== 'string') { badFrames++; continue; }
         let ev; try { ev = JSON.parse(item); } catch { badFrames++; continue; }
+        // TB-2641: the driver prepends ONE sealed frame carrying the run's build. It is metadata, not an event the
+        // tool-pairing below should see, so it is captured once and kept out of `eventsOf`.
+        if (ev && (ev.type === META_TYPE || ev.kind === META_TYPE)) {
+          if (sessionMeta === null) sessionMeta = ev;
+          continue;
+        }
+        if (sessionBuild === null) {
+          const m = item.match(BUILD_STAMP_RE) || item.match(BUILD_JSON_RE);
+          if (m) { sessionBuild = m[1]; sessionBuildWhy = BUILD_WHY_GREP; }
+        }
         eventsOf.push(ev); events++;
       }
+      if (sessionMeta !== null) {
+        metaSessions += 1;
+        const mb = typeof sessionMeta.build === 'string' && sessionMeta.build !== '' ? sessionMeta.build : null;
+        const source = typeof sessionMeta.buildSource === 'string' && sessionMeta.buildSource !== '' ? sessionMeta.buildSource : 'driver';
+        if (mb) {
+          sessionBuild = mb;
+          sessionBuildWhy = META_WHY_PREFIX + source + (sessionMeta.dirty === true ? ' (dirty)' : '');
+          if (typeof sessionMeta.why === 'string' && sessionMeta.why !== '') sessionBuildWhy += ' - ' + sessionMeta.why;
+        } else if (sessionBuild === null) {
+          sessionBuildWhy = META_WHY_PREFIX + 'no build field';
+        }
+      }
+      if (sessionBuild !== null && sessionBuildWhy === null) sessionBuildWhy = 'stamped without provenance';
       const calls = new Map();
       for (const ev of eventsOf) {
         if (ev.type !== 'tool/call') continue;
@@ -195,6 +232,8 @@ async function main() {
           run,
           sessionId: sd.name,
           tool,
+          build: sessionBuild,
+          buildWhy: sessionBuild === null ? BUILD_WHY_NONE : (sessionBuildWhy || null),
           ok: okOf(parsed),
           code: codeOf(parsed),
           keys: keysOf(parsed),
@@ -210,6 +249,7 @@ async function main() {
         if (typeof text === 'string' && /^Error: unknown tool /.test(text)) bump(unknownToolByTool, tool);
         if (tool.startsWith('vibe_')) {
           receiptRows.push(row);
+          if (row.build !== null) stampedRows++;
           bump(receiptsByTool, tool);
           if (row.code) bump(codesByTool, tool + '\u0000' + row.code);
           let kset = keysByTool.get(tool);
@@ -259,6 +299,8 @@ async function main() {
   lines.push('| 其中 vibe_* 回执 | ' + receiptRows.length + ' |');
   lines.push('| 非 vibe 工具回执（other-tools.jsonl） | ' + otherRows.length + ' |');
   lines.push('| JSON 解析失败（照实记 parseFailed） | ' + parseFailed + ' |');
+  lines.push('| 带构建戳的 vibe_* 行（run-metadata 优先，BUILD REV 文本兜底） | ' + stampedRows + ' |');
+  lines.push('| 带 `run-metadata` 密封事件的会话 | ' + metaSessions + ' |');
   lines.push('| 其中「工具名根本不存在」被 harness 拒（`Error: unknown tool`） | ' + [...unknownToolByTool.values()].reduce((a, b) => a + b, 0) + ' |');
   lines.push('| 无 callId 配对的 result | ' + orphanResults + ' |');
   lines.push('| 坏帧/坏行 | ' + badFrames + ' |');
@@ -336,6 +378,8 @@ async function main() {
     receipts: receiptRows.length,
     otherTools: otherRows.length,
     parseFailed,
+    stampedRows,
+    metaStampedSessions: metaSessions,
     orphanResults,
     badFrames,
     vibeTools: realVibeNames.size,

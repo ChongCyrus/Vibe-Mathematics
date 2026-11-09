@@ -100,9 +100,13 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   // ★★★ RUN 248-N / task-67: the row is TEN fields now — `channel` ('mail'|'dm'|'group') joined the read face, because
   // the ledger has to PROVE all three delivery channels (a mailbox mail, a private dm, a group broadcast) from the read
   // side, not from prose. A row written before the field existed reads as channel 'mail' (the legacy default below).
-  ok(row && Object.keys(row).sort().join(',') === ['at', 'bytes', 'channel', 'from', 'id', 'kind', 'read', 'subject', 'todo', 'urgent'].join(',') &&
-    row.read === false && row.todo === false && row.urgent === false && row.channel === 'mail' && !('text' in row),
-    '★ 正：list 行字段恰为 10 个（含 urgent、channel）、不含正文、初始 read:false / urgent:false / channel:mail', row)
+  // ★★★ TB-2682 / task-165: the row is TWELVE fields now — `ackRequired`/`acked` joined the read face. The prompt
+  // already named them as member-readable facts; without them a member could not tell which rows the mailbox is
+  // asking it to settle. Both are computed ONCE in the kernel (`ackReadsOf`) and only forwarded here.
+  ok(row && Object.keys(row).sort().join(',') === ['ackRequired', 'acked', 'at', 'bytes', 'channel', 'from', 'id', 'kind', 'read', 'subject', 'todo', 'urgent'].join(',') &&
+    row.read === false && row.todo === false && row.urgent === false && row.channel === 'mail' && !('text' in row) &&
+    row.ackRequired === true && row.acked === false,
+    '★★ 正：list 行字段恰为 12 个（含 urgent、channel、ackRequired、acked）、不含正文、初始 read:false / urgent:false / channel:mail / acked:false', row)
   const opened = mb.open('r-2', row.id)
   ok(opened.ok === true && opened.entry.text.includes(SECRET) && opened.read === true, '★ 正：open 返回正文并把 read 置 true', opened)
   // ★ ROUND 52 正：urgent 逐字走到两个读面（写入侧记录的事实，读面不再删）。open 视图是 6 字段 + urgent（RUN 248-N
@@ -160,7 +164,9 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   await expectThrow(() => mb.send('r-1', { to: 'r-3', text: 're', kind: 'dm', replyTo: id }),
     'VMU_MAILBOX_ANCHOR_DANGLING', 'a reply to acked mail is refused by name')
   await expectThrow(() => mb.anchor('ml-9999'), 'VMU_MAILBOX_ANCHOR_DANGLING', 'an unknown id is refused too')
-  await expectThrow(() => mb.ack('r-2', [id]), 'VMU_MAILBOX_ACK_UNKNOWN', 'acking an already-acked entry is refused (no silent no-op)')
+  // ★ TB-2606-B / task-95: an already-settled id is NAMED as such (with the settlement facts), not reported as a
+  // missing row — the same repeat ack used to answer VMU_MAILBOX_ACK_UNKNOWN, which reads as "that never existed".
+  await expectThrow(() => mb.ack('r-2', [id]), 'VMU_MAILBOX_ALREADY_ACKED', 'acking an already-acked entry is refused BY NAME as already settled (no silent no-op, no missing-row lie)')
 }
 
 // ---- 4. injection dedup: once per prompt, cleared on every concluded attempt ------------------------

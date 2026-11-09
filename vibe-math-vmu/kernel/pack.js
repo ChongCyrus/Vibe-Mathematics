@@ -105,6 +105,156 @@ export function decompressText(bytes) {
 
 const byteLength = (s) => new TextEncoder().encode(String(s)).length
 
+// TB-2618 / RUN 256 - THE DECLARATION THAT ARRIVES TOO LATE.
+//
+// Measured defect (audit round15 2): a pack manifest may declare `phases`, `noticeBlock`, `recordTracks`,
+// `meetingTypeCatalog`, `slots`, `office` or `agendaStateMachine`; validatePack ACCEPTED it and NOTHING read it, because
+// the kernel had already built its settings/records/library/roster snapshots before the pack was applied. "Declared"
+// was therefore a synonym for "silently dropped" - the exact class this project forbids (docs/01 R1).
+//
+// THE TWO LEGAL ROADS, both OBSERVABLE:
+//   - FOLDED BEFORE CONSTRUCTION: the deployment hands manifests to the entry as `config.packManifests`; the entry
+//     calls foldPackDeclarations() ONCE and passes the resulting settings/kernel options into createKernel. The
+//     declaration then reaches the constructor that consumes it (record-track whitelist, library, task stages, meeting
+//     type catalog, notice block, roster slots) and a real behaviour changes.
+//   - REFUSED BY NAME: a manifest applied later (the ordinary vibe_vmu_pack path) cannot change a construction-time
+//     snapshot. apply() refuses it with VMU_PACK_DECLARATION_TOO_LATE, naming the key, when it was declared, and where
+//     it must be declared instead. It NEVER accepts it and drops it.
+export const PACK_DECLARATION_KEYS = Object.freeze([
+  'phases', 'noticeBlock', 'recordTracks', 'meetingTypeCatalog', 'slots', 'office', 'agendaStateMachine',
+])
+// ★ WHICH KEYS ARE ACTUALLY TOO LATE. Not every declaration above needs the fold: `slots` is honoured by
+// declareSlots() and `recordTracks` by declareTracks() (both real post-construction mechanisms, and the FIRST-PARTY
+// packs rely on them at apply time - gating those closed the kernel's own boot path). The gate therefore covers only
+// keys whose consumer exists at CONSTRUCTION time: phases/noticeBlock are entry-runtime assembly (PACK_RUNTIME folds
+// them before the kernel for a declared id, so they are refused only when a manifest declares them and the entry did
+// NOT fold it) and meetingTypeCatalog is folded into the settings snapshot.
+export const PACK_DECLARATION_TOO_LATE_KEYS = Object.freeze(['phases', 'noticeBlock', 'meetingTypeCatalog'])
+// ★ TB-2649 / RUN 258 - A DECLARATION NO CONSUMER CAN EVER CARRY. office and agendaStateMachine have no fold target
+// and no post-construction mechanism, so they can only be REFUSED - and they must be refused for the RIGHT reason
+// (unconsumable, not too late). The old fold ledger recorded every MENTIONED key, including these two, so the gate at
+// apply() always saw them as folded: a manifest declaring only `office` came out APPLIED with zero effect
+// (measured: appliedPacks=[{id:"zero-effect-inst",applied:0}]). That is the exact class docs/01 R1 forbids.
+export const PACK_DECLARATION_NO_CONSUMER_KEYS = Object.freeze(['office', 'agendaStateMachine'])
+
+const DECLARATION_TEXT = Object.freeze({
+  phases: 'task/phase stages (kernel option `stages` + vmu.tasks.stages)',
+  noticeBlock: 'the member notice block renderer (kernel option `noticeBlock`)',
+  recordTracks: 'the record-track whitelist (settings vmu.records.tracks)',
+  meetingTypeCatalog: 'the meeting-type catalog (settings vmu.meetings.typeCatalog)',
+  slots: 'the role slots / roster (kernel option `slots`)',
+  office: 'the office seat vocabulary',
+  agendaStateMachine: 'the agenda state machine',
+})
+
+/** The one sentence a reader needs when a declaration cannot be folded (reused by the loader refusal). */
+export function declarationTooLateError(manifest, keys) {
+  const id = manifest && typeof manifest.id === 'string' ? manifest.id : '(unnamed pack)'
+  const e = new Error('pack ' + id + ' declares ' + keys.map((k) => k + ' (' + DECLARATION_TEXT[k] + ')').join(', ') + ', but this manifest was applied AFTER the kernel was constructed: that construction already fixed the snapshot this declaration would have changed, so accepting it would be a declaration with zero effect')
+  e.code = 'VMU_PACK_DECLARATION_TOO_LATE'
+  e.hint = 'REACHABLE INSTEAD: declare these keys in `config.packManifests` (a list the entry folds BEFORE createKernel - see kernel/pack.js foldPackDeclarations), or drop them; `vibe_vmu_pack` cannot change a construction-time snapshot. If the key HAS a post-construction mechanism it is not gated here: `slots` via declareSlots and `recordTracks` via declareTracks stay open'
+  e.facts = { key: keys, declaredAt: null, requiredBefore: 'createKernel', manifest: id }
+  return e
+}
+
+/**
+ * TB-2649: a declaration NO consumer can carry (office / agendaStateMachine). This is a DIFFERENT fact from "too
+ * late": declaring it earlier would not help either, because no layer of this kernel reads it. The refusal names the
+ * key and has exactly one reachable move (stop declaring it), so the reader is never sent down the old path the
+ * `config.packManifests` hint used to advertise - which was precisely the silent-zero-effect route.
+ */
+export function declarationUnconsumedError(manifest, keys) {
+  const id = manifest && typeof manifest.id === 'string' ? manifest.id : '(unnamed pack)'
+  const names = keys.map((k) => k + ' (' + DECLARATION_TEXT[k] + ')').join(', ')
+  const e = new Error('pack ' + id + ' declares ' + names + ', but this kernel has no consumer for ' + (keys.length === 1 ? 'that key' : 'those keys') + ': no construction-time snapshot and no post-construction mechanism reads ' + (keys.length === 1 ? 'it' : 'them') + ', so accepting it would be a declaration with zero effect')
+  e.code = 'VMU_PACK_DECLARATION_UNCONSUMED'
+  e.hint = 'REACHABLE INSTEAD: drop ' + keys.join(' / ') + ' from the manifest - declaring ' + (keys.length === 1 ? 'it' : 'them') + ' earlier in `config.packManifests` would not help either, because the fold targets only phases/recordTracks/meetingTypeCatalog/slots/noticeBlock and there is no post-construction mechanism for this key, so the only honest move is to stop declaring ' + (keys.length === 1 ? 'it' : 'them')
+  e.facts = { key: keys.slice(), consumer: null, manifest: id }
+  return e
+}
+
+/**
+ * Fold the declarations a pack manifest makes into the two shapes createKernel consumes: settings (where the key
+ * already exists in the closed settings table) and construction OPTIONS (where the kernel takes the value directly).
+ * PURE: returns a new settings object and never mutates its input. Unknown declarations are NAMED in `unsupported`
+ * instead of being dropped silently.
+ */
+export function foldPackDeclarations(manifests = [], settings = {}) {
+  const list = Array.isArray(manifests) ? manifests.filter((m) => m && typeof m === 'object') : []
+  const merged = Object.assign({}, settings)
+  const options = { slots: [], tracks: [], stages: [], noticeBlock: null }
+  const folded = []
+  const unsupported = []
+  const declaredKeysByManifest = new Map()
+  // ★ TB-2649: `unsupported` had no reader at all (grep found it only here), so a declaration named as unsupported
+  // and a declaration folded correctly were indistinguishable to every caller. This per-manifest view is handed to
+  // the loader (and from there into apply receipts), so the refusal and the receipt can both say WHICH key and WHY.
+  const unsupportedByManifest = new Map()
+  const noteUnsupported = (id, key, why) => {
+    unsupported.push({ id, key, why })
+    const prev = unsupportedByManifest.get(id) || []
+    prev.push({ key, why })
+    unsupportedByManifest.set(id, prev)
+  }
+  const mergeList = (key, values) => {
+    const prev = Array.isArray(merged[key]) ? merged[key].map(String) : []
+    const add = values.map(String).filter((v) => v !== '' && !prev.includes(v))
+    if (add.length > 0) merged[key] = prev.concat(add)
+    return add
+  }
+  for (const m of list) {
+    const id = typeof m.id === 'string' && m.id ? m.id : null
+    const hit = PACK_DECLARATION_KEYS.filter((k) => m[k] !== undefined)
+    if (hit.length === 0) continue
+    // ★ TB-2649: THE AUTHORITY IS THE FOLD, NOT THE MENTION. The old line was
+    //   declaredKeysByManifest.set(id, hit)  // every key the manifest MENTIONED
+    // which recorded office/agendaStateMachine even though they fall into `unsupported`, so the apply() gate saw them
+    // as folded and let a zero-effect manifest through. Now a key enters this ledger only after it was really folded
+    // into the shape createKernel consumes; wrong shapes, keys with no consumer and a second noticeBlock are named in
+    // `unsupported` and NOT recorded, so "folded" can never again mean "mentioned".
+    const foldedKeys = []
+    for (const key of hit) {
+      const value = m[key]
+      if (key === 'phases') {
+        if (!Array.isArray(value)) { noteUnsupported(id, key, 'phases must be an array of stage names'); continue }
+        const added = mergeList('vmu.tasks.stages', value)
+        for (const p of value) if (!options.stages.includes(String(p))) options.stages.push(String(p))
+        folded.push({ id, key, how: 'settings vmu.tasks.stages + kernel option stages', added })
+        foldedKeys.push(key)
+      } else if (key === 'recordTracks') {
+        if (!Array.isArray(value)) { noteUnsupported(id, key, 'recordTracks must be an array of track names'); continue }
+        const added = mergeList('vmu.records.tracks', value)
+        for (const t of value) if (!options.tracks.includes(String(t))) options.tracks.push(String(t))
+        folded.push({ id, key, how: 'settings vmu.records.tracks + kernel option tracks', added })
+        foldedKeys.push(key)
+      } else if (key === 'meetingTypeCatalog') {
+        if (!Array.isArray(value)) { noteUnsupported(id, key, 'meetingTypeCatalog must be an array of meeting types'); continue }
+        const added = mergeList('vmu.meetings.typeCatalog', value)
+        folded.push({ id, key, how: 'settings vmu.meetings.typeCatalog', added })
+        foldedKeys.push(key)
+      } else if (key === 'slots') {
+        if (!Array.isArray(value)) { noteUnsupported(id, key, 'slots must be an array of slot declarations'); continue }
+        for (const sl of value) if (sl && typeof sl === 'object' && !options.slots.some((x) => x && x.id === sl.id)) options.slots.push(sl)
+        folded.push({ id, key, how: 'kernel option slots (construction-time roster)', added: options.slots.map((x) => x && x.id).filter(Boolean) })
+        foldedKeys.push(key)
+      } else if (key === 'noticeBlock') {
+        if (typeof value !== 'function') { noteUnsupported(id, key, 'noticeBlock must be a function'); continue }
+        if (options.noticeBlock !== null) {
+          noteUnsupported(id, key, 'another manifest already supplied the noticeBlock: the kernel holds exactly one renderer, so this second declaration would have no effect')
+          continue
+        }
+        options.noticeBlock = value
+        folded.push({ id, key, how: 'kernel option noticeBlock', added: [id] })
+        foldedKeys.push(key)
+      } else {
+        noteUnsupported(id, key, DECLARATION_TEXT[key] + ' has no consumer in this kernel (refused by name at apply as VMU_PACK_DECLARATION_UNCONSUMED, never accepted with zero effect)')
+      }
+    }
+    if (foldedKeys.length > 0) declaredKeysByManifest.set(id, foldedKeys)
+  }
+  return { settings: merged, options, folded, unsupported, declaredKeysByManifest, unsupportedByManifest }
+}
+
 /** Validate a manifest. Returns a list of problems (empty means the pack is well-formed). */
 export function validatePack(manifest) {
   const problems = []
@@ -121,6 +271,26 @@ export function validatePack(manifest) {
     else if (s.capacity !== undefined && (!Number.isInteger(s.capacity) || s.capacity < 0)) problems.push('slot ' + s.id + ': capacity must be an integer >= 0')
   }
   for (const t of manifest.tracks || []) if (typeof t !== 'string' || t.length === 0) problems.push('a track name must be a non-empty string')
+  // TB-2618: the declaration keys are CHECKED here so a typo is caught by plan() instead of being folded blindly.
+  if (manifest.phases !== undefined && !Array.isArray(manifest.phases)) problems.push('phases must be an array of stage names')
+  if (manifest.recordTracks !== undefined && !Array.isArray(manifest.recordTracks)) problems.push('recordTracks must be an array of track names')
+  if (manifest.meetingTypeCatalog !== undefined && !Array.isArray(manifest.meetingTypeCatalog)) problems.push('meetingTypeCatalog must be an array of meeting types')
+  if (manifest.noticeBlock !== undefined && typeof manifest.noticeBlock !== 'function') problems.push('noticeBlock must be a function (kernel option noticeBlock)')
+  // ★ TB-2649: the two keys with NO consumer are still SHAPE-CHECKED. They are refused by name at apply either way,
+  // but a malformed declaration and an unconsumable one are DIFFERENT facts - plan() must report the shape problem it
+  // can see instead of letting apply() blame the wrong cause (the old validatePack accepted any value here).
+  if (manifest.office !== undefined) {
+    if (!Array.isArray(manifest.office) || manifest.office.length === 0 || manifest.office.some((v) => typeof v !== 'string' || v.trim() === '')) {
+      problems.push('office must be a non-empty array of seat names (the office seat vocabulary)')
+    }
+  }
+  if (manifest.agendaStateMachine !== undefined) {
+    const sm = manifest.agendaStateMachine
+    const isFunction = typeof sm === 'function'
+    const isObject = !!sm && typeof sm === 'object' && !Array.isArray(sm)
+      && Object.values(sm).every((v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && x.trim() !== ''))
+    if (!isFunction && !isObject) problems.push('agendaStateMachine must be a function or an object state -> array of next states')
+  }
   // PHASE 6 / goal-3 audit P1: a pack may declare the packs it must not coexist with. Names are pack ids (kebab-case),
   // unique, and never itself — the enforcement is in buildPlan()/apply(), so plan() and apply() cannot disagree.
   if (manifest.excludes !== undefined) {
@@ -373,7 +543,7 @@ export function composePromptPolicies(policies = []) {
   }
 }
 
-export function createPackLoader({ kernel, registry = null, allowOverride = false, clock = () => new Date().toISOString(), onPromptPolicy = null, settingSource = null } = {}) {
+export function createPackLoader({ kernel, registry = null, allowOverride = false, clock = () => new Date().toISOString(), onPromptPolicy = null, settingSource = null, foldedDeclarations = null, unsupportedDeclarations = null } = {}) {
   const applied = new Map()
   /** PHASE 6 (goal-3 audit P1): the `excludes` list each applied pack declared, so BOTH directions are checkable. */
   const appliedExcludes = new Map()
@@ -509,6 +679,13 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     if ((m.promptPolicies || []).length > 0 && typeof onPromptPolicy !== 'function') {
       warnings.push('this loader has no onPromptPolicy sink, so applying would refuse by name (VMU_PACK_PROMPT_POLICY_UNCONSUMED); pass onPromptPolicy(policy) when constructing the pack loader')
     }
+    // ★ TB-2649: a declaration with NO consumer is a WARNING here and a NAMED REFUSAL in apply(). plan() used to look
+    // clean for exactly the manifests apply() would accept with zero effect - plan and apply must not tell two stories.
+    for (const key of PACK_DECLARATION_NO_CONSUMER_KEYS) {
+      if (m[key] !== undefined) {
+        warnings.push('declares ' + key + ': this kernel has no consumer for ' + DECLARATION_TEXT[key] + ', so applying will refuse by name (VMU_PACK_DECLARATION_UNCONSUMED) - declaring it in config.packManifests would not change that')
+      }
+    }
     /**
      * ROUND 136: a pack may carry the prompt TEXT it needs - the v5r pack does - and until this block existed the
      * field would have been dropped IN SILENCE, because `validatePack` does not police extra keys and docs/10 §
@@ -527,6 +704,19 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         count: Number.isInteger(count) ? count : 0, source: String(pp.source || ''),
         chars: Number.isInteger(Number(pp.chars)) ? Number(pp.chars) : null,
       })
+    }
+    // ★ TB-2649: A DECLARATION THAT WAS FOLDED BEFORE CONSTRUCTION IS AN ACTION OF THIS PACK. The fold changed
+    // settings/roster options while the kernel was being built, so plan() must count it here - otherwise a manifest
+    // whose whole contribution was a folded declaration reported `applied: 0`, the same number a silently-dropped
+    // manifest produced. `folded` is read from the ledger of REAL folds (not from the fact that the key is
+    // mentioned); `consumer` names where the effect lands, or null when the key has no consumer at all.
+    for (const key of PACK_DECLARATION_KEYS) {
+      if (m[key] === undefined) continue
+      const folded = !!(foldedDeclarations && typeof foldedDeclarations.get === 'function'
+        && (foldedDeclarations.get(m.id) || []).includes(key))
+      const consumer = PACK_DECLARATION_NO_CONSUMER_KEYS.includes(key) ? null
+        : (key === 'slots' || key === 'recordTracks' ? 'post-construction mechanism (declareSlots/declareTracks)' : 'createKernel snapshot')
+      actions.push({ kind: 'declaration', key, folded, consumer })
     }
     // PHASE 6 (goal-3 audit P1): a pack's excluded peers must be checked in BOTH directions (the applied pack may
     // name this one instead). Every conflict is a named problem, so plan() reports it before apply() refuses.
@@ -562,6 +752,9 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
      * receipt records what was changed so `unload` can reverse exactly that.
      */
     async apply(manifest) {
+      // TB-2618 / TB-2649: NO SILENT ZERO-EFFECT DECLARATIONS. The declaration gate lives AFTER buildPlan() (see
+      // below), so a malformed manifest is refused for its SHAPE and a well-formed one for the real declaration
+      // fact. Both runs before a single side effect, so "accepted" always means "in effect or named refused".
       let toolFaceReceipt = null
       // ROUND 496: pack/loading and pack/loaded were frozen WITH default policies and nothing emitted them, so "pack-loading
       // intervention" was a paper capability. loading fires before any change is made and MAY refuse; loaded fires after.
@@ -583,6 +776,26 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       }
       if (applied.has(manifest.id)) {
         throw refuse('VMU_PACK_CONFLICT', 'pack ' + manifest.id + ' is already applied', 'unload it before applying again (O4)')
+      }
+      // ★ TB-2649 - THE DECLARATION GATE, WITH ITS TWO REAL FACTS KEPT APART:
+      //   (1) UNCONSUMABLE: office / agendaStateMachine have no consumer in any layer ⇒ named refusal, and this is
+      //       checked FIRST because it is not a timing problem (declaring earlier would not help either);
+      //   (2) TOO LATE: phases / noticeBlock / meetingTypeCatalog need the entry fold before createKernel ⇒ refused
+      //       only when the ledger (built from REAL folds) does not show this manifest folded that key.
+      // Neither branch may fall through to the settings/roster mutations below with zero effect.
+      const declaredNoConsumer = manifest ? PACK_DECLARATION_NO_CONSUMER_KEYS.filter((k) => manifest[k] !== undefined) : []
+      if (declaredNoConsumer.length > 0) throw declarationUnconsumedError(manifest, declaredNoConsumer)
+      const declared = manifest ? PACK_DECLARATION_TOO_LATE_KEYS.filter((k) => manifest[k] !== undefined) : []
+      if (declared.length > 0) {
+        const folded = foldedDeclarations && typeof foldedDeclarations.get === 'function' ? (foldedDeclarations.get(manifest && manifest.id) || []) : []
+        const tooLate = declared.filter((k) => !folded.includes(k))
+        if (tooLate.length > 0) { const e = declarationTooLateError(manifest, tooLate); e.facts.declaredAt = clock(); throw e }
+      }
+      // The receipt reports what the fold actually DID for this manifest (and what it could not), so `unsupported`
+      // finally has a reader instead of existing only inside foldPackDeclarations.
+      const declarationFacts = {
+        folded: (foldedDeclarations && typeof foldedDeclarations.get === 'function' ? (foldedDeclarations.get(manifest.id) || []) : []).slice(),
+        unsupported: (unsupportedDeclarations && typeof unsupportedDeclarations.get === 'function' ? (unsupportedDeclarations.get(manifest.id) || []) : []).map((u) => ({ key: u.key, why: u.why })),
       }
       const undo = []
       const runAll = async () => {
@@ -651,9 +864,16 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         undo.push(() => kernel.declareSlots([]))
         break // declaring is atomic for the whole list; one undo entry is enough
       }
-      for (const t of manifest.tracks || []) {
+      // TB-2618: `recordTracks` (the DECLARATION spelling) and `tracks` (the older manifest field) are ONE
+      // declaration; both go through kernel.declareTracks, which now also extends the records whitelist. A late
+      // declaration is therefore EFFECTIVE, which is why this key is not in the too-late gate.
+      const declaredTrackNames = [
+        ...(Array.isArray(manifest.tracks) ? manifest.tracks : []),
+        ...(Array.isArray(manifest.recordTracks) ? manifest.recordTracks : []),
+      ]
+      for (const t of declaredTrackNames) {
         if (!kernel.declareTracks) continue
-        kernel.declareTracks(manifest.tracks)
+        kernel.declareTracks(declaredTrackNames)
         // PHASE 6 (goal-3 audit, half-built pair): slots had an undo and tracks did not, so an unload left the
         // rebuilt library in place. The kernel restores its construction-time tracks and this is the reverse entry.
         if (typeof kernel.retractTracks === 'function') undo.push(() => kernel.retractTracks())
@@ -800,6 +1020,8 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       return { ok: true, id: manifest.id, applied: plan.count, actions: plan.actions, requires: plan.requires,
         settings: { applied: resolution.applied.length, shadowed: resolution.shadowed.slice() },
         promptPolicies: (Array.isArray(manifest.promptPolicies) ? manifest.promptPolicies : []).map((p) => p.id),
+        // TB-2649: what the fold DID for this manifest (folded keys) and what it could not (named unsupported keys).
+        declarations: declarationFacts,
         ...(toolFaceReceipt ? { toolFaces: toolFaceReceipt } : {}) }
     },
 

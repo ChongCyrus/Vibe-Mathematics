@@ -137,13 +137,14 @@ test('RUN 205 §4 — a blueprint author\'s seat is recorded, and the blueprint 
   try {
     const { call, handle } = await assemble(dir)
     await hire(handle, [['r-acad', 'chair'], ['r-1', 'member']])
-    const first = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-acad', text: '# 蓝图\n\n一、目标：把命题的证明拆成可验证的步骤。' })
+    // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+    const first = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-acad', text: '# 蓝图\n\n一、目标：把命题的证明拆成可验证的步骤。' })
     ok(first.ok === true, 'premise: the chair proposes', first)
     const authors1 = first.authors || []
     const chair = authors1.filter((a) => String(a.member) === 'r-acad')[0] || null
     ok(chair !== null, '§4a premise: the proposer is an author', authors1)
     ok(String(chair.seat || '') === 'chair', '§4b ★★ the chair author\'s seat is recorded from the roster (was always null)', chair)
-    const second = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: '## 共同设计补充\n\n二、可行性：先写引理。' })
+    const second = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: '## 共同设计补充\n\n二、可行性：先写引理。' })
     ok(second.ok === true, 'premise: a member continues the same draft', second)
     const member = (second.authors || []).filter((a) => String(a.member) === 'r-1')[0] || null
     ok(member !== null, '§4c premise: the member is recorded as an author', second.authors)

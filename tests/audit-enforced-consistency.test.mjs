@@ -866,6 +866,12 @@ for (const [mod, m] of [...byModule].sort()) {
     'panel.js': 'receipts carry enforced[] (member state panel); the panel refusals are asserted in tests/vmu-panel.test.mjs',
     'report.js': 'receipts carry enforced[] (declared reporting); the zero-mechanism matrix measures its status() as ok, and the report refusals are asserted in tests/vmu-assistant-*.test.mjs',
     'resume.js': 'receipts carry enforced[] (resume/recovery projections); its refusal path is asserted in tests/vmu-resume-recovery.test.mjs',
+    'index.js': 'a FORWARDER: declareTracks() re-publishes the records receipt envelope (enforced[]/fired[]/scope) verbatim; the records scenario drives the same declaration path',
+    // RUN 257 / TB-2640: a FORWARDER, not a new consumer/enforcer. `kernel/index.js` `declareTracks()` re-publishes
+    // the records receipt's `enforced[]`/`fired[]`/`enforcedScope` verbatim (one reading, two names) so the kernel
+    // receipt keeps the framework invariant "every receipt carries enforced[]". It publishes NO list of its own: the
+    // occurrences are envelope keys only, which the mechanical check below verifies. Proof this row is really used:
+    // deleting it puts index.js back on the uncovered list (measured once, red, then restored).
   }
   // the exemption is only valid if it is literally true: every occurrence must be an envelope key
   const envelopeViolations = []

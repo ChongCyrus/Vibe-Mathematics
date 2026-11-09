@@ -17,6 +17,10 @@ export const WIRED_KEYS = Object.freeze([
   // ★ PHASE 12 D1: 预约时间 + 到点人未齐的等待阶段（能力在内核，值是设置）。三个键一起接线：
   // scheduleAllowed 是能力闸，waitOnDueMs 是等待时长，waitDecisionRequiresChair 是「超时由院士自决」的权轨。
   'vmu.meetings.scheduleAllowed', 'vmu.meetings.waitOnDueMs', 'vmu.meetings.waitDecisionRequiresChair', 'vmu.meetings.waitForAll',
+  // ★ RUN 262 / TB-2661: 提前开会的权轨。proceed() 的 scheduled 分支读它（`meetings.js` 的 `if (K.startEarlyRequiresChair !== false)`）——
+  // 默认 true：主席是唯一能提前开会的人（与等待期 proceed 同一类授权动作）；false ⇒ 去掉席位轨、只留出勤规则
+  // （`attendanceRuleMet`）。它是「谁可以提前」的开关，不是「能不能提前」的开关。
+  'vmu.meetings.startEarlyRequiresChair',
   // ★ PHASE 12 D1/D2: 主席权轨三件（召开/关闭/延长）——它们改了行为，所以必须出现在 WIRED 里，
   // 否则 `status()` 会把"已接线的键"报成"声明了没接线"，那就是反向的假绿。
   'vmu.meetings.conveneRequiresChair', 'vmu.meetings.closeRequiresChair', 'vmu.meetings.extendRequiresChair', 'vmu.meetings.extendCeilingMs',
@@ -60,6 +64,8 @@ export const DEFAULTS = Object.freeze({
   'vmu.meetings.conveneRequiresChair': false, 'vmu.meetings.closeRequiresChair': false,
   'vmu.meetings.extendRequiresChair': true, 'vmu.meetings.extendCeilingMs': 14400000,
   'vmu.meetings.scheduleAllowed': true, 'vmu.meetings.waitOnDueMs': 300000, 'vmu.meetings.waitDecisionRequiresChair': true, 'vmu.meetings.waitForAll': true,
+  // RUN 262 / TB-2661：默认 true 复现「提前开会必须由主席发起」的现行行为（proceed 的 scheduled 分支读它，H2：createMeetings 构造期快照）。
+  'vmu.meetings.startEarlyRequiresChair': true,
   'vmu.meetings.speechDefaultMs': 0, 'vmu.meetings.speechMaxMs': 0, 'vmu.meetings.speechExtendMs': 0, 'vmu.meetings.speechExtendMax': 0, 'vmu.meetings.speechQuotaPerMember': 0,
   'vmu.meetings.interruptAllow': true, 'vmu.meetings.interruptQuota': 0, 'vmu.meetings.orderMode': 'fifo',
   'vmu.meetings.lateAfterMs': 0, 'vmu.meetings.leaveEarlyPolicy': 'allow', 'vmu.meetings.materialsRequired': false,

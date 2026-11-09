@@ -79,6 +79,22 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // while direct callers (and the tests) call `spec.execute` and parse a string themselves. Measured the hard way:
     // a face that returns a string from `run` gets it stringified AGAIN, so the caller parses back the same string.
     // `run` therefore returns the OBJECT and `execute` returns the JSON STRING, both from the same core.
+    // ★★★ RUN 256 / TB-2616: A PARKED REFUSAL CARRIES FACTS THE GENERIC FUNNEL WOULD DROP. `VMU_TURN_PARKED_NEEDS_OWNER`
+    // is only useful if the caller can see WHY a reply was refused and WHAT happened to it. The generic refusal funnel
+    // keeps code/message/hint and loses parkedFacts/parkedReason/parkedReplyDiscarded, and the simulator's negative face
+    // (scripts/sim/scenarios/turns.mjs, `probe-step-needs-owner`) measures exactly those three. ONE predicate for both
+    // step faces: a parked refusal becomes a RECEIPT (named, with its facts); every other thrown error still propagates.
+    const parkedRefusal = (e) => {
+      if (!e || typeof e !== 'object' || e.code !== 'VMU_TURN_PARKED_NEEDS_OWNER') return null
+      return {
+        ok: false, tool: 'vibe_vmu_turn', op: 'step', code: e.code,
+        message: String((e && e.message) || e), hint: (e && e.hint) || null,
+        parkedFacts: (e && e.parkedFacts) || null,
+        parkedReason: (e && e.parkedReason) || null,
+        parkedReplyDiscarded: e.parkedReplyDiscarded === true,
+        parkedReplyDiscardedMeans: 'the supplied reply was DISCARDED: there was no parked prompt for it to answer, and handing it to the next turn would attribute a member\'s words to a turn they were not answering. Park first (op:"drive" or an op:"step" that returns awaiting:true), then answer that prompt with the same member.',
+      }
+    }
     const coreTurnInner = async (args = {}, exec = null) => {
       void exec
       if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
@@ -238,7 +254,11 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // HOST BOOKKEEPING, not the member's intent; rows the kernel cannot see are named in each row's `unavailable`.
     // `status` itself keeps the whole kernel reading (including its numeric `turns` count) - no key is replaced.
     const perTurn = Array.isArray(status.turnReceipts) ? status.turnReceipts : []
-    return { ok: true, status, turns: perTurn,
+    // ★★★ RUN 260 / TB-2667 (task-147): THE SESSION-WIDE SKIP TOTAL, HOISTED so the answer to "how many fields did this
+    // session skip?" is in the receipt itself instead of one page down under `status`. Same value the kernel derived
+    // from the SAME rows `turns` carries - not a second tally; null only for a kernel too old to have the reading.
+    const skippedTotals = status.skippedTotals === undefined ? null : status.skippedTotals
+    return { ok: true, status, turns: perTurn, skippedTotals,
       turnsMeans: 'HOST BOOKKEEPING of each turn the loop settled (or still has open), NOT the member\'s intent: executed = reply fields dispatched and the face.op channel, skipped = fields kept but not executed (each with a code), writes = tool writes with their record ids, codes = refusal codes, unavailable = what this kernel CANNOT see (e.g. tool calls a member made in its own child session). `openedBy` says which door opened the turn: drive (the caller\'s step/drive), activation (the background pump), wait (a meeting wake), null (unknown/legacy). Bounded to the last rows; an empty list means no turn settled in THIS kernel session, not that nothing happened.',
       ...(status.turnReceiptsMeans === undefined ? {} : { turnsUnavailableMeans: status.turnReceiptsMeans }) }
   }
@@ -368,6 +388,8 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           try {
             stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg })
           } catch (e) {
+            const parked = parkedRefusal(e)
+            if (parked) return parked
             if (!e || !e.partial) throw e
             return {
               ok: false,
@@ -430,6 +452,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
         try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg }))) }
+        catch (e) { const parked = parkedRefusal(e); if (parked) return parked; throw e }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
       // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): the closure tally's window has a named opener, and it lives HERE because the

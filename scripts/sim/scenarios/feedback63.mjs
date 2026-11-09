@@ -32,6 +32,9 @@
 //   `expectedRefusals` names the refusal this scenario PREDICTS (the settled-card merge). `steps[].ok` still shows
 //   the refusal, so nothing is silently repaired even when the receipt itself is kept out of the corpus.
 
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 const NL = String.fromCharCode(10)
 const FENCE = String.fromCharCode(96, 96, 96)
 const fence = (payload) => [FENCE + 'json', JSON.stringify(payload), FENCE].join(NL)
@@ -91,6 +94,12 @@ export async function feedback63(h, { log = () => {} } = {}) {
     return out
   }
   const lastSeq = () => (h.receipts.length ? h.receipts[h.receipts.length - 1].seq : null)
+  // ★ TB-2625 - a contract check has to be able to turn the run red by name; `failures` is that channel (run.mjs).
+  const failures = []
+  // RUN 255 made `blueprint propose` fs-first: a text-only propose answers `{ok:true, filed:false, id:null,
+  // draftMdMissing:true}`. The SUCCESSFUL path does not carry `filed:true` (only the refused path carries `filed:false`),
+  // so the reading has to be normalized rather than assuming either shape.
+  const filedOf = (r) => Boolean(r && r.ok !== false && r.filed !== false && r.draftMdMissing !== true && typeof r.id === 'string' && r.id !== '')
   /** Keep one receipt out of the corpus, with the reason recorded in highlights.auditExclusions. */
   const excludeLast = (tool, why) => {
     const seq = lastSeq()
@@ -201,6 +210,8 @@ export async function feedback63(h, { log = () => {} } = {}) {
   expectedRefusals.push({
     tool: 'vibe_v5_record_proposition',
     code: 'VMU_RECORD_SETTLEMENT_REWRITE',
+    // ★ TB-2625 - a prediction names the receipt it predicts: `seq` is the receipt that was just recorded.
+    seq: lastSeq(),
     why: '已结算（p=1 且带 debateRuling 行）的卡被 merge 改回 0.95：现在按名拒绝，而不是静默变成未结算',
     excludedFromCorpus: 'the code is not registered in docs/03-interface-contract.md yet (audit A5); see highlights.auditExclusions',
   })
@@ -321,23 +332,62 @@ export async function feedback63(h, { log = () => {} } = {}) {
   }, 'narrowing 不生效时必须在回执里说清「为什么没生效、谁看得见、本来允许多少」；空交这种状态应当是披露（narrowingInEffect:false + reason + identityFaceVisible + expectedAllowed），不能是静默 no-op')
 
   // ⑫ FEEDBACK63 1.8 — a draft re-proposed twice keeps revision:1 / baseRevision:0.
+  // ★ TB-2625 - THE DRAFT IS A MEMBER FILE (fs-first, RUN 255). Both proposes used to carry `text` only, so both
+  // answered `{ok:true, filed:false, id:null, draftMdMissing:true}` and the finding this section measures (revision
+  // naming on a CONTINUED draft) was measuring two UNFILED proposals: the row that would carry revision/baseRevision
+  // never existed. The member writes the draft first, both proposes name the same `mdPath`, and the shape is checked.
+  const draftRel = 'Members/r-1/Drafts/oddsum-63-r1.md'
+  const draftAbs = join(h.root, 'VibeMath', draftRel)
+  const draftBody = '# 蓝图' + NL + '- 命题：前 n 个奇数之和等于 n 的平方。' + NL + '- 复核：n=1 成立。' + NL
+  const draftFile = await step('f63/draft-md', () => {
+    mkdirSync(dirname(draftAbs), { recursive: true })
+    writeFileSync(draftAbs, draftBody)
+    return { ok: true, path: draftRel, absPath: draftAbs, bytes: Buffer.byteLength(draftBody) }
+  })
   const draft1 = await step('f63/draft-revision-naming', () => h.call('vibe_v5_blueprint', {
     action: 'propose',
     path: 'Shared/Protocol.md',
     member: 'r-acad',
-    text: '# 蓝图' + NL + '- 命题：前 n 个奇数之和等于 n 的平方。' + NL + '- 复核：n=1 成立。',
+    mdPath: draftRel,
+    text: draftBody,
   }))
+  if (!filedOf(draft1)) {
+    failures.push({
+      code: 'SIM_BLUEPRINT_FS_FIRST_CONTRACT',
+      step: 'f63/draft-revision-naming',
+      message: 'blueprint propose did not FILE the draft: this scenario is behind the fs-first contract',
+      means: 'the re-propose below would have no `draft` to continue, so the revision/baseRevision finding measured nothing',
+      receipt: pick(draft1, ['ok', 'filed', 'id', 'status', 'draftMdMissing', 'mdPath', 'code', 'message', 'hint']),
+    })
+  }
+  const draft1Id = filedOf(draft1) ? draft1.id : null
+  const draft2Body = '# 蓝图' + NL + '- 前提：n 为正整数。' + NL + '- 复核：n=2 成立。' + NL
+  const draft2File = await step('f63/draft-md-revise', () => {
+    writeFileSync(draftAbs, draft2Body)
+    return { ok: true, path: draftRel, absPath: draftAbs, bytes: Buffer.byteLength(draft2Body) }
+  })
   const draft2 = await h.call('vibe_v5_blueprint', {
     action: 'propose',
-    draft: draft1 && (draft1.id || draft1.recordId),
+    draft: draft1Id,
     path: 'Shared/Protocol.md',
     member: 'r-1',
-    text: '# 蓝图' + NL + '- 前提：n 为正整数。' + NL + '- 复核：n=2 成立。',
+    mdPath: draftRel,
   }, seat('r-1'))
+  if (!filedOf(draft2)) {
+    failures.push({
+      code: 'SIM_BLUEPRINT_FS_FIRST_CONTRACT',
+      step: 'f63/draft-revision-naming (second propose)',
+      message: 'the re-propose did not continue the draft (no id): it is behind the fs-first contract too',
+      means: 'the revision/baseRevision reading this finding makes would come from an unfiled proposal',
+      receipt: pick(draft2, ['ok', 'filed', 'id', 'draft', 'continued', 'draftMdMissing', 'code', 'message', 'hint']),
+    })
+  }
   note('feedback63-8', 'f63/draft-revision-naming', {
     reproduced: Boolean(draft1 && draft2 && draft1.revision === draft2.revision && draft2.baseRevision === 0),
     first: pick(draft1, ['ok', 'id', 'recordId', 'revision', 'baseRevision', 'continued']),
     second: pick(draft2, ['ok', 'id', 'recordId', 'revision', 'baseRevision', 'continued', 'revisionsMeans']),
+    draftFile: pick(draftFile, ['path', 'bytes']),
+    revisedFile: pick(draft2File, ['path', 'bytes']),
     why: '首次 propose 与续写都回 revision:1、baseRevision:0，读起来 revision 像「第几版」，实际草案与它的生效行共用同一个 revision 号',
   }, '草案的 revision / baseRevision / continued 应当能让人读出「这是第几次改写、基于哪一版」；如果 revision 不是版本号，字段名或 means 必须在第一次读到时就说清')
 
@@ -350,6 +400,9 @@ export async function feedback63(h, { log = () => {} } = {}) {
     tree: h.tree ? h.tree() : [],
     highlights: { feedback63: findings.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)), auditExclusions },
     expectedRefusals,
+    // ★ TB-2625 - the scenario's own contract checks (non-empty ⇔ the run is red, by name).
+    failures,
+    contract: { fsFirst: filedOf(draft1) && filedOf(draft2), draftMdPath: draftRel, draftFile: pick(draftFile, ['path', 'bytes']) },
   }
 }
 

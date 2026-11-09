@@ -66,10 +66,43 @@ export const PAPER_CODES = Object.freeze({
 export const PAPER_CONSULT_ROLES = Object.freeze(['office'])
 
 /**
+ * ★★ RUN 256 (TB-2623 clock purity): the ONE named wall-clock fallback of the paper subsystem.
+ *
+ * The subsystem is built per call (`tools.js` toolPaper and `middleware/paper-dispatch.js`), and both sites pass no
+ * clock. A silent `() => Date.now()` there made the fourth measured write path immune to an injected kernel clock: the
+ * receipt said one thing (kernel clock) while the paper ledger said another (wall clock). The fallback still exists —
+ * there is no way to fabricate time when nobody supplies a clock — but it is COUNTED and REPORTED by
+ * `flow.clockSource()`, so a wall-clock stamp can never be mistaken for an injected one.
+ */
+const PAPER_SUBSYSTEM_WALL_CLOCK = { reads: 0, sites: [] }
+
+/** The resolved clock of one paper subsystem: explicit function, else the kernel guarded clock, else the named fallback. */
+function paperClockOf({ kernel = null, clock = null } = {}) {
+  if (typeof clock === 'function') return { clock, injected: true, source: 'caller-clock' }
+  try {
+    const guard = kernel && kernel.clockguard
+    if (guard && typeof guard.now === 'function') return { clock: () => guard.now(), injected: true, source: 'kernel-clock' }
+  } catch (e) { /* a kernel without a readable clockguard falls through to the named fallback */ }
+  return {
+    clock: () => {
+      PAPER_SUBSYSTEM_WALL_CLOCK.reads += 1
+      PAPER_SUBSYSTEM_WALL_CLOCK.sites.push('packs/v5r/paper.js#paperClock')
+      return Date.now()
+    },
+    injected: false,
+    source: 'wall-clock',
+  }
+}
+
+/**
  * Create the paper subsystem over ONE kernel. This is now a POLICY-ONLY wrapper: the flow itself is the kit's.
  * `kernel` is required by the kit (it composes the records / members / latex faces); the policy below is the institute's.
  */
 export function createPaperSubsystem({ kernel, clock = null } = {}) {
+  // ★★ RUN 256: ONE resolution for the whole subsystem (see `paperClockOf`), so every kit stamp and the ledger report
+  // the same source. `clockSource()` below answers "did this subsystem use the kernel clock, or the counted fallback?".
+  const clockResolved = paperClockOf({ kernel, clock })
+  const paperClock = clockResolved.clock
   // The records view the fills read from: one factory so the seam and the audit see the same face.
   const recordsView = () => createRecordsView({ kernel, codes: QUALITY_CODES })
   const flow = createPaperFlow({
@@ -79,8 +112,13 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
     // The transformer is POLICY and stays in this pack; the kit calls it once per render and refuses a non-string.
     mdFill: (md) => fillRecordSections({ md, sections: PAPER_SECTIONS, view: recordsView(), codes: QUALITY_CODES }).md,
     // ★ E4: the clock is a SEAM (the consult ledger records when the office was asked and the timeout is measured against
-    // it). Defaults to the wall clock so every existing caller is unaffected; tests move time without sleeping.
-    clock: typeof clock === 'function' ? clock : () => Date.now(),
+    // it); tests move time without sleeping.
+    // ★★ RUN 256 (TB-2623 clock purity) — FIXED: this seam used to default to `() => Date.now()` and BOTH product
+    // construction sites call `createPaperSubsystem({ kernel })` WITHOUT a clock, so the paper path silently stamped
+    // wall-clock timestamps into a run whose kernel carried an injected clock (the same "mixed stamps" defect the
+    // blueprint path had). Resolution order, one read: ① an explicit function (tests / scripts) ② the kernel's own
+    // guarded clock ③ the ONE named fallback below, counted and reported by `flow.clockSource()`; never silent.
+    clock: paperClock,
     // ★ E4: who may answer the pre-finalisation consult — the institution's office (see PAPER_CONSULT_ROLES).
     consultRoles: PAPER_CONSULT_ROLES,
     sections: PAPER_SECTIONS,
@@ -291,6 +329,17 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
     gatePassed += 1
     try { return await kitFinal(args) } finally { gatePassed -= 1 }
   }
+
+  // ★★ RUN 256 (TB-2623): the clock source is part of the paper face, not folklore. A caller (tool receipt, audit) reads
+  // this to know whether a paper timestamp came from the kernel clock or from the counted wall-clock fallback.
+  flow.clockSource = () => ({
+    injected: clockResolved.injected,
+    source: clockResolved.source,
+    wallClockReads: PAPER_SUBSYSTEM_WALL_CLOCK.reads,
+    means: clockResolved.injected
+      ? 'this subsystem reads the ' + (clockResolved.source === 'kernel-clock' ? 'kernel clock' : 'caller clock') + ', so the paper timestamps are reproducible'
+      : 'this subsystem was built WITHOUT a clock and no kernel clock was readable: ' + String(PAPER_SUBSYSTEM_WALL_CLOCK.reads) + ' wall-clock read(s) so far are NOT reproducible',
+  })
 
   return flow
 }

@@ -438,8 +438,33 @@ export function createMailbox({
   /** A row sent without a template still gets a readable line — the fallback names sender, subject and the ack. */
   const fallbackNoticeOf = (e) => '【邮件·' + String(e.from === undefined ? '' : e.from) + '】' +
     String(e.subject === undefined || e.subject === null ? '' : e.subject) + '；读后 mailbox ack ' + String(e.id)
-  const listRow = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind, channel: channelOf(e),
-    read: e.read === true, todo: e.todo === true, bytes: bytesOf(e.text), urgent: urgentOfEntry(e) })
+  /** The ack-ledger row for this member+id, or null when the id is still unsettled. */
+  const settledByAckOf = (member, entryId) => (acked.get(String(member)) || [])
+    .find((a) => String(a && a.id) === String(entryId)) || null
+  /**
+   * ★★★ TB-2682 / task-165 — THE ACK READINGS, COMPUTED ONCE (the single producer).
+   *
+   * The prompt (v5r turn channels) lists `ackRequired` / `acked` as named readings a MEMBER can act on, but no tool
+   * receipt carried them row-by-row: `pending`/`list` returned rows with neither, and the only `acked`/`ackRequired`
+   * in the kernel were the VIEW-level empty-box flags of `noticeLines()`. The mechanism had computed the fact and
+   * never handed it out, so this function is the ONE place the per-row pair is derived — `list`, `pending`,
+   * `noticeLines` and `ack` all call it, and no face recomputes the decision.
+   *
+   * MEANING (one ruler, two facts):
+   *   · `acked` — this row id is in THIS member's ack ledger (the body is gone). A row still held by the box is by
+   *     construction un-acked, so a live `pending`/`list` row reads `acked:false`; the `ack` receipt returns the
+   *     same ids with `acked:true`, which is the same row observed AFTER settlement, never a second criterion.
+   *   · `ackRequired` — this row asks the member for a settlement: it is unsettled AND it is not a group/broadcast
+   *     row. A group row is informational (the chair pushed it to everyone); ack may still clear it, but nothing is
+   *     owed, so `ackRequired:false`. A dm/mail row is owed an ack, so `ackRequired:true` until settled.
+   */
+  const ackReadsOf = (member, e) => {
+    const settled = settledByAckOf(member, e && e.id)
+    return { ackRequired: settled === null && channelOf(e) !== 'group', acked: settled !== null }
+  }
+  const listRow = (e, reads) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind, channel: channelOf(e),
+    read: e.read === true, todo: e.todo === true, bytes: bytesOf(e.text), urgent: urgentOfEntry(e),
+    ackRequired: reads.ackRequired, acked: reads.acked })
   const openView = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind, channel: channelOf(e),
     text: e.text, replyTo: e.replyTo === undefined ? null : e.replyTo, urgent: urgentOfEntry(e) })
   const findEntry = (member, id) => {
@@ -814,6 +839,12 @@ export function createMailbox({
 
       const made = []
       const deduped = []
+      // ★ TB-2606-B / task-95 — THE DELIVERY PAIRS, NAMED. A caller that wants to say "this message is file ml-17 in
+      // r-1's box" previously had to zip `ids` with `to`, which is WRONG whenever a dedupe hit skips a target (ids
+      // then has fewer entries than the audience) — and a wrong zip is worse than no ids at all. This array pairs
+      // each addressed member with the row that member can actually read (a dedupe hit pairs with the EXISTING row,
+      // `deduped:true`). `deduped` itself stays a plain id array: existing readers key on it.
+      const rows = []
       const sub = subjectOf(body, subject)
       const isUrgent = urgent === true || urgentOf(kind)
       for (const t of targets) {
@@ -825,6 +856,7 @@ export function createMailbox({
           const prior = box.filter((e) => String(e.to) === t && e.dedupeKey === dedupeRef && String(e.subject) === sub.subject)[0]
           if (prior) {
             deduped.push(prior.id)
+            rows.push({ member: t, mailId: prior.id, deduped: true })
             record('send-deduped', { from: who, to: t, id: prior.id, dedupeKey: dedupeRef, subject: sub.subject })
             continue
           }
@@ -843,6 +875,7 @@ export function createMailbox({
           urgent: isUrgent, read: false, todo: false, ackedAt: null }
         box.push(entry)
         made.push({ id: entry.id, to: t, urgent: entry.urgent, channel: channelRef })
+        rows.push({ member: t, mailId: entry.id, deduped: false })
       }
       record('sent', { from: who, ids: made.map((m) => m.id), to: targets, kind: String(kind || 'dm'), channel: channelRef,
         urgent: isUrgent, deduped })
@@ -851,7 +884,7 @@ export function createMailbox({
       // named in `status().shared` and in the audit trail instead of being pretended away.
       if (made.length) pushShared('send')
       return { ok: true, ids: made.map((m) => m.id), to: targets, delivered: 0, queued: made.length,
-        channel: channelRef, dedupeKey: dedupeRef, deduped,
+        channel: channelRef, dedupeKey: dedupeRef, deduped, rows,
         urgent: isUrgent, subject: sub.subject, subjectTruncated: sub.subjectTruncated, enforced: ['vmu.mailbox.urgentKinds'] }
     },
 
@@ -869,7 +902,7 @@ export function createMailbox({
       return rows.slice().sort((a, b) => {
         const ta = finiteStamp(a.at); const tb = finiteStamp(b.at)
         return (ta === null ? Number.POSITIVE_INFINITY : ta) - (tb === null ? Number.POSITIVE_INFINITY : tb)
-      }).map((e) => clone(e))
+      }).map((e) => Object.assign(clone(e), ackReadsOf(id, e)))
     },
 
     /** Mark entries as "already put in a prompt" (the once-per-prompt rule). Idempotent. */
@@ -1013,25 +1046,67 @@ export function createMailbox({
       pullShared('ack')
       const id = String(member)
       const box = boxOf(id)
-      const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean)
+      // A repeated id inside ONE call is settled once (the same id names the same row); the validation below then
+      // sees a list whose every id must still be held, so a single call cannot half-settle itself.
+      const list = [...new Set((Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean))]
       if (!list.length) throw refuse('VMU_INVALID_ARGUMENT', 'ack needs at least one entry id', 'pass ids from pending()')
+      // ★ TB-2606-B / task-95 — TWO DIFFERENT FACTS, TWO DIFFERENT NAMES. Measured in the 2606th run: the office
+      // acked one row and the member then acked the SAME id; the refusal said "no pending entry ml-17 for r-1",
+      // i.e. it reported "that never existed" for a row that existed and was already SETTLED. A reader cannot
+      // repair a duplicate ack if the code calls it a missing row. So a settled id is now named ALREADY_ACKED and
+      // carries the settlement facts (ackedAt / ackedBy / settledBy) as refusal facts; ACK_UNKNOWN stays for a
+      // genuinely unknown id.
+      //
+      // ★ AND THE WHOLE LIST IS CHECKED BEFORE ANYTHING MOVES. An ack list can mix rows this member still holds with
+      // ids that were settled earlier; the old loop spliced the earlier ids and then threw on the settled one, so the
+      // caller saw a refusal while state had changed. A refusal changes NOTHING here: every id is validated first,
+      // then the held ones are settled. (This is also what makes "a repeated ack is a no-op" literally true.)
+      const refusalFor = (wanted) => {
+        const settled = (acked.get(id) || []).find((a) => String(a.id) === wanted) || null
+        const wasAcked = settled !== null
+        note(wasAcked ? 'VMU_MAILBOX_ALREADY_ACKED' : 'VMU_MAILBOX_ACK_UNKNOWN')
+        record('ack-refused', { member: id, id: wanted, alreadyAcked: wasAcked,
+          ackedAt: settled ? settled.ackedAt : null, ackedBy: settled ? (settled.ackedBy || null) : null })
+        if (!wasAcked) {
+          // ★★★ RUN 257 / D-2 (task-94 D-1 red list, Lead m07398): this hint named a METHOD (`pending()`) instead of a
+          // tool call, so a model holding only this receipt could not make the next call. `REACHABLE INSTEAD:` is the
+          // ASCII contract marker; the descriptions after it may be Chinese. Every name/param is copied from the tool
+          // schema, not recalled: `vibe_vmu_mailbox` action enum has pending/list/status (tools/mailbox.js) and its
+          // `member` param is the recipient id, `ids` the ack list, `status` the list filter; `vibe_v5_inbox` is the
+          // member-side face whose {action, member} pair lists the same rows (packs/v5r/tools.js).
+          return refuse('VMU_MAILBOX_ACK_UNKNOWN', 'no pending entry ' + wanted + ' for ' + id,
+            'REACHABLE INSTEAD: 先用真实工具面把仍在箱中的行找出来，再拿它的 id 重新 ack——'
+            + 'vibe_vmu_mailbox {action:"pending", member:"' + id + '"} 列出仍可结算（尚未注入/未结算）的行；'
+            + 'vibe_vmu_mailbox {action:"list", member:"' + id + '", status:"all"} 列出这一箱的行与 id；'
+            + 'vibe_vmu_mailbox {action:"status"} 的 notice.acked 说明这一 id 是否已经被结算过（已结算的行在 ack 台账里，'
+            + '不会也不该再出现在 pending()/list() 的未结算行中）；成员侧等价面是 vibe_v5_inbox {action:"list", member:"' + id + '"}。'
+            + 'ack 的 ids 必须是上述读数里仍在箱中的 id')
+        }
+        const err = refuse('VMU_MAILBOX_ALREADY_ACKED',
+          wanted + ' was already settled by ' + String(settled.ackedBy || 'an earlier ack') + ' at ' +
+            String(settled.ackedAt || 'an unrecorded time') +
+            '; this repeated ack changed nothing (the body was dropped when it was settled)',
+          'this is not a missing mail: the row is in the ack ledger (status() counts it as acked), and ack ids are single-use — use pending()/list() for rows that are still open')
+        err.ackedAt = settled.ackedAt === undefined ? null : settled.ackedAt
+        err.ackedBy = settled.ackedBy === undefined ? null : settled.ackedBy
+        err.settledBy = 'ack'
+        err.alreadyAcked = true
+        return err
+      }
+      for (const wanted of list) {
+        if (!box.some((e) => e.id === wanted)) throw refusalFor(wanted)
+      }
       const ackedIds = []
       for (const wanted of list) {
         const i = box.findIndex((e) => e.id === wanted)
-        if (i === -1) {
-          const wasAcked = (acked.get(id) || []).some((a) => a.id === wanted)
-          note('VMU_MAILBOX_ACK_UNKNOWN')
-          record('ack-refused', { member: id, id: wanted, alreadyAcked: wasAcked })
-          throw refuse('VMU_MAILBOX_ACK_UNKNOWN',
-            wasAcked ? (wanted + ' was already acknowledged (its body is gone)') : ('no pending entry ' + wanted + ' for ' + id),
-            'pending() lists what can still be acknowledged')
-        }
+        // unreachable after the validation pass; kept so a concurrent box reference cannot splice the wrong entry
+        if (i === -1) throw refusalFor(wanted)
         const e = box[i]
         e.ackedAt = clock()
         box.splice(i, 1)
         const ledger = acked.get(id) || []
         ledger.push({ id: e.id, from: e.from, at: e.at, kind: e.kind, channel: channelOf(e), subject: e.subject, read: e.read === true, todo: e.todo === true,
-          ackedAt: e.ackedAt, bytes: bytesOf(e.text) })
+          ackedAt: e.ackedAt, ackedBy: id, bytes: bytesOf(e.text) })
         const cap = ackedCapOf()
         if (cap > 0 && ledger.length > cap) {
           const over = ledger.length - cap
@@ -1041,8 +1116,15 @@ export function createMailbox({
         acked.set(id, ledger)
         ackedIds.push(e.id)
       }
+      // ★ TB-2682 / task-165: the SAME rows observed AFTER settlement, carrying the SAME derivation
+      // (`ackReadsOf`). This is what makes the per-row pair non-vacuous: before the ack the row is a pending row
+      // with `acked:false`, after it the same id is returned here with `acked:true` — one fact, two observations,
+      // never a second criterion (nothing is recomputed in the tool face).
+      const settledRows = (acked.get(id) || [])
+        .filter((row) => ackedIds.includes(row.id))
+        .map((row) => Object.assign({}, row, ackReadsOf(id, row)))
       pushShared('ack')
-      return { ok: true, member: id, acked: ackedIds, remaining: box.length, ackedLedger: (acked.get(id) || []).length, enforced: ['vmu.mailbox.ackedLedgerCap'] }
+      return { ok: true, member: id, acked: ackedIds, rows: settledRows, remaining: box.length, ackedLedger: (acked.get(id) || []).length, enforced: ['vmu.mailbox.ackedLedgerCap'] }
     },
 
     /**
@@ -1056,7 +1138,7 @@ export function createMailbox({
       const want = status === 'unread' || status === 'todo' ? status : 'all'
       const box = boxes.get(id) || []
       const rows = box.filter((e) => want === 'all' || (want === 'unread' ? e.read !== true : e.todo === true))
-      const entries = rows.map(listRow)
+      const entries = rows.map((e) => listRow(e, ackReadsOf(id, e)))
       return { ok: true, member: id, status: want, count: entries.length, entries }
     },
 
@@ -1091,7 +1173,12 @@ export function createMailbox({
       const box = boxes.get(id) || []
       // ONE CRITERION (RUN 254-B): the box only ever holds UN-ACKED rows — `ack()` removes a row — so there is no
       // read filter here. Reading is the member's own state; it never settles a delivery.
-      const want = box.slice()
+      // ★ TB-2606-B / task-95 — THE OTHER HALF: an ack instruction is only rendered for an UNSETTLED row. A durable
+      // merge can leave a settled id in this kernel's box copy (another kernel acked it first), and rendering
+      // "读后 mailbox ack <id>" for it would teach an ack that is already done — the same defect as the unnamed
+      // duplicate refusal, only in the prompt. The acked ledger is the authority, so settled ids are excluded here.
+      const settledIds = new Set((acked.get(id) || []).map((a) => String(a.id)))
+      const want = box.filter((e) => !settledIds.has(String(e.id)))
       const sorted = want.slice().sort((a, b) => {
         const na = Number(a.seq)
         const nb = Number(b.seq)
@@ -1109,7 +1196,7 @@ export function createMailbox({
       return { ok: true, member: id, count: lines.length, total: want.length, truncated: want.length > shown.length,
         limit: max, lines,
         entries: shown.map((e) => ({ id: e.id, from: e.from, at: e.at, kind: e.kind, channel: channelOf(e),
-          subject: e.subject, read: e.read === true, todo: e.todo === true })),
+          subject: e.subject, read: e.read === true, todo: e.todo === true, ...ackReadsOf(id, e) })),
         // ★ RUN 254-B / P1-1: THE NAMED READINGS. These are the criterion itself, not a comment about it: a consumer
         // that only has this receipt can tell "nothing left to ack" (acked) from "this block is asking for acks"
         // (ackRequired) without reading the line wording or inferring from `read`.
@@ -1117,7 +1204,7 @@ export function createMailbox({
         ackRequired: want.length > 0,
         unackedRows: want.map((e) => ({ id: e.id, from: e.from, kind: e.kind || null, channel: channelOf(e),
           subject: e.subject, read: e.read === true, todo: e.todo === true,
-          delivery: e.notice !== undefined && e.notice !== null })),
+          delivery: e.notice !== undefined && e.notice !== null, ...ackReadsOf(id, e) })),
         settledBy: 'ack',
         means: 'a line here is a DELIVERY still pending, and the mailbox keeps a row until mailbox.ack settles it: open()/read/setState are the member own reading state and never settle a delivery. acked:true means nothing is left to acknowledge; ackRequired:true means this block is carrying lines the member must ack; unackedRows names every un-acked row, including any cut by limit. settledBy names the ONE operation that removes a line.' }
     },
@@ -1331,12 +1418,27 @@ export function createMailbox({
         // ★ RUN 254-B / P1-1: the SAME criterion at the aggregate face. A delivery is settled by ack, not by read, so
         // "how much mail is still owed an ack" is a named reading here instead of a per-row inference. `pending` above
         // was already that number — this names it as the delivery criterion and groups it by recipient.
+        // ★ TB-2606-B / task-95 — THE THIRD NAME, COMPUTED ONCE: the 2606th run's member read `unackedRows: 19` as
+        // "19 rows in MY box" while its own box held 2 (the number is an all-boxes aggregate). The reading keeps its
+        // old name (callers exist) and now also says what it is (`unackedRowsAllBoxes`) plus the per-box split
+        // (`perBox`). All three come from THIS single loop — a second pass would be a second answer, and the
+        // acceptance test sums `perBox` independently and compares it with `unackedRowsAllBoxes`.
         notice: (() => {
           const ids = Object.keys(per)
-          const unackedRows = ids.reduce((sum, key) => sum + Number(per[key] && Number.isFinite(Number(per[key].pending)) ? per[key].pending : 0), 0)
-          const pendingMembers = ids.filter((key) => Number(per[key] && Number.isFinite(Number(per[key].pending)) ? per[key].pending : 0) > 0)
-          return { acked: unackedRows === 0, ackRequired: unackedRows > 0, unackedRows, pendingMembers, settledBy: 'ack',
-            means: 'the delivery criterion of the turn notice block: a row is delivered until mailbox.ack settles it, and reading (open/setState read) does not settle anything. acked:true means no member is owed an ack; unackedRows counts every row still in some box; pendingMembers names who is owed one.' }
+          const perBox = {}
+          let unackedRowsAllBoxes = 0
+          const pendingMembers = []
+          for (const key of ids) {
+            const raw = per[key] && per[key].pending
+            const n = Number.isFinite(Number(raw)) ? Number(raw) : 0
+            perBox[key] = n
+            unackedRowsAllBoxes += n
+            if (n > 0) pendingMembers.push(key)
+          }
+          const unackedRows = unackedRowsAllBoxes
+          return { acked: unackedRowsAllBoxes === 0, ackRequired: unackedRowsAllBoxes > 0, unackedRows,
+            unackedRowsAllBoxes, perBox, pendingMembers, settledBy: 'ack',
+            means: 'the delivery criterion of the turn notice block: a row is delivered until mailbox.ack settles it, and reading (open/setState read) does not settle anything. unackedRows is the ALL-BOXES total (every member together) and unackedRowsAllBoxes is the same number under its true name; perBox splits that total by member id (perBox[a] + perBox[b] + … === unackedRowsAllBoxes); pendingMembers names who is owed at least one ack. acked:true means no member is owed an ack.' }
         })(),
         seq, durable,
         // G7 self-report (Round 9): whether a durable commit log is bound is READABLE, never inferred.

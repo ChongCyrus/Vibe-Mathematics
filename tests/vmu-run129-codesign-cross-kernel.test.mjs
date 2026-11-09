@@ -62,7 +62,8 @@ try {
 
   // §1 the chair proposes inside the OFFICE kernel
   NOW += 10
-  const first = bp.proposeBlueprint({ records: recA, path: 'bp-run129', text: '## 正文\n院士：先写证明稿，再做互审。', by: 'r-acad' })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const first = bp.proposeBlueprint({ records: recA, path: 'bp-run129', materialize: true, text: '## 正文\n院士：先写证明稿，再做互审。', by: 'r-acad' })
   ok(first.ok === true && first.continued === false, '§1 the chair files the draft', first)
   const draftId = first.id
   await settle()
@@ -74,7 +75,7 @@ try {
   const seenByMember = recB.list({ limit: 0 })
   ok(seenByMember.count >= 1, '§2 the member kernel can see the draft the chair filed (it folds the store before reading)', { count: seenByMember.count })
   NOW += 10
-  const cont = bp.proposeBlueprint({ records: recB, path: 'bp-run129', text: '## 正文补充\n研究员：补一节误差分析。', by: 'r-1' })
+  const cont = bp.proposeBlueprint({ records: recB, path: 'bp-run129', materialize: true, text: '## 正文补充\n研究员：补一节误差分析。', by: 'r-1' })
   ok(cont.ok === true && cont.continued === true && cont.id === draftId, '§2 the member continues the same draft in its own kernel', { id: cont.id, draftId, continued: cont.continued })
   ok((cont.authors || []).length === 2, '§2 that kernel sees two authors', cont.authors)
   await settle()

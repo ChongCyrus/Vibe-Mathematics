@@ -170,12 +170,68 @@ if (FOR_T3) {
   record('worktree is clean (no half-wired or untracked artifacts)', dirty.length === 0, dirty.slice(0, 6).join(' | '))
 }
 
+// ---- 8. repository hygiene (TB-2657): no unexplained residue in the worktree --------------------
+// 2026-11-09 15:12: a markdown blockquote got executed by bash (`> 三张表…` became a redirection), so the
+// repository root grew 3 zero-byte untracked files named after Chinese sentence fragments. The cost is not
+// disk: it pollutes `git status`, makes the closing hash unstable and hides real untracked work from review.
+// That is ENVIRONMENT POLLUTION, so it is a hard PRE-FLIGHT item, not a warning - a soft item is the third
+// kind nobody reads. The criteria live in ONE place only (`scripts/check-repo-hygiene.mjs`, documented in
+// docs/AUDIT-CHECKLIST.md §10); this step runs it and, on failure, surfaces the guard's per-item output
+// VERBATIM (path + bytes + decodable). Writing just "hygiene failed" would force a human to run it again.
+{
+  const guard = join(HERE, 'check-repo-hygiene.mjs')
+  const label = 'repo hygiene (scripts/check-repo-hygiene.mjs, H1/H2/H3)'
+  if (!existsSync(guard)) record(label, false, 'check-repo-hygiene.mjs missing')
+  else {
+    const r = spawnSync(NODE, [guard], { cwd: REPO, encoding: 'utf8', timeout: 120000 })
+    const out = (String(r.stdout || '') + String(r.stderr || '')).replace(/\s+$/, '')
+    results.push({
+      name: label,
+      ok: r.status === 0,
+      detail: r.status === 0 ? 'ok' : 'untracked 残留：逐条输出见下方（原样）',
+      output: r.status === 0 ? undefined : out || '(守卫无输出)',
+    })
+  }
+}
+
+// ---- 9. portability (TB-2681): absolute machine paths, CRLF regressions, skip-as-pass ------------------
+// 2026-11-09: the exit audit (TB-2677) found 31 blockers of exactly these three shapes - absolute file://
+// imports and checkout constants that only work on THIS machine, whole-file CRLF, and suites that print SKIP
+// and exit 0 when a D:/_tmp corpus is gone (a gate reading green because the measurement did not happen).
+// The criterion lives in ONE place only (`tests/audit-portability.mjs`, documented in docs/AUDIT-CHECKLIST.md
+// §11); this step runs it and, on failure, surfaces its per-finding output VERBATIM (file:line + rule), because
+// writing just "portability failed" would force a human to re-run it to learn what to fix. The judge treats
+// tracked unchanged violations as LEGACY (printed, not fatal); what fails T0 is what this round added.
+{
+  const guard = join(REPO, 'tests', 'audit-portability.mjs')
+  const label = 'portability (tests/audit-portability.mjs, P1/P2/P3)'
+  if (!existsSync(guard)) record(label, false, 'tests/audit-portability.mjs missing')
+  else {
+    const r = spawnSync(NODE, [guard], { cwd: REPO, encoding: 'utf8', timeout: 120000 })
+    const out = (String(r.stdout || '') + String(r.stderr || '')).replace(/\s+$/, '')
+    results.push({
+      name: label,
+      ok: r.status === 0,
+      detail: r.status === 0 ? 'ok' : '本轮新增行有 BLOCKER：逐条输出见下方（原样）',
+      output: r.status === 0 ? undefined : out || '(守卫无输出)',
+    })
+  }
+}
+
 // ---- report ------------------------------------------------------------------------------------
 const failed = results.filter((x) => !x.ok)
 if (JSON_OUT) console.log(JSON.stringify({ repo: REPO, forT3: FOR_T3, results }, null, 2))
 else {
   console.log('vmu pre-flight (T0' + (FOR_T3 ? ', for T3' : '') + '): ' + (results.length - failed.length) + '/' + results.length + ' checks passed')
-  for (const r of results) console.log((r.ok ? '  ok   ' : '  FAIL ') + r.name + (r.ok || !r.detail ? '' : '  -> ' + r.detail))
+  for (const r of results) {
+    console.log((r.ok ? '  ok   ' : '  FAIL ') + r.name + (r.ok || !r.detail ? '' : '  -> ' + r.detail))
+    if (!r.ok && r.output) {
+      // verbatim, unindented: the guard already names every offending path, byte count and decode state
+      console.log('--- 守卫原样输出开始 ---')
+      console.log(r.output)
+      console.log('--- 守卫原样输出结束 ---')
+    }
+  }
   console.log(failed.length === 0
     ? 'PREFLIGHT: PASS - safe to run ' + (FOR_T3 ? 'the non-incremental full sweep (T3)' : 'a gate')
     : 'PREFLIGHT: FAIL - fix the items above BEFORE paying for a long sweep')

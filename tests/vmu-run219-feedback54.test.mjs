@@ -110,10 +110,11 @@ ok(kernel !== null && typeof kernel.records === 'object', 'the kernel booted wit
 const founded = await A.call('vibe_v5_start', { researcherCount: 2, problem: '前 n 个奇数之和等于 n 的平方' })
 ok(founded.ok !== false && Array.isArray(founded.hired) && founded.hired.length >= 3,
   'the institute is founded with a chair and two researchers (an empty roster would leave the seats unresolvable)', { ok: founded.ok, hired: founded.hired })
-const firstPropose = await A.call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: '第一行：本所目标——证明奇数求和恒等式。' })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const firstPropose = await A.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: '第一行：本所目标——证明奇数求和恒等式。' })
 ok(firstPropose.ok !== false && String(firstPropose.id || '') !== '', 'a draft row exists (without it there is no id to name)', { ok: firstPropose.ok, code: firstPropose.code, id: firstPropose.id })
 const FIRST_DRAFT = String(firstPropose.id)
-const named = await A.call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', draft: FIRST_DRAFT, text: '## 共同设计补充｜r-2' + '\n' + '- 复核归纳步。' })
+const named = await A.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', draft: FIRST_DRAFT, text: '## 共同设计补充｜r-2' + '\n' + '- 复核归纳步。' })
 ok(named.ok !== false, 'the continuation with an EXPLICIT draft is accepted', { ok: named.ok, code: named.code, message: named.message })
 const namedBase = named.continuedBase || null
 ok(namedBase !== null && typeof namedBase === 'object', '★ ① the receipt carries `continuedBase`', named.continuedBase)
@@ -124,7 +125,7 @@ ok(namedBase !== null && namedBase.actual === FIRST_DRAFT,
 ok(namedBase !== null && namedBase.continued === true, '★ ① continued:true follows from both', namedBase && namedBase.continued)
 has(namedBase && namedBase.why, 'continued the draft it named', '★ ① the why no longer claims the caller named nothing')
 
-const unnamed = await A.call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', text: '## 无 draft 的增补｜r-2' + '\n' + '- 续写开放草案。' })
+const unnamed = await A.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', text: '## 无 draft 的增补｜r-2' + '\n' + '- 续写开放草案。' })
 const unnamedBase = unnamed.continuedBase || null
 ok(unnamedBase !== null && unnamedBase.requested === null,
   '★ ① with NO draft passed, requested is still null (the field means what it says)', unnamedBase && unnamedBase.requested)

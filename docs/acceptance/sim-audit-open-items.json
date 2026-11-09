@@ -1,0 +1,363 @@
+{
+  "updatedAt": "2026-11-09",
+  "purpose": "The one ledger the release gate reads (scripts/sim/audit/release-ready.mjs). An item is here because a named audit finding is not closed: either it is open (it must name the condition that closes it), it was handed to a taskbook lane, or it is accepted for a deployment reason. Fixed items stay as evidence with the code/test that closed them. Nothing is written here without a file:line or a command that reproduces it.",
+  "rules": [
+    "P0 open => NOT READY. P1 open is allowed only with an owner and a named condition; P2 is bookkeeping.",
+    "An entry is not an exemption from a test: suites still have to pass, this ledger only answers the question a suite cannot (who still owes what).",
+    "Fixed entries are kept on purpose so the same finding is not discovered again as new."
+  ],
+  "items": [
+    {
+      "id": "run254-leftopen-1-notice-comment",
+      "title": "the notice block described itself as unread/todo instead of delivered-until-acked",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "commit 67fb601a LEFT OPEN; TB-2607-audit14.md section B",
+      "evidence": "vibe-math-vmu/kernel/index.js:2997-3000 now says the mailbox notice lines are NON-destructive and only mailbox.ack settles them; the RUN 254 B section (commit body) is the same rule.",
+      "proof": {
+        "cmd": "node tests/vmu-run248-notice-delivery.test.mjs",
+        "expect": 0,
+        "note": "117 passed, 0 failed: the notice lines are non-destructive and only mailbox.ack settles them."
+      }
+    },
+    {
+      "id": "run254-leftopen-2-shape-passthrough",
+      "title": "deliverViaSubagents rewrote VMU_TURN_DELIVERY_SHAPE into VMU_ENGINE_UNAVAILABLE before the shape gate",
+      "severity": "P0",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "commit 67fb601a LEFT OPEN; TB-2632/task-112",
+      "evidence": "vibe-math-vmu/kernel/turn/index.js:770-780 deliveryCodeThrough rethrows the delivery code; tests/vmu-run256-delivery-code-passthrough.test.mjs passes; node tests/sim-harness-shape.test.mjs = 36 passed, 0 failed (it asserts the end-to-end receipt code is VMU_TURN_DELIVERY_SHAPE).",
+      "proof": {
+        "cmd": "node tests/vmu-run256-delivery-code-passthrough.test.mjs",
+        "expect": 0,
+        "note": "43 passed, 0 failed: the delivery code reaches the reader unchanged."
+      }
+    },
+    {
+      "id": "run254-leftopen-3-skipped-aggregation",
+      "title": "skippedFields is reported per turn but not aggregated across turns",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "commit 67fb601a LEFT OPEN (not closed by TB-2616)",
+      "evidence": "vibe-math-vmu/tools/turn.js:257 returns turns[] with per-turn skipped rows; no session-level total exists (grep -rn skippedTotals|skippedAcrossTurns vibe-math-vmu tests = no hits).",
+      "condition": "close when a reader can answer how many fields this session skipped without paging every turn: either a session-level total on vibe_vmu_turn{op:'status'} (with means saying it is bounded to the retained rows) or a named not-aggregated reading; one suite must pin the chosen shape and one must pin that a turn falling out of the retainer does not silently change the total.",
+      "note": "Still open: no session-level skipped total exists yet.",
+      "fixedAt": "2026-11-09",
+      "proof": {
+        "cmd": "node tests/vmu-run260-skipped-totals.test.mjs",
+        "expect": 0,
+        "note": "44 passed, 0 failed - vibe_vmu_turn{op:\"status\"}.skippedTotals answers the session total in one read; evictedTurns>0 forces evictedSkippedUnknown:true + means saying the evicted turns are not recoverable"
+      },
+      "resolution": "vibe_vmu_turn{op:\"status\"}.skippedTotals carries fields/fieldsDispatchThrown/turnsWithSkips/scope/retainedTurns/evictedTurns/evictedSkippedUnknown/means, derived at ONE point (skippedTotalsReading in kernel/turn/index.js) from the same turnReceipts array, and externally recomputable from those rows"
+    },
+    {
+      "id": "run254-leftopen-4-c10-lean-archive",
+      "title": "rule C10 (Lean code and compiled output archived) is unreachable without a Lean deployment",
+      "severity": "P1",
+      "status": "accepted",
+      "owner": "deployment",
+      "source": "commit 67fb601a LEFT OPEN; docs/acceptance/sim-audit-rules.md:63",
+      "evidence": "docs/acceptance/sim-audit-rules.md:63 marks C10 UNREACHABLE with a VMU_ENGINE_UNAVAILABLE probe; the sim assembly has no Lean face, so the archive reading cannot be produced in-process.",
+      "condition": "close only on a deployment that provides the Lean face (spawn seam); the ledger entry is the reminder that sim-vs-real has no Lean coverage today."
+    },
+    {
+      "id": "tb2616-parked-turn",
+      "title": "a parked turn had to be answerable, overridable and closable, with one reading",
+      "severity": "P0",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "TB-2616/task-97",
+      "evidence": "node tests/vmu-run256-parked-turn.test.mjs = 85 passed, 0 failed; the sim face pins both sides (scripts/sim/scenarios/turns.mjs park/answer pairing plus probe-step-needs-owner, which asserts VMU_TURN_PARKED_NEEDS_OWNER with pendingStillEmpty and noNewTurn).",
+      "proof": {
+        "cmd": "node tests/vmu-run256-parked-turn.test.mjs",
+        "expect": 0,
+        "note": "85 passed, 0 failed."
+      }
+    },
+    {
+      "id": "tb2617-records-one-face",
+      "title": "the records list answered total/excluded with two faces",
+      "severity": "P0",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "TB-2617/task-98",
+      "evidence": "vibe-math-vmu/host.js:1057-1144 forwards totalUniverse/excluded from the kernel instead of recomputing; tests/vmu-run256-records-one-face.test.mjs passes.",
+      "proof": {
+        "cmd": "node tests/vmu-run256-records-one-face.test.mjs",
+        "expect": 0,
+        "note": "56 passed, 0 failed."
+      }
+    },
+    {
+      "id": "tb2634-deterministic-consult-id",
+      "title": "consult request ids were minted from Math.random, so two identical runs could not be byte-identical",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "md-lane",
+      "source": "TB-2634/task-115",
+      "evidence": "vibe-math-vmu/kit/paper.js:29 (RUN 257 comment: a minted id is not an external input); tests/vmu-run257-deterministic-ids.test.mjs passes; the sim gate determinism segment now runs the same corpus twice and compares it byte for byte.",
+      "proof": {
+        "cmd": "node tests/vmu-run257-deterministic-ids.test.mjs",
+        "expect": 0,
+        "note": "62 passed, 0 failed."
+      }
+    },
+    {
+      "id": "parity-declaration-keys",
+      "title": "fourteen contract-semantic keys are declared as environment-shaped in the parity table",
+      "severity": "P2",
+      "status": "accepted",
+      "owner": "sim-lane",
+      "source": "TB-2604/TB-2628; scripts/sim/audit/fidelity-declared.json",
+      "evidence": "TB-2659 (task-138) reviewed all 46 declared keys today: 41 REAL-UNPRODUCED, 2 DEAD-CLAIM removed (vibe_vmu_turn.receipt.delegation.path, vibe_vmu_turn.receipt.delivery.path: deleting them kept gaps at 0), 1 FILLABLE-GAP (vibe_v5_verified_promote.p1Routes, the code path exists at packs/v5r/tools.js:2981-2982 and the sim simply never reaches it), 2 INERT (nested keys that all.mjs section 5 cannot see because it compares top-level keys only). tests/sim-vs-real.test.mjs = 13 passed, 0 failed and tests/sim-compare-strict.test.mjs = 14 passed, 0 failed after the run.mjs guard (a declaration may only explain a field the simulation does NOT produce).",
+      "condition": "close when a deployment can produce those byte-level fields in-process (LaTeX compile output, Lean notices); the FILLABLE-GAP one closes when the simulation reaches the promote refusal branch (TB-2658), and nested-key declarations only become checkable once all.mjs compares dotted paths."
+    },
+    {
+      "id": "worktree-audited",
+      "title": "a real run loads the working tree, not HEAD, so the release gate also refuses when the audit predates uncommitted edits",
+      "severity": "P0",
+      "status": "fixed",
+      "owner": "sim-lane",
+      "source": "TB-2609 (this task): the taskbook asked for audit-newer-than-HEAD; many lanes edit without committing, so that check alone proves too little",
+      "evidence": "scripts/sim/audit/release-ready.mjs worktreeDriftMs + AUDIT_PREDATES_WORKTREE; tests/release-ready.test.mjs covers the red case by touching a file after the report.",
+      "proof": {
+        "cmd": "node tests/release-ready.test.mjs",
+        "expect": 0,
+        "note": "90 passed, 0 failed: the gate refuses a report that predates a worktree edit."
+      }
+    },
+    {
+      "id": "harvest-coverage-debt-2026-11-09",
+      "title": "the 15:00 live-field refresh exposed four fields the simulation never produced",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "sim-lane",
+      "source": "TB-2643 / task-124",
+      "evidence": "scripts/sim/scenarios/fidelity-extra.mjs G11-G14 (p1GateSkipped, leave approver/decidedAtMeans/requests/undecidedRequests, turn.at, human.failedSteps); audit/all.mjs §5 reports live tools 69, compared 69, gaps 0",
+      "proof": {
+        "cmd": "node scripts/sim/audit/all.mjs",
+        "expect": 0,
+        "note": "gaps 0, compared 69 of 69 live tools. (The same report carries a newer, different P0: seven baseline claims that no longer hold; that is audit14-p1-10 below, not this item.)"
+      }
+    },
+    {
+      "id": "audit14-p0-1-pack-declaration-ledger",
+      "title": "the pack declaration gate forgives itself: a manifest that only MENTIONS a key counts as having folded it",
+      "severity": "P0",
+      "status": "fixed",
+      "owner": "notice-lane",
+      "source": "AUDIT-14 (D:/_tmp/audit14b/brief.md) P0-1; TB-2649 / task-129",
+      "evidence": "vibe-math-vmu/kernel/pack.js:175-177 computes hit from manifest[k] !== undefined and records every mentioned key as declared, including a key pushed to unsupported at :202-204, so the declared-vs-folded comparison can never fire; measured: a pack declaring only office applies with appliedPacks=[{id:'zero-effect-inst',applied:0}], while the same pack left out of config.packManifests is correctly refused with VMU_PACK_DECLARATION_TOO_LATE. The hint at :149 teaches exactly the accepted-but-ignored path and the comment at :120-122 ('It NEVER accepts it and drops it') is false; unsupported is written and never read; validatePack (:226-230) covers four of five keys.",
+      "proof": {
+        "cmd": "node tests/vmu-run258-pack-declaration-gate.test.mjs",
+        "expect": 0,
+        "note": "43 passed, 0 failed: a zero-effect declaration is refused by name (VMU_PACK_DECLARATION_UNCONSUMED) and the folded set only records keys that really folded."
+      }
+    },
+    {
+      "id": "audit14-p0-2-release-gate-forgeable",
+      "title": "the release gate can be satisfied by a hand-typed report: it recognises a shape, not a provenance",
+      "severity": "P0",
+      "status": "open",
+      "owner": "sim-lane",
+      "source": "AUDIT-14 P0-2; TB-2653 / task-128",
+      "evidence": "scripts/sim/audit/release-ready.mjs:81-91 recognises an audit report by three regexes plus five section headings; a 12-line hand-typed file ('AUDIT: PASS — 0 failure(s), 0 warning(s)', the five headings, 'compared: 12; gaps: 0') yields exit 0 / ready=true / reasons=[]; a report whose own body says placeholder and 'compared: 0' is still READY. Three defects: no provenance, 'compared: 0' is read as zero gaps, and a conclusion line overrides the body. The override reason is printed (:23/:295) but never enters the facts, and the report's P0 list is never parsed (ledger open P0 = 0).",
+      "condition": "close when the report carries a machine-checkable provenance block (tree hash recomputed by the gate, corpus id, compared/liveToolsWithFieldList/gaps) and the gate refuses unverifiable reports (AUDIT_UNVERIFIABLE), counts compared===0 as AUDIT_FIDELITY_MEASURED_NOTHING, keeps the override reason in its facts, and turns every unledgered report P0 into AUDIT_P0_UNLEDGERED; two forged fixtures plus one genuine READY case must pin it.",
+      "note": "Still open on purpose: the red-team fixtures show four vectors (A4, A5, A8, A9) still reach READY on gate abc8f232. TB-2653 / task-128 R1-R7 closes them."
+    },
+    {
+      "id": "audit14-p0-3-reindex-noop-loop",
+      "title": "the drift hint's cure did nothing: reindex answers without indexing, and the refusal it now returns has no code",
+      "severity": "P0",
+      "status": "fixed",
+      "owner": "md-lane",
+      "source": "AUDIT-14 P0-3; TB-2650 / task-130",
+      "evidence": "vibe-math-vmu/kernel/records.js:2213-2241 (RUN 259): reindex cannot own a plain markdown draft, yet VMU_PACK_V5R_BLUEPRINT_MD_DRIFT's hint tells the reader to reindex and then adopt, so the same code repeats forever; measured skipped=[{path:'Shared/Drafts/D-r1.md',whyClass:'not-a-vmu-md',why:'not a vmu document (no `- vmuMd：` header line)'}]. The RUN 259 fix now answers ok:false with blocked[path,whyClass,why,reachableInstead] but carries NO code, which is itself a contract defect: the sim ledger could not predict it (measured code:null at scripts/sim/scenarios/mainline.mjs:135 seq 7, actions-extra seq 27, records-blueprint), so three scenarios exit 1 and audit/all reports six failures.",
+      "proof": {
+        "cmd": "node tests/vmu-run259-audit14.test.mjs",
+        "expect": 0,
+        "note": "reindex mints VMU_RECORDS_REINDEX_BLOCKED with a real repair path, and the drift hint no longer routes through a no-op."
+      }
+    },
+    {
+      "id": "audit14-p1-1-delivery-timeout-retried",
+      "title": "a delivery timeout is retried once and relabelled even though three comments say it must not be",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "AUDIT-14 P1-1; TB-2651 / task-131",
+      "evidence": "vibe-math-vmu/kernel/turn/index.js:777-782 deliveryCodeThrough passes through two codes only, so VMU_TURN_DELIVERY_TIMEOUT falls into the retry wrapper and is rewritten as VMU_ENGINE_UNAVAILABLE; measured starts:2 delays:1, while :1043/:1060/:5728 all state that a timeout must not be re-delivered.",
+      "proof": {
+        "cmd": "node tests/vmu-run256-delivery-code-passthrough.test.mjs",
+        "expect": 0,
+        "note": "43 passed, 0 failed: only VMU_ENGINE_UNAVAILABLE may be started again; a timeout keeps its own code with starts===1."
+      }
+    },
+    {
+      "id": "audit14-p1-2-clock-values-not-validated",
+      "title": "bad clock values still call themselves kernel-clock",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "md-lane",
+      "source": "AUDIT-14 P1-2; TB-2655 / task-134",
+      "evidence": "packs/v5r/blueprint.js:204-210 clockReadingOf stamps 0, -1, -86400000 and 8640000000000001 as kernel-clock; '2026-01-01' (1767225600000) and '2026/01/01' (1767196800000, 8 hours apart) both claim kernel-clock; 'not-a-time' falls back to wall-clock, i.e. NOW silently replaces a bad value; :1218-1240 lets the caller overwrite atSource.",
+      "proof": {
+        "cmd": "node tests/vmu-run259-audit14.test.mjs",
+        "expect": 0,
+        "note": "invalid clock values are refused with VMU_V5R_CLOCK_VALUE_INVALID instead of falling back to the wall clock."
+      }
+    },
+    {
+      "id": "audit14-p1-3-records-identity-tautology",
+      "title": "the records identity cannot fail: both sides are counted from the same array",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "notice-lane",
+      "source": "AUDIT-14 P1-3; TB-2654 / task-135",
+      "evidence": "vibe-math-vmu/kernel/records.js:1364/1395-1397/1413: items + dropped === live.length and filteredTotal === live.length are computed from one array, so identity.holds is algebraically always true, yet it is the headline assertion of tests/vmu-run256-records-one-face.test.mjs.",
+      "proof": {
+        "cmd": "node tests/vmu-run259-records-identity-order.test.mjs",
+        "expect": 0,
+        "note": "78 passed, 0 failed: identityHoldsOf answers false for a page of 1 against a universe of 2."
+      }
+    },
+    {
+      "id": "audit14-p1-4-records-order-nan",
+      "title": "sorting by an ISO-string timestamp subtracts strings and silently produces no order",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "notice-lane",
+      "source": "AUDIT-14 P1-4; TB-2654 / task-135",
+      "evidence": "vibe-math-vmu/kernel/records.js:1365 a.createdAt - b.createdAt yields NaN for ISO strings, so the comparator returns NaN and the list is silently unordered, while the by/since/until path already normalises through updatedMsOf.",
+      "proof": {
+        "cmd": "node tests/vmu-run259-records-identity-order.test.mjs",
+        "expect": 0,
+        "note": "mixed numeric/ISO/unreadable timestamps have a pinned order and a named orderUnknown list."
+      }
+    },
+    {
+      "id": "audit14-p1-5-orphan-needs-idle-loop",
+      "title": "abandoning another open row by name only works when no turn is in flight, and otherwise answers ok:true",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "AUDIT-14 P1-5; TB-2651 / task-131",
+      "evidence": "vibe-math-vmu/kernel/turn/index.js:5093-5170 places the whole orphan settlement inside if (!t || typeof t.id !== 'string'), so while a turn is in flight abandoning a different open row by name returns {ok:true, abandoned:false} and the orphan row stays open; tests/vmu-run257-abandon-orphan.test.mjs:130 asserts inFlight===false before it can test the case.",
+      "proof": {
+        "cmd": "node tests/vmu-run257-abandon-orphan.test.mjs",
+        "expect": 0,
+        "note": "76 passed, 0 failed: a named open row is settled while another turn is in flight."
+      }
+    },
+    {
+      "id": "audit14-p1-6-clearedparked-two-meanings",
+      "title": "clearedParked means both 'nothing was parked' and 'this deployment cannot clear'",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "state-lane",
+      "source": "AUDIT-14 P1-6; TB-2651 / task-131",
+      "evidence": "vibe-math-vmu/kernel/turn/index.js:5159/5206/5266 derive clearedParked from deliver.clear, but the only seam that provides clear is the caller path (:1198), so every host-deliver turn reports the same false for two different facts.",
+      "proof": {
+        "cmd": "node tests/vmu-run257-abandon-orphan.test.mjs",
+        "expect": 0,
+        "note": "clearedParked, parkedCleared and clearCapability are three separate readings."
+      }
+    },
+    {
+      "id": "audit14-p1-7-hints-name-nonexistent-things",
+      "title": "two refusal hints tell the reader to do something the registry does not accept",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "prompt-lane",
+      "source": "AUDIT-14 P1-7; TB-2652 / task-132",
+      "evidence": "VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING's hint teaches need:'latex', which settings/env-needs.js:6 does not declare, so following it answers VMU_ENV_UNKNOWN_NEED; VMU_MEMBER_SESSION_NEVER_OPENED's hint teaches control {action:'hire', slot:'member'} without the member id, so following it answers VMU_INVALID_ARGUMENT.",
+      "proof": {
+        "cmd": "node tests/vmu-run257-refusal-hints.test.mjs",
+        "expect": 0,
+        "note": "83 passed, 0 failed: every hint value is generated from the registry and checked against it."
+      }
+    },
+    {
+      "id": "audit14-p1-8-meeting-not-started-advice-dead",
+      "title": "the scheduled-meeting hint's two suggested moves leave the caller on the same code or a worse one",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "prompt-lane",
+      "source": "AUDIT-14 P1-8; TB-2652 / task-132",
+      "evidence": "VMU_MEETING_NOT_STARTED teaches beat then proceed: under the injected frozen clock the run and every suite use, beat leaves startsInMs at 3600000 and the next call answers the same code, and proceed answers VMU_STATE.",
+      "proof": {
+        "cmd": "node tests/vmu-run257-refusal-hints.test.mjs",
+        "expect": 0,
+        "note": "the hint no longer claims a move that leaves the caller on the same code; TB-2661 gives it a real exit."
+      }
+    },
+    {
+      "id": "audit14-p1-9-fs-first-evidence-thin",
+      "title": "the fs-first default path is guarded by one behavioural assertion and several source-literal pins",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "md-lane",
+      "source": "AUDIT-14 P1-9; TB-2655 / task-134",
+      "evidence": "only tests/vmu-run255-md-ownership.test.mjs:99 asserts the default path by behaviour; :117/:129 and tests/vmu-run239-prompts.test.mjs:576 assert source text (says(blueprintSource,'materialize = false')), which an equivalent rewrite would redden without changing behaviour; grep -rl 'materialize: true' tests = 28.",
+      "proof": {
+        "cmd": "node tests/vmu-run255-md-ownership.test.mjs",
+        "expect": 0,
+        "note": "the default fs-first path is pinned by behaviour (no draft file, mdPath null), not by source text."
+      }
+    },
+    {
+      "id": "audit14-o1-repo-hygiene",
+      "title": "three zero-byte files with Chinese names appeared in the repository root",
+      "severity": "P2",
+      "status": "fixed",
+      "owner": "env-lane",
+      "source": "AUDIT-14 O-1; TB-2657 / task-136",
+      "evidence": "root cause reproduced byte for byte: docs/acceptance/sim-gate-scope.md lines 4-6 are markdown blockquotes, and handing those lines to bash makes the leading '> ' a redirect that creates a file named after the first word of each line (the third line has no file because it contains a command substitution); D:/_tmp/env/incident-1512-doc-quote-redirect.md has the timeline and the exclusion evidence. The three files are deleted; the guard is promoted from a scratch script to scripts/check-repo-hygiene.mjs with tests/repo-hygiene.test.mjs."
+    },
+    {
+      "id": "audit14-o34-suite-hygiene",
+      "title": "two suites describe more than they assert",
+      "severity": "P2",
+      "status": "fixed",
+      "owner": "prompt-lane",
+      "source": "AUDIT-14 O-3/O-4; TB-2652 / task-132",
+      "evidence": "tests/vmu-run257-refusal-hints.test.mjs:5 states it checks the prompts but makes no prompt assertion (O-4); tests/vmu-run257-prompt-receipt-parity.test.mjs pins the corpus at D:/_tmp/sim/e2e, a path the 3-hour cleanup removes, so a missing corpus can read as green (O-3).",
+      "proof": {
+        "cmd": "node tests/vmu-run257-prompt-receipt-parity.test.mjs",
+        "expect": 0,
+        "note": "97 passed, 0 failed; a missing corpus now fails by name instead of reading as green."
+      }
+    },
+    {
+      "id": "audit14-p1-10-fidelity-baseline-stale",
+      "title": "seven entries of the branch-fidelity baseline claim a gap that no longer exists",
+      "severity": "P1",
+      "status": "fixed",
+      "owner": "sim-lane",
+      "source": "audit/all run of 2026-11-09T17:49 (+08:00); TB-2653 / task-128",
+      "evidence": "node scripts/sim/audit/all.mjs reports \"fidelity baseline claims that no longer hold: 7\" and names them: vibe_v5_record_proposition.p1RulingReading.*.true, vibe_vmu_mathjobs.job.*, vibe_vmu_pack.settings.resolved.vmu.*.faces, vibe_vmu_pack.settings.resolved.vmu.*.staleAfterMs, vibe_vmu_status.closureVoteRecorded.undefined, vibe_vmu_status.settingsMerge.*.vmu.*.faces, vibe_vmu_status.settingsMerge.*.vmu.*.staleAfterMs. The report still exits 0 with that P0 in its body, which is the same disease the release gate has: a conclusion line that disagrees with the body is not a verdict. | CLOSED: 7 stale baseline claims gone after baselineRowFor() began selecting the narrowest row first (cost = wildcard segment count); measured stale 0, gaps 0, p0 [].",
+      "condition": "close when every one of the seven is either removed from the baseline (the gap it claimed is now produced, proven by the audit itself) or re-justified with a why/wouldBeWrongIf that survives the stale-claim check, and when all.mjs stops exiting 0 while its own p0 list is non-empty.",
+      "proof": {
+        "cmd": "node scripts/sim/audit/all.mjs",
+        "expect": 0,
+        "note": "measured 2026-11-09T20:33Z tree 184 items: fidelity {liveToolsWithFieldList:69, compared:69, gaps:0, baselineRows:126, baselineUsed:126, staleBaseline:0}, checks verdict PASS/failures 0, p0 []"
+      },
+      "fixedAt": "2026-11-09T20:33:00+08:00",
+      "fixedBy": "sim-lane (TB-2653 R8 / sim-gate-scope.md §7.1 narrowest-first baseline row selection)"
+    },
+    {
+      "id": "audit14-p2-1-stale-declaration-keys",
+      "severity": "P2",
+      "status": "open",
+      "owner": "sim-lane",
+      "source": "RUN 264 lead verification: node scripts/sim/audit/all.mjs",
+      "title": "fidelity-declared.json still declares keys that are no longer gaps",
+      "evidence": "AUDIT.md warning: \"fidelity declarations that name keys which are no longer gaps (narrow or drop them): compiled, detail, job, partial, receipt, result\" (6 keys). gaps 0 / staleBaseline 0 while the declarations remain.",
+      "condition": "A declaration is only honest while it explains a real gap. Once the gap closes the key must be deleted (a key left behind is how a real gap gets silently absorbed later). Delete those 6 keys, re-run all.mjs, and prove gaps still 0; if deleting one makes a gap appear, the declaration was load-bearing and it must stay with a why that says which gap it still absorbs.",
+      "why": "Lead ruling: a closed gap with a leftover exemption key is debt, and the next drift gets hidden behind it."
+    }
+  ]
+}

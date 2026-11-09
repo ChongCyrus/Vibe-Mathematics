@@ -647,11 +647,48 @@ function toolMessage(args = {}, { kernel } = {}) {
   // member wrote it would be worse than one that says "office".
   const sender = has(args.member) ? str(args.member) : 'office'
   const sent = kernel.mailbox.send(sender, payload)
+  // ★ TB-2606-B / task-95 — THE RECEIPT NOW NAMES THE ROWS IT CREATED. The 2606th run had to run
+  // `vibe_vmu_mailbox {action:"list"}` and scan it to learn that the mail it just sent was ml-17: the id existed in
+  // the mailbox receipt all along (`send().ids`) and was simply dropped here. The three arrays below are ALWAYS
+  // emitted (`[]` when there is nothing to name — never `undefined`), so a caller can key on them without a
+  // type-check and can never mistake "no ids" for "the field is absent":
+  //   mailIds     the ids `send()` really created (empty on a pure dedupe replay, which created no row);
+  //   notifyRows  [{member, mailId}] — the pair the caller needs to say WHICH row a member can read; this is the
+  //               only correct pairing when a dedupe hit skips an address (a plain ids/to zip is wrong there), so
+  //               the mailbox face pairs them and this receipt passes the pairs through;
+  //   notifyFailed the members this send could not give a row, each with the reason — never a silent drop.
+  if (sent && sent.ok === false) {
+    // The mailbox face returns named refusals as DATA (e.g. no audience seam bound) instead of throwing; a receipt
+    // that said ok:true while nothing was queued would be the same lie this task is fixing on the other side.
+    throw refuse(str(sent.code) || 'VMU_ENGINE_UNAVAILABLE', str(sent.message) || 'the mailbox refused this message',
+      sent.hint === undefined || sent.hint === null ? null : str(sent.hint),
+      { enforced: Array.isArray(sent.enforced) ? sent.enforced.slice() : [] })
+  }
+  const mailIds = Array.isArray(sent && sent.ids) ? sent.ids.map((x) => str(x)) : []
+  const rowPairs = Array.isArray(sent && sent.rows) ? sent.rows : null
+  let notifyRows = []
+  if (rowPairs) {
+    notifyRows = rowPairs.map((r) => ({ member: str(r && r.member), mailId: str(r && r.mailId) }))
+      .filter((r) => r.member !== '' && r.mailId !== '')
+  } else if (Array.isArray(sent && sent.to) && sent.to.length === mailIds.length) {
+    // A mailbox face without the paired rows (older/other implementations, e.g. a test fake) still gets an honest
+    // fallback: zip only when the two lists really have the same length, otherwise name NO pairs rather than a
+    // plausible-but-wrong one.
+    notifyRows = sent.to.map((m, i) => ({ member: str(m), mailId: mailIds[i] }))
+  }
+  const dedupedIds = Array.isArray(sent && sent.deduped) ? sent.deduped.map((x) => str(x)) : []
+  const notifyFailed = []
+  if (mailIds.length === 0 && dedupedIds.length === 0 && notifyRows.length === 0) {
+    notifyFailed.push({ member: str(payload.to), reason: 'the mailbox queued no row for this address, so no member can read it yet' })
+  }
   return { ok: true, tool: 'vibe_v5_message', from: sender, relayedBy: 'office',
     fromMeans: sender === 'office'
       ? 'the OFFICE itself is speaking; pass member:"<id>" to carry a member\'s voice instead'
       : 'the mail carries ' + sender + '\'s voice, but the OFFICE relayed it — members are played by the office in this deployment, so the receipt never claims the member typed it',
     to: str(args.to), subject: has(args.subject) ? str(args.subject) : null, urgent: urgentFlag, kind,
+    mailIds, notifyRows, notifyFailed,
+    deliveryMeans: 'mailIds lists the durable row ids this send CREATED (a dedupe replay creates none, hence []); notifyRows pairs each addressed member with the row that member can read ([{member, mailId}], the same shape vibe_v5_meeting reports); notifyFailed names every addressed member this send could NOT give a row, with the reason. The arrays are always present, so [] is an assertion (nothing to name), not a missing field.',
+    deduped: dedupedIds,
     note: 'kind does NOT decide urgency (kind "note" for non-urgent, "notice" only when urgent:true); urgent defaults to FALSE' }
 }
 

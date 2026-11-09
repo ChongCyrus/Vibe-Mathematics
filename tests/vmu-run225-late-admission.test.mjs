@@ -67,18 +67,22 @@ console.log('\n=== 1. THE PER-MEETING POLICY: declared, defaulted, validated BY 
   const t = mk()
   const o = t.open(Object.assign({}, MEET, { at: 500 }))
   ok(o.ok === true && typeof o.meeting === 'string', 'premise: a service meeting opens', o)
-  ok(o.lateAdmission === 'open', 'the DEFAULT late admission policy is open (a late arrival is seated, as before)', o.lateAdmission)
+  // RUN 255 / TB-2610: the DEFAULT late-admission policy is now "chair" (a late arrival is a request to be seated,
+  // so the chair decides it). The permissive policy stays available - section 2c below proves an explicit "open" still
+  // seats a late arrival - so this block only pins what a caller who says NOTHING gets.
+  ok(o.lateAdmission === 'chair', 'the DEFAULT late admission policy is chair (a late arrival must be admitted by the chair)', o.lateAdmission)
   ok(Array.isArray(o.pendingLate) && o.pendingLate.length === 0 && o.pendingLateCount === 0,
     'a freshly opened meeting holds nobody at the door', { pendingLate: o.pendingLate, n: o.pendingLateCount })
   has(o.lateAdmissionMeans, 'open', 'the open receipt explains the three words (open)')
   has(o.lateAdmissionMeans, 'chair', 'the open receipt explains the three words (chair)')
   has(o.lateAdmissionMeans, 'refuse', 'the open receipt explains the three words (refuse)')
+  has(o.lateAdmissionMeans, 'THE DEFAULT IS "chair"', 'the open receipt says OUT LOUD which of the three is the default')
   const view = t.meetingView({ meeting: o.meeting })
-  ok(view && view.lateAdmission === 'open', 'the READ face carries the policy back (meetingView)', view && view.lateAdmission)
+  ok(view && view.lateAdmission === 'chair', 'the READ face carries the policy back (meetingView)', view && view.lateAdmission)
   ok(view && typeof view.lateAdmissionMeans === 'string' && view.lateAdmissionMeans.length > 40,
     'the read face also carries the meaning of the words', view && view.lateAdmissionMeans)
   const sum = t.summary({ meeting: o.meeting })
-  ok(sum && sum.lateAdmission === 'open', 'the SUMMARY face carries the same policy', sum && sum.lateAdmission)
+  ok(sum && sum.lateAdmission === 'chair', 'the SUMMARY face carries the same policy', sum && sum.lateAdmission)
 }
 
 for (const bad of ['maybe', 1]) {
@@ -232,7 +236,9 @@ console.log('\n=== 3. admit() IS THE CHAIR-ONLY DOOR ===')
 console.log('\n=== 4. waitStates / waitRecommended: the READ state of waiting ===')
 {
   const t = mk()
-  const o = t.open(Object.assign({}, MEET, { at: 500 }))
+  // RUN 255: the default is "chair" now, so this block - which is about SEATED late arrivals - must ask for "open"
+  // explicitly. That keeps the section measuring waitStates and owes-votes, not the house default.
+  const o = t.open(Object.assign({}, MEET, { at: 500, lateAdmission: 'open' }))
   t.attend({ meeting: o.meeting, member: 'r-1' })
   const v1 = t.meetingView({ meeting: o.meeting })
   ok(Array.isArray(v1.waitStates) && v1.waitStates.length === 3, 'one row per person the meeting concerns (roster + present)', v1.waitStates && v1.waitStates.length)

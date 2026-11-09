@@ -75,8 +75,9 @@ test('RUN 215 — a sentence about one branch, a pasted draft, a number about th
   await kernel.members.hire({ id: 'r-1', slot: 'member' })
   await kernel.members.hire({ id: 'r-2', slot: 'member' })
   const PATH = 'Blueprint/run215.md'
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
   const first = BLUEPRINT.proposeBlueprint({
-    records: kernel.records, path: PATH, by: 'r-acad', seat: 'chair',
+    records: kernel.records, path: PATH, materialize: true, by: 'r-acad', seat: 'chair',
     text: '第一版基准稿：先写目标，再写节奏。\n再一行。\n## 共同设计补充｜r-acad\n- 院士自带的标题写在第三行。',
   })
   ok(first.ok === true && first.continued === false, '§1a the first proposal is accepted', first && { ok: first.ok, continued: first.continued })
@@ -89,7 +90,7 @@ test('RUN 215 — a sentence about one branch, a pasted draft, a number about th
   console.log('=== 2. A CONTINUATION THAT PASTES THE DRAFT BACK IN IS STRIPPED AND REPORTED (1.1b) ===')
   const draftText = BLUEPRINT.readBlueprint({ records: kernel.records, id: first.id }).text
   const pasted = draftText + '\n\n## 共同设计补充｜r-1\n- 复核分工：我先验归纳步。'
-  const second = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH, draft: first.id, by: 'r-1', seat: 'member', text: pasted })
+  const second = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH, draft: first.id, materialize: true, by: 'r-1', seat: 'member', text: pasted })
   ok(second.ok === true && second.continued === true, '§2a the continuation is accepted', second && { ok: second.ok, continued: second.continued })
   ok(second.bodyPrefixDropped > 0, '§2b the pasted copy of the draft was removed (a non-zero count, not a promise)', second.bodyPrefixDropped)
   has(second.bodyPrefixDroppedMeans, 'pasted back in', '§2c the receipt names what was removed and why')

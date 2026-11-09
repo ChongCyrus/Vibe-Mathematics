@@ -88,7 +88,14 @@ has(TURN_SRC, 'writesWindow: {', '§0d ★★★ the failed delivery names the W
 has(TURN_SRC, 'enumerated: false', '§0e ★★ and says the receipt cannot enumerate that window itself (the member writes in its own kernel)')
 has(TURN_SRC, "slot: lastAttribution && typeof lastAttribution.member === 'string' ? 'single' : 'empty'", '§0f ★★★ the attribution slot is stamped WHOLE or reports itself empty')
 has(TURN_SRC, 'attemptedMember:', '§0g ★★ the member a delivery was ATTEMPTED for is named as an attempt, not as the last delivery')
-has(TURN_SRC, 'const DELIVERY_TIMEOUT_MS = (() => {', '§0h ★★ the seam\'s own timeout is now a number the loop knows')
+// ★ TB-2629 (prereview P0-1): the budget is resolved ONCE from the DECLARED setting, so the one-shot seam number
+// and the loop number cannot drift (they were 180000 vs 1800000 in one tree). This pins that single resolution.
+// TB-2629 / task-110: the resolution itself moved next to the declaration (settings/schema.js readDeliveryBudget), so
+// the kernel must NOT re-derive it: it asks the shared resolver and keeps the resolved number in one constant.
+has(TURN_SRC, 'const DELIVERY_BUDGET = readDeliveryBudget((key) => settingOf(settings, key))', '§0h ★★ the delivery budget comes from the ONE shared resolver, not a kernel literal')
+has(TURN_SRC, 'const DELIVERY_TIMEOUT_MS = DELIVERY_BUDGET.ms', '§0h2 ★★ and the loop reads that single resolution')
+has(read('vibe-math-vmu/settings/schema.js'), 'export const readDeliveryBudget = (getSetting) => {', '§0h3 ★★ the resolver lives with the declaration (one file owns the number and how it is read)')
+has(read('vibe-math-vmu/packs/v3/middleware/planner.js'), 'deliveryTimeoutMs: readDeliveryBudget((k) => api.setting(k)).ms,', '§0h4 ★★ the v3 planner reads the SAME resolver (it used to carry a third literal)')
 has(TURN_SRC, 'deliverySeamBudgetMs: SEAM_BUDGET_MS', '§0i ★★★ turnLoop publishes BOTH timeouts and the order between them')
 has(TURN_SRC, "timeoutOrder: ABANDON_AFTER_MS > SEAM_BUDGET_MS ? 'backstop-after-seam' : 'backstop-before-seam'", '§0j ★★ and which one will fire first')
 has(TURN_SRC, 'reportChannel: () => {', '§0k ★★ a face can ask "is there a turn to answer?" without filing a report')

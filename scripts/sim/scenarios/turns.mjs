@@ -53,6 +53,8 @@ export async function turns(h, { log = () => {} } = {}) {
   const refusals = []
   const promptChars = {}
   const ledger = {}
+  /** Self-check failures (mechanism contract drifts). run.mjs fails the run on a non-empty list. */
+  const failures = []
   let seq = 0
 
   const tree = (root) => snapshotTree(root)
@@ -75,6 +77,39 @@ export async function turns(h, { log = () => {} } = {}) {
     refusals.push({ tool: name, args, receipt })
     return receipt
   }
+
+  /**
+   * Park a caller-played turn, then answer THAT prompt. TB-2616 (task-97, RUN 256) made this pairing the ONLY legal
+   * way to supply a reply: `step`/`reply` carrying an answer is refused by name (`VMU_TURN_PARKED_NEEDS_OWNER`) when
+   * no prompt is parked in the seam, because a reply with no turn to answer would otherwise be handed to the NEXT turn
+   * (a silent wrong-turn attribution). So the drive is not ceremony - it is the mechanism's precondition.
+   *
+   * The member and turn id always come from the drive receipt (`memberPrompt`), never from a literal: a hardcoded id
+   * would keep passing after the engine changed which turn it parked, which is exactly what a corpus must not hide.
+   */
+  const park = async (member, phase, why) => {
+    const r = await record('vibe_vmu_turn', { op: 'drive', member, rounds: 1, phase, why })
+    const prompt = r && r.memberPrompt && typeof r.memberPrompt === 'object' ? r.memberPrompt : null
+    const parked = { receipt: r, prompt, member: prompt && typeof prompt.member === 'string' ? prompt.member : null, turnId: prompt && typeof prompt.turnId === 'string' ? prompt.turnId : null }
+    if (r && r.ok === true && r.awaiting === true && parked.prompt !== null && parked.turnId !== null) return parked
+    // A missing parked prompt is a SEAM failure, not a refusal to forgive: record it and let the step go red.
+    failures.push({
+      code: 'SIM_TURN_PARK_CONTRACT',
+      step: why,
+      message: 'a caller-mode drive did not return a parked prompt (awaiting:true + memberPrompt.turnId): ' + JSON.stringify({ ok: r && r.ok, awaiting: r && r.awaiting, code: r && r.code, hasPrompt: parked.prompt !== null }),
+      means: 'every reply-carrying step below depends on this prompt existing; without it the reply is refused by the parked-turn gate and the corpus would be testing a path it never parked',
+    })
+    return parked
+  }
+
+  /** Answer the prompt a `park()` returned. The id used is the one the receipt named. */
+  const answer = async (parked, phase, why, payload) => record('vibe_vmu_turn', {
+    op: 'step',
+    member: parked.member === null ? undefined : parked.member,
+    phase,
+    why,
+    reply: fence(payload),
+  })
 
   /** Record one step; the step ledger is the scenario statement of what was expected and what happened. */
   const step = async (name, kind, fn) => {
@@ -163,9 +198,54 @@ export async function turns(h, { log = () => {} } = {}) {
   const afterTurns = (await h.call('vibe_vmu_turn', { op: 'status' })).status.turns
   ledger.turnsCounter = { before: beforeTurns, after: afterTurns, advanced: typeof beforeTurns === 'number' && typeof afterTurns === 'number' ? afterTurns > beforeTurns : null }
 
+  // ── 4b. THE COUNTER-EXAMPLE TB-2616 is about: a reply with NOTHING parked must be refused BY NAME ───────────────
+  // The mechanism's whole claim is "a reply belongs to the prompt it was parked for". Its negative side is therefore
+  // part of the contract, not an aside: with no prompt parked, a reply-carrying step must be refused (never handed to
+  // the next turn), the refused reply must be DISCARDED from the slot, and no turn may be opened by the refusal.
+  await step('probe-step-needs-owner', 'probe', async () => {
+    const before = await h.call('vibe_vmu_turn', { op: 'status' })
+    const beforeTurns2 = before && before.status ? before.status.turns : null
+    const r = await probe('vibe_vmu_turn', { op: 'step', member: 'r-1', phase: 'normal', why: '不先 drive 就直接交答复（应被具名拒绝）', reply: fence({ say: '这条答复没有可回答的回合' }) })
+    const after = await h.call('vibe_vmu_turn', { op: 'status' })
+    const loop = after && after.turnLoop ? after.turnLoop : {}
+    const afterTurns2 = after && after.status ? after.status.turns : null
+    const pendingStillEmpty = loop.parked !== true && (loop.parkedTurn === null || loop.parkedTurn === undefined)
+    const noNewTurn = beforeTurns2 !== null && afterTurns2 !== null && afterTurns2 === beforeTurns2
+    ledger.stepNeedsOwner = {
+      code: r.code || null,
+      parkedReason: r.parkedReason || null,
+      parkedFacts: r.parkedFacts || null,
+      replyDiscarded: r.parkedReplyDiscarded === true,
+      pendingStillEmpty,
+      noNewTurn,
+      turnsBefore: beforeTurns2,
+      turnsAfter: afterTurns2,
+      hint: String(r.hint || '').slice(0, 400),
+      means: 'TB-2616 negative face: a reply supplied with no parked prompt is refused BY NAME (VMU_TURN_PARKED_NEEDS_OWNER, reason no-parked-prompt), the staged reply is DISCARDED (parkedReplyDiscarded:true) so it cannot answer the next turn, the parked slot is still empty afterwards, and the refusal opens NO turn - the turn counter is unchanged',
+    }
+    return {
+      ok: r.code === 'VMU_TURN_PARKED_NEEDS_OWNER' && r.parkedReason === 'no-parked-prompt' && r.parkedReplyDiscarded === true && pendingStillEmpty === true && noNewTurn === true,
+      code: r.code || null,
+    }
+  })
+
   // ── 5. A reply that does not parse: VMU_TURN_NO_FENCE, and what the receipt still tells you ──────────────────
   await step('probe-no-fence', 'probe', async () => {
-    const r = await probe('vibe_vmu_turn', { op: 'step', member: 'r-2', phase: 'normal', why: '故意不写围栏', reply: '我刚才想了想，这一步应该没问题，但我没有按格式回答。' })
+    // TB-2616: a reply is only ever supplied to a PARKED prompt, so the fence probe parks one first. The refusal then
+    // measures the parse seam against a real parked turn instead of against "no turn at all".
+    const parked = await park('r-2', 'normal', '故意不写围栏：先 park 再答')
+    const r = await probe('vibe_vmu_turn', { op: 'step', member: parked.member === null ? undefined : parked.member, phase: 'normal', why: '故意不写围栏', reply: '我刚才想了想，这一步应该没问题，但我没有按格式回答。' })
+    // A refused envelope IS supplied to the parked prompt and the resume CONSUMES that slot, so after this refusal the
+    // row is an ORPHAN: still `status:"open"`, with nothing in flight and nothing parked (MEASURED, RUN 257 / TB-2639 —
+    // this comment used to claim the prompt was still parked). That is the state op:"abandon" settles BY NAME — it never
+    // picks a row on its own — so the probe names the very turn it parked and reads the ledger back: the row must go
+    // terminal (`settledBy:"abandoned-orphan"`) and no parked slot may be left holding anything.
+    const settled = await record('vibe_vmu_turn', { op: 'abandon', turn: parked.turnId === null ? undefined : parked.turnId, why: '围栏被拒的回合不能永远停着：按名字走显式释放出口' })
+    const afterSettle = await h.call('vibe_vmu_turn', { op: 'status' })
+    const readback = afterSettle && afterSettle.status && typeof afterSettle.status === 'object' ? afterSettle.status : null
+    const parkedAfter = readback && readback.turnLoop ? (readback.turnLoop.parked === true || readback.turnLoop.parkedTurn !== null) : null
+    const rowsAfter = afterSettle && Array.isArray(afterSettle.turns) ? afterSettle.turns : []
+    const rowAfter = rowsAfter.find((x) => x && String(x.turn) === String(parked.turnId)) || null
     ledger.noFence = {
       code: r.code,
       sideEffectsUnverified: r.sideEffectsUnverified === true,
@@ -176,6 +256,12 @@ export async function turns(h, { log = () => {} } = {}) {
       deliveryPath: r.delivery ? r.delivery.path : null,
       deliveryStopReason: r.delivery ? r.delivery.stopReason : null,
       hint: r.hint || null,
+      settledTurn: parked.turnId,
+      settled: { ok: settled.ok === true, abandoned: settled.abandoned === true, code: settled.code || null, settledBy: settled.settledBy || null },
+      rowAfterSettlement: rowAfter ? rowAfter.status : null,
+      openRowsAfterSettlement: rowsAfter.filter((x) => x && x.status === 'open').length,
+      parkedAfterSettlement: parkedAfter,
+      settlementMeans: 'the refused envelope consumed the parked slot (a resume, not a refusal before the seam), so the row was left `open` with nothing in flight and nothing parked: op:"abandon" with the NAMED turn settles exactly that row (status "abandoned", settledBy "abandoned-orphan") and leaves no parked slot behind - a "release" that answers abandoned:false and leaves the row open is the RUN 257 defect (an open row the loop reports and cannot close)',
     }
     return r
   })
@@ -264,7 +350,8 @@ export async function turns(h, { log = () => {} } = {}) {
 
   // ── 9. checkpoint: the round the engine runs at a checkpoint ────────────────────────────────────────────────
   await step('round-checkpoint', 'turn', async () => {
-    const r = await record('vibe_vmu_turn', { op: 'step', member: 'r-2', phase: 'checkpoint', why: '结题检查回合', reply: fence({ say: 'r-2：本轮无阻塞，结论待汇总。' }) })
+    const parked = await park('r-2', 'checkpoint', '结题检查回合：先 park 再答')
+    const r = await answer(parked, 'checkpoint', '结题检查回合', { say: 'r-2：本轮无阻塞，结论待汇总。' })
     const inner = r.receipt || r
     ledger.checkpoint = { phase: 'checkpoint', turn: inner.turn || null, fields: inner.fields || null }
     return r
@@ -272,7 +359,8 @@ export async function turns(h, { log = () => {} } = {}) {
 
   // ── 10. verify: the certification arm of the loop ───────────────────────────────────────────────────────────
   await step('round-verify', 'turn', async () => {
-    const r = await record('vibe_vmu_turn', { op: 'step', member: 'r-2', phase: 'verify', why: '复核回合', reply: fence({ say: 'r-2：复核完毕，维持结论。' }) })
+    const parked = await park('r-2', 'verify', '复核回合：先 park 再答')
+    const r = await answer(parked, 'verify', '复核回合', { say: 'r-2：复核完毕，维持结论。' })
     const inner = r.receipt || r
     ledger.verify = {
       phase: 'verify',
@@ -285,13 +373,8 @@ export async function turns(h, { log = () => {} } = {}) {
 
   // ── 11. A round whose work is BLOCKED, and that says why (the blocked archive) ──────────────────────────────
   await step('round-blocked-archive', 'turn', async () => {
-    const r = await record('vibe_vmu_turn', {
-      op: 'step',
-      member: 'r-2',
-      phase: 'verify',
-      why: '形式化被环境阻塞，按公开口径归档',
-      reply: fence({ say: '宿主没有 Lean 工具链，本轮形式化记为显式阻塞。', lean_archive: { name: 'Blocked_One', note: 'this host has no Lean toolchain', blocked: true } }),
-    })
+    const parked = await park('r-2', 'verify', '形式化被环境阻塞：先 park 再答')
+    const r = await answer(parked, 'verify', '形式化被环境阻塞，按公开口径归档', { say: '宿主没有 Lean 工具链，本轮形式化记为显式阻塞。', lean_archive: { name: 'Blocked_One', note: 'this host has no Lean toolchain', blocked: true } })
     const inner = r.receipt || r
     ledger.blockedArchive = { turn: inner.turn || null, fields: inner.fields || null, executed: inner.executed === undefined ? null : inner.executed, skipped: inner.skipped === undefined ? null : inner.skipped }
     return r
@@ -321,13 +404,8 @@ export async function turns(h, { log = () => {} } = {}) {
 
   // ── 13. The `progress` reply field with a plain string — the shape the teaching invites, now ACCEPTED ──────────
   await step('round-progress-string', 'turn', async () => {
-    const r = await record('vibe_vmu_turn', {
-      op: 'step',
-      member: 'r-1',
-      phase: 'normal',
-      why: 'progress 写成一段文字（提示词教的形式）',
-      reply: fence({ say: '记一条进展', progress: '完成第一步：定义已固定，下一步给出引理。' }),
-    })
+    const parked = await park('r-1', 'normal', 'progress 写成一段文字：先 park 再答')
+    const r = await answer(parked, 'normal', 'progress 写成一段文字（提示词教的形式）', { say: '记一条进展', progress: '完成第一步：定义已固定，下一步给出引理。' })
     const inner = r.receipt || r
     const executed = Array.isArray(inner.executedDetail) ? inner.executedDetail : (Array.isArray(inner.executed) ? inner.executed : [])
     const progressRow = executed.find((e) => e && e.field === 'progress') || null
@@ -346,13 +424,8 @@ export async function turns(h, { log = () => {} } = {}) {
 
   // ── 13b. The `progress` field with an object that names no track: refused BY NAME, naming what arrived ────────
   await step('probe-progress-shape', 'probe', async () => {
-    const r = await record('vibe_vmu_turn', {
-      op: 'step',
-      member: 'r-1',
-      phase: 'normal',
-      why: 'progress 写成没有 track 的对象',
-      reply: fence({ say: '形状不对的一条', progress: { title: '只有标题', body: '没有轨名' } }),
-    })
+    const parked = await park('r-1', 'normal', 'progress 写成没有 track 的对象：先 park 再答')
+    const r = await answer(parked, 'normal', 'progress 写成没有 track 的对象', { say: '形状不对的一条', progress: { title: '只有标题', body: '没有轨名' } })
     const inner = r.receipt || r
     const skipped = Array.isArray(inner.skippedDetail) ? inner.skippedDetail : (Array.isArray(inner.skipped) ? inner.skipped : [])
     const row = skipped.find((s) => s && s.field === 'progress') || null
@@ -375,13 +448,31 @@ export async function turns(h, { log = () => {} } = {}) {
   return {
     steps,
     receipts,
+    /** Self-check failures (a caller-mode drive that parked nothing). run.mjs fails the run on a non-empty list. */
+    failures,
     // Every refusal this scenario provokes ON PURPOSE. run.mjs prints them with code and hint and does not count them
     // as mechanism defects; anything else that refuses still fails the run.
     expectedRefusals: [
       { tool: 'vibe_vmu_turn', code: 'VMU_TURN_NO_FENCE' },
-      { tool: 'vibe_vmu_turn', code: 'VMU_TURN_NO_PENDING_MEMBER' },
+      // VMU_TURN_NO_PENDING_MEMBER happens TWICE, on two different paths, and "same code, different cause" is
+      // exactly what a seq pin can say and a code-only prediction cannot. Both are pinned by the seq the corpus
+      // gave them (scripts/sim/run.mjs names the number in its headline: "N pinned by seq"):
+      //   seq 15 = the CALLER path: `probe-reply-without-turn` replies for r-1 when nothing is parked (below, the
+      //            probe at the `op: "reply", reply_for: "r-1"` call in this scenario).
+      //   seq 18 = the DELEGATED path: a SECOND boot with no settings takes the subagents seam, so its reply is
+      //            refused by the same code for a different reason (no delivery seam in this context at all).
+      // A prediction is a QUOTA, not a pardon (one declaration forgives one refusal): a single copy of this line
+      // left the second one to be forgiven by the spent prediction, which the ledger reports as `advisory: 1`. The
+      // seqs are re-read after every scenario change (TB-2635 added the drive-before-answer pairing, which moved
+      // both of them down by three); a pin that no longer names its refusal shows up as `declared-but-never-hit`.
+      { tool: 'vibe_vmu_turn', code: 'VMU_TURN_NO_PENDING_MEMBER', seq: 15 },
+      { tool: 'vibe_vmu_turn', code: 'VMU_TURN_NO_PENDING_MEMBER', seq: 18 },
       { tool: 'vibe_vmu_turn', code: 'VMU_TURN_ALREADY_PARKED' },
       { tool: 'vibe_vmu_turn', code: 'VMU_TURN_STALE_REPLY' },
+      // TB-2616 (task-97) negative face, measured by `probe-step-needs-owner`: a reply with NO parked prompt is
+      // refused by name and the staged reply is discarded. One occurrence, so an unpinned (order) prediction is
+      // unambiguous here; the matching is a quota, not a pardon - a second one would show up as `advisory`.
+      { tool: 'vibe_vmu_turn', code: 'VMU_TURN_PARKED_NEEDS_OWNER' },
       { tool: 'vibe_vmu_turn', code: 'VMU_NOT_PERMITTED' },
       { tool: 'vibe_v5_task_update', code: 'VMU_TASK_BLOCKED' },
     ],

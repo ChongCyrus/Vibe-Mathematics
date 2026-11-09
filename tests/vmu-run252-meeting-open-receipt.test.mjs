@@ -93,7 +93,9 @@ const nonEmptyString = (v) => typeof v === 'string' && v.length > 0
 {
   const now = { t: NOW }
   const svc = mk(() => now.t, { 'vmu.meetings.lateAfterMs': 500 })
-  const sched = svc.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1', 'r-2'], materials: 'x', at: NOW + 1000 })
+  // RUN 255: the DEFAULT late-admission policy is now "chair" (a late arrival waits for admit()), so this block - whose
+  // whole point is that a LATE arrival is the touch that opens the meeting - asks for the permissive policy explicitly.
+  const sched = svc.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1', 'r-2'], materials: 'x', at: NOW + 1000, lateAdmission: 'open' })
   svc.attend({ meeting: sched.meeting, member: 'r-1' })
 
   const beatMs = NOW + 2000

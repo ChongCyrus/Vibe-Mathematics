@@ -101,7 +101,8 @@ console.log('\n=== 1. THE DRAFT-SHARING SENTENCE NAMES THE WINDOW THIS CALL IS I
   const started = await call('vibe_v5_start', { researcherCount: 2, problem: 'run222 草案窗口' })
   ok(started.ok === true, '§1 premise: the institute starts', started.ok === true ? true : started)
 
-  const first = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: '第 222 次演练：第一份草案' })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const first = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: '第 222 次演练：第一份草案' })
   ok(first.ok === true, '§1a premise: a first proposal is accepted', first.ok === true ? true : { code: first.code, message: first.message })
   const draftId = typeof first.id === 'string' ? first.id : null
   ok(typeof draftId === 'string' && draftId !== '', '§1b premise: the draft row id is printed', { draftId })
@@ -110,7 +111,7 @@ console.log('\n=== 1. THE DRAFT-SHARING SENTENCE NAMES THE WINDOW THIS CALL IS I
   has(String(first.draftSharing && first.draftSharing.means), 'NEW DRAFT row',
     '§1d ★★ …and names the NEW DRAFT window, not the after-adoption one', String(first.draftSharing && first.draftSharing.means))
 
-  const chair = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-acad', text: '院士席的设计 section：第 222 次' })
+  const chair = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-acad', text: '院士席的设计 section：第 222 次' })
   ok(chair.ok === true, '§1e premise: the chair writes its own section into the SAME draft', chair.ok === true ? true : { code: chair.code, message: chair.message })
   ok(chair.draftSharing && chair.draftSharing.continuesOpenDraft === true,
     '§1f ★ a continuation says it joined an open draft', chair.draftSharing)
@@ -122,7 +123,7 @@ console.log('\n=== 1. THE DRAFT-SHARING SENTENCE NAMES THE WINDOW THIS CALL IS I
   const adopted = await call('vibe_v5_blueprint', { action: 'adopt', member: 'r-acad', draft: draftId })
   ok(adopted.ok === true, '§1i premise: the draft becomes the current protocol', adopted.ok === true ? true : { code: adopted.code, message: adopted.message })
 
-  const after = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', text: '第 222 次演练：采纳之后的一版新草案' })
+  const after = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', text: '第 222 次演练：采纳之后的一版新草案' })
   ok(after.ok === true, '§1j premise: a NEW revision is proposed after adoption', after.ok === true ? true : { code: after.code, message: after.message })
   ok(after.draftSharing && after.draftSharing.continuesOpenDraft === false && after.draftSharing.appendedTo === null,
     '§1k ★★★ run 58 shape: a fresh draft row after adoption starts nothing it continues', after.draftSharing)
@@ -200,15 +201,15 @@ console.log('\n=== 4. A POSITIONAL PRUNE COUNTS DECLARATIONS, AND SAYS WHO OWNS 
   const { call } = await boot()
   const started = await call('vibe_v5_start', { researcherCount: 2, problem: 'run222 剪除读数' })
   ok(started.ok === true, '§4 premise: the institute starts', started.ok === true ? true : started)
-  const first = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: '第 222 次演练：将被采纳的草案' })
+  const first = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: '第 222 次演练：将被采纳的草案' })
   ok(first.ok === true, '§4a premise: a draft exists', first.ok === true ? true : { code: first.code, message: first.message })
   const draftId = typeof first.id === 'string' ? first.id : null
   ok(typeof draftId === 'string' && draftId !== '', '§4b premise: the draft id is printed', { draftId })
-  const chairDesign = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-acad', text: '院士席的设计 section：第 222 次' })
+  const chairDesign = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-acad', text: '院士席的设计 section：第 222 次' })
   ok(chairDesign.ok === true, '§4c premise: the chair co-designs it', chairDesign.ok === true ? true : { code: chairDesign.code, message: chairDesign.message })
   const adopted = await call('vibe_v5_blueprint', { action: 'adopt', member: 'r-acad', draft: draftId })
   ok(adopted.ok === true, '§4d premise: the draft becomes current', adopted.ok === true ? true : { code: adopted.code, message: adopted.message })
-  const newer = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', text: '第 222 次演练：更晚的一份草案' })
+  const newer = await call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', text: '第 222 次演练：更晚的一份草案' })
   ok(newer.ok === true, '§4e premise: a newer row sits above the current one', newer.ok === true ? true : { code: newer.code, message: newer.message })
 
   const dry = await call('vibe_vmu_records', { action: 'prune', track: 'blueprint', keep: 1, dryRun: true })

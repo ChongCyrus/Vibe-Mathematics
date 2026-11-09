@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createRecords, refuse, slugify, chunkBody, DECLARED_KEYS, WIRED_KEYS, UNWIRED_REASONS, EXTRA_WIRED_KEYS, CORE_HEAD_FIELDS } from '../vibe-math-vmu/kernel/records.js'
+import { createDirections } from '../vibe-math-vmu/kernel/directions.js'
 
 let passed = 0
 let failed = 0
@@ -632,6 +633,72 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   ok(versioned.ok === true && versioned.dataset.version === '1.2.3', 'data.versionScheme[semver]: a semantic version is accepted and recorded', versioned.dataset)
   ok(mkD({ 'vmu.data.versionScheme': 'free' }).datasetRegister({ track: TR, title: 'd7', fingerprint: 'sha256:e' }).ok === true,
     'data.versionScheme[free]: an unversioned dataset is accepted under a scheme that does not demand a shape')
+}
+
+// ── 8. RULES C2/C3/C4: the DEFAULT tracks carry routes and obstacles, a write LANDS and READS BACK ──────────
+// The operator's rules (doc L13–L15) ask the archive to hold, as rows of their own: the routes/methods already
+// tried and their progress (C2), the obstacles met together with the cause (C3), and the obstacles themselves
+// (C4). `vmu.records.tracks` is where those rows live. Two claims are measured here, on a REAL handle rather
+// than on a literal in the source:
+//   a. the DEFAULT track table (no `vmu.records.tracks` setting) names both `routes` and `obstacles` — a rule
+//      whose store is missing cannot be observed at all;
+//   b. a row put on each of those tracks comes back through the ordinary read faces (get by id, list by track,
+//      list unfiltered) with its body intact — a table entry with no working write path would be a slogan.
+// C4's second half is the DIRECTION CARD's `obstacles` field: a write lands and a read returns it verbatim.
+{
+  const r = createRecords({ clock: () => 0, settings: S() })
+  const tracks = r.status().caps.tracks
+  ok(Array.isArray(tracks) && tracks.includes('routes'), 'C2: the DEFAULT track table carries `routes` (attempted routes have a declared home)', tracks)
+  ok(Array.isArray(tracks) && tracks.includes('obstacles'), 'C3/C4: the DEFAULT track table carries `obstacles` (met obstacles have a declared home)', tracks)
+
+  // A missing store must READ as a failed assertion, not crash the suite before the other claims are measured.
+  const attempt = (label, fn) => { try { return fn() } catch (e) { ok(false, label + ' — refused: ' + (e && e.code)); return null } }
+
+  // C2 — a route row records the method tried AND its progress; both survive the round trip.
+  const route = attempt('C2: a route row is accepted on the DEFAULT `routes` track', () => r.put({
+    track: 'routes', kind: 'route', title: '路线：把 records 读面接到报告面',
+    body: '- 进度：2/5\n- 方法：复用 report 投递缝，先跑通再换适配器',
+    settled: true,
+  }))
+  if (route) {
+    const routeBack = r.get({ id: route.id })
+    ok(routeBack.track === 'routes', 'C2: the route row comes back on the `routes` track (the read face names it)', routeBack.track)
+    ok(String(routeBack.body).includes('进度：2/5') && String(routeBack.body).includes('复用 report 投递缝'),
+      'C2: the route read back carries the method AND its progress verbatim (a write that vanishes is not an archive)', routeBack.body)
+  }
+
+  // C3 — an obstacle row names the route/attempt it interrupted AND the cause.
+  const obstacle = attempt('C3: an obstacle row is accepted on the DEFAULT `obstacles` track', () => r.put({
+    track: 'obstacles', kind: 'lesson', title: '障碍：Windows rmSync 竞态',
+    body: '- 相关路线：把临时目录清理器接进回收站\n- 原因：目录句柄仍被占，删除失败被吞\n- 方案：重试三次并回报失败次数',
+    settled: true,
+  }))
+  if (obstacle) {
+    const obstacleBack = r.get({ id: obstacle.id })
+    ok(obstacleBack.track === 'obstacles', 'C3: the obstacle row comes back on the `obstacles` track', obstacleBack.track)
+    ok(String(obstacleBack.body).includes('相关路线：') && String(obstacleBack.body).includes('原因：目录句柄仍被占'),
+      'C3: the obstacle read back names the route it interrupted and the CAUSE (the rule asks for both)', obstacleBack.body)
+    ok(String(obstacleBack.body).includes('方案：重试三次'), 'C4: the same archive row keeps the solution alongside the cause (obstacle + cause + what was done)', obstacleBack.body)
+  }
+
+  // the archive is reachable through the ordinary list faces, not only by id
+  if (route) ok(r.list({ track: 'routes' }).count === 1, 'C2: the routes track lists exactly the row just written')
+  if (obstacle) ok(r.list({ track: 'obstacles' }).count === 1, 'C3/C4: the obstacles track lists exactly the row just written')
+  const all = r.list()
+  ok(!!route && !!obstacle && all.items.some((x) => x.id === route.id) && all.items.some((x) => x.id === obstacle.id),
+    'C2/C3/C4: an unfiltered read face shows both archive rows (they are part of the ledger, not a side store)')
+
+  // C4 — the DIRECTION CARD carries the obstacle+reason field; a write lands and a read returns it verbatim.
+  // (kernel/directions.js stores the card on the state track; its `obstacles` field is the rule's archive slot.)
+  const dirs = createDirections({ kernel: { records: r } })
+  const base = { current_assessment: '主线可跑', initial_plan: '先接读面', feasibility: '可行', findings: 'state 轨能装', reuse: '复用 report 缝' }
+  dirs.set(Object.assign({ direction: 'mainline' }, base))
+  dirs.set(Object.assign({ direction: 'mainline', obstacles: '障碍：records 的 tracks 是构造期快照——原因：设置层不允许中途换契约' }, base))
+  const card = dirs.get({ direction: 'mainline' })
+  ok(card.fields.obstacles === '障碍：records 的 tracks 是构造期快照——原因：设置层不允许中途换契约',
+    'C4: the direction card writes `obstacles` and reads it back verbatim (empty is null, written is the text)', card.fields.obstacles)
+  ok(card.revision === 2 && card.previousRevisions === 1,
+    'C4: recording the obstacle UPDATES the same card (history kept, no second card)', [card.revision, card.previousRevisions])
 }
 
 console.log('=== VMU RECORDS: ' + passed + ' passed, ' + failed + ' failed ===')

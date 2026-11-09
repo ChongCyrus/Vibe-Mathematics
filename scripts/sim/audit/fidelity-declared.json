@@ -40,7 +40,6 @@
   "vibe_v5_paper": {
     "kind": "needs-deployment-config",
     "keys": [
-      "compiled",
       "crossReviewPossible",
       "faceCode",
       "signal",
@@ -50,7 +49,41 @@
       "tried",
       "triedEngines"
     ],
-    "note": "the eight compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here); crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload."
+    "note": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload. (dropped 2026-11-09 from the declaration: it no longer absorbs a gap, and a declaration key that outlives its gap is debt — it hides the next drift)",
+    "details": {
+      "crossReviewPossible": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:14030"
+      },
+      "faceCode": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7465"
+      },
+      "signal": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7465"
+      },
+      "stderrTail": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7465"
+      },
+      "stdoutTail": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7465"
+      },
+      "tailSource": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:9450"
+      },
+      "tried": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7465"
+      },
+      "triedEngines": {
+        "why": "the paper compile face is ONE kind at the tool level but two debts in fact: seven compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here), and crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7465"
+      }
+    }
   },
   "vibe_vmu_env": {
     "kind": "needs-deployment-config",
@@ -62,23 +95,51 @@
       "stdoutTail",
       "version"
     ],
-    "note": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it."
-  },
-  "vibe_vmu_mathjobs": {
-    "kind": "needs-deployment-config",
-    "keys": [
-      "job"
-    ],
-    "note": "the job handle only exists after a real python math-job service ran the computation; this workspace has no such service (spawn seam), so every call stops at VMU_ENGINE_UNAVAILABLE."
+    "note": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it.",
+    "details": {
+      "exitCode": {
+        "why": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:686"
+      },
+      "resolved": {
+        "why": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:686"
+      },
+      "results": {
+        "why": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:55"
+      },
+      "stderrTail": {
+        "why": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:686"
+      },
+      "stdoutTail": {
+        "why": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:686"
+      },
+      "version": {
+        "why": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:686"
+      }
+    }
   },
   "vibe_vmu_mathtools": {
     "kind": "needs-deployment-config",
     "keys": [
       "cached",
-      "receipt",
-      "result"
+      "result.receipt.dir"
     ],
-    "note": "same missing python service as mathjobs: cached/receipt/result only exist once a real computation ran."
+    "note": "same missing python service as mathjobs: `cached` only exists once a real computation ran. `result.receipt.dir` is a sim-cannot as well: the live receipt names the directory the external toolchain wrote its own receipt into (`Computation/...`), and the in-process simulator never executes a toolchain, so that leaf has no counterpart (onlyReal). The former broad `receipt`/`result` keys were dropped 2026-11-09: under the exact-key ruler they absorbed nothing and only hid drift; the one real gap they happened to cover is now declared by its exact leaf.",
+    "details": {
+      "cached": {
+        "why": "same missing python service as mathjobs: cached only exists once a real computation ran, and the simulator does not shell out to that service.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:503"
+      },
+      "result.receipt.dir": {
+        "why": "the live mathtools receipt names the directory the external toolchain wrote its receipt into (value starts with `Computation/vibe-math-vmu-...`); the simulator never runs a real toolchain, so it produces no such directory. Declared for the FIELD being absent, not for two different values.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:503"
+      }
+    }
   },
   "vibe_v5_record_proposition": {
     "kind": "superseded-shape",
@@ -86,14 +147,30 @@
       "op",
       "wouldEvaluate"
     ],
-    "note": "op/wouldEvaluate were produced by the old destructive-write path inside kernel/capacity.js; this checkout moved that refusal forward to VMU_RECORD_SETTLEMENT_REWRITE, and the four tool faces only keep enforced/enforcedScope. Reproducing the old keys would mean writing a fake receipt."
+    "note": "op/wouldEvaluate were produced by the old destructive-write path inside kernel/capacity.js; this checkout moved that refusal forward to VMU_RECORD_SETTLEMENT_REWRITE, and the four tool faces only keep enforced/enforcedScope. Reproducing the old keys would mean writing a fake receipt.",
+    "details": {
+      "op": {
+        "why": "op/wouldEvaluate were produced by the old destructive-write path inside kernel/capacity.js; this checkout moved that refusal forward to VMU_RECORD_SETTLEMENT_REWRITE, and the four tool faces only keep enforced/enforcedScope. Reproducing the old keys would mean writing a fake receipt.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:16992"
+      },
+      "wouldEvaluate": {
+        "why": "op/wouldEvaluate were produced by the old destructive-write path inside kernel/capacity.js; this checkout moved that refusal forward to VMU_RECORD_SETTLEMENT_REWRITE, and the four tool faces only keep enforced/enforcedScope. Reproducing the old keys would mean writing a fake receipt.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:16992"
+      }
+    }
   },
   "vibe_v5_task_get": {
     "kind": "defensive-only",
     "keys": [
       "briefNote"
     ],
-    "note": "briefNote is the sentence used when the brief lookup genuinely FAILS (the absent case returns brief + briefMeans and no briefNote), and the brief face now forwards text after the RUN 240 fix in vibe-math-vmu/tools/task.js, so the only way to emit it from a scenario would be to hand it a broken briefOf."
+    "note": "briefNote is the sentence used when the brief lookup genuinely FAILS (the absent case returns brief + briefMeans and no briefNote), and the brief face now forwards text after the RUN 240 fix in vibe-math-vmu/tools/task.js, so the only way to emit it from a scenario would be to hand it a broken briefOf.",
+    "details": {
+      "briefNote": {
+        "why": "briefNote is the sentence used when the brief lookup genuinely FAILS (the absent case returns brief + briefMeans and no briefNote), and the brief face now forwards text after the RUN 240 fix in vibe-math-vmu/tools/task.js, so the only way to emit it from a scenario would be to hand it a broken briefOf.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:397"
+      }
+    }
   },
   "vibe_v5_verdict_final": {
     "kind": "superseded-shape",
@@ -103,30 +180,69 @@
       "consumer",
       "required"
     ],
-    "note": "the ruling-final receipt in this checkout (vibe-math-vmu/packs/v5r/tools.js) is p1RulingReading / p1CannotBack / meetingState / floor / attribution / tally; applicable/cardId/consumer/required do not exist in the current faces, so only an older build could emit them."
+    "note": "the ruling-final receipt in this checkout (vibe-math-vmu/packs/v5r/tools.js) is p1RulingReading / p1CannotBack / meetingState / floor / attribution / tally; applicable/cardId/consumer/required do not exist in the current faces, so only an older build could emit them.",
+    "details": {
+      "applicable": {
+        "why": "the ruling-final receipt in this checkout (vibe-math-vmu/packs/v5r/tools.js) is p1RulingReading / p1CannotBack / meetingState / floor / attribution / tally; applicable/cardId/consumer/required do not exist in the current faces, so only an older build could emit them.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7334"
+      },
+      "cardId": {
+        "why": "the ruling-final receipt in this checkout (vibe-math-vmu/packs/v5r/tools.js) is p1RulingReading / p1CannotBack / meetingState / floor / attribution / tally; applicable/cardId/consumer/required do not exist in the current faces, so only an older build could emit them.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7334"
+      },
+      "consumer": {
+        "why": "the ruling-final receipt in this checkout (vibe-math-vmu/packs/v5r/tools.js) is p1RulingReading / p1CannotBack / meetingState / floor / attribution / tally; applicable/cardId/consumer/required do not exist in the current faces, so only an older build could emit them.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7334"
+      },
+      "required": {
+        "why": "the ruling-final receipt in this checkout (vibe-math-vmu/packs/v5r/tools.js) is p1RulingReading / p1CannotBack / meetingState / floor / attribution / tally; applicable/cardId/consumer/required do not exist in the current faces, so only an older build could emit them.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:7334"
+      }
+    }
   },
   "vibe_v5_verified_promote": {
     "kind": "superseded-shape",
     "keys": [
       "applicable",
-      "p1Routes",
       "rev"
     ],
-    "note": "p1Routes is emitted by the p=1 gate refusals (packs/v5r/verification-gates.js), not by the promote face, which answers p1Route / p1Evidence / cardId / written / refreshed; applicable and rev are not produced by this checkout at all."
+    "note": "applicable and rev are not produced by this checkout at all. p1Routes was REMOVED from this table: it is a FILLABLE gap, not a sim-cannot. The p=1 gate refusal path is reachable in the product (packs/v5r/tools.js p1Intent -> gateRefuse -> packs/v5r/verification-gates.js), and no scenario walks to it yet, so the honest state is a visible fidelity gap owned by TB-2658 rather than an exemption that hides it.",
+    "details": {
+      "applicable": {
+        "why": "p1Routes is emitted by the p=1 gate refusals (packs/v5r/verification-gates.js), not by the promote face, which answers p1Route / p1Evidence / cardId / written / refreshed; applicable and rev are not produced by this checkout at all.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:9977"
+      },
+      "rev": {
+        "why": "p1Routes is emitted by the p=1 gate refusals (packs/v5r/verification-gates.js), not by the promote face, which answers p1Route / p1Evidence / cardId / written / refreshed; applicable and rev are not produced by this checkout at all.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:9417"
+      }
+    }
   },
   "vibe_vmu_mailbox": {
     "kind": "superseded-shape",
     "keys": [
       "from"
     ],
-    "note": "from is an INPUT of the mailbox face; the receipt identifies the writer as caller/callerSource (tools/mailbox.js), so a receipt carrying `from` belongs to an older build."
+    "note": "from is an INPUT of the mailbox face; the receipt identifies the writer as caller/callerSource (tools/mailbox.js), so a receipt carrying `from` belongs to an older build.",
+    "details": {
+      "from": {
+        "why": "from is an INPUT of the mailbox face; the receipt identifies the writer as caller/callerSource (tools/mailbox.js), so a receipt carrying `from` belongs to an older build.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:3206"
+      }
+    }
   },
   "vibe_vmu_panel": {
     "kind": "defensive-only",
     "keys": [
       "enforcedScope"
     ],
-    "note": "the cross-seat permission refusal carries caller/callerSource/target; enforcedScope is attached only on the capacity branch of tools/panel.js, which needs a configured quota this workspace does not ship."
+    "note": "the cross-seat permission refusal carries caller/callerSource/target; enforcedScope is attached only on the capacity branch of tools/panel.js, which needs a configured quota this workspace does not ship.",
+    "details": {
+      "enforcedScope": {
+        "why": "the cross-seat permission refusal carries caller/callerSource/target; enforcedScope is attached only on the capacity branch of tools/panel.js, which needs a configured quota this workspace does not ship.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:16556"
+      }
+    }
   },
   "vibe_vmu_records": {
     "kind": "superseded-shape",
@@ -134,14 +250,17 @@
       "doomedActiveCount",
       "doomedActiveMeans"
     ],
-    "note": "the names were changed to doomedDeclaredCurrentCount / doomedDeclaredCurrentMeans / doomedInForceCount in vibe-math-vmu/kernel/records.js; the old pair does not exist in the repository any more, so only an older build could emit it."
-  },
-  "vibe_vmu_report": {
-    "kind": "defensive-only",
-    "keys": [
-      "detail"
-    ],
-    "note": "detail is attached by kernel/report.js to a refusal that wants to hand the caller an extra block, and none of the five report verbs reaches that path with a detail payload; a scenario could only fake it."
+    "note": "the names were changed to doomedDeclaredCurrentCount / doomedDeclaredCurrentMeans / doomedInForceCount in vibe-math-vmu/kernel/records.js; the old pair does not exist in the repository any more, so only an older build could emit it.",
+    "details": {
+      "doomedActiveCount": {
+        "why": "the names were changed to doomedDeclaredCurrentCount / doomedDeclaredCurrentMeans / doomedInForceCount in vibe-math-vmu/kernel/records.js; the old pair does not exist in the repository any more, so only an older build could emit it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:16157"
+      },
+      "doomedActiveMeans": {
+        "why": "the names were changed to doomedDeclaredCurrentCount / doomedDeclaredCurrentMeans / doomedInForceCount in vibe-math-vmu/kernel/records.js; the old pair does not exist in the repository any more, so only an older build could emit it.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:16157"
+      }
+    }
   },
   "vibe_vmu_turn": {
     "kind": "needs-deployment-config",
@@ -149,12 +268,67 @@
       "deliveryGraceMs",
       "deliveryTimeoutMs",
       "lastPhase",
-      "partial",
       "requestSent",
       "roundCompleted",
       "roundConsumed",
       "waitedMs"
     ],
-    "note": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted."
+    "note": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.",
+    "details": {
+      "deliveryGraceMs": {
+        "why": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.（补充声明：receipt.delegation.path / receipt.delivery.path 是交付通道的路径名，真机 activation/continuation、仿真 caller，同一语义不同通道。）",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:6417"
+      },
+      "deliveryTimeoutMs": {
+        "why": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.（补充声明：receipt.delegation.path / receipt.delivery.path 是交付通道的路径名，真机 activation/continuation、仿真 caller，同一语义不同通道。）",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:6417"
+      },
+      "lastPhase": {
+        "why": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.（补充声明：receipt.delegation.path / receipt.delivery.path 是交付通道的路径名，真机 activation/continuation、仿真 caller，同一语义不同通道。）",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:6417"
+      },
+      "requestSent": {
+        "why": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.（补充声明：receipt.delegation.path / receipt.delivery.path 是交付通道的路径名，真机 activation/continuation、仿真 caller，同一语义不同通道。）",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:6417"
+      },
+      "roundCompleted": {
+        "why": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.（补充声明：receipt.delegation.path / receipt.delivery.path 是交付通道的路径名，真机 activation/continuation、仿真 caller，同一语义不同通道。）",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:6417"
+      },
+      "roundConsumed": {
+        "why": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.（补充声明：receipt.delegation.path / receipt.delivery.path 是交付通道的路径名，真机 activation/continuation、仿真 caller，同一语义不同通道。）",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:6417"
+      },
+      "waitedMs": {
+        "why": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted.（补充声明：receipt.delegation.path / receipt.delivery.path 是交付通道的路径名，真机 activation/continuation、仿真 caller，同一语义不同通道。）",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:6417"
+      }
+    }
+  },
+  "vibe_v5_script": {
+    "kind": "sim-cannot",
+    "keys": [
+      "fromRecord.bytes"
+    ],
+    "note": "fromRecord.bytes is a live-only nested byte counter on the archived-script receipt: the in-process simulator never emits that reading at all (rich corpus class onlyReal). Declared for the FIELD being absent, not for two different values. The seam: `vibe_v5_script` only builds `fromRecord` when the caller passes an existing library-record id (op=archive, id:\"rec-<n>\") and the host library service reads that record back — vibe-math-vmu/packs/v5r/tools.js:1348-1403; the simulator never takes that archive/read-back service path.",
+    "details": {
+      "fromRecord.bytes": {
+        "why": "the live receipt records the byte size of the archived script it read back from the record store; the simulator does not run that archive/read-back path, so the field never appears on the simulated side (live-only).",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:17000"
+      }
+    }
+  },
+  "vibe_v5_record_method": {
+    "kind": "sim-cannot",
+    "keys": [
+      "proofStateEvidence.pointerCheck.bytes"
+    ],
+    "note": "proofStateEvidence.pointerCheck.bytes is a live-only byte counter of the proof file the pointer check actually read; the simulator does not perform that pointer check against a deployed workspace, so the field has no simulated counterpart (onlyReal).",
+    "details": {
+      "proofStateEvidence.pointerCheck.bytes": {
+        "why": "the live machine sizes the proof artifact read by the pointer check; no scenario here can materialise that deployed proof file, so the reading is live-only rather than a value difference.",
+        "evidence": "D:/_tmp/sim/compare/real-fields.jsonl:15816"
+      }
+    }
   }
 }

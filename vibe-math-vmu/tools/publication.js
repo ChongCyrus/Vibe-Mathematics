@@ -30,7 +30,7 @@ export function makePublicationSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'useImpactInEvaluation') return Object.assign({ ok: true, action }, await publication.useImpactInEvaluation({ ...(request || {}), ...(id !== undefined && id !== null ? { paperId: id } : {}), ...(period !== undefined && period !== null ? { period } : {}) }))
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
-        return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+        return refused(e.code || 'VMU_STATE', String(e.message), e.hint, e)
       }
     },
   }

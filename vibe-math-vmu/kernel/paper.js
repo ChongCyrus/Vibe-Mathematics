@@ -107,8 +107,22 @@ export function refuse(code, message, hint, extra) {
 
 const SECTION_ID = /^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/
 const TRAIL_MAX = 200
+/**
+ * ★★★ RUN 256 / TB-2623 (clock purity): the wall clock is read in EXACTLY ONE place per face, and that place is
+ * NAMED. The kernel hands every service its injected clock; this fallback only runs when a caller (tests/scripts)
+ * built `createPaper` with no clock at all, and then `clockSource()` says so out loud instead of mixing silently.
+ */
+const PAPER_WALL_CLOCK = { reads: 0, sites: [] }
 
-export function createPaper({ clock = () => Date.now(), log = () => {}, settings = {}, register = null, audit = null, bus = null } = {}) {
+export function createPaper({ clock: clockGiven = null, log = () => {}, settings = {}, register = null, audit = null, bus = null } = {}) {
+  const clockInjected = typeof clockGiven === 'function'
+  const clock = clockInjected
+    ? clockGiven
+    : () => {
+      PAPER_WALL_CLOCK.reads += 1
+      if (PAPER_WALL_CLOCK.sites.indexOf('paper') < 0) PAPER_WALL_CLOCK.sites.push('paper')
+      return Date.now()
+    }
   const readKey = (k) => (settings && typeof settings.get === 'function' ? settings.get(k) : (settings || {})[k])
   const say = (ev) => { try { if (typeof log === 'function') log(ev) } catch (e) { /* logging never breaks the face */ } }
 
@@ -321,7 +335,7 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
         ? 'cannot finalise ' + p.id + ': the office has not been consulted yet (waiting' + (gate.remainingMs === null ? ' (unbounded)' : ', ' + gate.remainingMs + 'ms left') + ')'
         : 'cannot finalise ' + p.id + ': the office-consultation wait expired (' + gate.timeoutMs + 'ms) and vmu.paper.officeConsultOnTimeout=' + gate.onTimeout + (gate.heldOnTimeout ? ' ⇒ it stays on hold' : ' ⇒ the request was cleared, ask again'))
     throw refuse('VMU_OFFICE_CONSULT_REQUIRED', msg,
-      'consult first: consult({ paperId: "' + p.id + '", kind: "message"|"meeting", by: "<who consulted>", ref: "<pointer>" }) - or make the caller an exempt role in vmu.paper.officeConsultExemptRoles, or switch the gate off with vmu.paper.officeConsult=off',
+      'consult first — the TOOL face is `vibe_v5_paper { action: "consult", target: "' + p.id + '", member: "<office id>", answer: "<核对结论>", note: "<可选说明>" }` (read the waiting request first with `vibe_v5_paper { action: "consult_state", target: "' + p.id + '" }`); the kernel-level call consult({ paperId, kind, by, ref }) is NOT the tool surface. REACHABLE INSTEAD: 先用 action:"consult_state" 读 awaiting.id，再由所办用 vibe_v5_paper {action:"consult", target:"' + p.id + '", member:"<所办 id>", answer:"…"} 答复，答完重试 action:"final"；或把调用方放进豁免角色 vmu.paper.officeConsultExemptRoles；不要设 vmu.paper.officeConsult=off 绕过',
       // ★★ RUN 153 (G9): the answer call needs a `target`, and this refusal did not name the paper — the real run's
       // office answered, hit `action "consult" addresses ONE paper, and no target was given`, and had to retry blind.
       // The refusal now carries the same key the answer takes (`target`), so the repair is a copy.
@@ -329,6 +343,20 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
   }
 
   return {
+    /**
+     * ★★★ RUN 256 / TB-2623: WHERE this face gets its clock. `injected:false` means every `at` this face wrote is WALL
+     * time — a fact the caller must not have to infer from a timestamp that looks plausible.
+     */
+    clockSource() {
+      return {
+        injected: clockInjected,
+        wallClockReads: PAPER_WALL_CLOCK.reads,
+        sites: PAPER_WALL_CLOCK.sites.slice(),
+        means: clockInjected
+          ? 'every stamp written by this paper face came from the clock its caller injected (no wall-clock read)'
+          : 'this paper face was built with NO clock: it has read the wall clock ' + PAPER_WALL_CLOCK.reads + ' time(s), so its timestamps are not reproducible corpus',
+      }
+    },
     /**
      * Start a manuscript: a title, the sections it must contain, WHO OWES EACH SECTION, and the editor. Every
      * section must have an owner - an unowned section would be a promise nobody made, so it is refused by name.

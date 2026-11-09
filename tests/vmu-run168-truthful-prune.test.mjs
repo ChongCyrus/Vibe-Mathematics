@@ -107,8 +107,11 @@ const readFold = async (path) => JSON.parse(String(await readFile(path, 'utf8'))
     '§0 the guard: a live row with NO restore stamp, or one stamped strictly before this trash, is the OLD copy (an equal stamp is a same-tick restore and stays legitimate)')
   ok(/restoredAt: r\.restoredAt === undefined/.test(index),
     '§0 the durable snapshot carries `restoredAt`, which is what tells a real restore from a stale live row')
-  ok(/enum: \['list', 'expand', 'append', 'status', 'prune', 'restore'\]/.test(host),
-    '§0 the records face DECLARES `restore` (F15-4: the prune hint named a verb the enum did not have)')
+  // RUN 257：枚举新增合法值 `get`（get≡expand）。pin 从精确枚举改为形状断言：必须有 restore，且不得出现已废止的动词。
+  // 断的是枚举这一行的形状（列了哪些动词），不是「某处出现 get」这种能力断言。
+  const enum168 = (host.match(/enum: \['list', 'get',[^\]]*\]/) || [''])[0]
+  ok(enum168.includes("'restore'") && !/(compact|remove)/.test(enum168),
+    '§0 the records face DECLARES `restore` (F15-4) and the new `get` alias, no retired verb (RUN 257)')
   ok(/if \(action === 'restore'\) \{/.test(host) && /restoredCount: restored\.length/.test(host),
     '§0 restore is implemented, per id, with a per-id failure list')
   ok(/action:"restore".*id\(s\) above before purgeAt/s.test(host),

@@ -121,9 +121,10 @@ await kernel.members.hire({ id: 'acad', slot: 'chair' })
 await kernel.members.hire({ id: 'r-1', slot: 'member' })
 
 console.log('=== 1. G8 / G11 LAND IN THE ROW *AND* THE MD — ONE FIELD, NO SECOND STORE ===')
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
 const p1 = BLUEPRINT.proposeBlueprint({
   records: kernel.records, path: PATH_MAIN, text: '第 1 版正文：先给粗骨架，再补细部。', by: 'r-1', seat: 'member', at: T0,
-  outline: outlineOf(), revisionReason: '首次给出由粗到细的骨架',
+  outline: outlineOf(), revisionReason: '首次给出由粗到细的骨架', materialize: true,
 })
 ok(p1 && p1.ok === true && typeof p1.id === 'string', 'fixture: the outline revision was written (RULE E: the fixture exists before it is judged)', p1 && p1.id)
 ok(isOutline(p1.outline) && p1.outlineCount === 2 && p1.outlineDepthMax === 2 && p1.outlineSource === 'request',
@@ -150,7 +151,8 @@ ok(parse1 && parse1.ok === true && isOutline(parse1.outline) && parse1.revisionR
   '★ the reader parses the outline back into structured nodes (a reader never has to parse the document by hand)', parse1 && { outline: parse1.outline, reason: parse1.revisionReason })
 
 console.log('=== 2. A CONTINUATION INHERITS BOTH — AND SAYS SO ===')
-const p2 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_MAIN, draft: p1.id, text: '共同设计：补一条复查节奏。', by: 'acad', seat: 'chair', at: T0 + 1000 })
+// legacy path: the continuation rewrites the kernel-materialized draft only when materialize:true is explicit
+const p2 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_MAIN, draft: p1.id, text: '共同设计：补一条复查节奏。', by: 'acad', seat: 'chair', at: T0 + 1000, materialize: true })
 ok(p2 && p2.ok === true && p2.id === p1.id, 'fixture: the chair continued the SAME draft (one draft per unadopted revision)', p2 && { id: p2.id, before: p1.id })
 ok(isOutline(p2.outline) && p2.outlineSource === 'draft', '★ G8: a continuation that passes no outline keeps the draft outline and names the source ("draft")', p2 && { outline: p2.outline, source: p2.outlineSource })
 ok(p2.revisionReason === '首次给出由粗到细的骨架' && p2.revisionReasonSource === 'draft', '★ G11: a continuation inherits the reason and reports revisionReasonSource:"draft"', p2 && { reason: p2.revisionReason, source: p2.revisionReasonSource })
@@ -191,7 +193,8 @@ ok(read1.ok === true && typeof fieldsRead.outline === 'string' && /"id":"o1"/.te
   'the published READ face carries both fields in `fields` (the tool layer exposes a fixed subset: the top-level readings are the Lead wiring item)', { outline: String(fieldsRead.outline || '').slice(0, 40), reason: fieldsRead.revisionReason })
 
 console.log('=== 4. ABSENT IS EXPLICIT — NULL AND A SENTENCE, NEVER A SILENT EMPTY ===')
-const p3 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_BARE, text: '没有骨架也没有理由的一版。', by: 'r-1', seat: 'member', at: T0 })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const p3 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_BARE, text: '没有骨架也没有理由的一版。', by: 'r-1', seat: 'member', at: T0, materialize: true })
 ok(p3 && p3.ok === true && p3.id !== p1.id, 'fixture: a revision with neither field was written (the fields are optional)', p3 && p3.id)
 ok(Array.isArray(p3.outline) && p3.outline.length === 0 && p3.outlineCount === 0 && p3.outlineSource === 'none',
   '★ G8: no outline is an EXPLICIT empty list + count 0 (omission would make "none" and "not asked" indistinguishable)', p3 && { outline: p3.outline, count: p3.outlineCount, source: p3.outlineSource })
@@ -206,7 +209,8 @@ ok(stBare.ok === true && Array.isArray(stBare.parsed.outline) && stBare.parsed.o
   'the STATUS face reports the absence explicitly too (empty list + null, both present as keys)', stBare.parsed && { outline: stBare.parsed.outline, reason: stBare.parsed.revisionReason })
 
 console.log('=== 5. THE DECLARED KNOB IS A HINT, NEVER A GATE ===')
-const p4 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_HINT, text: '部署要求骨架，但这一版没带。', by: 'r-1', seat: 'member', at: T0, requireOutline: true })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const p4 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_HINT, text: '部署要求骨架，但这一版没带。', by: 'r-1', seat: 'member', at: T0, requireOutline: true, materialize: true })
 ok(p4 && p4.ok === true && typeof p4.id === 'string', '★ the write LANDED even though the deployment asks for an outline (a hint that refuses would be a gate, and the default is off)', p4 && p4.id)
 ok(p4.outlineRequired === true && p4.outlineRequiredSource === BLUEPRINT.BLUEPRINT_OUTLINE_REQUIRE_KEY,
   '★ the receipt answers `outlineRequired:true` and NAMES the setting that asked', p4 && { required: p4.outlineRequired, source: p4.outlineRequiredSource })
@@ -214,7 +218,8 @@ ok(typeof p4.outlineRequiredMeans === 'string' && p4.outlineRequiredMeans.trim()
   '★ the sentence says the write was not refused (the reader learns the rule is a hint without reading this test)', p4 && String(p4.outlineRequiredMeans).slice(0, 60))
 const p4row = kernel.records.get({ id: p4.id })
 ok(p4row && typeof p4row.body === 'string' && p4row.body.indexOf('- status：draft') >= 0, 'the hinted revision is a real draft row (the hint produced words, not a false state)', p4row && String(p4row.body).slice(0, 40))
-const p5 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_HINT + '.2', text: '部署要求骨架，这一版带了。', by: 'r-1', seat: 'member', at: T0, requireOutline: true, outline: outlineOf() })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const p5 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_HINT + '.2', text: '部署要求骨架，这一版带了。', by: 'r-1', seat: 'member', at: T0, requireOutline: true, outline: outlineOf(), materialize: true })
 ok(p5 && p5.outlineRequired === false && /已带 outline/.test(String(p5.outlineRequiredMeans)),
   'when the outline is present the same knob reports "not triggered" (the hint is not a constant complaint)', p5 && { required: p5.outlineRequired, means: String(p5.outlineRequiredMeans).slice(0, 40) })
 ok(BLUEPRINT.outlineRequireOf() === false && BLUEPRINT.outlineRequireOf({ 'vmu.blueprint.requireOutline': true }) === true && BLUEPRINT.outlineRequireOf(kernel.settingsView()) === false,

@@ -30,8 +30,23 @@
  *                   set of tool names the briefs actually mention.
  *     --self-probe  PLANT one wrong tool name, one wrong parameter category and one missing required parameter
  *                   and require THIS checker to report each of them (plus two controls that must stay quiet).
+ *                   Also plants the STRUCTURE defects below (missing placeholder, missing seat, missing table
+ *                   header, missing prompt-critique section, forbidden office-substitute wording, over-length).
  *                   Exit 0 only when every planted defect was caught — this is how the gate proves it is not
  *                   vacuous. It is a proof ABOUT the checker, not a substitute for checking a real brief.
+ *     --structure   FORCE the run-brief structure checks (see below); --no-structure turns them off.
+ *                   Default is AUTO: the structure checks run when the file carries `## ` section headings
+ *                   (a brief, or this repo's template) and are skipped for a bare call-snippet fixture.
+ *
+ * Run-brief STRUCTURE (TB-2612, task-91 — a brief is also an ORGANISATION interface):
+ *   BRIEF_MISSING_PLACEHOLDER   the placeholder-problem sentence is absent (the sentence is quoted verbatim in
+ *                               STRUCTURE.placeholder and must appear as one line)
+ *   BRIEF_MISSING_SEAT          a seat's section heading is absent (the problem NAMES the missing seat)
+ *   BRIEF_MISSING_RULE_TABLE    the four-column table header 「规则条号 | 期望 | 实测 | 判定 | 建议」 is absent
+ *   BRIEF_MISSING_PROMPT_CRITIQUE  no heading is a prompt-critique section (`提示词`)
+ *   BRIEF_FORBIDDEN_WORDING     wording that hands a seat's own writing to the office (「所办替成员」…)
+ *   BRIEF_TOO_LONG              the TEMPLATE exceeds its 180-line cap
+ *   BRIEF_SEAT_SECTION_TOO_LONG a TEMPLATE seat section exceeds 15 body lines (the problem names the seat)
  *
  * Exit codes: 0 = every call matches the declarations; 1 = at least one problem, a derivation failure, bad usage.
  *
@@ -60,6 +75,37 @@ export const CODES = Object.freeze({
   unknownParam: 'BRIEF_UNKNOWN_PARAM',
   missingRequired: 'BRIEF_MISSING_REQUIRED',
 })
+
+/** TB-2612 / task-91: the STRUCTURE codes. A brief is an interface in two directions (declarations AND people). */
+export const STRUCTURE_CODES = Object.freeze({
+  placeholder: 'BRIEF_MISSING_PLACEHOLDER',
+  seat: 'BRIEF_MISSING_SEAT',
+  ruleTable: 'BRIEF_MISSING_RULE_TABLE',
+  critique: 'BRIEF_MISSING_PROMPT_CRITIQUE',
+  forbidden: 'BRIEF_FORBIDDEN_WORDING',
+  tooLong: 'BRIEF_TOO_LONG',
+  seatTooLong: 'BRIEF_SEAT_SECTION_TOO_LONG',
+})
+
+/** The placeholder-problem declaration, verbatim. Quoted as ONE source string so a reword shows up as a diff. */
+export const PLACEHOLDER = '这是模拟用的数学题，只作占位/象征，可以是公开问题，不要把时间花在真解上'
+
+/** The four seats a run brief must give their own section — the problem NAMES the one that is missing. */
+export const SEATS = Object.freeze([
+  { key: 'office', label: '所办（office）', heading: /^#{1,6}\s*[^\n]*所办/ },
+  { key: 'chair', label: '主席（chair）', heading: /^#{1,6}\s*[^\n]*主席/ },
+  { key: 'member', label: '成员（member）', heading: /^#{1,6}\s*[^\n]*成员/ },
+  { key: 'temp', label: '临时工（temp）', heading: /^#{1,6}\s*[^\n]*临时工/ },
+])
+
+/** Four-column self-test table: rule line | expected | measured | verdict | suggestion. */
+export const RULE_TABLE = /^[^\n]*规则条号[^\n]*\|[^\n]*期望[^\n]*\|[^\n]*实测[^\n]*\|[^\n]*判定[^\n]*\|[^\n]*建议/m
+
+/** Wording that hands a seat's own writing to the office — the TB-2611 defect, said again in a brief. */
+export const FORBIDDEN = Object.freeze(['所办替成员', '所办代写', 'office 代写', '代成员写', '代成员记录'])
+
+export const TEMPLATE_MAX_LINES = 180
+export const SEAT_MAX_LINES = 15
 
 /** The task's item 3: a tool name is only a call candidate when it is exactly this shape. */
 const TOOL_NAME = /^vibe_[a-z0-9_]+$/
@@ -673,12 +719,182 @@ export function selfProbe(catalog) {
   return { results, failures }
 }
 
+/** Line numbers are 1-based over the normalised text (the same convention as the call problems). */
+function structureProblem(path, line, code, message, hint) {
+  return problem({ file: path, line, tool: null, param: null, code, message, hint, legal: null, lineText: '' })
+}
+
+/**
+ * TB-2612 / task-91: check the STRUCTURE of a run brief. Separate from checkBriefText on purpose — the call
+ * checks answer "is this name declared?", the structure checks answer "does this brief tell four seats what
+ * they each do, and does it refuse to hand their work to the office?". AUTO mode: only a file that carries
+ * `## ` headings is treated as a brief (a bare call-snippet fixture from the declaration suite stays silent).
+ * @returns problems[] with the STRUCTURE_CODES codes.
+ */
+export function checkBriefStructure(path, rawText, opts = {}) {
+  const text = String(rawText).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  const lines = text.split('\n')
+  const force = opts.force === 'on' ? true : opts.force === 'off' ? false : null
+  const looksLikeBrief = lines.some((line) => /^#{1,6}\s/.test(line))
+  if (force === false || (force === null && !looksLikeBrief)) return []
+  const isTemplate = opts.template === true || /RUN-BRIEF-TEMPLATE\.md$/i.test(path)
+  const problems = []
+
+  // 0. the placeholder-problem declaration, verbatim, on its own line
+  const placeholderLine = lines.findIndex((line) => line.includes(PLACEHOLDER))
+  if (placeholderLine < 0) {
+    problems.push(structureProblem(path, 1, STRUCTURE_CODES.placeholder,
+      'the placeholder-problem declaration is missing',
+      'add this line verbatim as section 0: ' + PLACEHOLDER))
+  }
+
+  // 1. four seats, each with its own section; the problem NAMES the missing seat
+  const headings = []
+  for (let i = 0; i < lines.length; i++) if (/^#{1,6}\s/.test(lines[i])) headings.push(i)
+  for (const seat of SEATS) {
+    const at = headings.find((i) => seat.heading.test(lines[i]))
+    if (at === undefined) {
+      problems.push(structureProblem(path, 1, STRUCTURE_CODES.seat,
+        'missing the section for seat ' + seat.label,
+        'give ' + seat.label + ' its own `## ` section (a brief with three seats cannot hand work to the fourth)'))
+    }
+  }
+
+  // 2. the four-column self-test table header
+  if (!RULE_TABLE.test(text)) {
+    problems.push(structureProblem(path, 1, STRUCTURE_CODES.ruleTable,
+      'the four-column self-test table header is missing',
+      'add a header row: 规则条号 | 期望 | 实测 | 判定 | 建议'))
+  }
+
+  // 3. a prompt-critique section
+  if (!/^#{1,6}[^\n]*提示词/m.test(text)) {
+    problems.push(structureProblem(path, 1, STRUCTURE_CODES.critique,
+      'the prompt-critique section is missing',
+      'add a section whose heading names 提示词 (unreasonable / contradictory / too long / wrong timing / wrong place)'))
+  }
+
+  // 4. wording that hands a seat's own writing to the office
+  for (const phrase of FORBIDDEN) {
+    let from = 0
+    while (true) {
+      const at = text.indexOf(phrase, from)
+      if (at < 0) break
+      const line = lineOf(text, at)
+      problems.push(structureProblem(path, line, STRUCTURE_CODES.forbidden,
+        'forbidden office-substitute wording `' + phrase + '`',
+        'a brief may say the office only RELAYS what the seat wrote, never that it writes it; rewrite the sentence'))
+      from = at + phrase.length
+    }
+  }
+
+  // 5. the TEMPLATE caps (a template is copied, so its size is the ceiling of every brief made from it)
+  if (isTemplate) {
+    if (lines.length > TEMPLATE_MAX_LINES + 1) {
+      problems.push(structureProblem(path, 1, STRUCTURE_CODES.tooLong,
+        'the template is ' + (lines.length - 1) + ' lines, over its ' + TEMPLATE_MAX_LINES + '-line cap',
+        'move detail into the table sections, or delete prose — do NOT raise the cap'))
+    }
+    for (const seat of SEATS) {
+      const at = headings.find((i) => seat.heading.test(lines[i]))
+      if (at === undefined) continue
+      let end = lines.length
+      for (const h of headings) if (h > at) { end = h; break }
+      // body lines only (the heading itself is not counted), blank lines are ignored
+      let body = 0
+      for (let i = at + 1; i < end; i++) if (lines[i].trim() !== '') body++
+      if (body > SEAT_MAX_LINES) {
+        problems.push(structureProblem(path, at + 1, STRUCTURE_CODES.seatTooLong,
+          'the section for seat ' + seat.label + ' has ' + body + ' body lines, over its ' + SEAT_MAX_LINES + '-line cap',
+          'keep one seat section to what that seat must DO this run; move detail to the proof-point table'))
+      }
+    }
+  }
+  return problems
+}
+
+/** A minimal but VALID brief: used as the control and as the base the structure probes delete from. */
+export function structureFixture() {
+  return [
+    '# RUN BRIEF（fixture）',
+    '## 0 占位题声明',
+    '',
+    '> ' + PLACEHOLDER,
+    '',
+    '## 1 立所',
+    '- 开所：`vibe_v5_start {}`',
+    '',
+    '## 2 席位与本轮各自任务',
+    '### 2.0 所办（office）',
+    '- 你只派回合与转达',
+    '### 2.1 主席（chair）',
+    '- 你主持会议',
+    '### 2.2 成员（member）',
+    '- 你写自己的卡',
+    '### 2.3 临时工（temp）',
+    '- 你做一次性的活',
+    '',
+    '## 3 验点清单',
+    '| 规则条号 | 期望 | 实测 | 判定 | 建议 |',
+    '| --- | --- | --- | --- | --- |',
+    '| L1 | 回执有 id | 待填 | PASS | 无 |',
+    '',
+    '## 4 缺陷记录纪律',
+    '- file:line + 现象 + 建议',
+    '',
+    '## 5 提示词批评专章',
+    '- 原句 → 建议',
+    '',
+    '## 6 纪律',
+    '- 一次一调用',
+    '',
+    '## 7 上界与落盘时刻',
+    '- 30 分钟写第一版',
+    '',
+    '## 8 结题判据',
+    '- 四席表格齐',
+    '',
+    '## 9 报告清单',
+    '- REPORT.md',
+    '',
+  ].join('\n')
+}
+
+/** Proof that the STRUCTURE checks bite: delete one required part at a time and require it to be named. */
+export function selfProbeStructure() {
+  const fixture = structureFixture()
+  const cases = [{ name: 'control-valid-structure', expected: [], text: fixture }]
+  for (const seat of SEATS) {
+    const kept = fixture.split('\n').filter((line) => !seat.heading.test(line)).join('\n')
+    cases.push({ name: 'plant-missing-seat-' + seat.key, expected: [STRUCTURE_CODES.seat], text: kept })
+  }
+  cases.push({ name: 'plant-missing-placeholder', expected: [STRUCTURE_CODES.placeholder], text: fixture.split(PLACEHOLDER).join('（声明被删）') })
+  cases.push({ name: 'plant-missing-rule-table', expected: [STRUCTURE_CODES.ruleTable], text: fixture.split('| 规则条号 | 期望 | 实测 | 判定 | 建议 |').join('| 结果表 |') })
+  cases.push({ name: 'plant-missing-critique', expected: [STRUCTURE_CODES.critique], text: fixture.split('## 5 提示词批评专章').join('## 5 意见') })
+  cases.push({ name: 'plant-forbidden-wording', expected: [STRUCTURE_CODES.forbidden], text: fixture + '\n- 所办替成员填表\n' })
+  const longTemplate = '# t\n' + fixture + Array.from({ length: 200 }, (_, i) => '- filler ' + i).join('\n')
+  cases.push({ name: 'plant-template-too-long', expected: [STRUCTURE_CODES.tooLong], text: longTemplate })
+  const fatSeat = fixture.split('### 2.2 成员（member）\n- 你写自己的卡').join('### 2.2 成员（member）\n' + Array.from({ length: 20 }, (_, i) => '- seat filler ' + i).join('\n'))
+  cases.push({ name: 'plant-seat-too-long', expected: [STRUCTURE_CODES.seatTooLong], text: fatSeat })
+  const results = []
+  const failures = []
+  for (const c of cases) {
+    const got = checkBriefStructure('<self-probe-template.md>', c.text, { template: true }).map((p) => p.code)
+    const pass = c.expected.length === 0 ? got.length === 0 : c.expected.every((code) => got.includes(code))
+    results.push({ name: c.name, expected: c.expected, got, pass })
+    if (!pass) failures.push(c.name + ' planted ' + JSON.stringify(c.text.slice(0, 200)) + ' but the checker reported ' + JSON.stringify(got))
+  }
+  return { results, failures }
+}
+
 function renderHuman(report, catalog) {
   const out = []
   for (const p of report.problems) {
     out.push(p.file + ':' + p.line + ': ' + p.code + '  ' + p.message)
     if (p.lineText) out.push('    line ' + p.line + ': ' + p.lineText)
-    if (p.code !== CODES.unknownTool) out.push('    legal parameters of `' + p.tool + '`: ' + p.legal)
+    if (p.tool !== null && p.tool !== undefined && p.legal && p.code !== CODES.unknownTool) {
+      out.push('    legal parameters of `' + p.tool + '`: ' + p.legal)
+    }
     out.push('    hint: ' + p.hint)
   }
   return out
@@ -713,9 +929,12 @@ async function main(argv) {
   const files = []
   let asJson = false
   let probe = false
+  let structureForce = null
   for (const arg of argv) {
     if (arg === '--json') { asJson = true; continue }
     if (arg === '--self-probe') { probe = true; continue }
+    if (arg === '--structure') { structureForce = 'on'; continue }
+    if (arg === '--no-structure') { structureForce = 'off'; continue }
     if (arg === '--help' || arg === '-h') {
       process.stdout.write('usage: node scripts/check-task-brief.mjs <brief.txt> [<brief2.txt> …] [--json] [--self-probe]\n')
       process.exitCode = 0
@@ -734,6 +953,9 @@ async function main(argv) {
   }
   if (probe) {
     const probeReport = selfProbe(catalog)
+    const structureProbe = selfProbeStructure()
+    probeReport.results = probeReport.results.concat(structureProbe.results)
+    probeReport.failures = probeReport.failures.concat(structureProbe.failures)
     if (asJson) {
       process.stdout.write(JSON.stringify({ ok: probeReport.failures.length === 0, selfProbe: probeReport, derived: { tools: catalog.tools.size } }, null, 2) + '\n')
     } else {
@@ -760,7 +982,11 @@ async function main(argv) {
       process.exitCode = 1
       return
     }
-    reports.push(checkBriefText(file, text, catalog))
+    const report = checkBriefText(file, text, catalog)
+    const structural = checkBriefStructure(file, text, { force: structureForce })
+    report.problems = structural.concat(report.problems)
+    report.structure = structural.length
+    reports.push(report)
   }
   const total = reports.reduce((n, r) => n + r.problems.length, 0)
   if (asJson) {

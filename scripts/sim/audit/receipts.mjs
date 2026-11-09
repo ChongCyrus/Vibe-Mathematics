@@ -28,12 +28,35 @@ const readJsonl = (dir, name) => {
   return text.split('\n').filter((l) => l.trim() !== '').map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
 }
 
-/** Walk every string (keys included) and report the ones that carry a serialisation leak. */
+// A2's predicate. THE SUBJECT IS A VALUE, NOT A WORD: what A2 wants to catch is "a VALUE was written out as a
+// placeholder" ("produced: undefined", "id: NaN", "owner: [object Object]") - a reader cannot tell those apart from a
+// real name. What it must NOT catch is prose that happens to use the English word: `host.js` legitimately says
+// "rows whose track is undefined are excluded by default", and a check that reds on that sentence teaches the next
+// author to stop writing explanations. Measured before this rewrite: 10 findings across three corpora, every one of
+// them a sentence (end-to-end 4, records-blueprint 5, actions-extra 1).
+//
+// So the rule is value-level:
+//   * the WHOLE string (trimmed) is one of the placeholders, or
+//   * the string contains `[object Object]` anywhere (that token only appears when an object was String()'d), or
+//   * the string carries JSON-shaped evidence of a placeholder (`": undefined"`, `": NaN"`).
+const LEAK_PLACEHOLDERS = ['undefined', 'NaN', '[object Object]']
+const LEAK_JSON_SHAPES = [/: undefined(?![A-Za-z0-9_])/, /: NaN(?![A-Za-z0-9_])/, /: ?\[object Object\]/]
+function leakOf(text) {
+  const trimmed = text.trim()
+  if (LEAK_PLACEHOLDERS.includes(trimmed)) return trimmed
+  if (trimmed.includes('[object Object]')) return '[object Object]'
+  for (const shape of LEAK_JSON_SHAPES) {
+    const hit = shape.exec(trimmed)
+    if (hit) return hit[0].trim()
+  }
+  return null
+}
+
+/** Walk every string value and report the ones that ARE placeholders (see leakOf for the distinction). */
 function leaks(value, path = '$', out = []) {
   if (typeof value === 'string') {
-    for (const bad of ['undefined', '[object Object]', 'NaN']) {
-      if (value.includes(bad)) out.push({ path, bad, sample: value.slice(0, 160) })
-    }
+    const bad = leakOf(value)
+    if (bad !== null) out.push({ path, bad, sample: value.slice(0, 160) })
   } else if (Array.isArray(value)) {
     value.forEach((v, i) => leaks(v, path + '[' + i + ']', out))
   } else if (value && typeof value === 'object') {
@@ -41,6 +64,10 @@ function leaks(value, path = '$', out = []) {
   }
   return out
 }
+
+// Exported so the gate can prove the predicate in BOTH directions (three real leak shapes red, prose green) without
+// re-running an audit over a corpus. A predicate nobody can call is a predicate nobody can falsify.
+export const __test = { leaks, leakOf }
 
 export function audit(dir) {
   const findings = []

@@ -23,14 +23,12 @@
 // Measured in round 16 (see `_handoff/vmu/verify-round16-report.md`).
 
 export const PROMPT_MECHANISM_DIVERGENCES = Object.freeze([
-  Object.freeze({
-    family: 'unknown-field-refusal',
-    contains: '写了会被判 `VMU_TURN_UNKNOWN_FIELD`',
-    owner: 'vmu-pack · packs/v5r/prompts/v5r-core.js:526',
-    reason: '教的是无条件拒绝，实测默认 vmu.turn.unknownReplyFieldMode=ignore-named（settings/schema.js:211）⇒ kernel/turn/index.js:1169-1177 不拒、只记 ignoredFields；只有 refuse 模式才抛 VMU_TURN_UNKNOWN_FIELD。',
-    expiry: '当 v5r-core.js 该句点明模式（例如「仅在 vmu.turn.unknownReplyFieldMode=refuse 时才整轮拒」）后删除本条',
-    reviewed: 'R16',
-  }),
+  // ★ RUN 268: the `unknown-field-refusal` entry that used to live here ('写了会被判 `VMU_TURN_UNKNOWN_FIELD`') is
+  // DELETED, not reworded. Its own expiry said "when the sentence names the mechanism" — the sentence has since been
+  // rewritten to teach the refusal AND the exit the kernel really offers (the refusal hint begins `known fields: …`).
+  // This institution declares vmu.turn.unknownReplyFieldMode:"refuse" (packs/v5r/settings/defaults.json), so the
+  // teaching is true here; the gate now CHECKS that claim live (family `unknown-field-refusal`, `verified()`), which
+  // is strictly stronger than excusing it in this ledger. Shrink-only forced the deletion in the same change.
   Object.freeze({
     family: 'fixture-vocabulary',
     contains: '本夹具的收敛口径',

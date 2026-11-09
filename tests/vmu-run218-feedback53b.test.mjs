@@ -102,7 +102,8 @@ ok(kernel !== null && typeof kernel.records === 'object', 'the kernel booted wit
 const founded = await A.call('vibe_v5_start', { researcherCount: 2, problem: '前 n 个奇数之和等于 n 的平方' })
 ok(founded.ok !== false && Array.isArray(founded.hired) && founded.hired.length >= 3,
   'the institute is founded with a chair and two researchers (an empty roster would make the seats below unresolvable)', { ok: founded.ok, hired: founded.hired })
-const first = await A.call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: '第一行：本所的目标是证明奇数求和恒等式。' })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const first = await A.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: '第一行：本所的目标是证明奇数求和恒等式。' })
 ok(first.ok !== false && String(first.id || '') !== '', 'the first proposal is filed (without a row there is nothing to join)', { ok: first.ok, code: first.code, id: first.id })
 const share1 = first.draftSharing || null
 ok(share1 !== null && typeof share1 === 'object', '★ ① the propose receipt carries a `draftSharing` block', first.draftSharing)
@@ -115,7 +116,7 @@ ok(share1 !== null && Array.isArray(share1.authors) && share1.authors.length ===
 ok(share1 !== null && typeof share1.means === 'string' && share1.means.includes('STARTED it'),
   '★ ① and the means says this call STARTED the shared row', share1 && share1.means)
 
-const second = await A.call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', text: '## 共同设计补充｜r-2' + '\n' + '- 复核分工：我先验归纳步。' })
+const second = await A.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-2', text: '## 共同设计补充｜r-2' + '\n' + '- 复核分工：我先验归纳步。' })
 ok(second.ok !== false && String(second.id || '') === String(first.id),
   'the second proposal continues the SAME row (that is the shared-draft shape under test)', { ok: second.ok, id: second.id, firstId: first.id })
 const share2 = second.draftSharing || null

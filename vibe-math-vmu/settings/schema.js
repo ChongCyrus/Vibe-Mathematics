@@ -187,7 +187,12 @@ const CORE_DEFS = Object.freeze([
   // while exposing only list(): string[] to a plugin, so a plugin cannot construct a legal parent.
   { key: 'vmu.turn.deliverMode', type: 'enum', domain: ['subagents', 'caller'], def: 'subagents', hot: HOT.H2, who: 'office', doc: 'capability-default: 这是交付【传输】的选择，不是研究该怎么进行的政策 —— 默认值 subagents＝宿主把成员回合当作子代理运行，是宿主协作得了的那条路（caller 那条要求部署把提示词交回调用会话）。交付路线：★ subagents＝宿主把成员回合当作子代理运行（★ 默认）；★ caller＝把装配好的提示词交回调用会话，★ 由它扮演成员回合并用 vibe_vmu_turn { reply } 送回答复' },
 { key: 'vmu.turn.deliverProvider', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径' },
-{ key: 'vmu.turn.deliveryTimeoutMs', type: 'number', def: 180000, hot: HOT.H2, who: 'office', doc: '成员回合 one-shot 交付的 deadline（毫秒）。★ 超时后该回合以 VMU_TURN_DELIVERY_TIMEOUT 具名失败（带 turn/member/已等毫秒/最后一次交付阶段），并释放串行队列；★ 正常回合只要在 deadline 内返回就不受影响。★ SLV 实测（opencode，v3）：正常成员回合 5–44 秒；异常回合在 180 秒时超时（deliveryTimeoutMs 即由此定）' },
+// ★ RUN 255 / TB-2606-A + TB-2629: the ONE declaration of the delivery budget. The one-shot seam (host-deliver.js)
+// and the turn loop (kernel/turn/index.js) BOTH read this `def`; they must never carry separate literals - a draft did
+// (seam 180000 / loop 1800000) and the status face reported 30 minutes while the seam killed a legal turn at 176400 +
+// 45000 ms. Run 74 MEASURED a legal single-member turn at 982572 ms (16.4 min), so the default is 1800000 ms (30 min),
+// with a 25% grace window on top (2250000 ms seam budget) and the backstop above that.
+{ key: 'vmu.turn.deliveryTimeoutMs', type: 'number', def: 1800000, hot: HOT.H2, who: 'office', doc: '成员回合 one-shot 交付的 deadline（毫秒）。★ 超时后该回合以 VMU_TURN_DELIVERY_TIMEOUT 具名失败（带 turn/member/已等毫秒/最后一次交付阶段），并释放串行队列；★ 正常回合只要在 deadline 内返回就不受影响。★ 默认 1800000 ms（30 分钟）：RUN 74 实测一个合法单体研究回合交付用了 982572 ms（16.4 分钟），旧的 900000 ms／180000 ms 会把长回合当成卡死；deadline 只决定「停止等待」，晚收割的回复仍是成员的真工作（deliveredLate + deliveredLateMeans）。★ 这是 SEAM 与状态面共读的同一个声明，不是两处字面量' },
 { key: 'vmu.turn.abandonAfterMs', type: 'number', def: 0, hot: HOT.H2, who: 'office', doc: '★ RUN 241：一轮“开着但在途”多久之后，允许下一次 step/drive 把它弃掉（具名 VMU_TURN_ABANDONED）；0＝未显式配置，此时按 vmu.turn.deliveryTimeoutMs 加十分钟、且不低于十分钟。任何时候都可以用 vibe_vmu_turn { op:"abandon" } 立即关掉它' },
 { key: 'vmu.turn.childPreset', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '成员子代理会话所使用的 agent preset 名（宿主 SubagentStartRequest.agentPreset）：★ 空＝沿用调用方自己的 preset（历史行为）；★ 非空则成员席位由该 preset 的组合决定 —— 配套的 vibe-math-vmu-member 席位没有 shell/后台作业/自我分派/联网/问用户/目标环，因为实测发现那条逃逸是通过 pwsh 读到了宿主 app.asar；★ 组合由 scripts/build-preset-rows.mjs 的 MEMBER_DROP 表生成并有门禁' },
 { key: 'vmu.turn.closureVotePermission', type: 'string', def: 'vote', hot: HOT.H2, who: 'office', doc: 'capability-default: 值只是一个权限字符串的【名字】，谓词拿它去问谁能结题；换名不改机制，而名字本身是部署词汇（v5r 交给 member 槽位）。哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 vote（★ v5r pack 把 vote 给 member 槽位，chair 与 temp 都没有）；★ 另一家机构可以改名' },
@@ -1390,6 +1395,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.meetings.speechExtendMs', type: 'natural', def: 0, hot: HOT.H2, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效" },
   { key: 'vmu.meetings.speechMaxMs', type: 'natural', def: 0, hot: HOT.H2, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效" },
   { key: 'vmu.meetings.speechQuotaPerMember', type: 'natural', def: 0, hot: HOT.H2, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效" },
+  { key: 'vmu.meetings.startEarlyRequiresChair', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效" },
   { key: 'vmu.meetings.typeCatalog', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效" },
   { key: 'vmu.meetings.unansweredInDenominator', type: 'boolean', def: false, hot: HOT.H2, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效" },
   { key: 'vmu.meetings.verbatimEnabled', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效" },
@@ -1557,6 +1563,38 @@ export const SETTING_ALIASES = (() => {
   }
   return map
 })()
+
+/**
+ * ONE BUDGET, ONE RESOLUTION, THREE CONSUMERS (TB-2629 / task-110).
+ *
+ * The delivery deadline is read by three places that must never drift: the kernel turn loop (its status face and its
+ * receipts), the v3 planner (its queue-pressure check) and the one-shot delivery seam. They used to carry three
+ * literals - 180000 in this declaration, 1800000 in the kernel, 180000 in the planner's fallback - so a deployment
+ * that declared nothing ran a 180000 ms deadline while its own status face reported 1800000 ms: the seam killed
+ * turns the loop said were still alive. The declaration below is the ONLY source; this resolver is the only reader.
+ * A missing declaration is a named refusal, never a literal: a fallback would silently recreate the drift.
+ */
+export const DELIVERY_TIMEOUT_KEY = 'vmu.turn.deliveryTimeoutMs'
+
+export const readDeliveryBudget = (getSetting) => {
+  const declaredDef = BY_KEY.get(DELIVERY_TIMEOUT_KEY)
+  const declared = declaredDef && typeof declaredDef.def === 'number' && Number.isFinite(declaredDef.def) && declaredDef.def > 0 ? declaredDef.def : null
+  let configured = null
+  if (typeof getSetting === 'function') {
+    const raw = getSetting(DELIVERY_TIMEOUT_KEY)
+    const n = Number(raw)
+    if (raw !== null && raw !== undefined && String(raw).trim() !== '' && Number.isFinite(n) && n > 0) configured = n
+  }
+  if (configured !== null) {
+    return { ms: configured, source: DELIVERY_TIMEOUT_KEY + ' (set by this deployment)' }
+  }
+  if (declared !== null) {
+    return { ms: declared, source: DELIVERY_TIMEOUT_KEY + ' default (' + declared + ' ms, declared in settings/schema.js - the same declaration the kernel loop, the v3 planner and the one-shot delivery seam all read)' }
+  }
+  throw refuse('VMU_INVALID_ARGUMENT',
+    'no usable delivery deadline is declared: settings/schema.js must declare ' + DELIVERY_TIMEOUT_KEY + ' as a number > 0',
+    'declare the setting - it is the single source the kernel loop, the v3 planner and the one-shot delivery seam all read; a kernel-side literal is exactly the drift TB-2629 removed')
+}
 
 /**
  * WHAT A RENAME RESOLUTION REPORTS (docs/03 §8, VMU_PARAM_RENAMED). Accepting a former name silently would hide the

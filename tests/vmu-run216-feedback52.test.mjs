@@ -93,7 +93,8 @@ for (const [id, slot] of [['r-acad', 'chair'], ['r-1', 'member'], ['r-2', 'membe
 ok(kernel.members.roster().length === 3, 'three real members are seated before any blueprint call (RULE E)', kernel.members.roster().length)
 
 const BASE_LINE = '诊断草案第一段：只用于 RUN 216 复验 1.1b。'
-const first = await A.call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', text: BASE_LINE })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const first = await A.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', text: BASE_LINE })
 ok(first.ok === true && typeof first.id === 'string' && first.continued === false, 'a first proposal is written (a draft is not in force until adopt)', { ok: first.ok, id: first.id, continued: first.continued, code: first.code })
 ok(first.bodyPrefixDropped === 0, 'a FIRST proposal has nothing to strip (bodyPrefixDropped 0)', first.bodyPrefixDropped)
 
@@ -104,7 +105,7 @@ ok(parsedA !== null && String(parsedA.text || '').includes(BASE_LINE), 'the draf
 // The run-53 shape: the FIRST proposer pastes the whole draft it just read, then appends its own text.
 const PASTED = String(parsedA.text)
 const APPENDED = '交换段：复核分工，我先验归纳步。'
-const second = await A.call('vibe_v5_blueprint', { action: 'propose', member: 'r-1', draft: first.id, text: PASTED + '\n\n## 共同设计补充｜r-1\n- ' + APPENDED })
+const second = await A.call('vibe_v5_blueprint', { action: 'propose', materialize: true, member: 'r-1', draft: first.id, text: PASTED + '\n\n## 共同设计补充｜r-1\n- ' + APPENDED })
 ok(second.ok === true && second.continued === true, 'the same author continues the SAME draft (one draft per revision)', { ok: second.ok, continued: second.continued, code: second.code })
 ok(Number(second.bodyPrefixDropped) > 0, '★ the pasted copy was counted and removed (bodyPrefixDropped > 0)', second.bodyPrefixDropped)
 ok(typeof second.bodyPrefixDroppedMeans === 'string' && second.bodyPrefixDroppedMeans.includes('holds it once'),

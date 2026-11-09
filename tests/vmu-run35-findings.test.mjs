@@ -83,7 +83,17 @@ const SRC = readFileSync(ROOT + 'vibe-math-vmu/kernel/turn/index.js', 'utf8')
   ok((SRC.match(/dispatchSkipReason\(d[,)]/g) || []).length === 1,
     'b) and has exactly ONE consumer (a helper nobody calls is the defect this phase keeps finding)', (SRC.match(/dispatchSkipReason\(d[,)]/g) || []).length)
   ok(/const skipReason = dispatchSkipReason\(d\b/.test(SRC), 'b) the dispatcher calls it on the dispatch entry it is about to run')
-  ok(/if \(skipReason !== null\)[\s\S]{0,900}?continue/.test(SRC), 'b) and a skip CONTINUES past the face lookup (no face is touched)')
+  // ★ T1 pin refresh: this used to pin a 900-character window between the guard and its `continue`. RUN 255 / TB-2606-A
+  // added the ghost-meeting probe (a ghost id is a different fact from "no meeting in this turn") inside that branch,
+  // so the same branch is now ~1.3KB — the window expired while the rule did not. The pin is structural now: inside
+  // the skipReason branch a `continue` must exist, and it must sit BEFORE `const face = map[d.face]` (the face lookup
+  // must never be reached for a field that is skipped). Same claim, no length assumption.
+  const skipBranchAt = SRC.indexOf('if (skipReason !== null) {')
+  const skipContinueAt = skipBranchAt < 0 ? -1 : SRC.indexOf('continue', skipBranchAt)
+  const skipFaceAt = skipBranchAt < 0 ? -1 : SRC.indexOf('const face = map[d.face]', skipBranchAt)
+  ok(skipBranchAt > 0 && skipContinueAt > skipBranchAt && skipFaceAt > skipContinueAt,
+    'b) and a skip CONTINUES past the face lookup (no face is touched)',
+    { branchAt: skipBranchAt, continueAt: skipContinueAt, faceLookupAt: skipFaceAt })
   // the guard must sit BEFORE the face lookup, or a face would already have been chosen for a field that never runs
   const skipAt = SRC.indexOf('const skipReason = dispatchSkipReason(d')
   const faceAt = SRC.indexOf('const face = map[d.face]', skipAt < 0 ? 0 : skipAt)

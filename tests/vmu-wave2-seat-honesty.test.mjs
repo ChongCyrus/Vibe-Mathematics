@@ -111,9 +111,10 @@ try {
   // ── §3 B6：采纳判 CALLER，不判参数里的 member ───────────────────────────────────────────────────────────
   console.log('\n=== §3 B6：常驻研究员命名院士 id 采纳 ⇒ 具名拒；院士自己采纳 ⇒ 收；root 采纳照旧 ===')
   const PATH = 'Shared/Seat.md'
-  const draftA = await call(b, 'vibe_v5_blueprint', { action: 'propose', text: '# 蓝图 A\n\n第一版（研究员起草）。', member: 'r-1', path: PATH }, { turn: 'r-1' })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const draftA = await call(b, 'vibe_v5_blueprint', { action: 'propose', materialize: true, text: '# 蓝图 A\n\n第一版（研究员起草）。', member: 'r-1', path: PATH }, { turn: 'r-1' })
   ok(draftA.ok === true && typeof draftA.id === 'string', 'setup：常驻研究员提案一份草案（提案不限席位）', draftA && (draftA.code || draftA.id))
-  const contA = await call(b, 'vibe_v5_blueprint', { action: 'propose', text: '院士补充（共同设计）：每月复查。', member: 'r-acad', path: PATH }, { turn: 'r-acad' })
+  const contA = await call(b, 'vibe_v5_blueprint', { action: 'propose', materialize: true, text: '院士补充（共同设计）：每月复查。', member: 'r-acad', path: PATH }, { turn: 'r-acad' })
   ok(contA.ok === true && contA.continued === true && contA.id === draftA.id && contA.authors.length === 2,
     'setup：院士补完同一份草案（B5 共同设计，两席齐了才能采纳）', contA && { id: contA.id, continued: contA.continued, authors: contA.authors && contA.authors.length })
 
@@ -140,9 +141,9 @@ try {
   ok(chairAdopt.ok === true, '★ 院士自己按键采纳 ⇒ 收下', chairAdopt && (chairAdopt.code || chairAdopt.ok))
   ok(chairAdopt.member === 'r-acad', '回执的 member 是院士（采纳人）', chairAdopt && chairAdopt.member)
 
-  const draftB = await call(b, 'vibe_v5_blueprint', { action: 'propose', text: '# 蓝图 B\n\n第二版（研究员起草）。', member: 'r-1', path: PATH }, { turn: 'r-1' })
+  const draftB = await call(b, 'vibe_v5_blueprint', { action: 'propose', materialize: true, text: '# 蓝图 B\n\n第二版（研究员起草）。', member: 'r-1', path: PATH }, { turn: 'r-1' })
   ok(draftB.ok === true && typeof draftB.id === 'string', 'setup：第二份草案（准备走办公会那条路）', draftB && (draftB.code || draftB.id))
-  const contB = await call(b, 'vibe_v5_blueprint', { action: 'propose', text: '院士补充（共同设计）：按周切分里程碑。', member: 'r-acad', path: PATH }, { turn: 'r-acad' })
+  const contB = await call(b, 'vibe_v5_blueprint', { action: 'propose', materialize: true, text: '院士补充（共同设计）：按周切分里程碑。', member: 'r-acad', path: PATH }, { turn: 'r-acad' })
   ok(contB.ok === true && contB.id === draftB.id, 'setup：第二份草案也由两席补完', contB && (contB.code || contB.id))
   const officeAdopt = await call(b, 'vibe_v5_blueprint',
     { action: 'adopt', draft: draftB.id, member: 'r-acad', path: PATH })

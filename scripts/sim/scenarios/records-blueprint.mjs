@@ -24,7 +24,8 @@
 
 // fs-purpose: audit — this scenario HAND-EDITS the blueprint md the way a human would, which is exactly what reindex
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 const NL = String.fromCharCode(10)
 const sha256 = (buf) => 'sha256:' + createHash('sha256').update(buf).digest('hex')
@@ -36,6 +37,20 @@ const sha256 = (buf) => 'sha256:' + createHash('sha256').update(buf).digest('hex
 export async function recordsBlueprint(h, { log = () => {} } = {}) {
   const steps = []
   const expectedSeqs = new Set()
+  // ★ TB-2650 (MEASURED): RUN 259 made `not-a-vmu-md` a BLOCKING class, so every reindex call in a workspace that holds a
+  // member-written plain md draft refuses by name (`VMU_RECORDS_REINDEX_BLOCKED`). Four calls in section ③/④ meet that
+  // workspace, so four predictions are pinned BY SEQ - one prediction forgives one refusal, and the seq is what makes the
+  // forgiveness nameable. A later policy change turns these into `declared-but-never-hit` (honest) instead of letting a
+  // real new refusal hide behind them.
+  const expectedRefusals = []
+  const lastSeq = () => (h.receipts.length ? h.receipts[h.receipts.length - 1].seq : null)
+  const predictReindexBlocked = (why) => expectedRefusals.push({ seq: lastSeq(), tool: 'vibe_vmu_records', code: 'VMU_RECORDS_REINDEX_BLOCKED', why })
+  // ★ TB-2625 — named reds, the counterpart of `run.mjs`'s `result.failures` hook. This scenario used to THROW
+  // ("the blueprint md was never written") when the fs-first contract moved; a throw kills the run before the corpus is
+  // written, so the only trace was a stack in the terminal and the gate went red for days with no evidence in the corpus.
+  // Now the drift is NAMED (code + which step + the receipt shape that changed), every remaining step runs, and the
+  // corpus says why.
+  const failures = []
   const step = async (name, fn) => {
     const before = h.tree ? h.tree().length : 0
     const out = await fn()
@@ -44,6 +59,10 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
     log(name + (out && out.ok === false ? '  [' + (out.code || 'refused') + ']' : ''))
     return out
   }
+  // fs-first (TB-2613 / RUN 255): a propose without mdPath no longer writes a row, so "filed" has to be read as a
+  // NORMALISED fact — the kernel omits `filed` on the success path and only sends `filed:false` when nothing was filed.
+  const filedOf = (r) => Boolean(r && r.ok !== false && r.filed !== false && r.draftMdMissing !== true && typeof r.id === 'string' && r.id !== '')
+
   const markExpected = () => {
     const last = steps[steps.length - 1]
     if (last && last.ok === false) expectedSeqs.add(last.at)
@@ -96,28 +115,63 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
   const statusBefore = await step('records/status-before', () => h.call('vibe_vmu_records', { action: 'status' }))
 
   // ② ── the blueprint: put (propose) -> supersede the same row (codesign) -> put a new current row (adopt) ─────────
+  // ★ TB-2625 / TB-2613 (RUN 255) — fs-first. A propose files a row only when it NAMES the member's markdown, so the
+  // acting member writes the draft FIRST and hands the kernel that same relative path. A text-only propose now answers
+  // `{ok:true, filed:false, id:null, draftMdMissing:true}` and every later adopt/read is refused by name — which is the
+  // drift that made this scenario stop with "the blueprint md was never written" on a run that was behaving correctly.
+  const draftRel = 'Members/r-acad/Drafts/protocol-r1.md'
+  const draftAbs = join(h.root, 'VibeMath', draftRel)
+  const draftBody = '# 公共蓝图｜前 n 个奇数之和' + NL
+    + '- 命题：对任意正整数 n，前 n 个奇数之和等于 n 的平方。' + NL
+    + '- 路线：对 n 归纳；第 n 个奇数正是 n 的平方与 n-1 的平方之差。'
+  const writeMemberMd = (name, body) => step(name, () => {
+    mkdirSync(dirname(draftAbs), { recursive: true })
+    writeFileSync(draftAbs, body)
+    return { ok: true, path: draftRel, absPath: draftAbs, bytes: Buffer.byteLength(body), sha256: sha256(body) }
+  })
+  const draftFileOpen = await writeMemberMd('blueprint/draft-md', draftBody)
+
   const draft = await step('blueprint/propose', () => h.call('vibe_v5_blueprint', {
     action: 'propose',
     path: 'Shared/Protocol.md',
+    mdPath: draftRel,
     member: 'r-acad',
-    text: '# 公共蓝图｜前 n 个奇数之和' + NL
-      + '- 命题：对任意正整数 n，前 n 个奇数之和等于 n 的平方。' + NL
-      + '- 路线：对 n 归纳；第 n 个奇数正是 n 的平方与 n-1 的平方之差。',
+    text: draftBody,
   }))
   const draftId = (draft && (draft.id || draft.recordId)) || null
-  // ★ RUN 240 — the file path is known only AFTER adoption. RUN 238 made a draft write NO md (its text lives in the
-  // index row, `md.available:false`, `deferredTo:'adopt'`) and made adopting the only writer. Reading `absPath` off the
-  // DRAFT receipt is what made this scenario stop with "the blueprint md was never written" about a run that had written
-  // it correctly — a stale scenario, not a product defect. Keep the draft receipt's `md` for the assertion below
-  // (it must say `available:false`), but take the path from the adoption.
+  // THE CONTRACT SELF-CHECK (TB-2625): if the fs-first contract moves again, this run says so BY NAME here instead of
+  // dying three steps later with a message about a missing md file. `filedOf` normalises the asymmetric receipt — the
+  // kernel omits `filed` on the success path and only sends `filed:false` when nothing was filed (task-92 makes it
+  // three-state); the scenario must not depend on which shape the product happens to send today.
+  if (!filedOf(draft)) {
+    failures.push({
+      code: 'SIM_BLUEPRINT_FS_FIRST_CONTRACT',
+      step: 'blueprint/propose',
+      message: 'blueprint propose filed no row: this scenario is behind the fs-first contract (its mdPath was not honoured)',
+      means: 'propose must answer with a draft row id when it names an existing mdPath; filed:false beside draftMdMissing:true means the md side of the contract moved',
+      receipt: draft,
+    })
+  }
+
+  const codesignBody = draftBody + NL + '## 共同设计补充｜r-1' + NL + '- 复核归纳步：n = 1 时 1 = 1 的平方成立。' + NL
+  const draftFileSigned = await writeMemberMd('blueprint/codesign-md', codesignBody)
 
   const codesign = await step('blueprint/codesign', () => h.call('vibe_v5_blueprint', {
     action: 'propose',
     draft: draftId,
     path: 'Shared/Protocol.md',
+    mdPath: draftRel,
     member: 'r-1',
-    text: '## 共同设计补充｜r-1' + NL + '- 复核归纳步：n = 1 时 1 = 1 的平方成立。',
   }, { as: { agent: { id: 'r-1' } } }))
+  if (!filedOf(codesign)) {
+    failures.push({
+      code: 'SIM_BLUEPRINT_FS_FIRST_CONTRACT',
+      step: 'blueprint/codesign',
+      message: 'the codesign filed nothing: the same draft row cannot be read back with two authors',
+      means: 'a codesign is a propose that names draft + mdPath; if it does not file, the put -> supersede chain this scenario measures is gone',
+      receipt: codesign,
+    })
+  }
 
   // NO `path` on purpose: the draft names its own path, so the receipt must say where the path came from.
   const adopted = await step('blueprint/adopt-no-path', () => h.call('vibe_v5_blueprint', {
@@ -127,6 +181,17 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
   }, { as: { agent: { id: 'r-acad' } } }))
 
   const mdAbs = adopted && adopted.md && adopted.md.absPath ? adopted.md.absPath : null
+  if (mdAbs === null) {
+    // TB-2625: no throw. A throw here used to kill the run BEFORE the corpus was written, so the gate went red with no
+    // evidence; now the rest of the scenario still runs and the failure is a named row in `result.failures`.
+    failures.push({
+      code: 'SIM_BLUEPRINT_MD_MISSING',
+      step: 'blueprint/adopt-no-path',
+      message: 'adoption returned no markdown path: there is no file to hand-edit and no md to reindex',
+      means: 'adopt must materialise the canonical md and name its absPath; without it the md-only truth in ④ cannot be measured',
+      receipt: adopted,
+    })
+  }
   const mdBefore = mdAbs ? readFileSync(mdAbs, 'utf8') : ''
   const readAdopted = await step('blueprint/read-current', () => h.call('vibe_v5_blueprint', { action: 'read', id: adopted && adopted.id }))
   const readDraft = await step('blueprint/read-draft', () => h.call('vibe_v5_blueprint', { action: 'read', id: draftId }))
@@ -161,16 +226,19 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
 
   // The md is the truth: with every blueprint row in the trash, the index still has an md to adopt.
   const reindexAdopted = await step('records/reindex-adopt-from-md', () => h.call('vibe_vmu_records', { action: 'reindex', by: 'r-acad' }))
+  if (reindexAdopted && reindexAdopted.code === 'VMU_RECORDS_REINDEX_BLOCKED') predictReindexBlocked('md 是唯一真相：重建索引时磁盘上仍有成员 plain md 草案 ⇒ 按名拒并点名 not-a-vmu-md（RUN 259 政策）')
   const currentAfterReindex = reindexAdopted && Array.isArray(reindexAdopted.adopted) && reindexAdopted.adopted[0] ? reindexAdopted.adopted[0].id : null
 
   const restored = await step('records/restore-draft', () => h.call('vibe_vmu_records', { action: 'restore', id: draftId, by: 'r-acad' }))
 
   // ④ ── an UNTOUCHED tree reindexes as unchanged ──────────────────────────────────────────────────────────────────
   const reindexClean = await step('records/reindex-untouched', () => h.call('vibe_vmu_records', { action: 'reindex' }))
+  if (reindexClean && reindexClean.code === 'VMU_RECORDS_REINDEX_BLOCKED') predictReindexBlocked('未动过的树：vmu md 全部 unchanged，但成员 plain md 草案仍在盘上 ⇒ 具名拒（同一政策）')
 
   // A HUMAN EDITS THE FILE (no tool call: this is the shell edit reindex exists for).
   const edited = await step('md/hand-edit', () => {
-    if (mdAbs === null) throw new Error('the blueprint md was never written, so there is nothing to hand-edit')
+    // TB-2625: a missing md is a NAMED failure now, not a throw that would also lose the corpus.
+    if (mdAbs === null) return { ok: false, code: 'SIM_BLUEPRINT_MD_MISSING' }
     const before = readFileSync(mdAbs, 'utf8')
     const after = before + NL + '外部补注（手工编辑）：r-2 建议补一条边界例 n = 0。' + NL
     writeFileSync(mdAbs, after)
@@ -180,13 +248,41 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
   // The read must DISCLOSE the drift before reindex is called, and the two fingerprints must differ.
   const readAfterEdit = await step('blueprint/read-after-edit', () => h.call('vibe_v5_blueprint', { action: 'read', id: currentAfterReindex }))
   const reindexChanged = await step('records/reindex-changed', () => h.call('vibe_vmu_records', { action: 'reindex', by: 'r-acad' }))
+  if (reindexChanged && reindexChanged.code === 'VMU_RECORDS_REINDEX_BLOCKED') predictReindexBlocked('手工改过 md 之后：changed 一条已重写，但 plain 草案仍让这次调用 ok:false（同一政策）')
   const reindexDryRunAfter = await step('records/reindex-dry-run-after', () => h.call('vibe_vmu_records', { action: 'reindex', dryRun: true }))
+  if (reindexDryRunAfter && reindexDryRunAfter.code === 'VMU_RECORDS_REINDEX_BLOCKED') predictReindexBlocked('dryRun 也照实拒绝：预告里有改动、也有 1 条 blocked（同一政策，dryRun 不改盘不代表可以谎报成功）')
   const listFinal = await step('records/list-final', () => h.call('vibe_vmu_records', { action: 'list', track: 'blueprint', limit: 0 }))
 
   const check = (name, cond, evidence) => ({ name, ok: cond === true, evidence })
   const changedFirst = reindexChanged && Array.isArray(reindexChanged.changed) && reindexChanged.changed[0] ? reindexChanged.changed[0] : null
   const mdOnDiskAfterEdit = mdAbs ? readFileSync(mdAbs, 'utf8') : ''
+  // The fs-first contract, measured from the receipts (TB-2625): the member writes the file, the index row fingerprints
+  // THAT file, the codesign re-fingerprints the signed bytes, and only the adoption materialises the canonical md.
+  const contract = {
+    fsFirst: filedOf(draft) && filedOf(codesign) && mdAbs !== null,
+    draftMdPath: draftRel,
+    draftMdFile: draftAbs,
+    chain: {
+      propose: filedOf(draft),
+      codesign: filedOf(codesign),
+      adopt: Boolean(adopted && adopted.ok !== false && mdAbs !== null),
+      read: Boolean(readAdopted && readAdopted.ok !== false),
+    },
+  }
   const checks = [
+    check('the draft is the member file, and the index row fingerprints exactly those bytes',
+      Boolean(draft) && draft.ok !== false && draft.mdOwner && draft.mdOwner.writtenBy === 'member-file'
+        && draft.mdFingerprint === draftFileOpen.sha256 && draft.mdPath === draftRel
+        && (draft.textSource === 'md' || draft.textArgumentDropped === true),
+      { mdOwner: draft && draft.mdOwner, mdFingerprint: draft && draft.mdFingerprint, file: draftFileOpen && draftFileOpen.sha256, textSource: draft && draft.textSource }),
+    check('the codesign re-fingerprints the signed bytes and keeps two authors on ONE row',
+      Boolean(codesign) && filedOf(codesign) && codesign.mdFingerprint === draftFileSigned.sha256
+        && Array.isArray(codesign.authors) && codesign.authors.length === 2 && codesign.id === draftId,
+      { mdFingerprint: codesign && codesign.mdFingerprint, file: draftFileSigned && draftFileSigned.sha256, authors: codesign && codesign.authors, id: codesign && codesign.id }),
+    check('only the adoption materialises the canonical md (kernel-owned, not the member draft)',
+      mdAbs !== null && Boolean(adopted.mdOwner) && adopted.mdOwner.writtenBy === 'kernel-materialized'
+        && adopted.md.exists === true,
+      { mdOwner: adopted && adopted.mdOwner, path: adopted && adopted.path, absPath: mdAbs }),
     check('the blueprint was written to a markdown file a human can read',
       mdAbs !== null && /^# 蓝图｜/m.test(mdBefore) && /^## 正文$/m.test(mdBefore),
       { path: mdAbs, head: mdBefore.slice(0, 80) }),
@@ -206,9 +302,15 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
       Boolean(readDraft) && readDraft.mdChangedSinceIndex === true
         && Boolean(readDraft.md) && readDraft.md.mdStatusMoved === true && readDraft.md.mdStatus === 'current',
       { mdChangedSinceIndex: readDraft && readDraft.mdChangedSinceIndex, mdStatusMoved: readDraft && readDraft.md && readDraft.md.mdStatusMoved, mdStatus: readDraft && readDraft.md && readDraft.md.mdStatus }),
-    check('the put -> supersede chain leaves ONE row at rev 2',
-      Boolean(chainRow) && chainRow.rev === 2,
-      { id: chainRow && chainRow.id, rev: chainRow && chainRow.rev }),
+    // The chain the scenario measures is "ONE draft per unadopted revision, CONTINUED rather than duplicated". The raw
+    // `rev` is the records-layer version counter, not the blueprint revision: measured 1 -> 2 (the codesign supersedes
+    // the draft row) -> 3 (the adoption also writes the draft row it promoted), so pinning `rev === 2` would encode an
+    // implementation detail that fs-first legitimately changed instead of the invariant the file is about.
+    check('the put -> supersede chain stays on ONE row and one revision (the codesign CONTINUES the draft)',
+      Boolean(chainRow) && chainRow.id === draftId && chainRow.rev >= 2
+        && Boolean(codesign.continuedBase) && codesign.continuedBase.continued === true
+        && codesign.continuedBase.actual === draftId && codesign.revision === draft.revision,
+      { id: chainRow && chainRow.id, rev: chainRow && chainRow.rev, revision: codesign && codesign.revision, continuedBase: codesign && codesign.continuedBase }),
     check('prune dry run moves nothing and says so',
       Boolean(prunePreview) && prunePreview.liveAfter === prunePreview.liveBefore && prunePreview.prunedCount === 0
         && Array.isArray(prunePreview.pruned) && prunePreview.pruned.every((p) => p.state === 'would-be-trashed'),
@@ -255,19 +357,26 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
 
   return {
     steps,
+    failures,
+    expectedRefusals,
     ids: { claim: claim && claim.recordId, draft: draftId, adopted: adopted && adopted.id, currentAfterReindex, appended: appended && appended.id, md: mdAbs },
     receipts: h.receipts.filter((r) => !expectedSeqs.has(r.seq)),
     promptChars: {},
     tree: h.tree ? h.tree() : [],
+    // ★ TB-2625 — the runner reads `failures` (generic hook in run.mjs): a named self-check failure fails the run and
+    // says which contract moved. Empty here means this scenario is on the fs-first contract.
+    failures,
     highlights: {
       ids: { claim: claim && claim.recordId, draft: draftId, adopted: adopted && adopted.id, currentAfterReindex, appended: appended && appended.id, md: mdAbs },
       started, claim, progress, statePanel,
       listAll, listPropositions, listState, expanded, appended, listAfterAppend, statusBefore,
       draft, codesign, adopted, readAdopted, readDraft, contradiction, chainRow,
+      draftFileOpen, draftFileSigned, contract,
       prunePreview, pruned, statusAfterPrune, reindexAdopted, restored,
       reindexClean, edited, readAfterEdit, reindexChanged, reindexDryRunAfter, listFinal,
       checks,
       defects,
+      failures,
       expectedRefusals: h.receipts
         .filter((r) => expectedSeqs.has(r.seq))
         .map((r) => ({ seq: r.seq, tool: r.tool, args: r.args, code: r.receipt && r.receipt.code, message: r.receipt && r.receipt.message, hint: r.receipt && r.receipt.hint, why: 'EXPECTED: adopting the same draft twice contradicts the state, and the face refuses it by name instead of writing a second current row' })),

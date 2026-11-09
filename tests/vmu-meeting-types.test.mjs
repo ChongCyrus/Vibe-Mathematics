@@ -384,8 +384,8 @@ try {
   ok(!!sAct.error && sAct.error.code === 'VMU_MEETING_NOT_STARTED' && /SCHEDULED/.test(String(sAct.error.message)) && /reads .* work now/.test(String(sAct.error.hint)),
     '★★ acting in a meeting that has not started is refused BY NAME (VMU_MEETING_NOT_STARTED since RUN 254-E / F-73-04), and the hint says reading still works', sAct.error && sAct.error.code)
   const earlyProceed = serr(() => sk.meetings.proceed({ meeting: sched.meeting, actor: 'acad' }))
-  ok(!!earlyProceed.error && earlyProceed.error.code === 'VMU_STATE' && /has not arrived yet/.test(String(earlyProceed.error.hint)),
-    '★ proceed() BEFORE the start time is refused: nothing is late yet (a way out that is always open is not a way out)', earlyProceed.error && earlyProceed.error.code)
+  ok(!!earlyProceed.error && earlyProceed.error.code === 'VMU_STATE' && /attendance rule is not met/.test(String(earlyProceed.error.message) + ' ' + String(earlyProceed.error.hint)),
+    '★ proceed() BEFORE the start time is refused while the ATTENDANCE RULE is unmet (RUN 262 / TB-2661: once it is met the chair may start early; the refusal must say the rule, not the clock)', earlyProceed.error && earlyProceed.error.code)
   const sStatus = sk.meetings.status()
   ok(sStatus.scheduledMeetings.some((x) => x.meeting === sched.meeting),
     '★ status() lists it under scheduledMeetings (an operator can tell runnable from scheduled without opening it)', sStatus.scheduledMeetings)

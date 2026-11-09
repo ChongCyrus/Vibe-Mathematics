@@ -110,7 +110,8 @@ try {
   const started = await b.call('vibe_v5_start', { problem: '前 n 个奇数之和 = n²。', researcherCount: 1 })
   ok(started && started.ok === true, 'precondition: the round starts (the blueprint seats exist)', started && started.code)
   const T1 = '- 命题：前 n 个奇数之和 = n²。'
-  const p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: T1 })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: T1, materialize: true })
   ok(p1 && p1.ok === true && p1.status === 'draft', 'A1 a draft is created', p1 && p1.code)
   ok(p1 && p1.md && p1.md.written === true, '★★ A1 the draft WRITES its own file (RUN 248 reversed RUN 238 here)', p1 && p1.md)
   ok(p1 && p1.md && p1.md.writtenBy === 'kernel-materialized' && p1.md.mdPath === DRAFT1, 'A1 the receipt names who wrote it and where', p1 && p1.md)
@@ -123,7 +124,8 @@ try {
   has(p1row && p1row.body, T1, 'A1 the draft text lives in its index row')
   has(p1row && p1row.body, '- mdPath：' + DRAFT1, 'A1 an unadopted draft CLAIMS its own draft file')
 
-  const p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: '## 补充｜r-1\n- 复核 n=1。' })
+  // legacy path: the continuation rewrites the kernel-materialized draft only when materialize:true is explicit
+  const p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: '## 补充｜r-1\n- 复核 n=1。', materialize: true })
   ok(p2 && p2.ok === true && p2.continued === true, 'A2 a co-design seat joins the same draft', p2 && p2.code)
   ok(p2 && p2.md && p2.md.written === true && p2.md.mdPath === DRAFT1, 'A2 the continuation REWRITES that same draft file (one draft = one md)')
   ok(existsSync(mdAbs) === false, '★★ A2 the in-force document is STILL untouched (the defect run 61 measured stays fixed)')
@@ -223,9 +225,10 @@ try {
   })
   ok(dup && dup.ok === false && dup.code === 'VMU_INVALID_ARGUMENT', '★★ D1 a repeated outline id is refused', dup && dup.code)
   has(dup && dup.message, 'repeats an id', 'D1 the refusal says WHICH rule it broke')
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
   const okOutline = await b.call('vibe_v5_blueprint', {
     action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad',
-    text: '- r2：分层。', outline: [{ id: '1', title: '粗', depth: 1 }, { id: '1.1', title: '细', depth: 2 }],
+    text: '- r2：分层。', outline: [{ id: '1', title: '粗', depth: 1 }, { id: '1.1', title: '细', depth: 2 }], materialize: true,
   })
   ok(okOutline && okOutline.ok === true && okOutline.outlineCount === 2, 'D2 distinct ids still pass (the fix is not a ban on outlines)', okOutline && okOutline.code)
 

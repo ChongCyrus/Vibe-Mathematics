@@ -72,7 +72,10 @@ const receipt = async (b, name, args = {}) => {
   return { raw, parsed, missing: false }
 }
 const codeOf = (parsed) => (parsed && parsed.code) || null
-const REQUEST_ID = /consult-[A-Za-z0-9_-]+-\d+/g
+// ★★★ RUN 256 (TB-2624 item 3): consult ids are `consult-<seq4>-<rand4>` now, so the extraction must not assume
+// the id ENDS in a digit run (the old `/...-\d+/` truncated `consult-0001-318a` to `consult-0001-318`). The id is an
+// address, not a title: match the whole token and let the ledger decide whether it exists.
+const REQUEST_ID = /consult-[A-Za-z0-9_-]+/g
 
 const base = await mkdtemp(join('D:/_tmp', 'vmu-paper-consult-tool-'))
 try {
@@ -162,8 +165,12 @@ try {
   ok(/所办/.test(blockMsg) && idHits.length > 0,
     '★★★ 正：拒绝消息点名「所办」并给出这条问询的 id —— 调用者不必解析中文才知道要答哪条', blockMsg)
   const reqId = idHits[0]
-  ok(/recordConsult/.test(String((finalBlocked.parsed && finalBlocked.parsed.hint) || '')),
-    '★ 正：hint 指向下一步（recordConsult / 或把 officeConsult 设 off）', finalBlocked.parsed && finalBlocked.parsed.hint)
+  // RUN 257 D-2: the hint must name the TOOL face, not the kit function `recordConsult` (a caller who copies it
+  // writes a call that does not exist on the tool surface). The updated criterion is stricter: marker + tool face
+  // + the read that yields the awaiting id.
+  const hintText = String((finalBlocked.parsed && finalBlocked.parsed.hint) || '')
+  ok(/REACHABLE INSTEAD:/.test(hintText) && /vibe_v5_paper/.test(hintText) && /consult_state/.test(hintText),
+    '★ 正：hint 指向下一步（工具面 vibe_v5_paper{action:"consult"}，先读 consult_state 取 awaiting.id）', hintText)
   const afterBlock = await receipt(v5rBoot, 'vibe_v5_paper', { action: 'status', target: T })
   ok(afterBlock.parsed && afterBlock.parsed.paper && afterBlock.parsed.paper.status === 'awaiting-editor',
     '★★ 正：被拒之后论文【原地不动】（闸在写状态之前跑；除了它刚刚打开的那条持久问询）',

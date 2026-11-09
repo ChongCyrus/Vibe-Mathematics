@@ -270,9 +270,15 @@ console.log('=== 3. P0-2: a legacy card with an unreadable last-write time is NA
     // not about the row being in another store.
     const noWindow = await h.call('vibe_vmu_records', { action: 'list', limit: 0 })
     const nEx = noWindow.excluded || {}
-    ok(noWindow.ok === true && nEx.shapeMismatch === 0 && nEx.timeUnknown.length === 0 && idsOf(noWindow.records).includes('legacy-card'),
-      '§3g. with no time filter the same row is RETURNED (a row is never excluded for a fact nobody asked about)',
-      { excluded: nEx, ids: idsOf(noWindow.records) })
+    ok(noWindow.ok === true && nEx.shapeMismatch === 0 && nEx.timeUnknown.length === 0,
+      '§3g. with no time filter the same row is never TIME-excluded (a row is not dropped for a fact nobody asked about)', { excluded: nEx, ids: idsOf(noWindow.records) })
+    // ★★★ RUN 256 (TB-2624 item 2): the unfiltered page now excludes rows whose `track` is undefined (the library
+    // heads) BY NAME, counted in the SAME `excluded` block, and `includeUntracked:true` is the documented opt-in.
+    const withUntracked = await h.call('vibe_vmu_records', { action: 'list', limit: 0, includeUntracked: true })
+    const wEx = withUntracked.excluded || {}
+    ok(wEx.untracked === 0 && wEx.timeUnknown.length === 0 && idsOf(withUntracked.records).includes('legacy-card'),
+      '§3g2. `includeUntracked:true` returns the same row and zeroes only the untracked count',
+      { excluded: wEx, ids: idsOf(withUntracked.records) })
   } finally {
     try { rmSync(root, { recursive: true, force: true }) } catch { /* ignore */ }
   }

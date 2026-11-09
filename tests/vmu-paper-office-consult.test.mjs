@@ -102,7 +102,11 @@ console.log('=== ① 闸是开着的：没问过所办就不能定稿，且拒�
   ok(r.ok === false && r.error.code === codes.OFFICE_CONSULT_REQUIRED, '★ 正：未问所办 ⇒ 具名拒 VMU_OFFICE_CONSULT_REQUIRED', r.error && r.error.code)
   ok(r.error.code === 'VMU_OFFICE_CONSULT_REQUIRED', '★ 码是登记在 docs/03 §8 的那个字面量（不是包内自造的前缀）', r.error.code)
   ok(/所办/.test(String(r.error.message)) && /定稿/.test(String(r.error.message)), '★ 拒绝文案说明"这是定稿前必须问所办"', String(r.error.message).slice(0, 120))
-  ok(/recordConsult/.test(String(r.error.hint)), '★ hint 给出第一条出路（由所办 recordConsult 答复）', r.error.hint)
+  // RUN 257 D-2: the reachable route is the TOOL face (kit `recordConsult` is not callable through the tool
+  // surface). Updated criterion: contract marker + tool name + the state read that yields the awaiting id.
+  const hintText = String(r.error.hint)
+  ok(/REACHABLE INSTEAD:/.test(hintText) && /vibe_v5_paper/.test(hintText) && /consult_state/.test(hintText),
+    '★ hint 给出第一条出路（工具面 vibe_v5_paper{action:"consult"} 答复）', hintText)
   eq(r.error.enforced, ['vmu.paper.officeConsult', 'vmu.paper.officeConsultOn', 'vmu.paper.officeConsultTimeoutMs', 'vmu.paper.officeConsultOnTimeout', 'vmu.paper.officeConsultExemptRoles'],
     '★ .enforced 列出五个真正求值的键（不是笼统一句"要看设置"）')
   ok(r.error.currentValue === 'required' && r.error.settingValues && r.error.settingValues['vmu.paper.officeConsult'] === 'required',

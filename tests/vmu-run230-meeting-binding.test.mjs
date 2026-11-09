@@ -67,16 +67,30 @@ console.log('=== VMU RUN230 MEETING BINDING ===')
   ok(d.deliveryPath === 'caller', '①e ★ the receipt names the delivery path (caller: the caller plays the member)', d.deliveryPath)
 }
 {
-  // 第二个派发读回「调用方手里还握着的那一个未答 prompt」：pending 条目上也要有会议，否则
-  // 「我手里的那个回合属于哪场会」答不出来（而这一步的 receipt 正是交回 prompt 的地方）。
+  // second dispatch reads back "the one unanswered prompt this caller still holds": the pending entry must name the
+  // meeting too, or "which meeting is the turn in my hand?" cannot be answered (and that receipt is where the prompt is
+  // handed back).
+  // ★ RUN 256 / TB-2616 MIGRATION: this used to be `drive` and then ANOTHER `step`, relying on the second dispatch
+  // OVERWRITING the parked prompt to read the binding back. That door is now refused by name
+  // (`VMU_TURN_ALREADY_PARKED` - overwriting it would drop an unanswered member turn), so the same readings are taken
+  // where they now live: `step` parks its own meeting turn, the MEETING travels on the returned prompt, the IDENTITY
+  // travels on the loop reading, and the second dispatch is pinned as the named refusal it is.
   const { gov } = makeGov()
-  await gov.drive({ members: [{ id: 'm1' }], rounds: 1, phase: 'meeting', why: '开会', meeting: 'm2' })
   const s = await gov.step({ members: [{ id: 'm1' }], phase: 'meeting', why: '开会', meeting: 'm2' })
   ok(s.ok === true && s.awaiting === true, '①f step parks a meeting turn too', s)
   ok(s.memberPrompt && s.memberPrompt.meeting === 'm2', '①g ★★ the step prompt carries the meeting', s.memberPrompt)
-  ok(!!s.pending && s.pending.meeting === 'm2' && s.pending.member === 'm1',
-    '①h ★★★ the pending entry names the meeting as well (a held prompt you cannot place in a meeting is not a reading)',
-    { pending: s.pending, memberPrompt: s.memberPrompt })
+  ok(s.pending === null,
+    '①h ★ the `pending` reading is what the caller held BEFORE this call, so a FIRST step honestly reports none (it is not a reading of the park it just made)',
+    s.pending)
+  const loop = gov.turnLoop()
+  ok(loop.parked === true && loop.parkedTurn === s.memberPrompt.turnId && loop.parkedMember === 'm1',
+    '①i ★★★ after the step the LOOP names the parked turn and member (the identity the receipt used to repeat)',
+    { parked: loop.parked, parkedTurn: loop.parkedTurn, parkedMember: loop.parkedMember, prompted: s.memberPrompt && s.memberPrompt.turnId })
+  let refusedSecond = null
+  try { await gov.step({ members: [{ id: 'm1' }], phase: 'meeting', why: '开会', meeting: 'm2' }) } catch (e) { refusedSecond = e }
+  ok(refusedSecond && refusedSecond.code === 'VMU_TURN_ALREADY_PARKED' && refusedSecond.parkedFacts && refusedSecond.parkedFacts.turnId === s.memberPrompt.turnId,
+    '①j ★★ a second dispatch is refused BY NAME and points at the same parked turn (the silent overwrite is gone)',
+    refusedSecond && { code: refusedSecond.code, parked: refusedSecond.parkedFacts })
 }
 
 // ── ② 显式 meeting：接受；冲突具名拒；省略继承 ────────────────────────────────────────────────────────

@@ -1219,11 +1219,16 @@ console.log('=== 26. planner pending：用 elapsedMs/deliveryTimeoutMs，不用 
   ok(st.lastSkip && st.lastSkip.reason === 'planner-reply-pending' && st.lastSkip.pendingMs === 0 && st.lastSkip.ageTicks === undefined,
     '★ 反（旧代码必红）：时间没到、tick 跑了 10 次 ⇒ pendingMs=0，不按 tick 判超时', st.lastSkip)
   ok(st.disabled === false, '★ 待回执不累计 plannerMaxFails ⇒ 规划器未被禁用', st.disabled)
-  h.clockRef.at = 1000 + 200000
-  await h.kernel.bus.emit(V3_TICK_TOPIC, { at: 1000 + 200000, runs: 1 }, {})
+  // ★ TB-2629 / task-110: the planner no longer owns a 180000 ms literal - it reads the DECLARED budget through the
+  // same resolver as the kernel loop and the one-shot seam. The fixture therefore waits past THAT number, and the
+  // assertion compares against the same declaration instead of a second copy of the old constant.
+  const DECLARED_DEADLINE = Number((SETTING_DEFS.find((d) => d && d.key === 'vmu.turn.deliveryTimeoutMs') || {}).def)
+  ok(DECLARED_DEADLINE > 0, '前提：交付预算是一条已声明设置（planner 与 loop 共读）', DECLARED_DEADLINE)
+  h.clockRef.at = 1000 + DECLARED_DEADLINE + 1
+  await h.kernel.bus.emit(V3_TICK_TOPIC, { at: 1000 + DECLARED_DEADLINE + 1, runs: 1 }, {})
   st = v3PlannerStatus()
-  ok(st.lastSkip && st.lastSkip.reason === 'planner-reply-pending' && st.lastSkip.pendingMs >= 180000 && st.lastSkip.deadlineMs === 180000,
-    '★ 正（旧代码必红）：时间超过 deliveryTimeoutMs ⇒ pendingMs 超阈值（tick 只多 1 次）', st.lastSkip)
+  ok(st.lastSkip && st.lastSkip.reason === 'planner-reply-pending' && st.lastSkip.pendingMs >= DECLARED_DEADLINE && st.lastSkip.deadlineMs === DECLARED_DEADLINE,
+    '★ 正（旧代码必红）：时间超过 DECLARED deliveryTimeoutMs ⇒ pendingMs 超阈值（tick 只多 1 次）', st.lastSkip)
   ok(st.disabled === false, '★ 超时本身由 dispatch deadline 具名失败；planner 不自禁用、不按 tick 记失败', st.disabled)
   release(planReply('晚到的计划', [{ action: 'wait', reason: 'drain' }]))
   await h.kernel.turn.whenIdle()

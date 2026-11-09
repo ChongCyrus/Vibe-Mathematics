@@ -141,7 +141,8 @@ const roster = kernel.members.roster()
 ok(roster.length === 2, 'roster is non-empty before any identity assertion (RULE E)', roster.length)
 
 console.log('=== 1. THE DRAFT\'S TEXT SURVIVES THE RECORD ROUND TRIP (the read face of a draft was truncated too) ===')
-const draft1 = await call({ action: 'propose', member: 'r-1', text: DRAFT_TEXT })
+// legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+const draft1 = await call({ action: 'propose', materialize: true, member: 'r-1', text: DRAFT_TEXT })
 ok(draft1.ok && draft1.parsed.ok === true, '★ 正：a member may propose a draft that has its own `## ` headings', draft1.parsed || draft1.text)
 const draftId = draft1.parsed && draft1.parsed.id
 const draftRow = draftId ? kernel.records.get({ id: draftId }) : null
@@ -163,10 +164,20 @@ ok(chairAlone.ok === false && chairAlone.code === BLUEPRINT.BLUEPRINT_NEEDS_CODE
   '★ 反：a single-author draft is refused even for the chair (VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN)',
   chairAlone.code || chairAlone.text)
 const chairAloneHint = String((chairAlone.parsed && chairAlone.parsed.hint) || '')
-ok(/action: "propose"/.test(chairAloneHint) && /action: "adopt"/.test(chairAloneHint) && chairAloneHint.includes(String(draftId)),
-  '★ the refusal hint is copy-pasteable next calls naming THIS draft (propose the missing section, then adopt)',
-  chairAloneHint)
-const chairContinued = await call({ action: 'propose', member: 'acad', text: ACAD_NOTE })
+// ★ RUN 256 / TB-2622 (measured: the old pin asserted the hint names the draft ROW id and teaches a text-only
+// `propose`): under the RUN 255 fs-first default a text-only propose files nothing and adds no author, so that hint
+// could never pass this gate — the product now teaches ONE chain: fs writes the DRAFT FILE, then propose {mdPath},
+// then adopt {draft}. The draft row id is therefore a placeholder in the hint (no id exists before filing), while the
+// draft FILE path is the concrete identifier this refusal CAN name. Same intent, real anchor: path + mdPath + adopt +
+// the copyable tool name.
+const draftMdPath = BLUEPRINT.blueprintDraftMdPathOf({ path: PATH, revision: parsedDraft && parsedDraft.revision })
+ok(/action: "propose"/.test(chairAloneHint) && /action: "adopt"/.test(chairAloneHint)
+  && draftMdPath !== '' && chairAloneHint.includes(draftMdPath)
+  && chairAloneHint.includes('mdPath') && chairAloneHint.includes('vibe_v5_blueprint')
+  && chairAloneHint.includes('<filed 回执里的 draft id>'),
+  '★ the refusal hint is copy-pasteable next calls naming THIS draft FILE (fs write → propose {mdPath} → adopt {draft id})',
+  { hint: chairAloneHint, expectedDraftMdPath: draftMdPath })
+const chairContinued = await call({ action: 'propose', materialize: true, member: 'acad', text: ACAD_NOTE })
 ok(chairContinued.ok && chairContinued.parsed && chairContinued.parsed.continued === true && chairContinued.parsed.id === draftId,
   '★ the chair CONTINUES the same draft id (one document, two seats writing) instead of opening a competing r1',
   chairContinued.parsed && { id: chairContinued.parsed.id, continued: chairContinued.parsed.continued })
@@ -251,14 +262,14 @@ ok(revisionNumbers.length === 2 && new Set(revisionNumbers).size === 1 && revisi
   'the draft and its adoption share ONE revision number — that is why one round is 2 rows but +1 revision', revisionNumbers)
 ok(typeof stateH.revisionsMeans === 'string' && /现存行数/.test(stateH.revisionsMeans) && /currentRevision/.test(stateH.revisionsMeans) && /\+2/.test(stateH.revisionsMeans) && /\+1/.test(stateH.revisionsMeans),
   '★ state receipt: `revisionsMeans` names the two rulers and the per-round arithmetic (rows +2, revision +1)', stateH.revisionsMeans)
-const draft2 = await call({ action: 'propose', member: 'r-1', text: '第二版蓝图：\n## 一、只改一条\n把待办 ① 写成恢复顺序。' })
+const draft2 = await call({ action: 'propose', materialize: true, member: 'r-1', text: '第二版蓝图：\n## 一、只改一条\n把待办 ① 写成恢复顺序。' })
 ok(draft2.ok && draft2.parsed.revision === 2, 'a new proposal after adoption is revision 2 (currentRevision + 1)', draft2.parsed && draft2.parsed.revision)
 const stateDraft2 = (await call({ action: 'state' })).parsed
 ok(stateDraft2.revisions === 3 && stateDraft2.currentRevision === 1 && stateDraft2.draftsWaiting === 1,
   '★ propose alone adds ONE row: revisions 2 → 3 while currentRevision stays 1 (the arithmetic in revisionsMeans, measured)', { revisions: stateDraft2.revisions, currentRevision: stateDraft2.currentRevision, drafts: stateDraft2.draftsWaiting })
 // B5 repeats on every round: r2 is single-author too (r-1), so the chair must add its section before adopting.
 const DRAFT2_NOTE = '院士席的设计补充：第二版起，每个「复核」结论都要附可复现的命令。'
-const draft2Continued = await call({ action: 'propose', member: 'acad', text: DRAFT2_NOTE })
+const draft2Continued = await call({ action: 'propose', materialize: true, member: 'acad', text: DRAFT2_NOTE })
 ok(draft2Continued.ok && draft2Continued.parsed.continued === true && draft2Continued.parsed.id === draft2.parsed.id,
   '★ the co-design round repeats on r2 (the same draft id is continued, the revision numbers below stay the same)',
   draft2Continued.parsed && { id: draft2Continued.parsed.id, continued: draft2Continued.parsed.continued })

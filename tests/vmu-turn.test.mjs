@@ -690,6 +690,12 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     // knows (no IDENTIFIABLE leader: `vmu.turn.leaderId` unset or not on the roster), which stays true in both cases.
     'v5r-charter-division': 'B1 (task-54): leaderless 变体原来断言「本所当前没有在册院士」，在「院士就座但 vmu.turn.leaderId 未配置」时与名册自相矛盾；改成只断言「没有可识别的领头人」（policy 能证明的唯一事实）',
     'v5r-charter-roster-temp': 'B1 (task-54): 同上，temp 的 leaderless 名册行不再声称没有在册院士，改成「领头人未配置（vmu.turn.leaderId 未设置或不在名册）」',
+    // ★ RUN 255 / task-96 (TB-2611-P, user Q2): the leaderless task-board line said 「所办可以协助调整」. On the live
+    //   run the office really did the writing under member names (`memberActed:false`), so a door that says the office
+    //   may «help adjust» priorities reads as "the office may edit/take over the work". The shipped line now keeps the
+    //   office's relay role and moves the work back to the seat that took it: 「所办可转达建议或直接分派，谈完的活仍
+    //   由承办席位自己写」. The capture is frozen; this is a declared divergence, not a silent drift.
+    'v5r-charter-taskboard-leader': 'RUN 255 / task-96: leaderless 变体的「所办可以协助调整」被读成所办可代改/代做（真机实测所办以成员名义代写、memberActed:false）；改成「所办可转达建议或直接分派，谈完的活仍由承办席位自己写」——代转不是写作',
   })
   const divergedByBlock = Object.create(null)
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
@@ -1567,13 +1573,25 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // ★ the receipt's `pending` describes the prompt that was ALREADY held when the call started (what the caller is
   // holding going in) — not the one this call just produced. So it is only nameable on the SECOND call, which is
   // exactly the call where a caller can drop it by passing an explicit list.
-  // the readings live at the TOP LEVEL of the step result (both the awaiting branch and the settled receipt), not
-  // inside `receipt` — which is why the live transcript shows them beside toolCalls.
-  const second = await t.step({ members: [{ id: 'r-9', role: 'member' }], why: 'R14f a selection that drops the held turn' })
-  ok(second && second.pending && second.pending.turn === held.turnId,
-    '★★ R14f: the STEP RESULT names the turn the caller was holding, by the same id the seam holds', second && second.pending)
-  ok(second && second.selectionIgnored && second.selectionIgnored.pending === held.turnId,
-    '★★ R14f2: and it says in the SAME result that this selection dropped that turn', second && second.selectionIgnored)
+  // ★★★ RUN 256 / TB-2616 (task-97) — THE SECOND CALL IS A REFUSAL NOW, AND THAT IS THE FIX. This block used to let a
+  // second `step({members:[r-9]})` through while r-1's prompt was held: the receipt said `pending.turn` = the held id
+  // and `selectionIgnored.pending` = the held id, i.e. the kernel documented that it was SUPERSEDING a prompt the caller
+  // was still holding (the live-run defect: the reply then answered the right member through the wrong turn and the held
+  // turn stayed `open`). The reading is kept as a PURE function assertion above (R14c-e); the live door itself now
+  // refuses by name, and the refusal names the held turn — the same fact, said as a stop instead of a warning.
+  const heldSecond = (() => {
+    try {
+      const out = t.step({ members: [{ id: 'r-9', role: 'member' }], why: 'R14f a selection that would drop the held turn' })
+      return out && typeof out.then === 'function' ? out : out
+    } catch (e) { return Promise.reject(e) }
+  })()
+  let refusedSecond = null
+  try { await heldSecond } catch (e) { refusedSecond = e }
+  ok(refusedSecond && refusedSecond.code === 'VMU_TURN_ALREADY_PARKED',
+    '★★ R14f: a second step over the HELD prompt is REFUSED by name (RUN 256: it used to supersede it silently)', refusedSecond && refusedSecond.code)
+  ok(refusedSecond && refusedSecond.parkedFacts && refusedSecond.parkedFacts.turnId === held.turnId,
+    '★★ R14f2: and the refusal NAMES the held turn (the superseded reading became a stop, not a warning)',
+    refusedSecond && refusedSecond.parkedFacts)
   const keep = selectionReadingsOf(held, ['r-1'])
   ok(keep.selectionIgnored === null && keep.selectionApplied === true,
     '★ R14g: a selection that KEEPS the held member is not called ignored (no false alarm)', keep.selectionIgnored)

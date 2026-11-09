@@ -123,7 +123,8 @@ const DRAFT1 = 'Shared/Drafts/Protocol-r1.md'
   const started = await b.call('vibe_v5_start', { problem: '前 n 个奇数之和 = n²，用归纳法验证。', researcherCount: 2 })
   ok(started && started.ok === true, 'the round starts (so the blueprint seats exist)')
 
-  p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: R1_TEXT })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: R1_TEXT, materialize: true })
   ok(p1 && p1.ok === true, 'propose returns a receipt', p1)
   ok(p1 && p1.status === 'draft' && p1.revision === 1, 'propose is r1 draft', { revision: p1 && p1.revision, status: p1 && p1.status })
   ok(p1 && p1.md && p1.md.available === true, 'the receipt says the md face IS available (a draft is a document now)')
@@ -149,7 +150,8 @@ const DRAFT1 = 'Shared/Drafts/Protocol-r1.md'
 // ── §2 co-design continuation REWRITES that same draft file (one revision = one file); canonical stays untouched ───
 {
   console.log('\n=== §2 co-design continuation rewrites the SAME draft file, never the canonical one ===')
-  p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT })
+  // legacy path: the continuation rewrites the kernel-materialized draft only when materialize:true is explicit
+  p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT, materialize: true })
   ok(p2 && p2.ok === true && p2.continued === true, 'the second member continues the r1 draft', p2)
   ok(p2 && p2.revision === 1, 'continuation keeps revision 1 (same draft)', p2 && p2.revision)
   ok(p2 && p2.md && p2.md.written === true && p2.md.mdPath === DRAFT1, 'the continuation REWRITES the same draft md (one revision = one file)', p2 && p2.md)
@@ -301,9 +303,11 @@ let staleState = null
 // ── §8 a new revision: propose r2 + adopt r2 rewrites the md to r2 current ─────────────────────────────────────────
 {
   console.log('\n=== §8 a second blueprint round rewrites the md to r2 current ===')
-  const p3a = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '- r2 补充：偶数情形归约到奇数情形。' })
+  // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
+  const p3a = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '- r2 补充：偶数情形归约到奇数情形。', materialize: true })
   ok(p3a && p3a.ok === true && p3a.revision === 2 && p3a.status === 'draft', 'propose starts r2 draft', { revision: p3a && p3a.revision })
-  const p3 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: '## 共同设计补充｜r-1\n- r2 复核：n=2 时 4=2²。' })
+  // legacy path: the r2 continuation rewrites the kernel-materialized draft only when materialize:true is explicit
+  const p3 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: '## 共同设计补充｜r-1\n- r2 复核：n=2 时 4=2²。', materialize: true })
   ok(p3 && p3.ok === true && p3.continued === true, 'the co-design seat joins the r2 draft too')
   ok(p3a && p3a.md && p3a.md.written === true && p3a.md.mdPath === 'Shared/Drafts/Protocol-r2.md', 'the r2 draft writes ITS OWN file (a new revision is a new file)', p3a && p3a.md)
   ok(existsSync(join(b.root, 'VibeMath', 'Shared', 'Drafts', 'Protocol-r2.md')) === true, 'the r2 draft md sits beside the r1 one on disk')

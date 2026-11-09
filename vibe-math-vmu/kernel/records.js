@@ -60,6 +60,12 @@ export const EXTRA_WIRED_KEYS = Object.freeze([
 ])
 
 /** Head fields that can never be trimmed from a list projection (`vmu.records.headFields` trims the rest). */
+/**
+ * ★★★ RUN 256 / TB-2623: a temp FILE NAME is not a fact about time, so it must not read the clock either: a wall-
+ * clock suffix made two otherwise identical corpus runs differ in file names. pid + in-process sequence + random
+ * suffix is unique within a run and across concurrent processes without consulting any clock.
+ */
+let mdTmpSeq = 0
 export const CORE_HEAD_FIELDS = Object.freeze(['id', 'track', 'kind', 'status', 'updatedAt', 'fingerprint'])
 
 /**
@@ -78,6 +84,23 @@ export const THREE_NAMES_MEANS = Object.freeze({
   by: 'by = the WRITE FACE\'s name for the writer: a write passes `by` (the card tools pass the acting `member` as this) and the row records that person as the writer of this revision',
   threeNames: 'owner, writer and `by` are two facts under three names: owner = whose row it is, writer = who wrote this revision, `by` = the write face\'s spelling of writer — so ONE correction moves writer/`by` and leaves owner where it was',
 })
+
+/**
+ * ★★★ RUN 259 / P1-3: THE IDENTITY IS A CHECK, NOT A TAUTOLOGY.
+ *
+ * Before this, `totalUniverse` was BUILT from `live.length` and `holds` then compared `items + dropped + excluded`
+ * against that same number: two expressions of one arithmetic, so `holds:false` was unreachable by construction - a
+ * criterion that can never fail is not a criterion. Now the caller passes `universeCounted`, a count from ANOTHER
+ * path (a traversal of the index ids plus the external rows it was handed), and `holds` is `accounted === counted`.
+ * If any row vanishes without a named bucket, the two disagree and `holds:false` says so.
+ *
+ * The negative case is executable (the suite injects `page:1, universeCounted:2` and gets `holds:false`), which is
+ * what makes this a testable identity rather than prose.
+ */
+export function identityHoldsOf({ page = 0, pageDropped = 0, excluded = 0, mutedDropped = 0, questionDropped = 0, indexMissing = 0, indexNonLive = 0, mergeDuplicates = 0, universeCounted = 0 } = {}) {
+  const accounted = page + pageDropped + excluded + mutedDropped + questionDropped + indexMissing + indexNonLive + mergeDuplicates
+  return { accounted, universeCounted: universeCounted, holds: accounted === universeCounted }
+}
 
 /** The three names + their definitions, in the shape every receipt and read face carries them. */
 const identityEcho = (owner, by) => ({
@@ -427,6 +450,22 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const chunkBytes = nat(sget(K.chunkBytes), DEFAULTS[K.chunkBytes])
   const allowedSchemes = listOf(sget(K.allowedSchemes), DEFAULTS[K.allowedSchemes])
   const verifyExists = sget(K.verifyExists) !== false
+  // ★ RUN 256 / TB-2618: the track whitelist is no longer a CONSTRUCTION-TIME snapshot. A pack that declares
+  //   `recordTracks` after the kernel exists lands here through `records.declareTracks(list)`, so the later
+  //   declaration is EFFECTIVE (put/list see it) instead of merely recorded. Closed set + refusal by name are kept.
+  const declaredExtraTracks = new Set()
+  // ★ The BASE is still the construction-time snapshot (a later `vibe_v5_set` of vmu.records.tracks must NOT silently
+  //   widen what this handle accepts — the ledger has always refused that as a mid-flight contract change). What is
+  //   new is `declaredExtraTracks`: kernel.declareTracks()/a pack's recordTracks declaration extends THIS list, so a
+  //   post-construction declaration is effective without turning the snapshot into a live settings read.
+  const liveTracks = () => {
+    const base = tracks.slice()
+    const seen = new Set(base)
+    for (const extra of declaredExtraTracks) {
+      if (!seen.has(String(extra))) { seen.add(String(extra)); base.push(String(extra)) }
+    }
+    return base
+  }
   const tracks = listOf(sget(K.tracks), DEFAULTS[K.tracks])
   const headListAt = nat(sget(K.headListAt), DEFAULTS[K.headListAt])
   const truncateModeRaw = sget(K.truncateMode)
@@ -590,19 +629,33 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     }
     return { writer: null, writerSource: null }
   }
-  /** The last-write instant of a row as epoch ms, or null when the row carries no usable time (never NaN by accident). */
-  const updatedMsOf = (row) => {
-    if (!row || typeof row !== 'object') return null
-    const raw = row.updatedAt
+  /**
+   * One time resolver for EVERY field, not just `updatedAt`. RUN 259 / P1-4: the sort comparator did
+   * `a.createdAt - b.createdAt` on ISO STRINGS, which is `NaN`, so a `headSort:"createdAt"` page was ordered by the
+   * comparator default (input order) while the receipt claimed a sort - a silent misorder, not a crash. A raw value
+   * this function cannot read returns `null` (never `NaN`, never 0): the caller NAMES those rows in `orderUnknown`
+   * instead of pretending their instant is the epoch and sorting them first.
+   */
+  const timeMsOf = (raw) => {
     if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
     if (typeof raw === 'string' && raw.trim() !== '') { const n = Number(raw); if (Number.isFinite(n)) return n; const p = Date.parse(raw); return Number.isFinite(p) ? p : null }
     return null
   }
+  /** The last-write instant of a row as epoch ms, or null when the row carries no usable time (never NaN by accident). */
+  const updatedMsOf = (row) => (row && typeof row === 'object') ? timeMsOf(row.updatedAt) : null
   /** The `excluded` block is only useful if it says WHY it is non-empty; this sentence is its only wording. */
+  // ★★★★★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #7, MEASURED): ONE BLOCK, TWO SHAPES.
+  //
+  // `excluded` grew piecemeal and ended up asymmetric: `shapeMismatch` was a COUNT while `noWriter`/`timeUnknown` were ID
+  // LISTS, so a reader could not write one loop over the block and could not answer "how many rows were dropped, and
+  // which" without knowing which key happened to be which kind. Run 74 read it exactly that way. The three original keys
+  // keep their names and meanings (compatibility: existing assertions read `noWriter` as a list), and the block is now
+  // SYMMETRIC next to them: each list has a `...Count`, the count has an id list (`shapeMismatchIds`). Every number and
+  // its ids are produced from the SAME loop that drops the rows, so they cannot disagree.
   const excludedMeansOf = (ex) => {
     const clean = !ex || (ex.shapeMismatch === 0 && ex.noWriter.length === 0 && ex.timeUnknown.length === 0)
     if (clean) return 'no row was dropped for a shape reason: every live row carried the writer and the time this question filtered on (an EMPTY result here means the filter matched nothing, not that rows were unreadable)'
-    return 'these rows WERE dropped because a filter could not read the fact it asked for - `shapeMismatch` counts them, `noWriter` names the ones with no writer under `by`/`writer`/`owner`, and `timeUnknown` names the ones whose `updatedAt` is not a usable instant. They are named so "nothing matched" and "rows were thrown away" stay different answers'
+    return 'these rows WERE dropped because a filter could not read the fact it asked for. The block is SYMMETRIC: `shapeMismatch` is a COUNT and `shapeMismatchIds` is the SAME count as ids; `noWriter` is an ID LIST and `noWriterCount` is its count; `timeUnknown` is an ID LIST and `timeUnknownCount` is its count. `noWriter` names rows with no writer under `by`/`writer`/`owner`; `timeUnknown` names rows whose `updatedAt` is not a usable instant. A row dropped by more than one filter appears once per filter it was dropped by, so every count and its ids agree. They are named so "nothing matched" and "rows were thrown away" stay different answers'
   }
   const view = (rec, { withBody = false, at = now(), count = false } = {}) => {
     const base = {
@@ -675,6 +728,30 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   }
 
   const api = {
+    /**
+     * RUN 256 / TB-2618: a pack's POST-CONSTRUCTION `recordTracks` declaration. It extends the live whitelist for
+     * THIS handle (put/list read `liveTracks()`), so "declared after boot" is effective, not a no-op. The
+     * construction-time settings snapshot (`vmu.records.tracks`) is NOT rewritten: the fold in kernel/pack.js owns
+     * the durable spelling, and a retraction returns to it.
+     */
+    declareTracks(list = []) {
+      const wanted = listOf(list, [])
+      const fired = []
+      const seen = new Set(liveTracks())
+      for (const track of wanted) {
+        const name = String(track)
+        if (name === '') continue
+        if (!seen.has(name)) { seen.add(name); fired.push(name) }
+        declaredExtraTracks.add(name)
+      }
+      return {
+        ok: true,
+        enforced: [K.tracks], enforcedScope: ENFORCED_SCOPE,
+        fired,
+        tracks: liveTracks(),
+        declared: wanted.map(String),
+      }
+    },
     apiVersion,
 
     /**
@@ -766,7 +843,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const enforced = []
       const fired = []
       mark(enforced, K.tracks)
-      if (!tracks.includes(track)) {
+      if (!liveTracks().includes(track)) {
         mark(fired, K.tracks)
         throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track) + ' (' + liveTrackNames().join('/') + ')',
           'vmu.records.tracks declares the tracks; a new track must be declared before it can hold records (vmu.records.tracks)', [K.tracks], 'put')
@@ -1135,7 +1212,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     },
 
     /** READ a track's HEAD LIST — the default information channel (07 §4.4; `pointerPropagation` can mute it). */
-    list({ track = null, limit = null, fields = null, by = null, since = null, until = null } = {}) {
+    list({ track = null, limit = null, fields = null, by = null, since = null, until = null, external = null, externalSource = null, kind = null, includeUntracked = false } = {}) {
       // RUN 243 (FEEDBACK65 1.8, MEASURED): a receipt told the reader to "read the records written by `by` between
       // `from` and `to`" - and this list had no such filter, so the hint pointed at a wall that did not exist (the
       // same defect class as RUN 165's quota refusal (which named two repair verbs no face had) and RUN 176's prune
@@ -1146,7 +1223,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const enforced = [K.tracks, K.headSort, K.headListAt, K.pointerPropagation, K.headFields]
       const fired = []
       const at = now()
-      if (track !== null && !tracks.includes(track)) {
+      if (track !== null && !liveTracks().includes(track)) {
         mark(fired, K.tracks)
         throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track), 'vmu.records.tracks declares the tracks: ' + tracks.join(', '), [K.tracks], 'list')
       }
@@ -1182,7 +1259,19 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         }
         void before
       }
-      let live = ids.map((i) => records.get(i)).filter((r) => r && r.state === 'live')
+      // ★ RUN 259 / P1-3: the index ids are the FIRST count source. Rows the index names but this kernel cannot
+      // produce are NAMED (`indexMissing` / `indexNonLive`) instead of disappearing in a `.filter` - that silent drop
+      // used to make the identity's two sides the same arithmetic.
+      const indexCounted = ids.length
+      const indexMissingIds = []
+      const indexNonLiveIds = []
+      let live = []
+      for (const i of ids) {
+        const rec = records.get(i)
+        if (!rec) { indexMissingIds.push(String(i)); continue }
+        if (rec.state !== 'live') { indexNonLiveIds.push(String(i)); continue }
+        live.push(rec)
+      }
       // by/since/until: the reader's question ("what did THIS seat write in THAT window") is answered here, not by
       // paging a whole track and eyeballing the by column.
       const msOfArg = (v) => {
@@ -1207,34 +1296,165 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // ISO string became NaN and fell out with no reading at all, which is how a real row answered `total:0` while the
       // same row was visible in an unfiltered list. Every row a filter DROPS for a shape reason is now NAMED in
       // `excluded`, so "no rows matched" and "rows were thrown away because I could not read them" are different answers.
-      const excluded = { shapeMismatch: 0, noWriter: [], timeUnknown: [] }
+      const excluded = { shapeMismatch: 0, noWriter: [], timeUnknown: [], untracked: 0, untrackedIds: [] }
+      // ★ RUN 259 / P1-3: rows that were READABLE but did not answer this question (another writer, outside the
+      // time window, another kind) are a legitimate non-answer, not a loss - but for the identity to be checkable
+      // they must be counted somewhere, or "asked a narrower question" and "quietly dropped a row" look identical.
+      let questionDropped = 0
+      // ★ RUN 255 / TB-2606-A (FEEDBACK74 #7): the ids behind `shapeMismatch`, filled by the SAME three drop branches that
+      // increment the count, so the count and the list cannot disagree (see excludedMeansOf).
+      const shapeMismatchIds = []
       if (byArg !== null) {
         const keptByWriter = []
         for (const r of live) {
           const w = writerOf(r)
-          if (w.writer === null) { excluded.shapeMismatch += 1; excluded.noWriter.push(String(r.id)); continue }
+          if (w.writer === null) { excluded.shapeMismatch += 1; shapeMismatchIds.push(String(r.id)); excluded.noWriter.push(String(r.id)); continue }
           if (w.writer === byArg) keptByWriter.push(r)
+          else questionDropped += 1
         }
         live = keptByWriter
       }
       if (sinceMs !== null) {
         live = live.filter((r) => {
           const t = updatedMsOf(r)
-          if (t === null) { excluded.shapeMismatch += 1; excluded.timeUnknown.push(String(r.id)); return false }
-          return t >= sinceMs
+          if (t === null) { excluded.shapeMismatch += 1; shapeMismatchIds.push(String(r.id)); excluded.timeUnknown.push(String(r.id)); return false }
+          if (t >= sinceMs) return true
+          questionDropped += 1
+          return false
         })
       }
       if (untilMs !== null) {
         live = live.filter((r) => {
           const t = updatedMsOf(r)
-          if (t === null) { excluded.shapeMismatch += 1; excluded.timeUnknown.push(String(r.id)); return false }
-          return t <= untilMs
+          if (t === null) { excluded.shapeMismatch += 1; shapeMismatchIds.push(String(r.id)); excluded.timeUnknown.push(String(r.id)); return false }
+          if (t <= untilMs) return true
+          questionDropped += 1
+          return false
         })
       }
+      // The symmetric block: the three original keys keep their names/meanings, and the counts/ids that complete the
+      // symmetry are attached beside them (one place, so both return branches below carry the same shape).
+      excluded.shapeMismatchIds = shapeMismatchIds.slice()
+      excluded.noWriterCount = excluded.noWriter.length
+      excluded.timeUnknownCount = excluded.timeUnknown.length
       const sinceIso = sinceMs === null ? null : new Date(sinceMs).toISOString()
       const untilIso = untilMs === null ? null : new Date(untilMs).toISOString()
       const noFilter = byArg === null && sinceMs === null && untilMs === null
-      live.sort((a, b) => headSort === 'title' ? String(a.title || '').localeCompare(String(b.title || '')) : (headSort === 'createdAt' ? a.createdAt - b.createdAt : a.updatedAt - b.updatedAt) || (a.id < b.id ? -1 : 1))
+      // ★★★ RUN 256 / TB-2617 (P0-3): ONE FACE, ONE ARITHMETIC SITE.
+      // The tool face used to read the ledger here and the pack library in `host.js`, then compute its own
+      // `excluded`/`total` from only one side: the same query answered "1 row was dropped" from the ledger and
+      // "nothing was dropped" from the tool. The merge, the filters, the exclusion naming, the page cap and the
+      // identity are now computed HERE, once. `external` rows are another store's rows (the pack library heads);
+      // the caller does not filter them and never re-counts them.
+      const kindArg = (typeof kind === 'string' && kind.trim() !== '') ? kind.trim() : null
+      const externalRows = Array.isArray(external) ? external : []
+      const externalLabel = externalSource === null || externalSource === undefined ? null : String(externalSource)
+      const untrackedIds = []
+      const seenAll = new Set(live.map((r) => String(r && r.id)))
+      const externalKept = []
+      let externalCounted = 0
+      let mergeDuplicates = 0
+      for (const r of externalRows) {
+        if (!r || typeof r !== 'object') continue
+        externalCounted += 1
+        const rid = String(r.id === undefined || r.id === null ? '(no id)' : r.id)
+        if (seenAll.has(rid)) { mergeDuplicates += 1; continue }
+        seenAll.add(rid)
+        // A row with no `track` cannot answer a track question; it is named as `untracked` in the bare-list road,
+        // and for an explicit track query it is simply not part of that store's answer.
+        if (track !== null) { questionDropped += 1; continue }
+        const w = writerOf(r)
+        if (byArg !== null) {
+          if (w.writer === null) { excluded.shapeMismatch += 1; shapeMismatchIds.push(rid); excluded.noWriter.push(rid); continue }
+          if (w.writer !== byArg) { questionDropped += 1; continue }
+        }
+        if (sinceMs !== null || untilMs !== null) {
+          const t = updatedMsOf(r)
+          if (t === null) { excluded.shapeMismatch += 1; shapeMismatchIds.push(rid); excluded.timeUnknown.push(rid); continue }
+          if (sinceMs !== null && t < sinceMs) { questionDropped += 1; continue }
+          if (untilMs !== null && t > untilMs) { questionDropped += 1; continue }
+        }
+        // An external row is another store's projection (a pack library head): it has no `tags`/`rev`/`state`
+        // fields. Normalise the SHAPE here once, so `view()` does not have to know which store a row came from.
+        externalKept.push(Object.assign({ tags: [] }, r, { writer: w.writer, writerSource: w.writerSource }))
+      }
+      let merged = live.concat(externalKept)
+      if (kindArg !== null) {
+        const beforeKind = merged.length
+        merged = merged.filter((r) => r && typeof r.kind === 'string' && r.kind === kindArg)
+        questionDropped += beforeKind - merged.length
+      }
+      const includeUntrackedArg = includeUntracked === true
+      const untrackedScope = (byArg !== null || sinceMs !== null || untilMs !== null || kindArg !== null || track !== null) ? 'query' : 'bare-list'
+      if (untrackedScope === 'bare-list' && !includeUntrackedArg) {
+        const keptByTrack = []
+        for (const r of merged) {
+          const hasTrack = r && typeof r.track === 'string' && r.track.trim() !== ''
+          if (hasTrack) { keptByTrack.push(r); continue }
+          excluded.untracked += 1
+          untrackedIds.push(String((r && r.id) || '(no id)'))
+        }
+        merged = keptByTrack
+      }
+      const externalKeptIds = new Set(externalKept.map((r) => String(r && r.id)))
+      // RUN 164 pins that the receipt counts each SOURCE separately: a library head that the bare-list road
+      // excluded as untracked was still READ (that is why it can be named), so it counts in `library`.
+      const rowsFromLibrary = externalKept.length
+      const rowsFromRecords = merged.filter((r) => !externalKeptIds.has(String(r && r.id))).length
+      excluded.shapeMismatchIds = shapeMismatchIds.slice()
+      excluded.noWriterCount = excluded.noWriter.length
+      excluded.timeUnknownCount = excluded.timeUnknown.length
+      excluded.untrackedIds = untrackedIds.slice()
+      excluded.untrackedScope = untrackedScope
+      excluded.untrackedScopeMeans = 'which untracked road this page took: "bare-list" = the call asked no row-selecting question (a stocktake), so rows whose `track` is undefined are excluded by default and counted in `untracked`/`untrackedIds` (`includeUntracked:true` pages them too); "query" = the call asked a writer/time/kind/track question, so matching library heads are part of the answer and `untracked` stays 0'
+      live = merged
+      // ★★★ RUN 259 / P1-3: THE IDENTITY NOW HAS TWO INDEPENDENT SOURCES. `universeCounted` is how many rows this
+      // query STARTED with across both stores: every index id the track names, plus every external row handed in. The
+      // page arithmetic below is the other side. Before this, `totalUniverse` was BUILT from `live.length` and `holds`
+      // compared against that same number - a tautology no input could falsify. Rows the index names but this kernel
+      // cannot produce are now in `indexMissing`/`indexNonLive`; rows a filter legitimately declines are in
+      // `questionDropped`; so a vanished row shows up as `holds:false` instead of hiding inside a subtraction.
+      const universeCounted = indexCounted + externalCounted
+      // ★★★ RUN 259 / P1-4: ORDER BY INSTANT, AND NAME WHAT CANNOT BE ORDERED. The old comparator subtracted raw
+      // `createdAt`/`updatedAt` values, so ISO strings produced NaN and Array#sort left the input order - a silent
+      // misorder while the receipt claimed `sort: "updatedAt"`. A row whose stamp is missing/unreadable is pushed to
+      // the BACK and named in `orderUnknown` (never treated as the epoch and sorted first).
+      const orderUnknown = []
+      let ordered = live
+      if (headSort === 'title') {
+        ordered = live.slice().sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')) || (a.id < b.id ? -1 : (a.id > b.id ? 1 : 0)))
+      } else {
+        const field = headSort === 'createdAt' ? 'createdAt' : 'updatedAt'
+        const known = []
+        const unknownRows = []
+        for (const r of live) {
+          const raw = r ? r[field] : undefined
+          const ms = timeMsOf(raw)
+          if (ms === null) {
+            unknownRows.push(r)
+            orderUnknown.push({ id: String(r && r.id), field, value: raw === undefined ? null : raw, why: raw === undefined || raw === null || raw === '' ? 'missing' : 'unreadable' })
+            continue
+          }
+          known.push(r)
+        }
+        known.sort((a, b) => (timeMsOf(a[field]) - timeMsOf(b[field])) || (a.id < b.id ? -1 : (a.id > b.id ? 1 : 0)))
+        unknownRows.sort((a, b) => (String(a && a.id) < String(b && b.id) ? -1 : 1))
+        ordered = known.concat(unknownRows)
+      }
+      live = ordered
+      const filteredTotal = live.length
+      const totalUniverse = filteredTotal + excluded.shapeMismatch + excluded.untracked
+      // ONE IDENTITY, CHECKED: page + pageDropped + excluded(shapeMismatch + untracked) + the rows the question
+      // declined + the rows the index could not produce + merged duplicates === the independently counted universe.
+      // `noWriter`/`timeUnknown` are SUBSETS of `shapeMismatch`, so they are never summed again.
+      const identityOf = (page, pageDropped, mutedDropped, universe) => {
+        const pageExcluded = excluded.shapeMismatch + excluded.untracked
+        const check = identityHoldsOf({ page, pageDropped, excluded: pageExcluded, mutedDropped, questionDropped, indexMissing: indexMissingIds.length, indexNonLive: indexNonLiveIds.length, mergeDuplicates, universeCounted })
+        return { page, pageDropped, excluded: pageExcluded, mutedDropped, questionDropped, questionDroppedMeans: 'rows this store could read but that did not answer the question (another writer, outside the time window, another kind, a track query meeting an untracked external row); a narrower question is a legitimate non-answer, not a loss',
+          indexMissing: indexMissingIds.length, indexMissingIds: indexMissingIds.slice(), indexNonLive: indexNonLiveIds.length, indexNonLiveIds: indexNonLiveIds.slice(), mergeDuplicates, totalUniverse: universe,
+          accounted: check.accounted, universeCounted: check.universeCounted, orderUnknown: orderUnknown.slice(), holds: check.holds,
+          means: 'accounted (page + pageDropped + excluded + mutedDropped + questionDropped + indexMissing + indexNonLive + mergeDuplicates) === universeCounted (index ids traversed + external rows handed in): two paths, so `holds` can be FALSE when a row vanishes unnamed; noWriter/timeUnknown are subsets of shapeMismatch and are never added twice; orderUnknown names rows that could not be ordered and they are placed last' }
+      }
       // ★★★ RUN 254 / P1-2 (L2): a `limit` the caller PASSED is answered or refused - never silently replaced by the
       // default page size. `limit:0` keeps its documented meaning (every row, no page cap); anything that is not a
       // non-negative integer is a refusal that names the value, so a caller cannot believe it asked for a page and be
@@ -1253,7 +1473,16 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const capWanted = limitUsed
       if (!pointerPropagation) {
         mark(fired, K.pointerPropagation)
-        return { ok: true, items: [], heads: [], count: 0, available: live.length, dropped: live.length, truncated: live.length > 0, suppressed: true, excluded, excludedMeans: excludedMeansOf(excluded), limitUsed, limitSource, limitMeans: 'this page is MUTED (vmu.records.pointerPropagation=false): no rows are returned, so the page size did not apply; `available` counts the set the filter covers', enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)',
+        // RUN 256 / TB-2617 | identity must HOLD on the muted road too: the rows the query WOULD have answered are
+        // not a page cap (`pageDropped`) and not a shape exclusion - they are named `mutedDropped`, one field, so
+        // `page + pageDropped + shapeMismatch + untracked + mutedDropped === totalUniverse` stays true even when the
+        // mute holds back every row. `totalUniverse` is the DENOMINATOR of the question and is never muted.
+        const mutedDropped = live.length
+        const mutedUniverse = live.length + excluded.shapeMismatch + excluded.untracked
+        return { ok: true, items: [], heads: [], count: 0, available: live.length, total: live.length, totalUniverse: mutedUniverse, mutedDropped,
+          identity: identityOf(0, 0, mutedDropped, mutedUniverse),
+          orderUnknown, orderUnknownMeans: 'rows this page could not place in time order because their stamp is missing or unreadable; they are named here and placed LAST, never silently treated as the epoch',
+          dropped: live.length, truncated: live.length > 0, suppressed: true, excluded, excludedMeans: excludedMeansOf(excluded), limitUsed, limitSource, limitMeans: 'this page is MUTED (vmu.records.pointerPropagation=false): no rows are returned, so the page size did not apply; `available` counts the set the filter covers', enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)',
           ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames }
       }
       const cap = capWanted === 0 ? live.length : capWanted
@@ -1269,7 +1498,14 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // the audit's window, so the gate could no longer SEE that this receipt carries `enforced` (the fact was there,
       // the reading was not readable). Position in the object is not the semantics — the window is.
       return { ok: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at,
-        items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort,
+        items, heads: items.map((x) => x.id), count: items.length, available: live.length, total: live.length,
+        // ★★★ RUN 256 / TB-2617: the universe this page covers, plus the RUN 259 identity that CAN be falsified:
+        // one side is the page arithmetic, the other is an independent traversal of the index ids + external rows.
+        totalUniverse, mutedDropped: 0,
+        identity: identityOf(items.length, dropped, 0, totalUniverse),
+        orderUnknown, orderUnknownMeans: 'rows this page could not place in time order because their stamp is missing or unreadable; they are named here and placed LAST, never silently treated as the epoch; sortNamesBy is the field the ordering used',
+        rowsFrom: { records: rowsFromRecords, library: rowsFromLibrary }, externalSource: externalLabel, externalRows: externalRows.length,
+        dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort,
         filter: { by: byArg, since: sinceIso, until: untilIso },
         // ★★★ RUN 254 (P0-2 L1 + P1-2 L2): the page and the filter now answer their own questions. `excluded` names the
         // rows a filter dropped for a shape reason (never a silent zero), and `limitUsed`/`limitSource` say which page
@@ -1737,7 +1973,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const content = mdComposeText({ title, track, kind, fields, text })
       const fingerprint = mdFingerprintOf(content)
       const replaced = existsSync(absPath)
-      const tmp = absPath + '.tmp-' + String(process.pid) + '-' + String(Date.now()) + '-' + Math.random().toString(16).slice(2, 10)
+      const tmp = absPath + '.tmp-' + String(process.pid) + '-' + String(mdTmpSeq += 1) + '-' + Math.random().toString(16).slice(2, 10)
       try {
         mkdirSync(dirname(absPath), { recursive: true })
         writeFileSync(tmp, content, 'utf8')
@@ -1780,6 +2016,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         missing: '索引里有行、磁盘上没有对应的 md：具名报告；不删行（文件缺失是事实，不是拿索引冒充正文的理由）',
         untracked: '磁盘上有 md、索引里还没有对应活行（dryRun 时就是「不写的话会保持 untracked」的那些）',
         unchanged: 'md 指纹与索引行一致：没有写任何东西',
+        blocked: '这次 reindex 没能收进来的文件：每条带 path + why + reachableInstead；非空时回执 ok 为 false（RUN 259 / AUDIT-14：ok:true 曾经在什么都没做时也成立，提示词照做会进死循环）',
         skipped: '读不动、不是 vmu md、或 track 未声明：计数并具名，绝不静默丢；每条带 `whyClass`（unreadable / not-a-vmu-md / undeclared-track / write-refused），所以「有一堆坏文件」与「这堆文件根本不是我这类文档」不再混成一个数',
         skippedByClass: '按 whyClass 分类的跳过计数：not-a-vmu-md 是别人写的 md（不带 `- ' + MD_MARKER_KEY + '：` 头），不是坏索引行',
       }
@@ -1788,6 +2025,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           ok: true, action: 'reindex', available: false, dryRun: dry, root: null,
           scanned: 0, paths: [], adopted: [], changed: [], missing: [], untracked: [], unchanged: 0, skipped: [],
           counts: { walked: 0, scanned: 0, unchanged: 0, adopted: 0, changed: 0, missing: 0, untracked: 0, skipped: 0, skippedByClass: { unreadable: 0, 'not-a-vmu-md': 0, 'undeclared-track': 0, 'write-refused': 0 } },
+          code: null, hint: null, blocked: [], partial: false, blockedMeans: 'no workspace was scanned, so nothing could be blocked',
           means: Object.assign({ root: 'this instance is not attached to a durable store, so there is no workspace to scan and nothing was written' }, means),
           historyKept: true, at: now(),
         }
@@ -2065,9 +2303,43 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         }
       }
 
-      const counts = { walked: files.length, scanned: seenPaths.length, unchanged: unchangedList.length, adopted: adopted.length, changed: changed.length, missing: missing.length, untracked: untracked.length, skipped: skipped.length, skippedByClass: Object.assign({}, skippedByClass) }
+      // ★★★ RUN 259 / AUDIT-14 P0-3 (MEASURED, real machine): `reindex` used to answer ok:true for EVERY outcome, including
+      // the files it could not index at all. The hint of VMU_PACK_V5R_BLUEPRINT_MD_DRIFT told a member to run reindex and
+      // then adopt; reindex answered ok:true, wrote nothing (the draft file is a plain markdown the index cannot own), and
+      // the next adopt refused with the SAME code. A receipt that says ok while the cure did nothing is how a hint becomes
+      // a loop. So: every file this call DROPPED is named in `blocked` with the reason and one reachable repair, and `ok`
+      // is false whenever that list is non-empty (`skipped` stays for counting, but it is no longer evidence of success).
+      // `orphan-draft-md` is NOT blocking: it is the expected history of an adopted draft, not a file the caller can fix.
+      const BLOCKING_SKIP_CLASSES = ['unreadable', 'not-a-vmu-md', 'undeclared-track', 'write-refused']
+      const BLOCKED_REACHABLE = {
+        unreadable: 'check the file is readable UTF-8 text (permissions/encoding), then run reindex again — the index cannot own bytes it could not read',
+        'not-a-vmu-md': 'this index can only own a vmu md (`- vmuMd：vmu-md/1` header + `## 正文`): if the file should be a blueprint draft, rewrite it as a vmu md (or call vibe_v5_blueprint {action:"propose", …, materialize:true} so the kernel writes it), then reindex; if it is a member own note, it needs no reindex — but a BP adopt that DRIFTED on such a file cannot be cured by reindex: adopt the file bytes explicitly with vibe_v5_blueprint {action:"adopt", …, refreshFingerprint:true}',
+        'undeclared-track': 'the md declares a track this kernel does not declare: fix its `- track：` line, or declare the track in vmu.records.tracks, then reindex again — no row can be adopted from it before that',
+        'write-refused': 'the index tried to write this row and was refused: read the named code in `why` and fix that cause, then reindex again — nothing was changed silently',
+      }
+      const blocked = skipped
+        .filter((item) => item && BLOCKING_SKIP_CLASSES.indexOf(item.whyClass) >= 0)
+        .map((item) => ({
+          path: item.path,
+          whyClass: item.whyClass,
+          why: item.why,
+          reachableInstead: BLOCKED_REACHABLE[item.whyClass] || 'fix the named cause, then run reindex again',
+        }))
+      const counts = { walked: files.length, scanned: seenPaths.length, unchanged: unchangedList.length, adopted: adopted.length, changed: changed.length, missing: missing.length, untracked: untracked.length, skipped: skipped.length, skippedByClass: Object.assign({}, skippedByClass), blocked: blocked.length }
+      // ★★★ RUN 259 / TB-2650 (sim gate, MEASURED): a refusal has to be NAMEABLE. `ok:false` with no `code` cannot be
+      // branched on by a caller, cannot be declared as expected by the simulator ledger, and cannot be registered in the
+      // docs/03 §8 code table — the receipt audit reports it as a finding. One named code, one named list, one hint.
+      const reindexHint = blocked.length === 0
+        ? null
+        : 'reindex 拒绝是这条码的意思：有 ' + String(blocked.length) + ' 个 md 文件这次收不进索引。每条 blocked[] 自带 reachableInstead：按它的 whyClass 修完（文件/权限/track 声明），然后**再调一次 reindex**（修好后这一条会消失）；如果 blocked 里的文件是 adopt 漂移的草案（whyClass=not-a-vmu-md），reindex 永远收不了它——直接 vibe_v5_blueprint {action:"adopt", path:"<path>", member:"<chair id>", draft:"<draft id>", refreshFingerprint:true} 认下当前字节。REACHABLE INSTEAD: ① 读 blocked[].reachableInstead 并逐条修，再 vibe_vmu_records {action:"reindex"}（修好的条目不再出现）；② 漂移草案走 vibe_v5_blueprint {action:"adopt", draft, refreshFingerprint:true}（这一步才改得动指纹）；③ 纯成员笔记不需要 reindex，也不该出现在 blocked 里'
       return {
-        ok: true, action: 'reindex', available: true, dryRun: dry, root, rootMeans: 'the scanned document root (<root>/VibeMath): the index rows are compared against the md files under it',
+        ok: blocked.length === 0,
+        code: blocked.length === 0 ? null : 'VMU_RECORDS_REINDEX_BLOCKED',
+        action: 'reindex', available: true, hint: reindexHint, dryRun: dry, root, rootMeans: 'the scanned document root (<root>/VibeMath): the index rows are compared against the md files under it',
+        blocked,
+        blockedMeans: blocked.length === 0
+          ? 'nothing was blocked: every md file this call met was either indexed, already in step, or is the named history of an adopted draft'
+          : 'this call could NOT index ' + String(blocked.length) + ' file(s) and says so by NAME (path + why + reachableInstead): ok is false and the refusal carries the code VMU_RECORDS_REINDEX_BLOCKED, because a reindex that leaves files unindexed is not a successful reindex and a refusal without a name cannot be branched on or declared as expected. `skipped`/`skippedByClass` count the same files but are no longer evidence that the call succeeded; missing/untracked describe files the index never had, blocked describes files it could not take',
         walked: counts.walked,
         scanScope: {
           root,
@@ -2078,6 +2350,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           accounted: counts.scanned,
         },
         skippedByClass: Object.assign({}, skippedByClass),
+        partial: blocked.length > 0,
         scanned: counts.scanned, paths: seenPaths,
         adopted, changed, missing, untracked, unchanged: counts.unchanged, skipped, counts, means,
         historyKept: true,

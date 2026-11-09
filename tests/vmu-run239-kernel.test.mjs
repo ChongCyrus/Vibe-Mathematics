@@ -278,7 +278,17 @@ try {
     const b = await boot(await mkRoot())
     const started = await b.call('vibe_v5_start', { problem: 'run239 meeting frame probe', researcherCount: 2 })
     ok(started && started.ok === true, '§5a0 the institute starts (the chair seat exists at all)', started && started.code)
-    await b.K.turn.step({ members: ['r-acad'], phase: 'normal', why: 'run239 meeting probe (chair turn)' })
+    // ★★ RUN 256 / TB-2616: a parked prompt must be ANSWERED before the next turn can be opened (the second door now
+    // refuses `VMU_TURN_ALREADY_PARKED` instead of silently replacing the prompt the caller still holds). This probe
+    // only needs the chair slot warm, so it answers the chair turn through the same caller route a live run uses, with
+    // the member and turn id taken FROM the receipt — never written by hand here.
+    const chair = await b.K.turn.step({ members: ['r-acad'], phase: 'normal', why: 'run239 meeting probe (chair turn)' })
+    ok(chair && chair.awaiting === true && chair.memberPrompt && typeof chair.memberPrompt.turnId === 'string',
+      '§5a1 the chair turn parks its prompt (and names the turn that holds it)', chair && chair.memberPrompt && chair.memberPrompt.turnId)
+    await b.K.turn.supplyMemberReply(fence({ say: '主席开场：先确认命题，再指定复核人。' }), chair.memberPrompt.member)
+    const chairDone = await b.K.turn.step({ members: [chair.memberPrompt.member], phase: 'normal', why: 'run239 meeting probe (chair turn answered)' })
+    ok(chairDone && chairDone.ok === true && chairDone.resumedTurnId === chair.memberPrompt.turnId,
+      '§5a2 and answering it RESUMES that same turn (no second turn is opened)', chairDone && { ok: chairDone.ok, turn: chairDone.resumedTurnId })
     const opened = await b.call('vibe_v5_meeting', {
       member: 'r-acad', agenda: ['确认命题：偶数和为偶数', '指定复核人'], title: 'run239 会议',
     })
@@ -304,7 +314,14 @@ try {
     const b = await boot(await mkRoot())
     const started = await b.call('vibe_v5_start', { problem: 'run239 waiter probe', researcherCount: 2 })
     ok(started && started.ok === true, '§6a0 the institute starts', started && started.code)
-    await b.K.turn.step({ members: ['r-acad'], phase: 'normal', why: 'run239 waiter probe (chair turn)' })
+    // ★★ RUN 256 / TB-2616: same pairing as §5a1/§5a2 — the chair prompt is answered before the next turn opens.
+    const chair = await b.K.turn.step({ members: ['r-acad'], phase: 'normal', why: 'run239 waiter probe (chair turn)' })
+    ok(chair && chair.awaiting === true && chair.memberPrompt && typeof chair.memberPrompt.turnId === 'string',
+      '§6a0b the chair turn parks its prompt', chair && chair.memberPrompt && chair.memberPrompt.turnId)
+    await b.K.turn.supplyMemberReply(fence({ say: '主席开场：这一轮等一个会议事件。' }), chair.memberPrompt.member)
+    const chairDone = await b.K.turn.step({ members: [chair.memberPrompt.member], phase: 'normal', why: 'run239 waiter probe (chair turn answered)' })
+    ok(chairDone && chairDone.ok === true && chairDone.resumedTurnId === chair.memberPrompt.turnId,
+      '§6a0c and it resumes the same turn', chairDone && { ok: chairDone.ok, turn: chairDone.resumedTurnId })
     const opened = await b.call('vibe_v5_meeting', { member: 'r-acad', agenda: ['确认命题'], title: 'run239 waiter 会议' })
     const mid = opened && (typeof opened.meeting === 'string' ? opened.meeting : opened.meeting && opened.meeting.id)
     ok(typeof mid === 'string' && mid !== '', '§6a a meeting exists to wait on', opened && opened.code)

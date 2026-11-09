@@ -158,7 +158,14 @@ try {
   const drift = await call2('vibe_vmu_human', { action: 'recover', reason: 'run249: drift after a concurrent write' }, null)
   const DR = (drift && drift.recovery) || {}
   ok(drift && drift.ok === false, '§3b the recovery fails when its own write expectation no longer hashes', drift && { code: codeOf(drift) })
-  ok(Array.isArray(drift.failedSteps) && drift.failedSteps.indexOf('readback') !== -1, '§3c readback is a named failed step', drift && drift.failedSteps)
+  // ★★★ RUN 259 / TB-2647: a read-back drift is NOT "a failed step of this process" — it is a step that SAW the
+  // bytes move. The receipt names it in `driftedSteps` and does NOT print `failedSteps` (MEASURED on the real machine:
+  // every one of the four drift receipts had no `failedSteps` key, and the drift path had no step name at all). The
+  // mixed case (ledgers AND readback) still carries `failedSteps` — pinned in §1 above.
+  ok(Array.isArray(drift.driftedSteps) && drift.driftedSteps.indexOf('readback') !== -1,
+    '§3c the drift is named as a DRIFTED step (driftedSteps includes readback), not as a failed step of this process', drift && drift.driftedSteps)
+  ok(drift && !Object.prototype.hasOwnProperty.call(drift, 'failedSteps'),
+    '§3c-1 ★★ and the drift receipt does NOT carry `failedSteps` — a drift is a fact about the store, not a failure here', drift && { keys: Object.keys(drift || {}) })
   const rbStep = (DR.steps || []).filter((s) => s && s.step === 'readback')[0] || null
   ok(rbStep && rbStep.ok === false && rbStep.code === 'VMU_RESUME_READBACK_DRIFT', '§3d the readback STEP names the drift code', rbStep && { ok: rbStep.ok, code: rbStep.code })
   ok(DR.readBack && DR.readBack.consistent === false && Array.isArray(DR.readBack.drift) && DR.readBack.drift.some((d) => d && d.key === 'meetings'),

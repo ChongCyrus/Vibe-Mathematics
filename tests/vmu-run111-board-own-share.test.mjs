@@ -1,7 +1,8 @@
 // tests/vmu-run111-board-own-share.test.mjs — AUDIT HOLE D1 (rule 26 "各自推进各自的总任务").
 //
 // WHY THIS FILE EXISTS: the four-row status board answered ② (规划) and ③ (各任务完成状态) from ONE institute-wide
-// reading for every member, while the v5r prompt taught each member "`[总任务]` 是「你」的总任务：每人各自推进各自的".
+// reading for every member, while the v5r prompt called ① "「你」的总任务" (fixed in RUN 262: the prompt now says it is the
+// institute single copy, and points at the `属于你（<member>，未完成 N 条）` lead-in on ②/③).
 // Two members therefore saw byte-identical plan/completion rows and could not find their own slice; the only row that
 // was member-scoped was ④ (the caller's newest progress record). The fix prints the CALLER'S OWN SLICE FIRST on ②/③
 // and makes ① say it is the institute's single copy — so "各自" is a reading, not a promise.

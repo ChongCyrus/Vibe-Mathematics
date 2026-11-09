@@ -229,11 +229,11 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 393 / suites 288 / probes 105`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 431 / suites 322 / probes 109`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **759 作业**（702 套件 + 57 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **811 作业**（749 套件 + 62 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
@@ -309,6 +309,10 @@ node scripts/release-check.mjs             # 发布前清单
 ```
 **出口条件**：以上全绿 ＋ 本表 `§2` 无空缺 ＋ 变更日志/文档同步 ＋（若有 pack）对照报告已生成并分类。
 
+> **仓库卫生守卫（TB-2657 / 2026-11-09 起，**已接 PREFLIGHT 硬门禁**）**：`node scripts/check-repo-hygiene.mjs`（自测 `node tests/repo-hygiene.test.mjs`）。判据 H1 根目录非 ASCII 名 untracked / H2 0 字节 untracked / H3 全树非 ASCII 名 untracked，逐条具名（path+字节数+可否 UTF-8 解码）；exit 0 干净 / 1 有可疑 / 2 用法错。来由：2026-11-09 15:12 仓库根被"markdown 引用块被 bash 当重定向执行"产出 3 个 0 字节中文名 untracked 文件 ⇒ **中文 tracked 文档名不违规**（只判 `??`），理由与五条硬规则见 `docs/AUDIT-CHECKLIST.md §10`。**接线（Lead 裁定）**：它是 `scripts/preflight.mjs` 的**最后一步**（在 `--for-t3` 的干净工作树检查之后），失败时**原样带出守卫的逐条具名输出**（`--json` 时该条结果带 `output` 字段）；理由＝PREFLIGHT 的语义就是"开始干活前环境干净"，软接等于没人看。仍未接 `tests/run-tests.mjs` / 全量 T1（不动 `regen-all.mjs` 的 17 项、不动五门禁脚本本身）。
+
+> **包成员长尾守卫（TB-2674 / 2026-11-09 起）**：`node tests/audit-package-membership.mjs`（exit 0 全绿 / 1 有红）。判据面 = `tests/**/*.test.mjs` + `tests/**/audit-*.mjs` + `tests/_lib/**` + `scripts/sim/**` 的代码文件；三态 = `files[]` 显式登记 / `tests/package-membership-dev-only.json` 具名 dev-only（`why` ≥24 字 + `owner`）/ 冻结基线 `tests/_lib/package-membership-legacy.json`（只许缩小，新文件塞入即红）；态外则逐条 `MISS` 点名。**教训**：旧判据只扫 `vmu-*.test.mjs`，所以「29/0 绿」什么也没证明——扩大面后同一棵树立刻 527 条未决定。口径、三条反关灯与两个已修的解析缺陷见 `docs/AUDIT-CHECKLIST.md §12`；基线重生成只在收口窗口由 Lead 触发。
+
 ### 7.1 三档门禁（**成本纪律**；用户 2026-10-09 指出全量太贵 ⇒ 制度化 ✓）
 
 全量非增量 = **322 作业**（**2026-10-14 由 `node tests/run-tests.mjs --counts` 派生** ✓；旧文写 **117 作业 ≈ 25 分钟** ✗ 已过期）。**成本必须现场量，不要引用单一数字** ✗✓：仓库里同时存在**三个互斥**的说法 —— `docs/test-timing.md` 的「≈121–200 s」、`tests/run-tests.mjs` 文件头的 **1447.6 s（自述为"模拟值"）**、以及本卷 §9.7 记录的 2026-10-09 三次 T3 实测 **各 ≈31 min**（当时 132 作业）⇒ **以现量现报为准** ✓。⇒ **不能每次改动都付** ✗。改为**三档**，每档都保留"发布级诚实"：
@@ -339,9 +343,20 @@ node scripts/release-check.mjs             # 发布前清单
 
 **为什么值得**：默认全量从 **788 → 731** 作业（实测冷全量 **731 作业 / wall 545.8 s**，对比归档套件还在时的 788 作业 1878 s 冷跑），而**最重的三项全在 legacy 里**（`v5-institute-fixes.mutants.mjs` 三个 600 s shard、`v2-fix-probes.mutants.mjs` 460 s、`formal-verify-v4.mutants.mjs` 132 s 等，合计 ≈970 s 只是一次冷全量的可测部分）；临时目录根（**仓库外**）里约 1900 个 `*v4*` 临时根也由这些套件产生，默认不再跑即不再产生。
 
+### 7.1c 零 token 模拟门禁：证明什么、不证明什么（TB-2605）
+
+**入口**：`node tests/sim-gate.test.mjs`（随 T1 跑；不联网、不要 LLM、不要 LaTeX 引擎）。**预算**：段 1 `end-to-end` 15 s、段 2 `meeting-matrix` 45 s、段 3 `audit/all.mjs` 75 s、段 4 确定性重放 15 s；**总 150 s 是兜底不是分配**（分段之和 150 s，谁先超谁负责，超时文案点名段名 ＋ 实测值 ＋ 预算）；另每段实测 ≤ 文档基线 × 1.25，超了报「哪段、实测多少 ms、比基线慢多少 ms」。**不许 skip**、**门禁不许自带豁免**（没有"已知红名单"）。
+
+**它证明**（机制面，真内核 ＋ 真工具注册，同一进程）：全生命周期（立所 → 编制 → 命题 → 蓝图 fs-first → 会议 → 裁决 → 记录 → 论文九节/评审/定稿/结题）走得通且回执链上的 id 只来自上一条回执；**机制拒绝 = 0** 且预期拒绝必须被账本按 `seq` 点名（一条声明只赦免一条拒绝，泛化赦免 `advisory > 0` 直接 exit 1）；成员**实际读到的提示词**与产生它的回执在 `pairs.jsonl` 里逐字节成对；环境缺失**具名**（`toolchainAbsent`/`pdfEnvironmentMissing`）；同一输入两跑 `pairs.jsonl` 归一化后逐字节相同。
+
+**它不证明**：模型是否按提示词行事、真实子会话交付与 token 计量、真实引擎输出正确性、长时挂起/并发、跨设备路径与时区。三张边界表与复现命令的唯一出处是 `docs/acceptance/sim-gate-scope.md`（本仓库根），不要在这里复制数字。
+
+**三种破坏必须让它变红**（门禁内各有一条自证，不需要手动改产品）：① 场景 `expectedRefusals` 改成「全赦免」⇒ 多出的拒绝不被赦免（`advisory`/`unpredicted`），exit 1；② 某行 `receiptSpan` 偏 1 字节 ⇒ 逐字节比对命中；③ `SIM_SELFTEST_FAILURE=<CODE>` ⇒ 头部 `scenario self-checks: 1 FAILED`。
+
 ---
 
 ## 8. 未核项
+
 
 - **官方验证的完整清单**已抽成 G1–G13（来自 C′ 对 `references/verification.md` 的提炼）；其中"**无浏览器控制时的上限**"（只允许 JS 语法 ＋ manifest 校验 ＋ 活 Client slot 注册）是**文档级**逐字结论 ✓；
 - **Client 侧活读数未核**（本机 `Slots.listSubTree` 超时）⇒ GUI 相关门禁暂缺，见 14-§1（O2）；
@@ -419,6 +434,10 @@ _oneoff/vmu/live/<YYYY-MM-DD>/<scenario>/
 
 ### 9.5 与发布门禁的关系
 §7 的发布门禁是**机器可跑**的部分；**真机集是它的前置证据**：没有 §9.3 的证据，发布门禁的"全绿"**只代表 mock 面** ⇒ 出口条件里必须附**真机证据路径** ✓。
+
+> **真机是抽样验证，不是主门禁（TB-2609）。** 顺序是固定的：§7 发布门禁（含 §7.1c 零 token 模拟三段）先给出「机器可判的部分全绿」，再由 `node scripts/sim/audit/release-ready.mjs` 的放行闸证明**这份证据是当前的**——门禁本次跑过、审计报告比最新代码改动新、fidelity `gaps: 0`、台账无 open P0；不满足时驱动 `slv-p14-cc.ps1` 以 **exit 7** 拒绝起跑，只有 `-OverrideReleaseGate "<理由>"` 能跳且理由进运行日志。
+> 真机集（§9.4）**抽样**回答「在真宿主里装得上、跑得起来、模型会照做吗」，它是**补充证据**：不承担全量回归，也不能因为跑过一轮真机就把 sim 面判过的缺陷重新开封；反过来，sim 全绿**不是**真机通过的替代——两者各证各的，谁也不能替谁背书。
+> 不要用真机跑本来 sim 能挡的问题：那是花 token 换一个更慢、更贵的红灯（TB-2605 实测：同类拒绝在 sim 面 <60 s 具名变红，真机一轮 40 分钟起，且回执里只剩一个 500）。
 
 ### 9.6 真机矩阵（截至 2026-10-10；每条后面是证据目录 ✓）
 > ★★★ **逐行核实结论（★ 轮 518 实测 ✓ —— 本项在清单上结转了 17 轮 ✗）**：

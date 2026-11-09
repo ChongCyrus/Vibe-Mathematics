@@ -79,7 +79,22 @@ const clock = () => NOW
   const started = await w1.start({ owner: 'r-1', kind: 'proof', objective: 'finish the lemma' })
   const r = createResume({ store, work: w1, clock, settings: {} })
   const rep = await r.recover({ reason: 'host-ended' })
-  ok(rep.steps.length >= RECOVERY_STEPS.length, 'the recovery reports every declared step', rep.steps.map((s) => s.step))
+  // ★★ G4'S PAPER TOOTH (measured by rules-recheck): `length >= RECOVERY_STEPS.length` passed even when a declared
+  // step was DELETED, because a normal recovery also carries two named sub-steps (`children`, `reassign`) after
+  // `roster` — the length paid for the missing declared step with an extra row. Length is not the claim: the claim
+  // is WHICH steps ran. So: every declared id appears EXACTLY once (a set comparison of the declared ids, which
+  // fails on a missing step, a renamed step, and a duplicate), and the only non-declared rows allowed are the two
+  // named sub-steps. Deleting a declared step therefore names it in `missing` instead of passing.
+  const DECLARED_STEPS = RECOVERY_STEPS.map(String)
+  const SUB_STEPS = ['children', 'reassign']
+  const reportedSteps = rep.steps.map((s) => String(s && s.step))
+  const declaredSeen = reportedSteps.filter((id) => DECLARED_STEPS.includes(id))
+  const missingSteps = DECLARED_STEPS.filter((id) => !declaredSeen.includes(id))
+  const duplicatedSteps = DECLARED_STEPS.filter((id) => declaredSeen.filter((x) => x === id).length !== 1)
+  const undeclaredSteps = reportedSteps.filter((id) => !DECLARED_STEPS.includes(id) && !SUB_STEPS.includes(id))
+  ok(missingSteps.length === 0, 'the recovery reports every declared step, by id (a missing one is NAMED)', { missing: missingSteps, reported: reportedSteps })
+  ok(duplicatedSteps.length === 0, 'each declared step appears exactly once (no duplicate paid for a missing one)', { duplicated: duplicatedSteps, reported: reportedSteps })
+  ok(undeclaredSteps.length === 0, 'no row claims a step id that is neither declared nor a named sub-step', { undeclared: undeclaredSteps, reported: reportedSteps })
   const inflight = rep.steps.filter((s) => s.step === 'inflight')[0]
   ok(inflight && inflight.ok === true && inflight.marked === 1 && inflight.interrupted === 1,
     'the survivor is marked interrupted with a NAMED reason', inflight)

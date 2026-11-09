@@ -39,7 +39,7 @@
  * ★ 时间只来自注入的时钟（tick 事件的 `at`）：没有 `at` 就**不规划**、不执行，并在回执里写明理由。
  */
 import { V3_TICK_TOPIC } from './tick.js'
-import { SETTING_DEFS } from '../../../settings/schema.js'
+import { SETTING_DEFS, readDeliveryBudget } from '../../../settings/schema.js'
 import { parseCard, writeBody, writeCard, supersedeBody, updateCard, escField, unescField } from './dataplane.js'
 // P0-8：人工门的判定/台账由 gates.js 提供；planner 只**调**它，不自己写一套"该不该放行"。
 import { evaluateGate, registerGateExecutor, getGate } from './gates.js'
@@ -941,8 +941,12 @@ function requireApi(flat, who) {
   return api
 }
 
-/** 读调用期设置（除 promoteValueThreshold 的 schema 登记待加外均已登记；缺值 ⇒ 声明默认）。 */
-function readSettings(api) {
+/**
+ * Exported for the cross-consumer check (TB-2629 / task-110): the planner's own reading of the shared delivery
+ * budget must equal the kernel loop's reading and the declared default, and a test can only prove that by calling
+ * this function with a fake `api.setting` rather than by re-deriving the number from the declaration.
+ */
+export function readSettings(api) {
   const horizonRaw = Number(api.setting('vmu.v3.planningHorizon'))
   const minRaw = Number(api.setting('vmu.v3.planMinIntervalMs'))
   const maxLiveRaw = Number(api.setting('vmu.limits.maxLiveMembers'))
@@ -961,7 +965,10 @@ function readSettings(api) {
     promoteValueThreshold: Number.isFinite(promoteRaw) && promoteRaw >= 0 && promoteRaw <= 1 ? promoteRaw : 0.7,
     // ★ SLV: queue pressure is a wall-clock/model-speed fact, not a tick fact. Both values are DECLARED settings.
     plannerMaxQueuedTurns: (() => { const v = Number(api.setting('vmu.v3.plannerMaxQueuedTurns')); if (Number.isInteger(v) && v >= 0) return v; const d = SETTING_DEFS.find((x) => x && x.key === 'vmu.v3.plannerMaxQueuedTurns'); return d ? Number(d.def) : 2 })(),
-    deliveryTimeoutMs: (() => { const v = Number(api.setting('vmu.turn.deliveryTimeoutMs')); if (Number.isFinite(v) && v > 0) return v; const d = SETTING_DEFS.find((x) => x && x.key === 'vmu.turn.deliveryTimeoutMs'); return d ? Number(d.def) : 180000 })(),
+    // ★ TB-2629 / task-110: the delivery deadline is NOT re-declared here. This used to be a third literal
+    // (180000) that disagreed with the kernel loop and the one-shot seam; it now goes through the same resolver,
+    // so the planner's queue-pressure check cannot be reading a different budget than the turn it is waiting on.
+    deliveryTimeoutMs: readDeliveryBudget((k) => api.setting(k)).ms,
     // P0-8：人工门读**原始值**（gates.js 的 normaliseGateMode 负责归一化；**脏值**按 manual，fail-closed）。
     // ★ 但"键不存在"不是脏值：内核不把 schema 默认值物化进设置对象，而 `vmu.v3.mode` 的声明默认是 auto
     //   ⇒ 缺省必须回落成 auto（否则每个没显式写 mode 的部署都会静默变成 manual）。只对"缺省"回落，

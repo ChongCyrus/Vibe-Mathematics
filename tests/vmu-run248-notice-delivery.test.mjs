@@ -16,7 +16,7 @@
 // 不复制任何被测逻辑。
 //
 // Run: node tests/vmu-run248-notice-delivery.test.mjs   (targeted only)
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -192,6 +192,10 @@ try {
   const noticesSettled = k2.mailbox.noticeLines('r-3')
   ok(noticesSettled.ok === true && noticesSettled.lines.length === 0,
     '★★ ack 之后该行从 notice 块消失（不再出现在回合提示里）', noticesSettled.lines)
+  // TB-2606-B: the notice BLOCK now also hides rows the ack ledger settled, so "lines.length === 0" alone no longer
+  // proves the row left the BOX — a stale box copy can still be visible through list() until the shared merge folds
+  // the ledger. Wait for the box itself to settle, then assert the delivery row is gone (the settlement, not the text).
+  await waitFor(() => k2.mailbox.list('r-3').entries.filter((e) => e.kind === 'meeting-appointment').length === 0, 3000)
   ok(k2.mailbox.list('r-3').entries.filter((e) => e.kind === 'meeting-appointment').length === 0,
     '★ 信箱里也读不到它了（搬到 acked 台账，不是删掉）', k2.mailbox.list('r-3').entries)
   await waitFor(() => box.noticeLines('r-3').lines.length === 0, 3000)
