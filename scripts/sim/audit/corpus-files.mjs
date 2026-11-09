@@ -154,17 +154,27 @@ export function resolveReportCorpus(root = DEFAULT_SIM_ROOT, manifest) {
   const generatedAtMs = Date.parse(String(manifest && manifest.generatedAt))
   const listed = manifestCorpusFiles(manifest)
   const claimed = manifest && manifest.corpus && typeof manifest.corpus.corpusId === 'string' ? manifest.corpus.corpusId : null
-  // LEGACY STAMP: a report written before corpusFiles existed names a corpus only by its id. That is still a
-  // measurement if the id is the digest of a layer on this disk -- but the match is made here, by the same digest,
-  // against layers this module enumerates, so there is still one ruler. The alternative (trust the number, skip the
-  // re-read) is what let a stale report wear a fresh id.
+  // NO LIST, NO MEASUREMENT. all.mjs always writes `corpusFiles`; a report that does not name the receipts it hashed
+  // cannot be re-read, and "the number matches a layer I found on disk" is not a measurement -- a replay of an old
+  // stamp would satisfy it forever (audit-r14 A11: a report from 2026-11-01 was READY on a 2026-11-09 tree). The only
+  // honest answer is a named refusal, so this branch has no compatibility path.
   if (listed === null) {
-    const legacy = corpusLayers(root).filter((l) => l.files.length > 0 && corpusDigestOf(l.files) === claimed)
-    if (!legacy.length) {
-      return { ok: false, code: 'AUDIT_CORPUS_UNMEASURED', dir: layer.dir, rule: layer.rule, newestMs: layer.newestMs, corpusId: corpusDigestOf(layer.files), claimedCorpusId: claimed, files: [], missing: [], mismatched: [], extras: [], layer, via: 'legacy-stamp', why: 'the manifest carries no corpusFiles list and no layer under ' + root + ' hashes to its stamp ' + String(claimed) + ' — a report about receipts nobody can point at is a report about nothing' }
+    return {
+      ok: false,
+      code: 'AUDIT_CORPUS_UNMEASURED',
+      dir: layer.dir,
+      rule: layer.rule,
+      newestMs: layer.newestMs,
+      corpusId: null,
+      claimedCorpusId: claimed,
+      files: [],
+      missing: [],
+      mismatched: [],
+      extras: [],
+      layer,
+      via: 'no-list',
+      why: 'the report does not name the files it measured (no corpusFiles list), so the gate cannot re-read them — a report that cannot say which receipts it hashed has not measured a corpus',
     }
-    const picked = legacy[0]
-    return { ok: true, code: null, dir: picked.dir, rule: picked.rule, newestMs: picked.newestMs, corpusId: claimed, claimedCorpusId: claimed, files: picked.files, missing: [], mismatched: [], extras: [], layer: picked, via: 'legacy-stamp' }
   }
   const onDisk = new Map(layer.files.map((f) => [f.scenario, f]))
   const chosen = listed

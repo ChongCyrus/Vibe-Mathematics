@@ -465,7 +465,12 @@ export function assess(facts) {
     // picks the layer, re-reads the files the report NAMES, and keeps three failures apart that used to collapse into
     // one number -- a file that is gone, a file whose bytes changed, and a corpus dir that appeared AFTER the report ran.
     const corpus = facts.corpus || { ok: false, why: 'the gate did not re-read the corpus', files: [], corpusId: null, newestMs: null, missing: [], mismatched: [], extras: [] }
-    add('AUDIT_CORPUS_UNMEASURED', 'cannot re-read the corpus the report measured: ' + String(corpus.why || 'unknown') + ' — a report about receipts nobody has is a report about nothing', Boolean(corpus.ok))
+    // UNMEASURED and STALE are two answers to two questions and must not fire together: "I cannot re-read what this
+    // report measured" (no file list, no layer) versus "I re-read it and it is not the same corpus". Firing both made a
+    // replay of an old stamp look stale when the real defect was that nothing could be re-read at all (audit-r14 A11).
+    const corpusStaleByCode = corpus.ok !== true && String(corpus.code || '') === 'AUDIT_CORPUS_STALE'
+    const corpusUnmeasured = corpus.ok !== true && !corpusStaleByCode
+    add('AUDIT_CORPUS_UNMEASURED', 'cannot re-read the corpus the report measured: ' + String(corpus.why || 'unknown') + ' — a report about receipts nobody can point at is a report about nothing', !corpusUnmeasured)
     const manCorpus = man && man.corpus && typeof man.corpus === 'object' ? man.corpus : null
     const claimedCorpusId = manCorpus && typeof manCorpus.corpusId === 'string' ? manCorpus.corpusId : ''
     const layerNotes = [
@@ -478,7 +483,10 @@ export function assess(facts) {
     // A stamp older than the receipts it claims to have measured is a report from an earlier corpus wearing the new
     // corpus id: the id only binds if the writing time and the files agree about WHEN.
     const generatedFresh = corpus.ok && Number.isFinite(generatedMs) && corpus.newestMs !== null && generatedMs + 1000 >= corpus.newestMs
-    add('AUDIT_CORPUS_STALE', 'audit report claims corpus ' + (claimedCorpusId ? claimedCorpusId.slice(0, 20) : '(missing)') + ' but the layer ' + String(corpus.dir || '(none)') + ' hashes to ' + String(corpus.corpusId || '(unread)').slice(0, 20) + (layerNotes ? ' [' + layerNotes + ']' : '') + (generatedFresh ? '' : '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one'), corpusMatches && generatedFresh)
+    // Stale: the gate DID re-read a corpus, and it is not the one the report describes (changed bytes, a vanished file,
+    // a corpus dir born after the report, or a stamp older than the receipts). An unmeasured corpus is never called
+    // stale: it is refused one line above, by its own name.
+    add('AUDIT_CORPUS_STALE', 'audit report claims corpus ' + (claimedCorpusId ? claimedCorpusId.slice(0, 20) : '(missing)') + ' but the layer ' + String(corpus.dir || '(none)') + ' hashes to ' + String(corpus.corpusId || '(unread)').slice(0, 20) + (layerNotes ? ' [' + layerNotes + ']' : '') + (generatedFresh ? '' : '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one'), !(corpusStaleByCode || (corpus.ok === true && !(generatedFresh && corpusMatches))))
     // R1b: the audit id is DERIVED from (corpus id, tree hash). If the gate recomputes a different id, the report's
     // stamp was not produced by the formula it claims -- either hand-edited or copied from another run.
     const derivedId = claimsOrigin && claimedCorpusId ? deriveAuditId(claimedCorpusId, claimedTree) : null

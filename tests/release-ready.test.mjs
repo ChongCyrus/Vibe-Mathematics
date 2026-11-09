@@ -467,6 +467,33 @@ console.log('--- 6. the CLI: skipping the gate is a reason, --json is parseable,
   ok(staleJson && (staleJson.reasons || []).some((r) => r.code === 'AUDIT_STALE'), 'and the reason is AUDIT_STALE, named', staleJson && staleJson.reasons)
   ok(statSync(oldReport).size > 0, 'the fixture report really exists on disk (the red was not assumed)', statSync(oldReport).size)
 
+  // A11 (audit-r14): a replayed report whose manifest names a corpus ONLY by digest (no corpusFiles). Before this
+  // fixture, `resolveReportCorpus` had a legacy branch that searched the layers for a digest-matching old copy and
+  // called that a measurement: a 2026-11-01 report was READY on a 2026-11-09 tree (exit 0, every check ok). The gate
+  // now refuses a report that cannot name the receipts it hashed; the attack is measured with an EMPTY ledger because
+  // a ledger carrying the repo's real open P0s would hide the corpus reason under OPEN_P0.
+  const a11Root = join(TMP, 'a11-root')
+  mkdirSync(join(a11Root, 'corpus-mainline'), { recursive: true })
+  writeFileSync(join(a11Root, 'corpus-mainline', 'receipts.jsonl'), '{"seq":1,"ok":true}' + String.fromCharCode(10))
+  const a11Layer = rr.newestCorpusDir(a11Root)
+  const a11CorpusId = rr.corpusDigestOf(a11Layer.files)
+  const a11Manifest = manifestOf({ auditId: rr.deriveAuditId(a11CorpusId, TREE.hash) })
+  delete a11Manifest.corpus.corpusFiles // THE ATTACK: no file list, only a digest that really matches a layer on disk
+  a11Manifest.corpus = { ...a11Manifest.corpus, scenarios: 1, receipts: 1, corpusId: a11CorpusId }
+  const a11Report = write('A11-no-list-AUDIT.md', reportText({ manifest: a11Manifest }))
+  const a11Ledger = write('A11-empty-ledger.json', JSON.stringify({ items: [] }))
+  const a11Run = spawnSync(process.execPath, [SCRIPT, '--no-gate', '--no-proofs', '--root=' + a11Root, '--audit=' + a11Report, '--open-items=' + a11Ledger, '--json', '--head-iso=2026-11-09T00:00:00+08:00'], { cwd: REPO, encoding: 'utf8', timeout: 120000 })
+  let a11Json = null
+  try { a11Json = JSON.parse(a11Run.stdout) } catch { a11Json = null }
+  const a11Codes = a11Json ? (a11Json.reasons || []).map((r) => r.code) : []
+  const a11Reason = a11Json ? (a11Json.reasons || []).find((r) => r.code === 'AUDIT_CORPUS_UNMEASURED') : null
+  ok(a11CorpusId === a11Manifest.corpus.corpusId && a11Codes.length > 0, 'A11 fixture is real: its digest equals a layer on disk (the legacy branch would have accepted it)', { id: a11CorpusId.slice(0, 20), files: a11Layer.files.length })
+  ok(a11Run.status === 7 && a11Json !== null && a11Json.ready === false, 'A11: a report that names only a corpus digest is NOT READY (exit 7)', { status: a11Run.status, ready: a11Json && a11Json.ready })
+  ok(a11Codes.includes('AUDIT_CORPUS_UNMEASURED'), 'A11: the reason NAMES the unmeasured corpus (a digest check alone would have passed)', a11Codes)
+  ok(!a11Codes.includes('AUDIT_CORPUS_STALE'), 'A11: and it is NOT called stale — the gate never re-read a corpus it cannot identify', a11Codes)
+  ok(a11Reason !== null && /does not name the files it measured/.test(String(a11Reason.message)), 'A11: the message says WHY — the report never named the files, so there was nothing to re-read', a11Reason && a11Reason.message)
+  ok(!a11Codes.includes('OPEN_P0'), 'A11: the empty ledger keeps OPEN_P0 out of the way, so the corpus reason is the one on trial', a11Codes)
+
   // The newest REAL report (when the audit has been run on this machine) must parse as attributable, not forged.
   if (existsSync(REAL_AUDIT)) {
     const real = rr.parseAuditReport(readFileSync(REAL_AUDIT, 'utf8'))
@@ -526,13 +553,13 @@ console.log('--- 8. TB-2662 red team: every vector must be NAMED (refused for th
     const vectors = results && Array.isArray(results.results) ? results.results : []
     const byStatus = (st) => vectors.filter((v) => v.status === st).map((v) => v.id)
     ok(rt.status === 0, 'run-all exits 0 (exit 0 means all nine are named, not merely refused)', { status: rt.status, wall, tail: String(rt.stdout || '').slice(-300) })
-    // Twelve rows for nine vectors: A5 and A6 each carry named sub-cases in the manifest, so the rows outnumber the ids.
-    // v2 ruler (audit-r14): one primary judgement per vector, plus a fifth state -- `neutralized` (the gate is right to say
-    // READY, because the forgery had to reproduce the ruler numbers, i.e. measure for real). 13 rows for 9 vectors: A5/A6
-    // carry sub-cases and A8 is split into A8a (fake numbers) and A8b (real numbers, hand-typed).
+    // Sixteen rows for thirteen vectors: A5/A6 carry named sub-cases, A8 is split into A8a (fake numbers) and A8b
+    // (real numbers, hand-typed), and A10/A10extra/A11 cover the corpus-layer attacks. Counts are the harness's own
+    // verdicts, and each NEUTRALIZED row is explained: A8b has no yield by design (a forgery with true numbers costs
+    // the same measurement), A6-blank is dropped by flagValue before validation (an empty excuse records nothing).
     const counts = results && results.counts ? results.counts : {}
-    ok(vectors.length === 13, 'the harness ran nine vectors (thirteen rows)', vectors.length)
-    ok(counts.named === 11 && counts.neutralized === 2, 'eleven rows NAMED and two NEUTRALIZED (A8b has no yield by design)', counts)
+    ok(vectors.length === 16, 'the harness ran thirteen vectors (sixteen rows)', vectors.length)
+    ok(counts.named === 14 && counts.neutralized === 2, 'fourteen rows NAMED and two NEUTRALIZED (A8b and A6-blank dissolve by design)', counts)
     ok((counts.masked || 0) === 0, 'no row is MASKED (a refusal for an unrelated reason would hide the tested judgement)', counts.masked)
     ok((counts.leaked || 0) === 0, 'no row is LEAKED (READY)', counts.leaked)
     ok((counts.half || 0) === 0 && (counts.error || 0) === 0, 'no row is HALF or errored', counts)
