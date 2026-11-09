@@ -36,6 +36,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 // ONE RULER (TB-2653 R3): the gate recomputes the fidelity reading with the SAME module all.mjs prints with. A report
 // that says "gaps: 0" is a claim; this import is how the gate checks the claim instead of believing it.
 import { RICH_REAL, loadRich, loadSimFields, withoutGlossary, readBaseline, measureFidelity } from './fidelity-measure.mjs'
+// ONE RULER (TB-2609 / corpus-stale): the enumeration AND the digest of "which receipts did this audit measure" live
+// in corpus-files.mjs, shared with all.mjs. They used to be two loops that disagreed about which directory the corpus
+// lives in, so a clean tree was refused with AUDIT_CORPUS_STALE. Re-exported below for existing import sites.
+import { resolveReportCorpus } from './corpus-files.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..', '..', '..')
@@ -207,42 +211,12 @@ export function treeHashOf(repo = REPO) {
 }
 
 // ── R1: the corpus the report measured, re-read by the gate ───────────────────────────────────────────────────────
-/**
- * The newest audit output directory under the sim root that actually contains `corpus-<scenario>/receipts.jsonl` files. The
- * gate re-reads THESE files instead of trusting `manifest.corpus`: a report about a corpus nobody has on disk any more
- * is a report about nothing. Returns { ok, dir, files:[{scenario, receiptsPath}], newestMs, why }.
- */
-export function newestCorpusDir(root = SIM_ROOT) {
-  if (!existsSync(root)) return { ok: false, dir: null, files: [], newestMs: null, why: 'sim root not found: ' + root }
-  let best = null
-  for (const name of readdirSync(root)) {
-    const dir = join(root, name)
-    let entries
-    try { if (!statSync(dir).isDirectory()) continue; entries = readdirSync(dir) } catch { continue }
-    const files = entries
-      .filter((n) => n.startsWith('corpus-'))
-      .map((n) => ({ scenario: n.slice('corpus-'.length), receiptsPath: join(dir, n, 'receipts.jsonl') }))
-      .filter((f) => existsSync(f.receiptsPath))
-      .sort((a, b) => (a.scenario < b.scenario ? -1 : a.scenario > b.scenario ? 1 : 0))
-    if (!files.length) continue
-    let newestMs = 0
-    for (const f of files) { const st = statSync(f.receiptsPath); if (st.mtimeMs > newestMs) newestMs = st.mtimeMs }
-    if (!best || newestMs > best.newestMs) best = { dir, files, newestMs }
-  }
-  if (!best) return { ok: false, dir: null, files: [], newestMs: null, why: 'no corpus-*/receipts.jsonl under ' + root + ' — nothing to re-measure' }
-  return { ok: true, ...best, why: null }
-}
-
-/** The corpus id all.mjs stamps: sha256 over `scenario + ' ' + sha256(receipts bytes)`, one line per scenario, sorted. */
-export function corpusDigestOf(files) {
-  const digest = createHash('sha256')
-  for (const f of files) {
-    let body = Buffer.from('')
-    try { body = readFileSync(f.receiptsPath) } catch { body = Buffer.from('') }
-    digest.update(f.scenario + ' ' + createHash('sha256').update(body).digest('hex') + '\n')
-  }
-  return 'sha256:' + digest.digest('hex')
-}
+// Enumeration and digest are NOT implemented here: both live in scripts/sim/audit/corpus-files.mjs, the same module
+// all.mjs uses. Two loops that "looked the same" were exactly the defect: all.mjs hashed `<base>/corpus-<s>` while this
+// file scanned only CHILD directories of the sim root, so the gate re-hashed an older `--out` layer and refused a
+// clean tree. The layer rule (the sim root itself is a layer, the newest receipts mtime wins, and the report says
+// why) and the digest (`scenario + ' ' + sha256(bytes)`, sorted inside the one implementation) now have one ruler.
+export { corpusLayers, corpusDigestOf, manifestCorpusFiles, newestCorpusDir, resolveReportCorpus } from './corpus-files.mjs'
 
 /** The audit id all.mjs derives: sha256(corpusId | tree hash). Public on purpose — it BINDS, it does not hide. */
 export function deriveAuditId(corpusId, treeHash) {
@@ -487,18 +461,24 @@ export function assess(facts) {
           : ' — the block names ' + String(claimedGapNames.length) + ' of them, so fidelity.gapList is missing or short: an unnamed gap cannot be assigned')
       : ''
     add('AUDIT_FIDELITY_GAPS', 'fidelity gaps = ' + String(gaps) + ': live receipts carry fields the simulator never produces' + gapDetail, measured && gaps === 0)
-    // R1: the corpus is the thing the report measured. The gate re-reads the receipts from disk and recomputes the id,
-    // so a report about a corpus that has since been rewritten (or that never existed on this disk) cannot pass.
-    const corpus = facts.corpus || { ok: false, why: 'the gate did not re-read the corpus', files: [], corpusId: null, newestMs: null }
+    // R1: the corpus is the thing the report measured. `resolveReportCorpus` is the ONE ruler shared with all.mjs: it
+    // picks the layer, re-reads the files the report NAMES, and keeps three failures apart that used to collapse into
+    // one number -- a file that is gone, a file whose bytes changed, and a corpus dir that appeared AFTER the report ran.
+    const corpus = facts.corpus || { ok: false, why: 'the gate did not re-read the corpus', files: [], corpusId: null, newestMs: null, missing: [], mismatched: [], extras: [] }
     add('AUDIT_CORPUS_UNMEASURED', 'cannot re-read the corpus the report measured: ' + String(corpus.why || 'unknown') + ' — a report about receipts nobody has is a report about nothing', Boolean(corpus.ok))
     const manCorpus = man && man.corpus && typeof man.corpus === 'object' ? man.corpus : null
     const claimedCorpusId = manCorpus && typeof manCorpus.corpusId === 'string' ? manCorpus.corpusId : ''
-    const corpusMatches = Boolean(corpus.ok && claimsOrigin && claimedCorpusId && claimedCorpusId === corpus.corpusId)
+    const layerNotes = [
+      (corpus.missing || []).length ? 'missing from the layer: ' + corpus.missing.map((m) => m.scenario).slice(0, 5).join(', ') : '',
+      (corpus.mismatched || []).length ? 'changed after the report was written: ' + corpus.mismatched.map((m) => m.scenario).slice(0, 5).join(', ') : '',
+      (corpus.extras || []).length ? 'corpus dirs that appeared after the report was written: ' + corpus.extras.map((m) => m.scenario).slice(0, 5).join(', ') : '',
+    ].filter(Boolean).join('; ')
+    const corpusMatches = Boolean(corpus.ok && claimsOrigin && claimedCorpusId && claimedCorpusId === corpus.corpusId && !layerNotes)
     const generatedMs = man && typeof man.generatedAt === 'string' ? Date.parse(man.generatedAt) : NaN
     // A stamp older than the receipts it claims to have measured is a report from an earlier corpus wearing the new
     // corpus id: the id only binds if the writing time and the files agree about WHEN.
     const generatedFresh = corpus.ok && Number.isFinite(generatedMs) && corpus.newestMs !== null && generatedMs + 1000 >= corpus.newestMs
-    add('AUDIT_CORPUS_STALE', 'audit report claims corpus ' + (claimedCorpusId ? claimedCorpusId.slice(0, 20) : '(missing)') + ' but the receipts on disk hash to ' + String(corpus.corpusId || '(unread)').slice(0, 20) + (generatedFresh ? '' : '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one'), corpusMatches && generatedFresh)
+    add('AUDIT_CORPUS_STALE', 'audit report claims corpus ' + (claimedCorpusId ? claimedCorpusId.slice(0, 20) : '(missing)') + ' but the layer ' + String(corpus.dir || '(none)') + ' hashes to ' + String(corpus.corpusId || '(unread)').slice(0, 20) + (layerNotes ? ' [' + layerNotes + ']' : '') + (generatedFresh ? '' : '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one'), corpusMatches && generatedFresh)
     // R1b: the audit id is DERIVED from (corpus id, tree hash). If the gate recomputes a different id, the report's
     // stamp was not produced by the formula it claims -- either hand-edited or copied from another run.
     const derivedId = claimsOrigin && claimedCorpusId ? deriveAuditId(claimedCorpusId, claimedTree) : null
@@ -573,10 +553,15 @@ function collectFacts() {
   const drift = worktreeDriftMs(REPO)
   const treeHash = treeHashOf(REPO)
   // R1/R3: re-read the corpus the newest report measured and recompute the fidelity reading from it. Neither is
-  // optional: "unmeasured" is a refusal, never a pass.
-  const corpus = newestCorpusDir(root)
-  const corpusId = corpus.ok ? corpusDigestOf(corpus.files) : null
-  const fidelityRecomputed = corpus.ok ? recomputeFidelity(corpus.files, { declaredPath: flagValue('--declared', undefined), richPath: flagValue('--rich', undefined) }) : { ok: false, why: corpus.why, compared: null, gaps: null, liveToolsWithFieldList: null, gapList: [] }
+  // optional: "unmeasured" is a refusal, never a pass. The corpus object comes from resolveReportCorpus (one ruler,
+  // shared with all.mjs): it names the layer it picked, the files it re-read, and the three ways the report can be
+  // stale. Fidelity is recomputed from THOSE files -- the report's own list -- not from every foreign corpus that
+  // happens to live in the same layer (those predate the audit and were never its measurement).
+  const manifestForCorpus = audit && audit.report ? audit.report.manifest : null
+  const corpus = resolveReportCorpus(root, manifestForCorpus)
+  const corpusId = corpus.corpusId
+  const corpusFilesForFidelity = corpus.files.length ? corpus.files : (corpus.layer && corpus.layer.files) || []
+  const fidelityRecomputed = corpusFilesForFidelity.length ? recomputeFidelity(corpusFilesForFidelity, { declaredPath: flagValue('--declared', undefined), richPath: flagValue('--rich', undefined) }) : { ok: false, why: corpus.why || 'no corpus files to measure', compared: null, gaps: null, liveToolsWithFieldList: null, gapList: [] }
   // R2: run the ledger proofs unless a fixture test explicitly asks not to (the fixture scripts complete in ms).
   const ledgerProofs = hasFlag('--no-proofs')
     ? { ok: false, ran: [], missing: [{ id: '(ledger)', why: 'the caller passed --no-proofs' }], failed: [] }

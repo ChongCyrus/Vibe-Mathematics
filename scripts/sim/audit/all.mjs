@@ -24,6 +24,10 @@ import { audit as auditReceipts } from './receipts.mjs'
 // ★ TB-2648 §7 MIXED-GEN — the audit's numbers are only about the CODE if every corpus it reads is one generation: a
 // receipts file from run A next to a pairs file from run B would make coverage and fidelity describe two trees at once.
 import { checkCorpus } from '../corpus-stamp.mjs'
+// ONE RULER: the enumeration and the digest of "which receipts did this audit measure" are shared with the release gate
+// (release-ready.mjs). Two loops that looked identical disagreed about the layer and refused a clean tree with
+// AUDIT_CORPUS_STALE; the gate re-reads the file list this report names, hashed by this same implementation.
+import { corpusDigestOf, corpusFilesIn, newestCorpusDir } from './corpus-files.mjs'
 import { treeHashOf } from './release-ready.mjs'
 import { RICH_REAL, loadRich, loadSimFields, withoutGlossary, readBaseline, measureFidelity } from './fidelity-measure.mjs'
 
@@ -233,20 +237,20 @@ for (const w of warnings) say('  WARN ' + w)
 // grow while the porcelain sha stayed identical), the corpus it measured, and every P0-class finding, each of which
 // must have a row in docs/acceptance/sim-audit-open-items.json.
 const receiptsTotal = scenarios.reduce((n, s) => n + (corpora[s].receipts || []).length, 0)
-// The corpus this report measured, named file by file: the release gate re-reads these exact files, so "the corpus"
-// is a list a reader can re-hash, not a number in a sentence.
-const corpusFileList = scenarios.map((s) => ({
-  scenario: s,
-  receipts: join(corpora[s].out, 'receipts.jsonl'),
-  bytes: (() => { try { return statSync(join(corpora[s].out, 'receipts.jsonl')).size } catch { return 0 } })(),
-}))
-const corpusDigest = createHash('sha256')
-for (const s of scenarios) {
-  let body = Buffer.from('')
-  try { body = readFileSync(join(corpora[s].out, 'receipts.jsonl')) } catch { body = Buffer.from('') }
-  corpusDigest.update(s + ' ' + createHash('sha256').update(body).digest('hex') + String.fromCharCode(10))
+// The corpus this report measured, named file by file: the release gate re-reads THESE files, so "the corpus" is a
+// list a reader can re-hash, not a number in a sentence. The list comes from the ONE enumeration implementation
+// (corpus-files.mjs), restricted to the scenarios this run actually executed: a foreign `corpus-*` directory that
+// already lived in BASE (an older reference run, a manual --out) predates this audit and is not part of it, and the
+// gate applies the same rule — it counts as stale only a corpus dir whose receipts appeared AFTER generatedAt.
+const measuredCorpus = corpusFilesIn(BASE).filter((f) => scenarios.includes(f.scenario))
+const corpusFileList = measuredCorpus.map((f) => ({ scenario: f.scenario, path: f.receiptsPath, bytes: f.bytes, sha256: f.sha256 }))
+const corpusId = corpusDigestOf(measuredCorpus)
+const layer = newestCorpusDir(BASE)
+say('- corpus layer the gate will re-read: `' + String(layer.dir || '(none)') + '` — ' + String(layer.rule))
+say('- corpus files: ' + corpusFileList.length + ' receipt file(s), ' + corpusFileList.reduce((n, f) => n + (f.bytes || 0), 0) + ' byte(s), id ' + corpusId.slice(0, 20))
+if (measuredCorpus.length !== scenarios.length) {
+  failures.push('corpus file list: ' + measuredCorpus.length + ' of ' + scenarios.length + ' scenario(s) produced a readable receipts.jsonl — the report would name a corpus it did not measure')
 }
-const corpusId = 'sha256:' + corpusDigest.digest('hex')
 const tree = treeHashOf(REPO)
 const p0 = failures.map((f, i) => ({ id: 'audit-finding-' + String(i + 1).padStart(2, '0'), title: f, severity: 'P0', owner: 'see the FAIL line in this report' }))
 // The audit id is DERIVED, not minted: sha256(corpus bytes | tree hash). The release gate recomputes both inputs and
@@ -259,7 +263,7 @@ const auditManifest = {
   auditId: derivedAuditId,
   generatedAt: new Date().toISOString(),
   tree: { ok: tree.ok, head: tree.head, hash: tree.hash, changed: tree.changed },
-  corpus: { scenarios: scenarios.length, receipts: receiptsTotal, corpusId, corpusFiles: corpusFileList },
+  corpus: { scenarios: scenarios.length, receipts: receiptsTotal, corpusId, dir: BASE, layerRule: layer.rule, corpusFiles: corpusFileList },
   fidelity: fidelitySummary,
   checks: { verdict: failures.length === 0 ? 'PASS' : 'FAIL', failures: failures.length, warnings: warnings.length },
   p0,

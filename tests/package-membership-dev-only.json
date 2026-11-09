@@ -3,6 +3,11 @@
   "note": "Named dev-only exceptions: files that must NOT ship in the tarball (they read D:/_tmp corpora, need the slv driver/clone, bind loopback ports, or need real-run env). why >= 24 chars + owner are required; a blank/short why is a RED.",
   "entries": [
     {
+      "path": "scripts/sim/audit/corpus-files.mjs",
+      "owner": "sim-lane",
+      "why": "放行闸与 all.mjs 共用的语料枚举/摘要唯一实现；只在本地仿真审计里被 import，读 D:/_tmp 下的 corpus-* 语料根，发布包不含 scripts/sim/audit/** 这一层，所以是 dev-only 而不是 shipped"
+    },
+    {
       "path": "scripts/sim/audit/fidelity-branches.mjs",
       "owner": "sim-lane",
       "why": "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在；因此不作为发布物登记（dev-only）",
