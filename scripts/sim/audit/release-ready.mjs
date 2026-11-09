@@ -512,7 +512,20 @@ export function assess(facts) {
     // Stale: the gate DID re-read a corpus, and it is not the one the report describes (changed bytes, a vanished file,
     // a corpus dir born after the report, or a stamp older than the receipts). An unmeasured corpus is never called
     // stale: it is refused one line above, by its own name.
-    add('AUDIT_CORPUS_STALE', 'audit report claims corpus ' + (claimedCorpusId ? claimedCorpusId.slice(0, 20) : '(missing)') + ' but the layer ' + String(corpus.dir || '(none)') + ' hashes to ' + String(corpus.corpusId || '(unread)').slice(0, 20) + (layerNotes ? ' [' + layerNotes + ']' : '') + (predatesReceipts ? '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one' : ''), !(corpusStaleByCode || (corpus.ok === true && !(generatedFresh && corpusMatches))))
+    // The digest sentence is only evidence when the two digests DIFFER. When they are equal but the file list does not
+    // match, printing "claims X hashes to X" is a tautology that reads like an accusation of the wrong thing: name the
+    // mismatched file / the extra corpus dir instead (A12, A13b, A15 were all of this shape).
+    const shortId = (v) => String(v || '(missing)').slice(0, 20)
+    const digestAgrees = Boolean(corpus.corpusId && claimedCorpusId && corpus.corpusId === claimedCorpusId)
+    const listDiff = [
+      (corpus.mismatched || []).length ? 'mismatched=[' + corpus.mismatched.map((m) => m.scenario).slice(0, 5).join(', ') + ']' : '',
+      (corpus.extras || []).length ? 'extra dirs=[' + corpus.extras.map((m) => m.scenario).slice(0, 5).join(', ') + ']' : '',
+      (corpus.missing || []).length ? 'missing=[' + corpus.missing.map((m) => m.scenario).slice(0, 5).join(', ') + ']' : '',
+    ].filter(Boolean).join(', ')
+    const staleBody = digestAgrees && listDiff
+      ? 'the layer ' + String(corpus.dir || '(none)') + ' re-reads to the same digest the report claims (' + shortId(corpus.corpusId) + '), so the digest comparison agrees — the difference is only in the file list: ' + listDiff
+      : 'audit report claims corpus ' + shortId(claimedCorpusId) + ' but the layer ' + String(corpus.dir || '(none)') + ' hashes to ' + shortId(corpus.corpusId) + (layerNotes ? ' [' + layerNotes + ']' : '')
+    add('AUDIT_CORPUS_STALE', staleBody + (predatesReceipts ? '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one' : ''), !(corpusStaleByCode || (corpus.ok === true && !(generatedFresh && corpusMatches))))
     // R1b: the audit id is DERIVED from (corpus id, tree hash). If the gate recomputes a different id, the report's
     // stamp was not produced by the formula it claims -- either hand-edited or copied from another run.
     const derivedId = claimsOrigin && claimedCorpusId ? deriveAuditId(claimedCorpusId, claimedTree) : null

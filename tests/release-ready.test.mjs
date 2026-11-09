@@ -573,7 +573,10 @@ console.log('--- 6. the CLI: skipping the gate is a reason, --json is parseable,
       const run = layerGate(fx.root, fx.report(manifest))
       const stale = run.reason('AUDIT_CORPUS_STALE')
       ok(run.status === 7 && run.codes.includes('AUDIT_CORPUS_STALE'), 'A15: an extra corpus dir in the layer is stale even when it is older than the report', { status: run.status, codes: run.codes })
-      ok(stale !== null && String(stale.message).includes('does not list: x'), 'A15: the reason names the extra scenario x', stale && stale.message)
+      const staleText = String((stale && stale.message) || '')
+      const digestTokens = staleText.match(/sha256:[0-9a-f]{12,}/g) || []
+      ok(stale !== null && staleText.includes('extra dirs=[x]'), 'A15: the reason names the extra scenario x', stale && stale.message)
+      ok(digestTokens.length - new Set(digestTokens).size === 0, 'A15: the reason does not print the same digest twice -- when the digests agree, the sentence must name the file-list difference, not a tautology', { message: staleText, digestTokens })
     }
 
     // A16: a report that is HONEST about an older layer. Every digest agrees; it is simply not the current layer.
@@ -697,6 +700,13 @@ console.log('--- 8. TB-2662 red team: every vector must be NAMED (refused for th
     ok(byStatus('leaked').length === 0, 'no vector is LEAKED (READY)')
     ok(byStatus('half').length === 0, 'no vector is HALF (refused, judgment fired, required detail missing)')
     ok(neutralizedRows.every((v) => v.evidence !== null && v.evidence !== undefined && (typeof v.evidence === 'object' ? Object.keys(v.evidence).length > 0 : String(v.evidence).trim() !== '')), 'every NEUTRALIZED row carries evidence (a row that dissolves by design must say why)', neutralizedRows.map((v) => ({ id: v.id, evidence: v.evidence })))
+    // A12 is the same shape as A15 but at the file level: the layer's digest re-reads to exactly what the report
+    // claims, so the useful sentence names the changed scenario, not two identical hashes.
+    const a12 = vectors.find((v) => v.id === 'A12')
+    const a12Text = a12 ? (a12.messageHead || []).join(' ') : ''
+    const a12Tokens = a12Text.match(/sha256:[0-9a-f]{12,}/g) || []
+    ok(a12 !== undefined && a12Text.includes('mismatched=[actions-extra]'), 'A12: the reason names the file that differs (mismatched=[actions-extra])', a12 && a12.messageHead)
+    ok(a12Tokens.length - new Set(a12Tokens).size === 0, 'A12: the reason does not print the same digest twice', { message: a12Text, a12Tokens })
     console.log('  (red team ' + wall + ' ms)')
   }
 }
