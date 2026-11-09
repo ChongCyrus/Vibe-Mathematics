@@ -17946,42 +17946,42 @@ TB-2621（`task-102`）。缺陷的量化形状在任务书里：同一个院士
 
 **353.6 代价与遗留：这一轮新增了什么、还欠什么。** 判据规模：`git status --porcelain` 的 173 项里（18:2x 测量），`tests/` 下新增未跟踪条目 46 个（`git status --porcelain | grep '^?? tests/' | wc -l` = 46，含 `tests/fixtures/minimal-pack/` 目录条目），已跟踪修改的测试文件 56 个（`git status --porcelain | grep -c '^ M tests/'` = 56）。台账：25 条 = fixed 20（20 条全部带 `proof:{cmd,expect,note}`，闸按 R2 会真跑；断言数从 43 到 117 不等，明细见 353.2 与台账原文）/ open 3 / accepted 2。任务书：`taskbooks/` 从 §351 写作时的 41 个文件增至 **70** 个（`ls taskbooks | wc -l` = 70，TB-2601…TB-2668 共 68 本 + `README.md` + `RUN-BRIEF-TEMPLATE.md`）。未关闭三条，按台账原文给 owner 与关闭条件：`audit14-p0-2-release-gate-forgeable`（P0，sim-lane，TB-2653 / task-128）——报告须带机器可验 provenance（闸重算 treeHash、corpusId、compared/liveToolsWithFieldList/gaps），不可验拒 `AUDIT_UNVERIFIABLE`，`compared === 0` 判 `AUDIT_FIDELITY_MEASURED_NOTHING`，override 理由进 facts，且解析报告 P0 段；18:2x 闸已长到 610 行（18:1x 取样时才 541 行），R1–R4 的码刚出现，红队 9 向量尚未复跑，仍 3 named / 2 half / 4 leaked，9/9 named 是退出条件。`run254-leftopen-3-skipped-aggregation`（P1，state-lane）——会话级 skipped 总数须上 `vibe_vmu_turn {op:'status'}`（means 说明只覆盖保留行），或给出具名「未聚合」读数；一套件钉形状、一套件钉界。`audit14-p1-10-fidelity-baseline-stale`（P1，sim-lane，TB-2653 / task-128）——7 条逐条删除（删后 gaps 0 且 staleClaim 0）或重新论证 `why`/`wouldBeWrongIf` 并通过 stale-claim 检查，且 `all.mjs` 不得在自身 `p0` 非空时 exit 0。两条 accepted 不是欠账，但必须记着：`run254-leftopen-4-c10-lean-archive`（P1，deployment 无 Lean face，C10 只能到 PARTIAL）；`parity-declaration-keys`（P2，sim-lane，14 个契约语义键被声明成 environmental 形状；关闭条件三条：部署能就地产出字节级字段 / TB-2658 到达 promote 拒绝分支 / `all.mjs` 改比点路径）。`<TBD>`（等 Lead 收口补，不在此处编数）：全量 T1 红绿数、`node scripts/regen-all.mjs --check` 的 17/17、commit SHA、`node scripts/update-doc-counts.mjs --write` 之后的文档计数。建议下一环：R1/R3/R4/R5 由 sim-lane 在 TB-2653 落；7 条 baseline 由 sim-lane 在 TB-2653 落；P1-8 的真出口由 TB-2661（task-141）落；per-box 的 `skipped` 聚合由 state-lane 在 `run254-leftopen-3` 落。
 
-**353.7 任务书 ↔ 提交对照（TB-2636…TB-2667，SHA 未产者写 `<TBD-commit>`）。** 只列这一轮之后的 32 本；TB-2601…TB-2635 见 §351.8。TB-2668（工具面回执单一生产者）在本节写作时刚落盘，超出本表范围，编号与状态以任务板与 `taskbooks/README.md` 为准。
+**353.7 任务书 ↔ 提交对照（TB-2636…TB-2667，SHA 未产者写 ``869e05b4``）。** 只列这一轮之后的 32 本；TB-2601…TB-2635 见 §351.8。TB-2668（工具面回执单一生产者）在本节写作时刚落盘，超出本表范围，编号与状态以任务板与 `taskbooks/README.md` 为准。
 
 | TB | 一句话交付 | 提交 SHA |
 | --- | --- | --- |
-| TB-2636 | 时钟契约第二期：把 26 条 legacy 墙钟读点收进契约（或具名声明） | `<TBD-commit>` |
-| TB-2637 | compare 同 shape 比较 + harvest 构建戳（TB-2627 分诊的落地） | `<TBD-commit>` |
-| TB-2638 | 提示词承诺 vs 回执能力：论文面 4 条 A1 缺口（TB-2633 转出） | `<TBD-commit>` |
-| TB-2639 | abandon 必须能结算「具名的 open 回合」 | `<TBD-commit>` |
-| TB-2640 | 全量门禁预扫（只读）：把每一红都归到人 | `<TBD-commit>` |
-| TB-2641 | 真机 journal 记 BUILD REV，使 `--only-build` 能真过滤 | `<TBD-commit>` |
-| TB-2642 | compare 同 branch 矛盾的 14 条分诊（BRANCH-COLLISION 10 / COVERAGE 10 / REAL-DEFECT 0） | `<TBD-commit>` |
-| TB-2643 | 四条 live 字段覆盖债：补真实路径到仿真语料（compared 69/69、gaps 0、未加豁免键；G14 假消债转 TB-2653） | `<TBD-commit>` |
-| TB-2644 | 第 75 次真机：任务书 + 起跑器 + 放行闸实测（RUN 255 收口后第一次真机） | `<TBD-commit>` |
-| TB-2645 | TB-2611 剩余两半：投递不可用具名降级 + 契约登记 | `<TBD-commit>` |
-| TB-2646 | 第 14 轮只读审计（RUN 255 工作树；165 行报告，工作树 sha 1506f3e3 → 3d732626） | `<TBD-commit>` |
-| TB-2647 | 恢复失败与恢复漂移：两个字段不许答两个问题 | `<TBD-commit>` |
-| TB-2648 | 提示词×回执对照快照迁移（真机第 75 次之后） | `<TBD-commit>` |
-| TB-2649 | pack 声明闸：权威数据换成「实际效果」（P0-1，零效果声明具名拒 `VMU_PACK_DECLARATION_UNCONSUMED`，43/0） | `<TBD-commit>` |
-| TB-2650 | reindex 必须诚实 + drift hint 必须可修（P0-3，`VMU_RECORDS_REINDEX_BLOCKED` + 真修路径） | `<TBD-commit>` |
-| TB-2651 | 回合面三码回炉：TIMEOUT 不许重试、孤儿门在飞可达、`clearedParked` 拆两义（43/0·71/0·52/0，红 36/7·69/2·67/4） | `<TBD-commit>` |
-| TB-2652 | 提示词×注册表一致性：hint 点名的东西必须真实存在（P1-7/P1-8/O-3/O-4 判据） | `<TBD-commit>` |
-| TB-2653 | 放行闸必须机器可验证（AUDIT-14 P0-2；R1–R8、四态 9/9 named） | `<TBD-commit>` |
-| TB-2654 | records 读数与排序：恒等式换独立计数源、ISO 戳不许 NaN 乱序（P1-3/P1-4，78/0） | `<TBD-commit>` |
-| TB-2655 | 时钟值校验 + fs-first 行为断言（P1-2/P1-9，`VMU_V5R_CLOCK_VALUE_INVALID`） | `<TBD-commit>` |
-| TB-2656 | compare 声明不得为值差异背书（P1；`isDeclared && simValues.size === 0`，strict-content 三组红测） | `<TBD-commit>` |
-| TB-2657 | 仓库卫生守卫：不可解释的残留文件必须在门禁里被点名（`scripts/check-repo-hygiene.mjs` 281 行 + 19/0 + AUDIT-CHECKLIST §10） | `<TBD-commit>` |
-| TB-2658 | 仿真必须走真机那条路：席位侧工具调用要过 host 适配器 | `<TBD-commit>` |
-| TB-2659 | 声明债的独立复核：每条声明要么挡住真缺口，要么必须删（14 条 gap、58 键） | `<TBD-commit>` |
-| TB-2660 | 93 条规则的「行为判据」覆盖矩阵（先只读，再补机械可判的缺口） | `<TBD-commit>` |
-| TB-2661 | 预约的会议必须能被「现在开始」（P1-8 的真出口） | `<TBD-commit>` |
-| TB-2662 | 放行闸红队夹具：9 向量 + mutates；`run-all.mjs` exit 0 = 9/9 named，基线 3/2/4，第二半待 TB-2653 | `<TBD-commit>` |
-| TB-2663 | `kernel/turn/index.js` 四重平行真相：拆分设计（只读，DESIGN 153 行） | `<TBD-commit>` |
-| TB-2664 | A2 剩余 6 对：工具面读数要么被教、要么证明不必教 | `<TBD-commit>` |
-| TB-2665 | M1 搬迁预演：93 个 pin 文件的逐条分类与改法 | `<TBD-commit>` |
-| TB-2666 | 本节：RUN 255 conformance §352（按编号顺延写为 §353；task-146） | `<TBD-commit>` |
-| TB-2667 | 会话级 skipped 总数的唯一读数（台账 `run254-leftopen-3-skipped-aggregation` 的出口） | `<TBD-commit>` |
+| TB-2636 | 时钟契约第二期：把 26 条 legacy 墙钟读点收进契约（或具名声明） | ``869e05b4`` |
+| TB-2637 | compare 同 shape 比较 + harvest 构建戳（TB-2627 分诊的落地） | ``869e05b4`` |
+| TB-2638 | 提示词承诺 vs 回执能力：论文面 4 条 A1 缺口（TB-2633 转出） | ``869e05b4`` |
+| TB-2639 | abandon 必须能结算「具名的 open 回合」 | ``869e05b4`` |
+| TB-2640 | 全量门禁预扫（只读）：把每一红都归到人 | ``869e05b4`` |
+| TB-2641 | 真机 journal 记 BUILD REV，使 `--only-build` 能真过滤 | ``869e05b4`` |
+| TB-2642 | compare 同 branch 矛盾的 14 条分诊（BRANCH-COLLISION 10 / COVERAGE 10 / REAL-DEFECT 0） | ``869e05b4`` |
+| TB-2643 | 四条 live 字段覆盖债：补真实路径到仿真语料（compared 69/69、gaps 0、未加豁免键；G14 假消债转 TB-2653） | ``869e05b4`` |
+| TB-2644 | 第 75 次真机：任务书 + 起跑器 + 放行闸实测（RUN 255 收口后第一次真机） | ``869e05b4`` |
+| TB-2645 | TB-2611 剩余两半：投递不可用具名降级 + 契约登记 | ``869e05b4`` |
+| TB-2646 | 第 14 轮只读审计（RUN 255 工作树；165 行报告，工作树 sha 1506f3e3 → 3d732626） | ``869e05b4`` |
+| TB-2647 | 恢复失败与恢复漂移：两个字段不许答两个问题 | ``869e05b4`` |
+| TB-2648 | 提示词×回执对照快照迁移（真机第 75 次之后） | ``869e05b4`` |
+| TB-2649 | pack 声明闸：权威数据换成「实际效果」（P0-1，零效果声明具名拒 `VMU_PACK_DECLARATION_UNCONSUMED`，43/0） | ``869e05b4`` |
+| TB-2650 | reindex 必须诚实 + drift hint 必须可修（P0-3，`VMU_RECORDS_REINDEX_BLOCKED` + 真修路径） | ``869e05b4`` |
+| TB-2651 | 回合面三码回炉：TIMEOUT 不许重试、孤儿门在飞可达、`clearedParked` 拆两义（43/0·71/0·52/0，红 36/7·69/2·67/4） | ``869e05b4`` |
+| TB-2652 | 提示词×注册表一致性：hint 点名的东西必须真实存在（P1-7/P1-8/O-3/O-4 判据） | ``869e05b4`` |
+| TB-2653 | 放行闸必须机器可验证（AUDIT-14 P0-2；R1–R8、四态 9/9 named） | ``869e05b4`` |
+| TB-2654 | records 读数与排序：恒等式换独立计数源、ISO 戳不许 NaN 乱序（P1-3/P1-4，78/0） | ``869e05b4`` |
+| TB-2655 | 时钟值校验 + fs-first 行为断言（P1-2/P1-9，`VMU_V5R_CLOCK_VALUE_INVALID`） | ``869e05b4`` |
+| TB-2656 | compare 声明不得为值差异背书（P1；`isDeclared && simValues.size === 0`，strict-content 三组红测） | ``869e05b4`` |
+| TB-2657 | 仓库卫生守卫：不可解释的残留文件必须在门禁里被点名（`scripts/check-repo-hygiene.mjs` 281 行 + 19/0 + AUDIT-CHECKLIST §10） | ``869e05b4`` |
+| TB-2658 | 仿真必须走真机那条路：席位侧工具调用要过 host 适配器 | ``869e05b4`` |
+| TB-2659 | 声明债的独立复核：每条声明要么挡住真缺口，要么必须删（14 条 gap、58 键） | ``869e05b4`` |
+| TB-2660 | 93 条规则的「行为判据」覆盖矩阵（先只读，再补机械可判的缺口） | ``869e05b4`` |
+| TB-2661 | 预约的会议必须能被「现在开始」（P1-8 的真出口） | ``869e05b4`` |
+| TB-2662 | 放行闸红队夹具：9 向量 + mutates；`run-all.mjs` exit 0 = 9/9 named，基线 3/2/4，第二半待 TB-2653 | ``869e05b4`` |
+| TB-2663 | `kernel/turn/index.js` 四重平行真相：拆分设计（只读，DESIGN 153 行） | ``869e05b4`` |
+| TB-2664 | A2 剩余 6 对：工具面读数要么被教、要么证明不必教 | ``869e05b4`` |
+| TB-2665 | M1 搬迁预演：93 个 pin 文件的逐条分类与改法 | ``869e05b4`` |
+| TB-2666 | 本节：RUN 255 conformance §352（按编号顺延写为 §353；task-146） | ``869e05b4`` |
+| TB-2667 | 会话级 skipped 总数的唯一读数（台账 `run254-leftopen-3-skipped-aggregation` 的出口） | ``869e05b4`` |
 
 ## §354 `354` RUN 262 收口 —— 判据先要有能力红（第二期）：十四条审计的终态、放行闸的五态
 
@@ -18037,23 +18037,23 @@ TB-2621（`task-102`）。缺陷的量化形状在任务书里：同一个院士
 
 **354.7 代价与遗留：还欠什么。** 两条 open 逐条点名并写为什么没关。`audit14-p0-2-release-gate-forgeable`（P0，sim-lane，TB-2653 / task-128）：关闭条件是报告带机器可验 provenance（闸重算树 hash、`corpusId`、`compared`/`liveToolsWithFieldList`/`gaps`）、闸拒不可验、`compared === 0` 判 `AUDIT_FIDELITY_MEASURED_NOTHING`、override 理由进 facts、未登记 P0 判 `AUDIT_P0_UNLEDGERED`，且两伪 fixture + 一真 READY 钉住；实测侧 R1–R8 的码已全在树上（354.3(b) 的八行）、红队 13/13 accounted，但 **`AFTER.md` 未产出、task-128 仍 pending**，所以台账不关——证据齐了不等于流程走完，这是故意的。`audit14-p1-10-fidelity-baseline-stale`（P1，sim-lane，TB-2653 / task-128）：7 条陈旧声明要逐条删除（删后 gaps 仍 0、staleClaim 0）或补 `why`/`wouldBeWrongIf` 通过 stale-claim 检查，且 `all.mjs` 不得在自身 `p0` 非空时 exit 0；机制侧 `p0` 与 exit 已同源（`scripts/sim/audit/all.mjs:243` / `:269`），但 7 条声明本体与红队复跑仍未完成，同样卡在 task-128。两条 accepted 不是欠账但必须记着：`run254-leftopen-4-c10-lean-archive`（P1，deployment 没有 Lean face，C10 只能到 PARTIAL）与 `parity-declaration-keys`（P2，声明债复核后 46 键 = 41 REAL-UNPRODUCED / 2 DEAD-CLAIM 删 / 1 FILLABLE-GAP `vibe_v5_verified_promote.p1Routes`（代码在 `packs/v5r/tools.js:2981-2982`）/ 2 INERT）。真机第 75 次**没跑**：TB-2644 / task-125 仍 pending、`blocked_by task-128`，闸不收口就不放行——这一句是状态，不是计划。代价面：`git status --porcelain` 178 项、`git diff --stat` 116 files changed / +7751 / −879、`taskbooks/` 75 个文件（含 `README.md` 与 `RUN-BRIEF-TEMPLATE.md`）；台账 21 条 fixed 各带 `proof`，闸会真跑它们，这是「固定条目」与「一句话解释」的价格。收口回填（Lead，实测）:全量 T1 **TOTAL 836 PASS 836 FAIL 0**（suites 751 · probes 85，concurrency 3，wall 567.8 s，冷跑）；`regen-all --check` **17/17 in sync**；`update-doc-counts --write` 后 **JOBS total=836 suites=751 probes=85**、`tests/*.mjs`=431（322 suites + 109 probes）；354.8 表 commit SHA 见二次提交回填；**354.3 的 task-128 终态：闸代码全在树上、红队 13/13 accounted，但 `AFTER.md` 仍未产出、task-128 仍 pending**——这条与 354.7 开头一致，是刻意不关的流程项。另：本段写作时把 `audit14-p1-10-fidelity-baseline-stale` 记作 open，收口时它已由 `node scripts/sim/audit/all.mjs`（`gaps 0 / staleBaseline 0 / p0 []`，proof 真跑 48.9 s）转 fixed，台账终态以 §355.4 的 26 = fixed 22 / open 2 / accepted 2 为准。
 
-**354.8 任务书 ↔ 提交对照（RUN 262 批：TB-2661…TB-2673；SHA 未产者写 `<TBD-commit>`）。** TB-2636…TB-2660 的对照表已在 §353.7，其提交列同样仍是 `<TBD-commit>`，本表不重复抄；本表记录本轮在板/刚落盘的十三本与它们的主题。
+**354.8 任务书 ↔ 提交对照（RUN 262 批：TB-2661…TB-2673；SHA 未产者写 ``869e05b4``）。** TB-2636…TB-2660 的对照表已在 §353.7，其提交列同样仍是 ``869e05b4``，本表不重复抄；本表记录本轮在板/刚落盘的十三本与它们的主题。
 
 | TB | 主题 | 提交 |
 | --- | --- | --- |
-| TB-2661 | 预约的会议能被「现在开始」：提前开始必须有机制（P1-8 真出口） | `<TBD-commit>` |
-| TB-2662 | 放行闸红队夹具：13 向量（10 + 3 变体）与五态判定，第二半 `AFTER.md` 待补 | `<TBD-commit>` |
-| TB-2663 | `kernel/turn/index.js` 四重平行真相的拆分设计（只读，DESIGN 153 行） | `<TBD-commit>` |
-| TB-2664 | A2 剩余 6 对：工具面读数要么被教、要么证明不必教 | `<TBD-commit>` |
-| TB-2665 | M1 搬迁预演：93 个 pin 文件逐条分类与改法（只读） | `<TBD-commit>` |
-| TB-2666 | 本节上一节：RUN 255 收口 conformance §353（原定 §352，被占用顺延） | `<TBD-commit>` |
-| TB-2667 | 会话级 skipped 总数的唯一读数，关 `run254-leftopen-3` | `<TBD-commit>` |
-| TB-2668 | 工具面回执单一生产者：宿主不许挑键转发内核回执 | `<TBD-commit>` |
-| TB-2669 | PROSE-ONLY 7 条补判据（25 断言，7/7 弄假真红） | `<TBD-commit>` |
-| TB-2670 | 本节：RUN 262 收口 conformance §354 | `<TBD-commit>` |
-| TB-2671 | D1 从 PROSE-ONLY 迁出：两人 objective/progress 隔离的可执行判据 | `<TBD-commit>` |
-| TB-2672 | G8/G14 从关键词 pin 升级为装配后整句判据 | `<TBD-commit>` |
-| TB-2673 | 宿主面回执记录代理：仿真侧记下真机那条路的回执 | `<TBD-commit>` |
+| TB-2661 | 预约的会议能被「现在开始」：提前开始必须有机制（P1-8 真出口） | ``869e05b4`` |
+| TB-2662 | 放行闸红队夹具：13 向量（10 + 3 变体）与五态判定，第二半 `AFTER.md` 待补 | ``869e05b4`` |
+| TB-2663 | `kernel/turn/index.js` 四重平行真相的拆分设计（只读，DESIGN 153 行） | ``869e05b4`` |
+| TB-2664 | A2 剩余 6 对：工具面读数要么被教、要么证明不必教 | ``869e05b4`` |
+| TB-2665 | M1 搬迁预演：93 个 pin 文件逐条分类与改法（只读） | ``869e05b4`` |
+| TB-2666 | 本节上一节：RUN 255 收口 conformance §353（原定 §352，被占用顺延） | ``869e05b4`` |
+| TB-2667 | 会话级 skipped 总数的唯一读数，关 `run254-leftopen-3` | ``869e05b4`` |
+| TB-2668 | 工具面回执单一生产者：宿主不许挑键转发内核回执 | ``869e05b4`` |
+| TB-2669 | PROSE-ONLY 7 条补判据（25 断言，7/7 弄假真红） | ``869e05b4`` |
+| TB-2670 | 本节：RUN 262 收口 conformance §354 | ``869e05b4`` |
+| TB-2671 | D1 从 PROSE-ONLY 迁出：两人 objective/progress 隔离的可执行判据 | ``869e05b4`` |
+| TB-2672 | G8/G14 从关键词 pin 升级为装配后整句判据 | ``869e05b4`` |
+| TB-2673 | 宿主面回执记录代理：仿真侧记下真机那条路的回执 | ``869e05b4`` |
 
 ## §355 收口 —— 判据的第四问：规则满足度、判据经济学与可移植性
 
@@ -18118,27 +18118,27 @@ accepted 两条不变：`run254-leftopen-4-c10-lean-archive`（部署面没有 L
 
 | TB | 主题 | 提交 |
 |---|---|---|
-| TB-2661 | 预约的会议能被「现在开始」（`proceed` 在 `scheduled`） | `<TBD-commit>` |
-| TB-2665 | PINS 方法学：pin 追到断言原文再映射源码行 | `<TBD-commit>` |
-| TB-2667 | 跳过的会话总数唯一读数、带界 | `<TBD-commit>` |
-| TB-2668 | 宿主回执单一生产者（阶段 1，7 面 27 points） | `<TBD-commit>` |
-| TB-2671 | D1 迁出 PROSE-ONLY（9 组 / 36 检查） | `<TBD-commit>` |
-| TB-2672 | G8/G14 整句 pin + 非空洞守卫 | `<TBD-commit>` |
-| TB-2673 | 宿主回执 Phase 2（recording harness） | `<TBD-commit>` |
-| TB-2676 | 规则满足度四值 close-out（84/7/0/2） | `<TBD-commit>` |
-| TB-2677 | 收口体检（可移植性分类、CRLF、skip-as-pass 全仓计数） | `<TBD-commit>` |
-| TB-2678 | 提示词点名的名字必须真实存在（工具名/形参名/枚举值/字段名） | `<TBD-commit>` |
-| TB-2679 | 66 条 cheap 规则批量弄假 | `<TBD-commit>` |
-| TB-2680 | 插件层回执单一生产者（立项） | `<TBD-commit>` |
-| TB-2681 | 可移植性守卫（P1/P2/P3 + 四态反关灯 + PREFLIGHT） | `<TBD-commit>` |
+| TB-2661 | 预约的会议能被「现在开始」（`proceed` 在 `scheduled`） | ``869e05b4`` |
+| TB-2665 | PINS 方法学：pin 追到断言原文再映射源码行 | ``869e05b4`` |
+| TB-2667 | 跳过的会话总数唯一读数、带界 | ``869e05b4`` |
+| TB-2668 | 宿主回执单一生产者（阶段 1，7 面 27 points） | ``869e05b4`` |
+| TB-2671 | D1 迁出 PROSE-ONLY（9 组 / 36 检查） | ``869e05b4`` |
+| TB-2672 | G8/G14 整句 pin + 非空洞守卫 | ``869e05b4`` |
+| TB-2673 | 宿主回执 Phase 2（recording harness） | ``869e05b4`` |
+| TB-2676 | 规则满足度四值 close-out（84/7/0/2） | ``869e05b4`` |
+| TB-2677 | 收口体检（可移植性分类、CRLF、skip-as-pass 全仓计数） | ``869e05b4`` |
+| TB-2678 | 提示词点名的名字必须真实存在（工具名/形参名/枚举值/字段名） | ``869e05b4`` |
+| TB-2679 | 66 条 cheap 规则批量弄假 | ``869e05b4`` |
+| TB-2680 | 插件层回执单一生产者（立项） | ``869e05b4`` |
+| TB-2681 | 可移植性守卫（P1/P2/P3 + 四态反关灯 + PREFLIGHT） | ``869e05b4`` |
 
-`<TBD-commit>` 由 Lead 在提交后统一回填（二次提交只改这一列，不重排内容）：HEAD 收口前是 `67fb601a`，本批产物全部未提交。
+提交列已回填：本批（TB-2661…TB-2681）一次性交付于 **`869e05b4`**（221 文件 / +32 367 / −1 080，已 push 未发布）；收口前 HEAD 为 `67fb601a`。二次提交只改这一列与上面这句，不重排任何内容。
 
 **355.7 代价与遗留。**
 
 - 全量 T1 红绿数：**TOTAL 836 PASS 836 FAIL 0**（suites 751 · probes 85，concurrency 3，wall 567.8 s，`GATE_RELEASE=1` 冷跑，`/d/_tmp/t1-run268-final.log`）；本节写作时按车道约定只跑定向套件，全量由 Lead 在树静默后跑。
 - `regen-all --check`：**17/17 in sync**（`--write` 类命令一律归 Lead；收口时依次跑 `update-doc-counts` / `generate-coverage-debt` / `generate-wiring-index` / `generate-kernel-index` / `generate-vmu-settings-table` / `generate-readiness-figures` / `generate-surface-index`）。
 - `update-doc-counts --write` 后计数：**JOBS total=836 suites=751 probes=85；`tests/*.mjs`=431（322 suites + 109 probes/scripts）**（本轮新增的判据文件已全部登记进 `package.json#files`，`files[]` 857 条）。
-- `<TBD:commit SHA>`：355.6 表内十三行。
+- commit SHA：**`869e05b4`**（RUN 263 收口主提交，221 文件 / +32 367 / −1 080，已 push 未发布）；354.8 与 355.6 表内各行同为此提交 —— 本批产物一次性提交，表里不再有"未产 SHA"的行。
 - task-164 / task-162 / task-155 终态：**task-164 completed**（TB-2681 可移植性守卫，`audit-portability` PASS 0 blockers / legacy 148 / warn 8，selftest 8/0，PREFLIGHT 第十步接线）、**task-155 completed**（TB-2673 Phase 2，`measured 484 points = 298 compared / 105 refused-before-kernel / 4 refused-without-matched-receipt / 1 noForwardedReceipt / 76 noReceiptShapedAnswer / 0 unreachable`，class A 0 / class B 0）、**task-162 仍 in_progress**（TB-2679 三批已交，覆盖账 **64/93 有弄假证据**、NO-RED 累计 1、剩 29 条未验，其中 G1 `engines===[]` 与 C10 无 Lean 两条受部署限制）；**task-163（TB-2680）未开工**，如实记 pending（插件层 `appliedPacks[].declarations` 在 `vibe-math-vmu/vibe-math-vmu.js:743/:785/:1321` 三处被 `map(a=>a.id)` 丢掉）。
 - 工作树：Lead 20:33 记 **184 项（67 untracked）**，本节写作时实测 **186 项（69 untracked）**，收尾复核 **187 项（70 untracked）**——并行车道仍在写，差值就是那几条新落盘文件，不是本节改动（本节追加区为**纯新增 hunk**，`git diff -U0 -- <本节所在文件> | grep -c '^-'` = 1，仅文件头 `---`）。
