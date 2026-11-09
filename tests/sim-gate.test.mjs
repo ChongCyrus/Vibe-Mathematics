@@ -21,10 +21,11 @@
 // Budgets are MEASURED, not guessed (this repo's own rule: "a family budget is measured, never guessed"):
 //   end-to-end        1.9 s   (gate-load amplification measured on this tree: +15 % at T1 concurrency 3)
 //   meeting-matrix   12.8 s   (measured INSIDE this gate, not standalone: 9.4 s alone, 12.8 s under gate load)
-//   audit/all        52.4 s   (measured twice standalone 49.5 s, 52.4 s inside this gate)
+//   audit/all        43-58 s quiet, 75.0 s under T1 concurrency 3 (measured: 75.03 s, the run that raised this cap)
 //   determinism pair  2 x 1.9 s
-//   => the three named segments sum to 59.7 s against a 150 s budget (150 % headroom) and audit/all alone keeps
-//      33 % headroom over its 75 s segment budget. A timeout is a FAILURE that names the segment: never a skip.
+//   => the three named segments sum to ~90 s quiet against the 150 s total backstop; audit/all's OWN segment cap is
+//      150 s because this gate is itself one of T1's k=3 concurrent jobs. A timeout is a FAILURE that names the
+//      segment: never a skip. Raising a cap does NOT relax the drift judgement below (drift=1.25, floor=1500 ms).
 //
 // A CAP ALONE IS NOT A JUDGEMENT (TB-2609 addendum): a slow machine would silently eat the headroom and nobody would
 // learn that the gate got 40 % dearer. So each segment is ALSO compared against the baseline measured on this tree
@@ -49,7 +50,7 @@ const TMP = join(tmpdir(), 'sim-gate-' + process.pid)
 const KEEP = process.env.SIM_KEEP_CORPUS === '1'
 const NL = String.fromCharCode(10)
 
-const SEG_MS = { e2e: 15000, meetingMatrix: 45000, auditAll: 75000, determinism: 15000 }
+const SEG_MS = { e2e: 15000, meetingMatrix: 45000, auditAll: 150000, determinism: 15000 } // audit/all: quiet 43-58 s but 75.03 s under T1 k=3 concurrency, where THIS gate is one of the k
 const THREE_SEGMENT_BUDGET_MS = 150000 // measured total 75.6 s (2026-11-09 19:44 quiet window): the cap is headroom for a busy machine, not a target
 // The DRIFT check, not the cap, is what notices a real slowdown. Its baseline is READ FROM THE DOC, not kept here:
 // a constant in the test file would let the gate and docs/acceptance/sim-gate-scope.md disagree about what "normal"

@@ -18142,3 +18142,80 @@ accepted 两条不变：`run254-leftopen-4-c10-lean-archive`（部署面没有 L
 - commit SHA：**`869e05b4`**（RUN 263 收口主提交，221 文件 / +32 367 / −1 080，已 push 未发布）；354.8 与 355.6 表内各行同为此提交 —— 本批产物一次性提交，表里不再有"未产 SHA"的行。
 - task-164 / task-162 / task-155 终态：**task-164 completed**（TB-2681 可移植性守卫，`audit-portability` PASS 0 blockers / legacy 148 / warn 8，selftest 8/0，PREFLIGHT 第十步接线）、**task-155 completed**（TB-2673 Phase 2，`measured 484 points = 298 compared / 105 refused-before-kernel / 4 refused-without-matched-receipt / 1 noForwardedReceipt / 76 noReceiptShapedAnswer / 0 unreachable`，class A 0 / class B 0）、**task-162 仍 in_progress**（TB-2679 三批已交，覆盖账 **64/93 有弄假证据**、NO-RED 累计 1、剩 29 条未验，其中 G1 `engines===[]` 与 C10 无 Lean 两条受部署限制）；**task-163（TB-2680）未开工**，如实记 pending（插件层 `appliedPacks[].declarations` 在 `vibe-math-vmu/vibe-math-vmu.js:743/:785/:1321` 三处被 `map(a=>a.id)` 丢掉）。
 - 工作树：Lead 20:33 记 **184 项（67 untracked）**，本节写作时实测 **186 项（69 untracked）**，收尾复核 **187 项（70 untracked）**——并行车道仍在写，差值就是那几条新落盘文件，不是本节改动（本节追加区为**纯新增 hunk**，`git diff -U0 -- <本节所在文件> | grep -c '^-'` = 1，仅文件头 `---`）。
+
+## §355.8 放行闸的可伪造性：从「长得像」到「谁拥有这份语料」
+
+**观测时点。** 本节写于红队收工后的 `15417e55`：被测闸 `scripts/sim/audit/release-ready.mjs` 的 `git hash-object` 前 8 = `a5b901c9`，仓库 sentinel `e3b0c442`，三次取样一致；红队终态与读数见 355.8.6。`D:/_tmp` 会在 3 小时内清理，本节把用到的每个读数抄进来，不靠临时目录活着；引用已删除代码时给 `<commit>:<path>` 的历史行号，并注明可用 `<commit>^:<path>` 复现。
+
+**355.8.1 一轮红队打穿三条。** 三条都不是「字段缺失」，是「判据在猜」：闸按磁盘上谁最新来推断报告该指哪一层，于是每条推断规则都留下一条缝。
+
+| 向量 | 攻击形状 | 修前实测 | 缝在哪 |
+|---|---|---|---|
+| 向量 A11：旧戳重放 | 一份 2026-11-01 的报告原样重放：manifest 不写 `corpusFiles`，`corpusId` 抄某个仍在盘上的旧层 | `D:/_tmp/gate-redteam/a11-gate.json`：`ready:true`、`reasons:[]`、26 条 check 全 ok，exit 0 | `corpus-files.mjs` 当时有 `legacy-stamp` 兼容分支：没有清单时在所有层里找「重读 digest 等于自称戳」的一层，找到即 `ok:true`（`git show 464b051a:scripts/sim/audit/corpus-files.mjs` 第 161-167 行；历史行号，已删代码用 `<commit>^:<path>` 可复现） |
+| 向量 A13b：少列一个 | 层里 15 个 `corpus-*` 只列 14 个，`corpusId`/`auditId`/fidelity 全按 14 个重算，其余自洽 | `D:/_tmp/gate-redteam/a13b-gate.json`：`ready:true`、`reasons:[]`、26/26 ok | `extras` 只收「收据 mtime > 报告 `generatedAt`」的目录（`git show 141c5cc4^:scripts/sim/audit/corpus-files.mjs` 第 183-185 行；历史行号，同法可复现）：被漏掉的旧目录天生不在 `extras` 里 |
+| 向量 A16：诚实声明旧层 | 声明「我量的是旧层」：`corpus.dir` 指向今天仍存在的旧层，全部戳自洽 | 层所有权模型下 **READY**（`D:/_tmp/gate-redteam/AFTER-cell.md` §2 预演 + `probe-a16-fresh.mjs` 机械复核：层内最新收据 `2026-11-09T08:32:18.278Z`、`generatedAt=17:34:26Z` ⇒ `generatedFresh` 真）；当时闸（`74a19dfa`）给的 exit 7 `AUDIT_CORPUS_STALE` 是偶然的——消息把层写成 root `D:/_tmp/sim`，它从没读 `manifest.corpus.dir` | 判据先按「哪个层最新」挑一层，再只比「报告时刻 ≥ 它挑中那层的最新收据」：报告诚实地指向旧层时，这两个判断都成立 |
+
+三条的共同点写在 `D:/_tmp/gate-redteam/AFTER-cell.md:43`：闸不再从磁盘推断「哪层是最新」，攻击就退化成两条可判的谎——声明了自己没量的层（A14），或声明了层却少说了内容（A13b/A15）。反过来说，修前那三条能过，是因为闸**替报告做了选择**：旧实现 `resolveReportCorpus(root, manifest)` 用 `newestCorpusDir(root)` 按层内收据 mtime 排序挑层（`git show 141c5cc4^:scripts/sim/audit/corpus-files.mjs` 第 122-128 行；历史行号，已删代码用 `<commit>^:<path>` 可复现），报告里写的 `corpus.dir` 一个字都没被读。
+
+**判据链：从「报告自称 PASS」到「闸自己重算」。** 旧闸读 `AUDIT.md` 的 verdict 行与三个数字，一份手打文件即可 READY；新闸把报告里每个数字降级为**声明**，用五件它自己算得出来的事实交叉验证——当前代码的 tree hash、单写者指针指定的当前语料层目录、该层内每个 `receipts.jsonl` 的 bytes 与 sha256、由这些文件派生的 `corpusId`、由 `corpusId|treeHash` 派生的 `auditId`，外加从回执重算的 fidelity 三元组；不一致即具名拒绝（`AUDIT_TREE_CHANGED` / `AUDIT_CORPUS_UNMEASURED` / `AUDIT_CORPUS_STALE` / `AUDIT_CORPUS_NOT_CURRENT` / `AUDIT_ID_MISMATCH` / `AUDIT_FIDELITY_MISMATCH`）。因此伪造必须复现尺子的每一个读数，等于真量一遍——`A8b` 因此被证明是「无收益」而不是「被识别」。层所有权同时让三类攻击在模型内不可表述：让闸挑一个有利的旧层（A10/A10:extra，没有挑层这一步）；不声明量了哪些文件（A11，无清单即 UNMEASURED）；用同内容但不同目录的副本冒充（A16b，目录即身份）。唯一保留过的兼容分支 `legacy-stamp` 已删除，报不出清单的报告一律按「没量过」处理。
+
+**355.8.2 修法：层所有权 + 单写者指针。** 语料层从此有主人，不再有「最新的一层」这种全机推断。
+
+- **每次运行拥有自己的一层。** `all.mjs` 把层建成 `SIM_ROOT/run-<runStamp>-<pid>`（`scripts/sim/audit/all.mjs:45`、`scripts/sim/audit/all.mjs:48`），manifest 写绝对路径与逐文件清单：`corpus: { ..., dir: BASE, corpusFiles: corpusFileList }`（`scripts/sim/audit/all.mjs:278`；清单在 `:253`、`:256`）；层里出现本次没产的 corpus 目录即 FAIL（`:255`、`:260-262`）——「一层只有一个写者」是可失败的判据，不是注释。
+- **单写者指针。** 运行结束用 `.tmp` + 同目录 `rename` 原子写 `current-layer.json`（`scripts/sim/audit/all.mjs:49`、`:296-298`），指针记 `dir`/`corpusId`/`auditId`/`generatedAt`/`pid`（`:287-294`）。同目录 rename 是原子的，且「没有指针」与「旧指针」保持可区分。
+- **闸只读报告点名的层。** `resolveReportCorpus(manifest)` 单参（`scripts/sim/audit/corpus-files.mjs:157`）：`corpus.dir` 缺失/不存在/空目录各是一条具名 `AUDIT_CORPUS_UNMEASURED`（`:160-171`）；没有 `corpusFiles` 清单就直接拒（`:173-181`，注释点名 A11 的「2026-11-01 的报告在 2026-11-09 的树上 READY」）；`extras` 不再按 mtime 过滤，层里有而报告没列的目录全数列出（`:202`）；`ok` 要求 `missing`/`mismatched`/`extras` 三者皆空且重算 digest 相等（`:205`）。
+- **新增一条「旧层不是当前层」。** `AUDIT_CORPUS_NOT_CURRENT`（`scripts/sim/audit/release-ready.mjs:495-498`）：报告层与 `current-layer.json` 的 `dir` 不同即拒，消息点名两个 dir 与各自 `generatedAt`。指针读不到走上面的 UNMEASURED，不走这条（`:489-494`，`:496` 注释：两个问题两个答案）。
+- **删除也是修法。** `corpusLayers()`/`newestCorpusDir()` 在 `141c5cc4` 删除，repo 内检索 0 命中（唯一残留是 §355.3 自己的一行文字，见下）；提交序列即修法顺序：`464b051a`「语料层只有一个枚举实现」、`824bcaba`「说不出量了哪些回执的报告，一律按『没量过』拒」、`141c5cc4`「语料层只有一个写者，闸只认当前层」。
+- **裁定句**（已进 `docs/acceptance/sim-gate-scope.md:242`）：可以诚实地声明一个旧层，但旧层不是当前层，放行闸只认当前层。
+- **更正一行旧文**：§355.3 的 R1 行把 `newestCorpusDir` 记在 `scripts/sim/audit/release-ready.mjs:215`；该函数本轮已删。现行裁决在 `scripts/sim/audit/corpus-files.mjs:157`，以本节为准（§355 正文是 Lead 的 TBD 填区，不回改）。
+- **残余边界，写明免得日后当洞。** ① `--head-iso` 是测试钩子（`scripts/sim/audit/release-ready.mjs:593-595`）：它只让「`AUDIT.md` 比 HEAD 旧」这一条失效，树 hash 仍须等于当前树、语料层仍须是当前层、语料文件仍须逐字节相符，旧报告过不了这三层。② 信任边界是文件系统：能改 `current-layer.json` 的人也能改闸源码本身；指针模型假定单写者是 `all.mjs`，这不比「信任报告」更强，也不更弱。
+
+**355.8.3 在模型下变得不可表述的攻击。** A10/A10:extra 原本是「挑层」：喂闸一份更新的层，或让它自己挑到旧层。闸不再推断哪层最新之后，这类攻击**没有附着面**——攻击者只能自己声明一层（`D:/_tmp/gate-redteam/AFTER-cell.md:43`）。终态里 A10/A10extra 仍是 `named`（`AUDIT_CORPUS_STALE`），但它们已经是 A12/A15 形状的谎：消息是 `claims corpus … but the layer … hashes to … [changed after the report was written: actions-extra]`（`D:/_tmp/gate-redteam/run-all-latest.json` 的 `results[]`），不是「闸挑错了层」。残留只有两条：改字节（A12）与层里多塞（A15），分别由 `mismatched`/`extras` 具名；第三条「同字节不同目录的副本冒充」由 A16b 钉住——目录即身份，`AUDIT_CORPUS_NOT_CURRENT` 点名两个 dir。
+
+**355.8.4 消息层也是判据。** 当摘要相等而清单不同，旧模板会印 `claims X hashes to X`——两个相同的 sha256 放在一句话里，读者先读到「整层不符」，真差别被淹掉。现行 `scripts/sim/audit/release-ready.mjs:515-527`，本轮实测三条消息原文（`D:/_tmp/gate-redteam/run-all-latest.json`，`sampledAt 2026-11-09T19:13:40.710Z`）：
+
+- A12：`the layer … re-reads to the same digest the report claims (sha256:b8aa03ae54551), so the digest comparison agrees — the difference is only in the file list: mismatched=[actions-extra]`
+- A13b：`… so the digest comparison agrees — the difference is only in the file list: extra dirs=[turns]`
+- A15：`… so the digest comparison agrees — the difference is only in the file list: extra dirs=[appeared-in-the-named-layer]`
+
+判据钉在消息上：A12 必须含 `mismatched=[actions-extra]` 且同一 sha256 不得出现两次（`tests/release-ready.test.mjs:708-709`），A15 同理（`:579`），A13b 必须点名被漏的 scenario（`:537`）。红队侧另加断言 `duplicateDigestIn(messages)`（`D:/_tmp/gate-redteam/run-all.mjs:77`，harness 不在仓库内）：任何一条消息里同一个 `sha256:<hex>` 出现两次即判 `half`；本轮 23 条全部通过。
+
+**355.8.5 一个被记账动作踩出来的真缺陷。** 台账 26 条里有两条 `fixed` P1 的 proof 本身就是 `node scripts/sim/audit/all.mjs`（`harvest-coverage-debt-2026-11-09`、`audit14-p1-10-fidelity-baseline-stale`，见 `docs/acceptance/sim-audit-open-items.json`）。闸跑证明会真的执行它：`all.mjs` 新写一层并挪动 `current-layer.json`，于是「关掉一条台账行」这个动作会让被审的审计报告不再是当前层，闸自己造出一条 NOT_CURRENT。修法只对这类证明注入隔离 `VMU_SIM_ROOT`（`scripts/sim/audit/release-ready.mjs:278-283`，注释是「Proving a ledger row must not change which layer is current」），命令形状校验不动（`scripts/sim/audit/release-ready.mjs:273-277` 仍是 `node tests|scripts/…mjs`、不经 shell）。判据实测在 `tests/release-ready.test.mjs:653`：「a proof that runs audit/all is handed a scratch sim root, so it cannot move the real current-layer pointer」，重定向是被量出来的——夹具让证明把自己拿到的 `VMU_SIM_ROOT` 写进文件；`:657` 再钉「the redirect is narrow: a non-audit proof keeps the inherited environment」。
+
+**355.8.6 红队终态与两条存在性判据补牙。** 干净树上跑 `run-all` + `after-run`（`D:/_tmp/gate-redteam/AFTER.md`，**STATUS: PASS**）：取样三次一致——HEAD `15417e55`、闸 `a5b901c9`、仓库 sentinel `e3b0c442`，`run-all` 从 `2026-11-09T19:13:40.710Z` 到 `19:17:35.770Z`，`run-all.mjs` exit 0、`after-run.mjs` exit 0（非 VOID）；**23 个向量 = 21 named + 2 neutralized**，`masked`/`half`/`leaked`/`error` 全 0。2 条 neutralized 各带证据：`A6:A6-blank` 的 `override:null` 与 `overrideRejected:false`；`A8b` 的 claimed 与 recomputed 逐项相等（`{"liveToolsWithFieldList":69,"compared":69,"gaps":0}`）。第 23 行是 A16b：与 A16 同字节、不同目录的副本，主判 `AUDIT_CORPUS_NOT_CURRENT`，消息点名 `…\run-copy-named-by-report` 与 `…\run-copy-current` 两个 dir——**目录即身份**。仓库内有同源判据 `tests/release-ready.test.mjs:672-712`（§8）：harness 缺失即 FAIL 不是 skip，`named+neutralized === vectors.length`，masked/leaked/half/error 各为 0，每条 neutralized 的 `evidence` 非空，A12 消息两条断言如上。
+
+另两条 rules-recheck 的 `EXISTENCE-ONLY`（只问存在、不问语义）本轮补成「名字必须是真读的东西」：D8 的状态板四字段，`source` 原来只要求非空字符串（`tests/vmu-run31-status-board.test.mjs:69`），补 ③b（`:74-82`，四个字段与 `vmu.turn.objective`/`vmu.tasks`/`vmu.records` 的对齐表）——把 plan 的 source 改成 `vmu.records.list` ⇒ `58 passed / 1 failed`，红在 `③b the source NAMES the ledger actually read`；诚实基线 `59 passed / 0 failed`（本轮实跑）。E13 原来只数六个类型与六个 id（`tests/vmu-meeting-types.test.mjs:74`、`:77-78`），补「六个 label 是规则原文词、按序」（`:81-84`，`RULE_LABELS` = 正常会议/学术交流/辩论/结题/论文交流/未来规划策划）——把 `正常会议` 改成 `例会` ⇒ `155 passed / 1 failed`，红在 `the six labels are the RULE's own words`；诚实基线 `156 passed / 0 failed`（本轮实跑）。两补丁先在副本 `D:/_tmp/mutbatch/wt-b4` 上 apply 验证再还原。覆盖账终态 **79/91**（79/93 有弄假证据；分母 91 = 93 − 2 条部署不可达 G1 `engines===[]` / C10 无 Lean，没有第三条）。79 = 旧证 24 + 批次 1–4 实红 53（去重 F4）+ 本轮 D8/E13 补牙 2；`mutations.json` 现 59 行（total 59 / red 54 / redCrash 1 / noRed 3 / cascade 9 / restored 59，含 55 条唯一规则）。NO-RED 累计 3 条**已全部关闭**：A9 是 `SECOND-GUARD`（上游加强断言后转红关闭），D8/E13 是 `EXISTENCE-ONLY`（本轮补牙，弄假分别红在 `③b the source NAMES the ledger actually read` 与 `the six labels are the RULE's own words`）；四分类余量 `NO-OP-IMPORT` 0 / `SECOND-GUARD` 1（已关闭）/ `ASSERTION-ECHO` 0 / `UNREACHED-BRANCH` 0，当前 `EXISTENCE-ONLY` **0 条**。剩余未验 **14** 条 = cheap 11（E3 E14 E15 E16 E26 E34 E36 F1 F2 G8 G14；其中 G8/G14 待 TB-2672 的 pin 口径）/ medium 1（E30，需新场景）/ 不可达 2（C10、G1）——性质一句话：**机制都在，缺的是判据；两条是环境不可达**。两处已知残留按 P2 具名登记，不当「已完成」消化：`RULES-E33-SOURCE-GREP`（该判据是 `kernel/meetings.js` 源码文本 grep，证明不了「换机构＝换 pack」在运行时成立）与 `RULES-E26-ROTATION-ASSERTION`（cited 断言讲的是 E29 的轮数，与「轮流/举手/邀请」的规则文本错配）。**对外只能说到这一步**：93 条规则均有实现落点与具名判据；可验证面 91 条中 **79 条已证「改坏机制即红」**，12 条有落点但判据未做弄假实测，2 条受部署限制（G1 无引擎、C10 无 Lean）；NO-RED 累计 3 条已全部关闭。不说「93 条全部实现」。
+
+---
+
+## §355.9 判据不许把「它自己太慢」记成「证据不可复现」
+
+**观测时点。** 本节写于 T1 冷跑收口窗口：HEAD 仍 `15417e55`，工作树 11 项未提交（本节两份文档 + 本轮修红的实现、判据与台账）。§355.8 的旧文与旧行号一律不回改；凡更正都在本节内点名旧文位置。`D:/_tmp` 三小时清理，本节把用到的读数抄进正文，不靠临时目录活着。
+
+**355.9.1 六条红与它们的性质。** T1 首跑 `TOTAL 836 PASS 821 FAIL 15`，收口 `836/0`。15 条里 9 条是此前批次已修的存量，6 条是本轮自己带进来的——没有一条是产品缺陷，全在判据与文档的接缝上。
+
+1. **`audit-ledger-field-claims` 的 4 条假红。** 该套件用 `ROW = /^\|\s*\*{0,2}[A-F]\d/`（`tests/audit-ledger-field-claims.test.mjs:42`）从文档里抓「台账承诺」行；§355.8.1 的攻击向量表恰好以 `| A11 旧戳重放 |` 开头，于是攻击向量被当成规则行，4 条红。修法把行首改成 `| 向量 A11：旧戳重放 |`（`A13b`/`A16` 同改，现行文本见 `docs/acceptance/phase12-v5r-rules-conformance.md:18154-18156`）：**判据与文档语义都不动**，只是让表格行不再长得像矩阵行。
+2. **`audit-package-membership` 的 `legacy baseline may not swallow new surface` 点名两个老文件**（`tests/audit-package-membership.mjs:340`：`tests/vmu-meeting-types.test.mjs`、`tests/vmu-run31-status-board.test.mjs`）：**判据读错了事实**。旧实现用 `statSync().birthtimeMs > legacyDoc.generatedAt` 判「新面」；「复制+替换」式打补丁让 NTFS 换了 inode、出生时间变成当刻（实测 born `2026-11-09T18:47:41Z`，基线 `generatedAt 2026-11-09T21:14:34+08:00` 即 `13:14Z`），而两个文件在 HEAD 里存在了数百轮。修法把判据换成 **git 事实**：`spawnSync('git',['ls-tree','-r','--name-only','HEAD'])`（`:266`），失败即抛 `git ls-tree failed, so the legacy-baseline swallow guard cannot be measured`（`:267`）——**改写不是新建；时钟分不出来，ctime 更分不出来；「基线冻结时 git 有没有这个路径」才是那句话**（`docs/AUDIT-CHECKLIST.md:861`）。
+3. **同一套件的 `guard-index-cited`**（`:121-122`）：我在 `docs/AUDIT-CHECKLIST.md` 的守卫索引里写了一个带 `tests/` 前缀的全路径示例，被判成「被守卫索引引用却未登记」。修法把示例写成不带 `tests/` 前缀的名字：**文档里的例子也是判据的输入**。
+4. **`audit-no-silent-reads`**：`tests/release-ready.test.mjs` 两处 `existsSync(x) ? readFileSync(x,'utf8').trim() : ''` 命中「静默读缺文件」形状；修法改用 `requireFile(x, '…so the redirect was never observed')`（`:668`、`:672`，helper 在 `tests/_lib/require-file.mjs`）。
+5. **`run-tests.mutants.mjs` 的连带红**随 ③④ 复绿（5/0）：它量的是「变异体是否真被抓住」，输入正是那两份文件；语义没变、形状变了，它跟着红——**连带红不是新缺陷，是同一根线的另一头**。
+6. **`audit-declaration-criterion` 的 RULE E**（`tests/audit-declaration-criterion.test.mjs:298`、`:546`、`:864-884`）：`ok(JSON.stringify(labels) === JSON.stringify(RULE_LABELS), …)` 被静态判成「两空集合相等」；修法是**加真守卫**而不是加豁免——`ok(labels.length === 6 && JSON.stringify(labels) === JSON.stringify(RULE_LABELS), …)`（`tests/vmu-meeting-types.test.mjs:84`）⇒ `audit-declaration-criterion` 94/0、`vmu-meeting-types` 156/0。
+
+**355.9.2 自指债务：闸证明自己。** 台账两行 `worktree-audited` 与 `audit14-p0-2-release-gate-forgeable` 的 proof 都是 `node tests/release-ready.test.mjs`；该套件因装上红队段涨到 **317 s**（其中红队 287 s），超过单条 proof 的 **300 s** 上限，又因两行同 `cmd` 被跑两遍 ⇒ 负载下一次超时 ⇒ 闸报 `[AUDIT_EVIDENCE_FAILED]`：方向对（证据不可复现就是拒），**挂掉的却是闸自己**。修法两条：
+
+- **（A）行级 `proof.timeoutMs`。** 默认 `300000`、硬上限 `900000`（`scripts/sim/audit/release-ready.mjs:268-269`）；越界按名拒、**不静默 clamp**（`:289-294`，消息写明 `the default is 300000`），facts 回显 `timeoutMs`/`defaultTimeoutMs`（`:322-325`）。
+- **（B）同一次 gate 运行内按 `cmd@timeoutMs` 缓存运行结果。** 缓存的是 exit code（`:276`、`:304`），不是 ok 判定；每行仍按自己的 `expect` 判（`:322-323`），facts 可见 `runs`/`reused`/`cached`/`cachedFrom`（`:325`），**不许跨运行持久化**。台账两行各加 `timeoutMs: 600000`。
+
+六条反关灯原文（`tests/release-ready.test.mjs:638-649`）：`a command shared by two rows runs ONCE (runs=1, reused=1)`、`the cached result is a FACT, not a verdict: the row whose expect is wrong still fails`、`a row without proof.timeoutMs uses the default and echoes both numbers`、`proof.timeoutMs: a proof that outlives its declared timeout FAILS and is named timeout/signal`、`the failing row echoes the timeout it was given (100 ms), so a widened row is visible, not silent`、`proof.timeoutMs beyond the 900000 ms cap is refused by name, not silently clamped`。
+
+**355.9.3 段预算与运行器上限：两处都在量「这台机器当时有多忙」。** (a) `tests/sim-gate.test.mjs` 的 `audit/all` 段预算 `75000 → 150000`（`:53`，`SEG_MS.auditAll`）；`gate-baselines` 的 `audit/all` 基线 `56725 → 62000`（`docs/acceptance/sim-gate-scope.md:10` 的机器可读注释，重钉理由在 `:20-22`）：允许量 = `62000 × 1.25 = 77500 ms` > 并发实测 `75031 ms`，静默树仍是 43–58 s；`drift=1.25` 与 `floor=1500` 未动。(b) `tests/run-tests.mjs` 给 `release-ready.test.mjs` 加 `TIMEOUT_OVERRIDES` 800000（`:227`、`:287-293`；= 317 s 实测的 2.52×，该套件单跑每次都是 154/0、exit 0，180 s 是被负载杀）与 `DURATION_WEIGHTS: 317`（`:314`、`:331`；LPT 排序，只影响顺序不影响运行内容）。两句口径并排留着：**「预算是为诚实的工作量买的，不是为慢找的借口：超时仍然 FAIL」**、**「抬上限是一次有记录的裁决（数字+实测+2× 规则），不是修红的默认手段」**。
+
+**355.9.4 本轮收口的实测读数。** `TOTAL 836 PASS 836 FAIL 0`（suites 751 · probes 85，k=3，冷跑）；`regen-all --check` 17/17；`check-docs` PASS；`check-rules-coverage --check` PASS（0 problem / 1 warning：C10 无 Lean）；`check-rule-parity --check` PASS；`audit-prompt-budget --check` PASS（chair/meeting 34 608 < 36 500）；`audit-portability` PASS 0 blockers（legacy 146 / warn 8）；`scripts/preflight.mjs` PASS。两个关键套件：`tests/release-ready.test.mjs` **154 passed / 0 failed / 317 s**；`tests/sim-gate.test.mjs` **86/0**，段读数 e2e 2675/15000、matrix 11301/45000、audit/all 52263/150000、determinism 5582/15000。
+
+**355.9.5 台账终态。** `docs/acceptance/sim-audit-open-items.json` 现 **28 条 = fixed 24 / accepted 2 / open 2（均 P2）**：open P0 与 open P1 都为 0；`audit14-p0-2-release-gate-forgeable` 与 `audit14-p2-1-stale-declaration-keys` 本轮 fixed（前者 proof 就是 355.9.2 的两条修法）。新开两条 P2 都是「只问存在、不问语义」的余账：`RULES-E33-SOURCE-GREP`（`tests/vmu-meeting-types.test.mjs` 的 `★ zero mechanism` 是源码 grep，证不了「换机构＝换 pack」在运行时成立）、`RULES-E26-ROTATION-ASSERTION`（cited 断言讲的是 E29 的轮数，与「轮流/举手/邀请」的规则文本错配）。
+
+**355.9.6 三条可复用的通则（每条挂本轮物证）。**
+
+① **一条判据把「容器形状」当成「内容」就会误红。** `ROW` 正则把攻击向量表当成规则矩阵（355.9.1①），`guard-index-cited` 把文档示例当成引用（355.9.1③）——两处都不是语义错，是判据在读形状。
+② **时间戳不是身份。** `birthtimeMs`/inode 会被「复制+替换」改掉（355.9.1②）；身份要问版本库（`git ls-tree`），问时钟只会得到「这台机器刚写过这个文件」。
+③ **判据的成本必须记在判据自己头上。** 闸证明自己的代价 = 300 s 上限 × 同 `cmd` 两遍（355.9.2）；要么给预算（A），要么去重（B），**不能让它把「我太慢」写成「证据不可复现」**。

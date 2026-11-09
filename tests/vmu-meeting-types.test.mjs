@@ -81,7 +81,7 @@ try {
   const RULE_LABELS = ['正常会议', '学术交流', '辩论', '结题', '论文交流', '未来规划策划']
   const normLabel = (x) => String(x).replace(/[\s\/／]/g, '')
   const labels = proc.MEETING_TYPES.map((x) => normLabel(x.label))
-  ok(JSON.stringify(labels) === JSON.stringify(RULE_LABELS), 'the six labels are the RULE\'s own words (正常会议/学术交流/辩论/结题/论文交流/未来规划策划), in order', labels)
+  ok(labels.length === 6 && JSON.stringify(labels) === JSON.stringify(RULE_LABELS), 'the six labels are the RULE\'s own words (正常会议/学术交流/辩论/结题/论文交流/未来规划策划), in order', labels)
   ok(new Set(ids).size === ids.length, 'no duplicate type id')
   const debate = proc.MEETING_TYPES.find((t) => t.id === 'debate')
   ok(!!debate && debate.subjectRequired === true, 'ONLY the debate type requires the object field (the rule names only debate)', debate)

@@ -858,14 +858,14 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 | `devOnly` | 在 `tests/package-membership-dev-only.json` 具名登记：`path` + `why`（≥24 码点）+ `owner`（+ 可选 `hintKinds`） | 同上；`why` 空/过短/`owner` 缺失 ⇒ `dev-only invalid` 红；文件已删除 ⇒ `dev-only gone` 红 |
 | `inLegacyBaseline` | 在冻结基线 `tests/_lib/package-membership-legacy.json` 的 `paths`（`sha256OfPaths` 校验清单未被手改） | 基线项可以指向未登记文件（它记录的是**存量**），但**不会**替新文件兜底 |
 
-三态之外 ⇒ `MISS (undecided long-tail code)`，逐条列出路径。**基线只许缩小**：基线里的路径如果文件已不存在 ⇒ `stale baseline entry` 红（要求同步删行）；如果某个路径在基线里、但文件的**出生时间晚于基线 `generatedAt`** ⇒ `legacy baseline may not swallow new surface` 红 —— 没有这条，基线就是新的垃圾桶（该守卫必须用 `birthtimeMs`，不能只用 `ctimeMs`：Windows 上 ctime 是最后改动时间，改写旧文件会被误判成新面）。
+三态之外 ⇒ `MISS (undecided long-tail code)`，逐条列出路径。**基线只许缩小**：基线里的路径如果文件已不存在 ⇒ `stale baseline entry` 红（要求同步删行）；如果某个路径在基线里、但 **git 的 HEAD 树里没有这个路径** ⇒ `legacy baseline may not swallow new surface` 红并点名该文件 —— 没有这条，基线就是新的垃圾桶。**这条判据读的是 git，不是文件时间**：第一版用 `statSync().birthtimeMs > generatedAt` 判「新面」，结果在两个存在了数百轮的文件上误红（`vmu-meeting-types.test.mjs` 与 `vmu-run31-status-board.test.mjs`（两者都在 `tests/` 下），2026-11-10 02:47Z 用「复制+替换」打弄假补丁后 NTFS 换了 inode、出生时间变成当刻，而基线 `generatedAt` 是 13:14Z）——**改写不是新建，时钟分不出来，ctime 更分不出来**；「基线冻结时 git 有没有这个路径」才是我们真正想说的那句话。`git ls-tree` 失败 ⇒ 判据直接抛错（不可量即不算通过）。
 
 **基线重生成**：**只在收口窗口、由 Lead 触发**（`node tests/_lib/…` 无自动重生成；生成脚本与口径见 TB-2674 任务书）。任何 agent 不得为了换绿自行重生成基线 —— 那是把「冻结」改回「随手改」。
 
 **它会咬人（三条反关灯，2026-11-09 实测全红，`D:\_tmp\pkgclosure\antilamp.py` 可复跑）**：
 1. 造一个未登记的新套件文件（`tests/` 下、名字带 `zzz-anti-lamp-probe`，跑完即删）⇒ `MISS (1)` **点名该文件**、exit 1；删后复绿。
 2. 给 dev-only 台账加一条 `why: ""` ⇒ `dev-only invalid why/owner (1): tests/_lib/why-probe.mjs`、exit 1；按字节还原后 sha256 一致。
-3. 把**新的**临时文件（`tests/` 下、名字带 `zzz-anti-lamp-smuggled`，跑完即删）塞进 legacy 基线（并同步 `sha256OfPaths`，让只有 swallow 规则能响）⇒ `legacy swallowed new surface (1)` 并点名该文件、exit 1；还原后基线字节一致（`bf6e0d77…`）。
+3. 把**新的**临时文件（`tests/` 下、名字带 `zzz-anti-lamp-smuggled`，跑完即删；它不在 HEAD 树里，这正是「新面」的判据）塞进 legacy 基线（并同步 `sha256OfPaths`，让只有 swallow 规则能响）⇒ `legacy swallowed new surface (1)` 并点名该文件、exit 1；还原后基线字节一致（`bf6e0d77…`）。
 
 **判据自身的两个解析缺陷（真 bug，已修，别再写回 regex 版）**：旧的 `relativeImportsOf = (src) => { IMPORT_STATEMENT…; SIDE_EFFECT_IMPORT… }` 有两种错读——①**无分号代码跨语句**：`import x from 'node:fs'` 后没有分号时，`[^;]*?` 会跨到下一句的 `from './x'` 并把它配给上一条（`tests/_lib/falsify.mjs`、`tests/legacy/formal-verify-v2.test.mjs` 各中一枪）；②**模板串里的 fixture 文本**被当成语句级 import（`tests/_lib/falsify.mjs` 的 `import './_lib/falsify.mjs'` 示例）。修法（已写进 `tests/audit-package-membership.mjs`）：`stripNonCode()`（模板串/块注释/行注释置空格，保留换行与列位）→ **逐语句扫描**（行首列 0 的 `import|export` 起，括号不平衡则续行）→ **token 化 specifier**（只有 `from` 是 word token 且紧跟 `.` 开头的字符串才算；裸 `import './x'` 单独放行）。附 8 条 self-probe（数据串/注释/块注释不读；statement/bare/reexport/`from 'node:fs'` 之后都读）。
 

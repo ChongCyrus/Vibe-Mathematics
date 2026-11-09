@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-09",
+  "updatedAt": "2026-11-10",
   "purpose": "The one ledger the release gate reads (scripts/sim/audit/release-ready.mjs). An item is here because a named audit finding is not closed: either it is open (it must name the condition that closes it), it was handed to a taskbook lane, or it is accepted for a deployment reason. Fixed items stay as evidence with the code/test that closed them. Nothing is written here without a file:line or a command that reproduces it.",
   "rules": [
     "P0 open => NOT READY. P1 open is allowed only with an owner and a named condition; P2 is bookkeeping.",
@@ -126,6 +126,7 @@
       "proof": {
         "cmd": "node tests/release-ready.test.mjs",
         "expect": 0,
+        "timeoutMs": 600000,
         "note": "90 passed, 0 failed: the gate refuses a report that predates a worktree edit."
       }
     },
@@ -161,12 +162,21 @@
       "id": "audit14-p0-2-release-gate-forgeable",
       "title": "the release gate can be satisfied by a hand-typed report: it recognises a shape, not a provenance",
       "severity": "P0",
-      "status": "open",
+      "status": "fixed",
       "owner": "sim-lane",
       "source": "AUDIT-14 P0-2; TB-2653 / task-128",
-      "evidence": "scripts/sim/audit/release-ready.mjs:81-91 recognises an audit report by three regexes plus five section headings; a 12-line hand-typed file ('AUDIT: PASS — 0 failure(s), 0 warning(s)', the five headings, 'compared: 12; gaps: 0') yields exit 0 / ready=true / reasons=[]; a report whose own body says placeholder and 'compared: 0' is still READY. Three defects: no provenance, 'compared: 0' is read as zero gaps, and a conclusion line overrides the body. The override reason is printed (:23/:295) but never enters the facts, and the report's P0 list is never parsed (ledger open P0 = 0).",
+      "evidence": "scripts/sim/audit/release-ready.mjs:81-91 recognises an audit report by three regexes plus five section headings; a 12-line hand-typed file ('AUDIT: PASS — 0 failure(s), 0 warning(s)', the five headings, 'compared: 12; gaps: 0') yields exit 0 / ready=true / reasons=[]; a report whose own body says placeholder and 'compared: 0' is still READY. Three defects: no provenance, 'compared: 0' is read as zero gaps, and a conclusion line overrides the body. The override reason is printed (:23/:295) but never enters the facts, and the report's P0 list is never parsed (ledger open P0 = 0). | CLOSED: the gate no longer reads the report, it re-measures it. Every number in AUDIT.md is demoted to a claim and cross-checked against five facts the gate derives itself: the current code tree hash, the single current-corpus layer named by the writer pointer D:/_tmp/sim/current-layer.json, the bytes+sha256 of every receipts.jsonl inside that layer, the corpusId derived from those files, and the auditId derived from corpusId|treeHash, plus the fidelity triple recomputed from the receipts. Disagreement is refused by name: AUDIT_TREE_CHANGED / AUDIT_CORPUS_UNMEASURED / AUDIT_CORPUS_STALE / AUDIT_CORPUS_NOT_CURRENT / AUDIT_ID_MISMATCH / AUDIT_FIDELITY_MISMATCH. Final red team on clean tree 15417e55 (gate a5b901c9, sentinel e3b0c442, three reads identical, non-VOID): 23 vectors = 21 named + 2 neutralized (A6-blank: an empty override value is dropped by flagValue, so it can neither be recorded nor cleared; A8b: forging is re-measuring, no payoff), masked/half/leaked/error all 0, run-all exit 0 and after-run exit 0. Three vectors are now inexpressible in the model: A10 / A10:extra (the gate no longer picks a layer), A11 (no file list = AUDIT_CORPUS_UNMEASURED), A16b (a same-bytes copy in another directory = AUDIT_CORPUS_NOT_CURRENT; the directory is the identity).",
       "condition": "close when the report carries a machine-checkable provenance block (tree hash recomputed by the gate, corpus id, compared/liveToolsWithFieldList/gaps) and the gate refuses unverifiable reports (AUDIT_UNVERIFIABLE), counts compared===0 as AUDIT_FIDELITY_MEASURED_NOTHING, keeps the override reason in its facts, and turns every unledgered report P0 into AUDIT_P0_UNLEDGERED; two forged fixtures plus one genuine READY case must pin it.",
-      "note": "Still open on purpose: the red-team fixtures show four vectors (A4, A5, A8, A9) still reach READY on gate abc8f232. TB-2653 / task-128 R1-R7 closes them."
+      "note": "Still open on purpose: the red-team fixtures show four vectors (A4, A5, A8, A9) still reach READY on gate abc8f232. TB-2653 / task-128 R1-R7 closes them.",
+      "proof": {
+        "cmd": "node tests/release-ready.test.mjs",
+        "expect": 0,
+        "timeoutMs": 600000,
+        "note": "permanent fixtures for A11/A12/A13/A13b/A14/A15/A16/A16b plus the duplicateDigestIn(messages) half-vector assertion; measured 148 passed / 0 failed on tree 15417e55"
+      },
+      "fixedAt": "2026-11-10T03:18:00+08:00",
+      "resolution": "TB-2653 / task-128 closed in three passes: legacy-stamp compat branch deleted (824bcaba), corpus layer ownership + single-writer pointer + AUDIT_CORPUS_NOT_CURRENT (141c5cc4), message layer no longer prints the same digest twice (15417e55). Two residual boundaries are recorded on purpose and are NOT holes to fix: --head-iso is a test hook that only relaxes \"report older than HEAD\", and the trust boundary is the file system itself (whoever can rewrite current-layer.json can rewrite the gate source).",
+      "fixedBy": "sim-lane (corpus layer ownership) + audit-r14 (four red-team rounds, final AFTER 23 vectors)"
     },
     {
       "id": "audit14-p0-3-reindex-noop-loop",
@@ -351,13 +361,46 @@
     {
       "id": "audit14-p2-1-stale-declaration-keys",
       "severity": "P2",
-      "status": "open",
+      "status": "fixed",
       "owner": "sim-lane",
       "source": "RUN 264 lead verification: node scripts/sim/audit/all.mjs",
       "title": "fidelity-declared.json still declares keys that are no longer gaps",
-      "evidence": "AUDIT.md warning: \"fidelity declarations that name keys which are no longer gaps (narrow or drop them): compiled, detail, job, partial, receipt, result\" (6 keys). gaps 0 / staleBaseline 0 while the declarations remain.",
+      "evidence": "AUDIT.md warning: \"fidelity declarations that name keys which are no longer gaps (narrow or drop them): compiled, detail, job, partial, receipt, result\" (6 keys). gaps 0 / staleBaseline 0 while the declarations remain. | CLOSED: the six keys (compiled, detail, job, partial, receipt, result) are gone from docs/acceptance/fidelity-declared.json; all.mjs now reports 0 warnings, gaps still 0 and staleBaseline 0, and tests/sim-gate.test.mjs pins the warning count at zero (auditReport.warnings === 0) so a declaration that has outlived its gap turns the gate red instead of printing a note nobody reads.",
       "condition": "A declaration is only honest while it explains a real gap. Once the gap closes the key must be deleted (a key left behind is how a real gap gets silently absorbed later). Delete those 6 keys, re-run all.mjs, and prove gaps still 0; if deleting one makes a gap appear, the declaration was load-bearing and it must stay with a why that says which gap it still absorbs.",
-      "why": "Lead ruling: a closed gap with a leftover exemption key is debt, and the next drift gets hidden behind it."
+      "why": "Lead ruling: a closed gap with a leftover exemption key is debt, and the next drift gets hidden behind it.",
+      "proof": {
+        "cmd": "node scripts/sim/audit/all.mjs",
+        "expect": 0,
+        "note": "measured 2026-11-10 on tree 15417e55: PASS, failures 0, warnings 0, gaps 0, staleBaseline 0, p0 []"
+      },
+      "fixedAt": "2026-11-10T03:19:00+08:00",
+      "resolution": "sim-lane deleted the six keys, re-ran all.mjs (gaps stayed 0, so none of them was load-bearing), and made the warning a hard red line in the sim gate: \"a declaration is only honest while it explains a real gap\".",
+      "fixedBy": "sim-lane (TB-2653 follow-up)"
+    },
+    {
+      "id": "RULES-E33-SOURCE-GREP",
+      "title": "E33 is proved by grepping kernel source, so it cannot show that swapping institutions swaps the pack at runtime",
+      "severity": "P2",
+      "status": "open",
+      "owner": "rules-recheck",
+      "source": "TB-2679 batch 4 (rules mutation account, final close-out 2026-11-10)",
+      "evidence": "tests/vmu-meeting-types.test.mjs::★ zero mechanism: none of the five institutional type ids is hardcoded in kernel/meetings.js",
+      "condition": "The cited assertion is a source-text grep of kernel/meetings.js: it can prove the mechanism is not hardcoded, but not that a different pack actually changes the catalog at runtime. Close when a runtime assertion exists: load a second pack (or an empty one) and show the catalog follows the pack or falls back by name.",
+      "proof": {
+        "cmd": "node tests/vmu-meeting-types.test.mjs",
+        "expect": 0,
+        "note": "measured 156 passed / 0 failed on tree 15417e55: the grep assertion stays green even if the pack is replaced or emptied, which is exactly the debt"
+      }
+    },
+    {
+      "id": "RULES-E26-ROTATION-ASSERTION",
+      "title": "E26's cited assertion talks about rotation/hand-raising/invitation but pins a turn-count sentence from E29",
+      "severity": "P2",
+      "status": "open",
+      "owner": "rules-recheck",
+      "source": "TB-2679 batch 4 (cited-assertion/semantics mismatch), confirmed by Lead",
+      "evidence": "The rule text is about how turns rotate and how a member may raise a hand or invite another seat; the assertion the matrix cites for it counts turns (E29's sentence), so the rule has a mechanism but no assertion of its own.",
+      "condition": "Close when an assertion exists that pins the rotation/hand-raising/invitation wording in the assembled prompt (or the mechanism receipt), and when mutating that wording turns it red; then re-point the matrix row at that assertion."
     }
   ]
 }

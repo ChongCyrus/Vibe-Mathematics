@@ -5054,3 +5054,27 @@ proceed() only applies to a meeting WAITING for its scheduled start: m1 is sched
 - **判据钉的是「不同」与「翻转」，不是「字段存在」。** `tests/vmu-run268-mailbox-ack-reading.test.mjs`（实测 21 passed / 0 failed）：两个出口的键全为布尔、dm 行 `ackRequired:true` 与 group 广播行 `false` **必须不同**（防空洞）、ack 前 `acked:false`→ack 后 `true` 且 `ackRequired:false`（同一行、同一判据，不是第二套标准）。
 - **契约与提示词分开收，理由要写真的那一条。** `docs/03-interface-contract.md:273` 新增 §3.1f（两个键、谁算的、`unackedRows` 同名异形的更正），`vibe_vmu_mailbox` 工具行标为 12 字段；提示词侧删 `perBox`/`unackedRowsAllBoxes` 的理由是**教学经济**（`vibe_vmu_mailbox {action:"status"}.notice` 本来就能读到 view 级 `ackRequired`），不是「无面可读」；ack 回执的 rows 没有 `settledBy`，所以没为它新加抽取形式。
 - **回归与收口。** `tests/vmu-run248-notice-delivery.test.mjs` 117/0、`tests/audit-host-receipt-superset.mjs` class A 0、`tests/vmu-mailbox.test.mjs` 77/0；pin 同步 166/0、34/0、74/0、30/0；全量 T1 **836/0**、`regen-all --check` **17/17**、台账 26 条 = fixed 22 / open 2 / accepted 2。
+
+## ROUND 265 —— 语料层只有一个写者：闸不许猜「哪层最新」
+
+- **病：判据在猜。** 旧闸用 `newestCorpusDir(root)` 按层内收据 mtime 挑一层，再拿报告的 `corpusId` 和它比；报告自己写的 `corpus.dir` 一个字都不读。于是三条一次打穿：无 `corpusFiles` 的旧戳重放走 `legacy-stamp` 兼容分支（`464b051a` 版 `scripts/sim/audit/corpus-files.mjs` 第 161-167 行；历史行号，已删代码用 `<commit>^:<path>` 复现）；少列一个目录的层因 `extras` 只收「比报告新」的目录而看不见被漏的旧目录（`141c5cc4^` 版第 183-185 行）；诚实地声明旧层的报告因为 freshness 只比「报告时刻 ≥ 它挑中那层的最新收据」而被接受（`D:/_tmp/gate-redteam/AFTER-cell.md` §2 预演）。
+- **修法一：每次运行拥有自己的一层。** `scripts/sim/audit/all.mjs:45`、`:48` 把层建成 `SIM_ROOT/run-<runStamp>-<pid>`，manifest 记绝对 `corpus.dir` 与逐文件 `corpusFiles[]`（`:278`、`:256`）；层里出现本次没产的 corpus 目录即 FAIL（`:255`、`:260-262`）——「一层一个写者」有自己的失败路径，不是一句注释。
+- **修法二：单写者指针，闸只读点名层。** 结束用 `.tmp` + 同目录 `rename` 原子写 `current-layer.json`（`scripts/sim/audit/all.mjs:49`、`:296-298`）；`resolveReportCorpus(manifest)` 单参（`scripts/sim/audit/corpus-files.mjs:157`），无清单直接 `AUDIT_CORPUS_UNMEASURED`（`:176-181`），`extras` 无 mtime 过滤（`:202`）；`corpusLayers()`/`newestCorpusDir()` 删除，repo 内 0 命中。新增 `AUDIT_CORPUS_NOT_CURRENT`（`scripts/sim/audit/release-ready.mjs:495-498`）：报告层不是当前层就拒，消息点名两个 dir 与各自 `generatedAt`；同字节不同目录的副本由此被判（A16b，目录即身份）。
+- **裁定句。** 可以诚实地声明一个旧层，但旧层不是当前层，放行闸只认当前层（`docs/acceptance/sim-gate-scope.md:242`）。指针读不到走 UNMEASURED，不走 NOT_CURRENT——两个问题不许一个答案（`scripts/sim/audit/release-ready.mjs:489-494`）。
+- **消息层也是判据。** digest 相等而清单不同时，旧句 `claims X hashes to X` 把同一 sha256 印两遍，真差别被淹掉；现行 `scripts/sim/audit/release-ready.mjs:515-527` 改为直说 `mismatched=[…]` / `extra dirs=[…]`，红队另加 `duplicateDigestIn(messages)`：同一消息里同一 `sha256:<hex>` 出现两次即判 half（`tests/release-ready.test.mjs:708-709` 同时钉住 A12 消息）。
+- **记账动作不许改变被审对象。** 台账两条 fixed P1 的 proof 就是 `all.mjs`，跑证明会新写一层并挪指针；现在只给这类 proof 注入隔离的语料根（`scripts/sim/audit/release-ready.mjs:278-283` 用 `env` 覆盖把语料根指向临时目录，不改命令形状），判据量的是重定向本身（`tests/release-ready.test.mjs:653`、`:657`）。
+- **终态。** 红队 23 行 = 21 named + 2 neutralized（`A6:A6-blank`、`A8b` 各带证据），`masked`/`half`/`leaked`/`error` 全 0，`run-all` 与 `after-run` 均 exit 0；A16b 证明「目录即身份」（同字节副本 ⇒ `AUDIT_CORPUS_NOT_CURRENT`）（`D:/_tmp/gate-redteam/AFTER.md`）。两条 `EXISTENCE-ONLY` 补牙：D8 诚实 59/0 对弄假 58/1，E13 诚实 156/0 对弄假 155/1。
+
+---
+
+## ROUND 266 —— 判据不许把「它自己太慢」记成「证据不可复现」
+
+- **病：判据把容器形状当内容。** `tests/audit-ledger-field-claims.test.mjs:42` 的 `ROW` 正则从文档抓「台账承诺」行，§355.8.1 的攻击向量表以 `| A11 …` 开头 ⇒ 4 条假红；行首改成 `| 向量 A11：…` 即复绿，判据与文档语义都不动（`docs/acceptance/phase12-v5r-rules-conformance.md:18154-18156`）。
+- **病：文档里的例子也是判据的输入。** `guard-index-cited` 把 `docs/AUDIT-CHECKLIST.md` 里带 `tests/` 前缀的全路径示例读成「被引用却未登记」（`tests/audit-package-membership.mjs:121-122`）；例子写成不带前缀的名字就够——**判据不区分「举例」和「引用」，写文档的人得替它区分**。
+- **时间戳不是身份；身份要问版本库。** 「新面」判据曾用 `birthtimeMs > baseline.generatedAt`，复制+替换补丁换掉 inode 后把两个存在数百轮的文件判成新的（born `18:47:41Z` vs 基线 `13:14Z`）；现在读 `git ls-tree -r --name-only HEAD`（`tests/audit-package-membership.mjs:266-267`），读不到即抛错。**改写不是新建，时钟分不出来，ctime 更分不出来**（`docs/AUDIT-CHECKLIST.md:861`）。
+- **静默读缺文件要具名。** 闸里 `existsSync(x) ? readFileSync(x) : ''` 让「重定向到底有没有发生」永远看起来像发生了；两处改成 `requireFile(x, '…so the redirect was never observed')`（`tests/release-ready.test.mjs:668`、`:672`），判据随之能红。
+- **判据的成本记在判据自己头上（A）：行级预算。** 台账 proof 默认 `300000`、硬上限 `900000`，越界按名拒、不静默 clamp（`scripts/sim/audit/release-ready.mjs:268-269`、`:289-294`）；两行闸证明各加 `timeoutMs: 600000`——300 s 的上限装不下 317 s 的证明，但「装不下」要说出来，不许悄悄截断。
+- **（B）：同一次运行内按 `cmd@timeoutMs` 缓存结果，不缓存判定。** 缓存的是 exit code（`:276`、`:304`），每行按自己的 `expect` 判（`:322-323`），facts 里 `runs`/`reused`/`cached`/`cachedFrom` 全可见，且缓存不跨运行（`tests/release-ready.test.mjs:638-649` 六条反关灯钉住）。
+- **段预算与运行器上限也在量「机器当时有多忙」。** `audit/all` 段预算 75000→150000（`tests/sim-gate.test.mjs:53`），基线 56725→62000（`docs/acceptance/sim-gate-scope.md:10`、`:20-22`）：允许量 77500 ms > 并发实测 75031 ms，`drift=1.25`/`floor=1500` 不动；`release-ready.test.mjs` 的 runner 上限 800000 与权重 317（`tests/run-tests.mjs:227`、`:287-293`、`:314`、`:331`）是 317 s 实测的 2.52×，180 s 是被负载杀。
+- **台账终态 28 = fixed 24 / accepted 2 / open 2（均 P2）。** `audit14-p0-2` 已 fixed（355.9.2 的两条修法）；新开 `RULES-E33-SOURCE-GREP`、`RULES-E26-ROTATION-ASSERTION` 两条 P2——只问存在不问语义的余账，不写成已完成。
+- **口径：判据的成本记在判据自己头上；预算是为诚实工作量买的，超时仍然 FAIL。**

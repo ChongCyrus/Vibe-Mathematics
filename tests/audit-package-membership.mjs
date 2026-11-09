@@ -13,9 +13,10 @@
  * Run: node tests/audit-package-membership.mjs
  * Env: PACKAGE_JSON=<path>  (used by the mutants harness to point at a mutated copy)
  */
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 // ROUND 15 / task-113: the preset source roots come from the installer itself (not a copy), and the exemption
 // table is the ONE place a "deliberately not shipped" path is named (shape + the six anti-drift switches: see
@@ -254,19 +255,22 @@ const relativeImportsOf = (absFile) => {
   const legacySet = new Set(legacyPaths)
   const legacySha = createHash('sha256').update(legacyPaths.join('\n'), 'utf8').digest('hex')
   const legacyShaOk = !legacyDoc.sha256OfPaths || legacySha === legacyDoc.sha256OfPaths
-  const generatedAtMs = Date.parse(legacyDoc.generatedAt || '') || 0
-  // BIRTH time, not change time: on Windows ctimeMs is the LAST CHANGE time, so a file that merely got rewritten
-  // after the baseline would look like new surface (measured: scripts/sim/run.mjs, born 2026-11-04, rewritten
-  // 2026-11-09 21:17). The property we mean is "this file did not exist when the baseline was generated".
-  const createdAfterBaseline = (rel) => {
-    try {
-      const st = statSync(join(REPO, rel))
-      const born = Number.isFinite(st.birthtimeMs) && st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs
-      return born > generatedAtMs
-    } catch { return false }
+  // "NEW SURFACE" IS A GIT FACT, NOT A FILE-TIME FACT. The first version of this guard asked the filesystem
+  // (statSync birthtime) whether a file was born after legacyDoc.generatedAt, and it went red on two files that had
+  // existed for hundreds of rounds: they were rewritten by copy-and-replace while applying a mutation patch, and on
+  // NTFS that gives the new inode a fresh birthtime (measured 2026-11-10 02:47Z: tests/vmu-meeting-types.test.mjs and
+  // tests/vmu-run31-status-board.test.mjs, born 18:47Z vs baseline generatedAt 13:14Z, both present in HEAD for
+  // months). Rewriting a file is not creating one; a clock cannot tell them apart, and neither can ctime.
+  // The property we actually mean is "git did not have this path when the baseline was frozen", so ask git.
+  const gitHeadPaths = () => {
+    const r = spawnSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { cwd: REPO, encoding: 'utf8' })
+    if (r.status !== 0) throw new Error('git ls-tree failed, so the legacy-baseline swallow guard cannot be measured')
+    return new Set(String(r.stdout || '').split('\n').filter(Boolean))
   }
+  const headPaths = gitHeadPaths()
+  const inHeadTree = (rel) => headPaths.has(rel)
   const staleLegacy = legacyPaths.filter((p) => !existsSync(join(REPO, p)) || !surfaceTargets.has(p))
-  const swallowedNewSurface = legacyPaths.filter((p) => surfaceTargets.has(p) && createdAfterBaseline(p))
+  const swallowedNewSurface = legacyPaths.filter((p) => surfaceTargets.has(p) && !inHeadTree(p))
   const redundantLegacy = legacyPaths.filter((p) => listed.has(p))
   const redundantDevOnly = [...devSet].filter((p) => listed.has(p))
 
@@ -279,6 +283,17 @@ const relativeImportsOf = (absFile) => {
   probeCase('tests/x.test.mjs', [], ['tests/x.test.mjs'], [], 'dev-only')
   probeCase('tests/x.test.mjs', [], [], ['tests/x.test.mjs'], 'in-legacy-baseline')
   probeCase('tests/x.test.mjs', [], [], [], 'MISS')
+  // self-probe for the swallow rule: the guard is a pure function of "surface ∩ legacy ∩ not-in-HEAD".
+  {
+    const legacy = ['tests/old.test.mjs', 'tests/new.test.mjs', 'notes.md']
+    const surface = new Set(['tests/old.test.mjs', 'tests/new.test.mjs'])
+    const head = new Set(['tests/old.test.mjs'])
+    const swallowed = legacy.filter((p) => surface.has(p) && !head.has(p))
+    ok(swallowed.length === 1 && swallowed[0] === 'tests/new.test.mjs',
+      'self-probe: a path in the legacy baseline that git does not have is swallowed new surface (one entry, named)', swallowed)
+    const noHead = legacy.filter((p) => surface.has(p) && !new Set(['tests/old.test.mjs', 'tests/new.test.mjs']).has(p))
+    ok(noHead.length === 0, 'self-probe: when git HAS both paths, the same baseline is not a violation (guard is not just "legacy is non-empty")', noHead)
+  }
 
   const states = { 'in-files': [], 'dev-only': [], 'in-legacy-baseline': [], MISS: [] }
   for (const rel of surfaceTargets) states[classify(rel, ctx)].push(rel)

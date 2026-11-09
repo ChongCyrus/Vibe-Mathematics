@@ -20,6 +20,7 @@
 // repository path never has to be encoded by hand.
 
 import { spawnSync } from 'node:child_process'
+import { requireFile } from './_lib/require-file.mjs'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -631,6 +632,21 @@ console.log('--- 6b. R2: ledger proofs are RUN, not read (shape alone let A5 thr
   ok(proofRun([row('red-matching', 'node tests/red3.mjs', 3)]).ok === true, 'the exit code is compared with the recorded expectation, not with zero')
   const failed = proofRun([row('red-mismatch', 'node tests/red3.mjs', 0)])
   ok(failed.ok === false && failed.failed.length === 1 && failed.failed[0].actual === 3, 'a proof that does not reproduce its exit code is named with the real code', failed)
+  // (B) the same command is the proof of two rows: the runner must be invoked ONCE and each row must still judge its
+  // own `expect` -- a cache that cached the VERDICT would let a wrong row ride on a right one.
+  const shared = proofRun([row('dup-right', 'node tests/green.mjs', 0), row('dup-wrong', 'node tests/green.mjs', 5)])
+  ok(shared.runs === 1 && shared.reused === 1, 'a command shared by two rows runs ONCE (runs=1, reused=1)', { runs: shared.runs, reused: shared.reused, ran: shared.ran })
+  ok(shared.failed.length === 1 && shared.failed[0].id === 'dup-wrong', 'the cached result is a FACT, not a verdict: the row whose expect is wrong still fails', shared.failed)
+  ok(shared.ran.every((r) => r.timeoutMs === shared.defaultTimeoutMs), 'a row without proof.timeoutMs uses the default and echoes both numbers', shared.ran)
+  // (A) proof.timeoutMs: a wider timeout is allowed up to the cap and still fails on timeout. A row cannot buy a pass
+  // by declaring a longer wait, and a declaration beyond the cap is not a slow proof but a malformed one.
+  writeFileSync(join(root, 'tests', 'slow.mjs'), 'setTimeout(function () {}, 600)' + String.fromCharCode(10))
+  const slowRow = { id: 'slow-row', title: 'x', severity: 'P0', status: 'fixed', owner: 'lane', proof: { cmd: 'node tests/slow.mjs', expect: 0, timeoutMs: 100 } }
+  const timedOut = proofRun([slowRow])
+  ok(timedOut.ok === false && timedOut.failed.length === 1 && timedOut.failed[0].actual === 'timeout/signal', 'proof.timeoutMs: a proof that outlives its declared timeout FAILS and is named timeout/signal', timedOut.failed)
+  ok(timedOut.failed[0].timeoutMs === 100, 'the failing row echoes the timeout it was given (100 ms), so a widened row is visible, not silent', timedOut.failed[0])
+  const tooWide = proofRun([{ ...slowRow, id: 'too-wide', proof: { cmd: 'node tests/green.mjs', expect: 0, timeoutMs: 1200000 } }])
+  ok(tooWide.missing.length === 1 && /900000/.test(tooWide.missing[0].why), 'proof.timeoutMs beyond the 900000 ms cap is refused by name, not silently clamped', tooWide.missing)
   const missing = proofRun([{ id: 'no-proof', title: 'x', severity: 'P1', status: 'fixed', owner: 'lane' }, row('bad-cmd', 'python -c print(1)', 0), row('gone', 'node tests/does-not-exist.mjs', 0)])
   ok(missing.missing.length === 3, 'no proof, a non-node command and a missing file are each named', missing.missing)
   ok(missing.missing.some((m) => m.id === 'bad-cmd' && /node <tests\|scripts>/.test(m.why)), 'the command shape is constrained to node tests|scripts (no shell)', missing.missing)
@@ -649,11 +665,11 @@ console.log('--- 6b. R2: ledger proofs are RUN, not read (shape alone let A5 thr
   const auditRow = { id: 'audit-proof', title: 'x', severity: 'P1', status: 'fixed', owner: 'lane', proof: { cmd: 'node scripts/sim/audit/all.mjs', expect: 0 } }
   const auditProof = rr.runLedgerProofs([auditRow], { root })
   const envOut = join(root, 'scripts', 'sim', 'audit', 'proof-env.txt')
-  const envSeen = existsSync(envOut) ? readFileSync(envOut, 'utf8').trim() : ''
+  const envSeen = requireFile(envOut, 'the audit-style proof writes the sim root it was handed (proof-env.txt); if it is absent the redirect was never observed').trim()
   ok(auditProof.ok === true && /release-ready-proofs-/.test(envSeen), 'a proof that runs audit/all is handed a scratch sim root, so it cannot move the real current-layer pointer', { envSeen, ran: auditProof.ran })
   const plainProof = rr.runLedgerProofs([{ ...auditRow, id: 'plain-proof', proof: { cmd: 'node tests/plain.mjs', expect: 0 } }], { root })
   const plainOut = join(root, 'tests', 'plain-env.txt')
-  const plainSeen = existsSync(plainOut) ? readFileSync(plainOut, 'utf8').trim() : ''
+  const plainSeen = requireFile(plainOut, 'the non-audit proof writes its inherited environment (plain-env.txt); if it is absent the narrowness of the redirect was never observed').trim()
   ok(plainProof.ok === true && plainSeen !== envSeen, 'the redirect is narrow: a non-audit proof keeps the inherited environment', { plainEnv: plainSeen, auditEnv: envSeen })
   const openRows = [{ id: 'open-p1', title: 'x', severity: 'P1', status: 'open', owner: 'lane', condition: 'y' }]
   ok(proofRun(openRows).ok === true, 'open rows need no proof (still open is not a fixed claim)')

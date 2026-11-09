@@ -251,17 +251,31 @@ const PROOF_CMD = /^node\s+(tests|scripts)\/[A-Za-z0-9._/-]+\.mjs$/
 /**
  * R2: the ledger's `fixed` P0/P1 rows carry `proof:{cmd,expect}`. Shape alone is not proof — the red team's A5 attack
  * (a fixed P0 whose evidence is the sentence "see last round") stayed READY when only the shape was checked. So the
- * gate RUNS the command: `node <path under tests/ or scripts/>`, no shell, 120 s, exit code must equal `expect`.
- * Returns { ok, ran:[], missing:[], failed:[] }.
+ * gate RUNS the command: `node <path under tests/ or scripts/>`, no shell, exit code must equal `expect`.
+ *
+ * Two things a single proof cannot do on a tree this slow:
+ *  - one size does not fit all: a proof that runs the whole gate suite (red team included) takes ~250-290 s, so a row
+ *    may carry `proof.timeoutMs` (default 300000, hard cap 900000). A wider timeout buys TIME, never a pass: timing
+ *    out still fails, and both the row's timeout and the default are echoed in facts so a reader can see the row is
+ *    wider than default.
+ *  - the same command may be the proof of two rows; running it twice costs five minutes and proves nothing new. The
+ *    result (exit code, ms) is cached per `cmd@timeoutMs` for THIS gate run only — the rows still judge their own
+ *    `expect`, so two rows sharing a command with different `expect` values cannot contaminate each other. The cache
+ *    never survives the process: yesterday's evidence is not evidence.
+ * Returns { ok, ran:[], missing:[], failed:[], defaultTimeoutMs, maxTimeoutMs, runs, reused }.
  */
 export function runLedgerProofs(items, opts = {}) {
-  const timeoutMs = Number(opts.timeoutMs || 300000) // one proof runs the full gate suite (+red team) ~130 s; 120 s was a self-inflicted timeout
+  const defaultTimeoutMs = Number(opts.timeoutMs || 300000)
+  const MAX_PROOF_TIMEOUT_MS = 900000
   // `root` exists so a test can point proofs at fixture scripts it just wrote. It does NOT loosen the command shape:
   // the cmd must still be `node tests|scripts/…mjs`, and the file must exist under the chosen root.
   const root = String(opts.root || REPO)
   const missing = []
   const failed = []
   const ran = []
+  const cache = new Map() // cmd + '@' + timeoutMs -> { code, ms } -- this run only
+  let runs = 0
+  let reused = 0
   for (const it of items || []) {
     const status = String((it && it.status) || '')
     const severity = String((it && it.severity) || '')
@@ -272,6 +286,12 @@ export function runLedgerProofs(items, opts = {}) {
     const expect = proof && Number.isInteger(proof.expect) ? proof.expect : null
     if (!cmd || expect === null) { missing.push({ id, why: 'fixed ' + severity + ' has no proof:{cmd,expect} — a closed item without a runnable proof is a sentence, not evidence' }); continue }
     if (!PROOF_CMD.test(cmd)) { missing.push({ id, why: 'proof.cmd must be `node <tests|scripts>/…mjs`, got ' + JSON.stringify(cmd) + ' (no shell, no arbitrary binaries)' }); continue }
+    const rowTimeout = proof && proof.timeoutMs !== undefined ? proof.timeoutMs : null
+    if (rowTimeout !== null && !(Number.isInteger(rowTimeout) && rowTimeout > 0 && rowTimeout <= MAX_PROOF_TIMEOUT_MS)) {
+      missing.push({ id, why: 'proof.timeoutMs must be an integer in 1..' + MAX_PROOF_TIMEOUT_MS + ' ms (the default is ' + defaultTimeoutMs + '); a wider timeout is for a bigger proof, not for a slower excuse, got ' + JSON.stringify(rowTimeout) })
+      continue
+    }
+    const timeoutMs = rowTimeout === null ? defaultTimeoutMs : rowTimeout
     const rel = cmd.replace(/^node\s+/, '')
     const abs = join(root, rel)
     if (!existsSync(abs)) { missing.push({ id, why: 'proof.cmd points at a missing file: ' + rel }); continue }
@@ -281,18 +301,28 @@ export function runLedgerProofs(items, opts = {}) {
     const redirectsSimRoot = /scripts[\/]sim[\/]audit[\/]all\.mjs$/.test(rel)
     const proofSimRoot = String(opts.proofSimRoot || join(tmpdir(), 'release-ready-proofs-' + process.pid))
     const env = redirectsSimRoot ? { ...process.env, VMU_SIM_ROOT: proofSimRoot } : process.env
+    const cacheKey = cmd + '@' + timeoutMs
     let code = null
-    try {
-      execFileSync(process.execPath, [abs], { cwd: root, timeout: timeoutMs, stdio: 'ignore', env })
-      code = 0
-    } catch (e) {
-      code = typeof e.status === 'number' ? e.status : null
-      if (e.killed || e.signal) code = 'timeout/signal'
+    let cached = false
+    if (cache.has(cacheKey)) {
+      code = cache.get(cacheKey).code
+      cached = true
+      reused += 1
+    } else {
+      runs += 1
+      try {
+        execFileSync(process.execPath, [abs], { cwd: root, timeout: timeoutMs, stdio: 'ignore', env })
+        code = 0
+      } catch (e) {
+        code = typeof e.status === 'number' ? e.status : null
+        if (e.killed || e.signal) code = 'timeout/signal'
+      }
+      cache.set(cacheKey, { code })
     }
-    ran.push({ id, cmd, expect, actual: code })
-    if (code !== expect) failed.push({ id, cmd, expect, actual: code })
+    ran.push({ id, cmd, expect, actual: code, timeoutMs, defaultTimeoutMs, cached, cachedFrom: cached ? cmd : null })
+    if (code !== expect) failed.push({ id, cmd, expect, actual: code, timeoutMs, cached })
   }
-  return { ok: missing.length === 0 && failed.length === 0, ran, missing, failed }
+  return { ok: missing.length === 0 && failed.length === 0, ran, missing, failed, defaultTimeoutMs, maxTimeoutMs: MAX_PROOF_TIMEOUT_MS, runs, reused }
 }
 
 /** R6: an override reason must say something a person could act on: >=24 non-space chars, and not yesterday's. */
@@ -568,7 +598,7 @@ export function assess(facts) {
   const proofs = facts.ledgerProofs || { ok: false, ran: [], missing: [{ id: '(ledger)', why: 'the gate did not run the ledger proofs' }], failed: [] }
   const fixedClosed = (items.items || []).filter((it) => String(it.status) === 'fixed' && (String(it.severity) === 'P0' || String(it.severity) === 'P1'))
   add('AUDIT_EVIDENCE_MISSING', fixedClosed.length === 0 ? 'no fixed P0/P1 rows to prove' : 'fixed P0/P1 row(s) without a runnable proof: ' + (proofs.missing || []).map((m) => m.id + ' (' + m.why + ')').join('; '), (proofs.missing || []).length === 0)
-  add('AUDIT_EVIDENCE_FAILED', 'proof command(s) did not exit as the ledger says: ' + (proofs.failed || []).map((f) => f.id + ' `' + f.cmd + '` expected ' + String(f.expect) + ' got ' + String(f.actual)).join('; '), (proofs.failed || []).length === 0)
+  add('AUDIT_EVIDENCE_FAILED', 'proof command(s) did not exit as the ledger says: ' + (proofs.failed || []).map((f) => f.id + ' `' + f.cmd + '` expected ' + String(f.expect) + ' got ' + String(f.actual) + (f.timeoutMs ? ' (timeoutMs ' + f.timeoutMs + (f.cached ? ', cached result' : '') + ')' : '')).join('; '), (proofs.failed || []).length === 0)
   // R6: an override is a claim about THIS run. A reason that says nothing, or the same paragraph as last time, is a
   // rubber stamp; it is refused as a bypass too (the original reasons stay listed either way).
   const override = facts.override || null

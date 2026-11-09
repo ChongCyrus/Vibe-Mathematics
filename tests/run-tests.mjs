@@ -284,6 +284,13 @@ const TIMEOUT_OVERRIDES = {
   // 180 s default was already too small before this batch - the timeout was never caused by the batch, and the
   // two readings are the evidence (a batch-caused slowdown would differ between them). 500 s = 2.19x (2x rule).
   'vmu-wiring-index.test.mjs': 500000,
+  // release-ready.test.mjs: the gate suite itself. It grew a permanent red-team section (RUNS the release
+  // gate against 23 attack vectors, one of which re-runs the whole audit), so it stopped fitting the 180 s
+  // default: MEASURED 317 s standalone on this tree (154/0, exit 0) and KILLED at the 180 s default in the
+  // first full sweep after that batch ("FAILED: release-ready.test.mjs [suite] (TIMEOUT after 180s)", its own
+  // counts green in every standalone run). 800 s = 2.52x the measurement (the 2x rule), budget only: the
+  // assertion set is untouched, and the red team detects a hang because a killed family reports exit 1.
+  'release-ready.test.mjs': 800000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then (S22) the family
  *  default for `*.mutants.mjs`, then the 180 s suite default. Every layer has a safe default, so a
@@ -318,6 +325,10 @@ const DURATION_WEIGHTS = {
   'formal-verify-v4.mutants.mjs': 91.5,
   'formal-verify-v2.test.mjs': 58.1,
   'run-tests.mutants.mjs': 52.1,
+  // MEASURED 317 s standalone on 2026-11-10 (154/0): the gate suite now RUNS the release gate against 23
+  // attack vectors, so leaving it at the default weight (2) started it last and cost the tail it was
+  // meant to avoid. Only the ORDER moves (LPT), never what runs.
+  'release-ready.test.mjs': 317,
   'e2e-v5-round2.test.mjs': 47.0,
   'v2-fix-probes.test.mjs': 40.3,
 }
