@@ -18204,7 +18204,7 @@ accepted 两条不变：`run254-leftopen-4-c10-lean-archive`（部署面没有 L
 **355.9.2 自指债务：闸证明自己。** 台账两行 `worktree-audited` 与 `audit14-p0-2-release-gate-forgeable` 的 proof 都是 `node tests/release-ready.test.mjs`；该套件因装上红队段涨到 **317 s**（其中红队 287 s），超过单条 proof 的 **300 s** 上限，又因两行同 `cmd` 被跑两遍 ⇒ 负载下一次超时 ⇒ 闸报 `[AUDIT_EVIDENCE_FAILED]`：方向对（证据不可复现就是拒），**挂掉的却是闸自己**。修法两条：
 
 - **（A）行级 `proof.timeoutMs`。** 默认 `300000`、硬上限 `900000`（`scripts/sim/audit/release-ready.mjs:268-269`）；越界按名拒、**不静默 clamp**（`:289-294`，消息写明 `the default is 300000`），facts 回显 `timeoutMs`/`defaultTimeoutMs`（`:322-325`）。
-- **（B）同一次 gate 运行内按 `cmd@timeoutMs` 缓存运行结果。** 缓存的是 exit code（`:276`、`:304`），不是 ok 判定；每行仍按自己的 `expect` 判（`:322-323`），facts 可见 `runs`/`reused`/`cached`/`cachedFrom`（`:325`），**不许跨运行持久化**。台账两行各加 `timeoutMs: 600000`。
+- **（B）同一次 gate 运行内按 `cmd@timeoutMs` 缓存运行结果。** 缓存的是 exit code（`:276`、`:304`），不是 ok 判定；每行仍按自己的 `expect` 判（`:322-323`），facts 可见 `runs`/`reused`/`cached`/`cachedFrom`（`:325`），**不许跨运行持久化**。台账两行各加 `timeoutMs: 900000`。依据：T1 run276 以 k=3 冷跑该套件实测 **384.2 s**（安静树 317 s），`900000 = 384.2 s × 2.34 ≥ 2×`；900000 本身就是通道硬上限（`:268-269`），这一档不需要再抬框架——再往上要改上限，那是另一件事。
 
 六条反关灯原文（`tests/release-ready.test.mjs:638-649`）：`a command shared by two rows runs ONCE (runs=1, reused=1)`、`the cached result is a FACT, not a verdict: the row whose expect is wrong still fails`、`a row without proof.timeoutMs uses the default and echoes both numbers`、`proof.timeoutMs: a proof that outlives its declared timeout FAILS and is named timeout/signal`、`the failing row echoes the timeout it was given (100 ms), so a widened row is visible, not silent`、`proof.timeoutMs beyond the 900000 ms cap is refused by name, not silently clamped`。
 

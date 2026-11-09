@@ -248,6 +248,23 @@ console.log('--- 2c. R1/R2/R3/R4/R5/R6: corpus, proofs, recomputation, verdict, 
   }
   ok(redCodes((f) => { f.ledgerProofs = { ok: false, ran: [], missing: [{ id: 'ledger-row', why: 'fixed P1 has no proof:{cmd,expect}' }], failed: [] } }).includes('AUDIT_EVIDENCE_MISSING'), 'a fixed row without a runnable proof is named')
   ok(redCodes((f) => { f.ledgerProofs = { ok: false, ran: [], missing: [], failed: [{ id: 'ledger-row', cmd: 'node tests/x.test.mjs', expect: 0, actual: 1 }] } }).includes('AUDIT_EVIDENCE_FAILED'), 'a proof that does not reproduce its exit code is named with the counts')
+  // R2 used to prove only fixed P0/P1 rows, so a fixed P2 row could be closed by a sentence while the refusal text
+  // claimed every closed item needs a runnable proof. Severity must not buy that exemption.
+  {
+    const f = baseFacts()
+    f.openItems = { ok: true, bad: [], items: [{ id: 'p2-no-proof', title: 'a small fixed thing', severity: 'P2', status: 'fixed', owner: 'env-lane', condition: 'n/a' }] }
+    f.ledgerProofs = { ok: false, ran: [], missing: [{ id: 'p2-no-proof', why: 'fixed P2 has no proof:{cmd,expect} — a closed item without a runnable proof is a sentence, not evidence; severity does not buy an exemption (every fixed row owes a proof)' }], failed: [] }
+    const reason = rr.assess(f).reasons.find((r) => r.code === 'AUDIT_EVIDENCE_MISSING')
+    ok(Boolean(reason), 'a fixed P2 row with no proof blocks the gate')
+    ok(reason && reason.message.includes('p2-no-proof'), 'the reason NAMES the unproven P2 row', reason && reason.message)
+    ok(reason && reason.message.includes('severity does not buy an exemption'), 'the reason says why P2 is no longer exempt', reason && reason.message)
+  }
+  {
+    const f = baseFacts()
+    f.openItems = { ok: true, bad: [], items: [{ id: 'p2-proved', title: 'x', severity: 'P2', status: 'fixed', owner: 'env-lane' }] }
+    f.ledgerProofs = { ok: true, ran: [{ id: 'p2-proved', cmd: 'node tests/repo-hygiene.test.mjs', expect: 0, actual: 0 }], missing: [], failed: [] }
+    ok(!codes(rr.assess(f)).includes('AUDIT_EVIDENCE_MISSING'), 'a fixed P2 row WITH a proof is not red merely for being P2 (the rule was not turned into a wall)')
+  }
   const badOverride = baseFacts()
   badOverride.override = { reason: 'same', at: GENERATED_AT, by: 'x' }
   badOverride.overrideCheck = rr.validateOverride('same', 'same')
@@ -650,6 +667,13 @@ console.log('--- 6b. R2: ledger proofs are RUN, not read (shape alone let A5 thr
   const missing = proofRun([{ id: 'no-proof', title: 'x', severity: 'P1', status: 'fixed', owner: 'lane' }, row('bad-cmd', 'python -c print(1)', 0), row('gone', 'node tests/does-not-exist.mjs', 0)])
   ok(missing.missing.length === 3, 'no proof, a non-node command and a missing file are each named', missing.missing)
   ok(missing.missing.some((m) => m.id === 'bad-cmd' && /node <tests\|scripts>/.test(m.why)), 'the command shape is constrained to node tests|scripts (no shell)', missing.missing)
+  // Severity used to buy an exemption: only fixed P0/P1 rows were RUN, so a fixed P2 row's "evidence" was never
+  // executed. The runner now walks every fixed row -- the missing proof is named at the runner, not only in assess().
+  const p2Unproven = proofRun([{ id: 'p2-fixed-no-proof', title: 'x', severity: 'P2', status: 'fixed', owner: 'lane' }])
+  ok(p2Unproven.missing.length === 1 && p2Unproven.missing[0].id === 'p2-fixed-no-proof', 'a fixed P2 row is walked by the prover instead of being skipped', p2Unproven.missing)
+  ok(p2Unproven.missing[0] && /severity does not buy an exemption/.test(p2Unproven.missing[0].why), 'the refusal says why severity cannot exempt a row', p2Unproven.missing[0] && p2Unproven.missing[0].why)
+  const p2Proved = proofRun([row('p2-proved', 'node tests/green.mjs', 0, 'P2')])
+  ok(p2Proved.ok === true && p2Proved.ran.length === 1 && p2Proved.ran[0].id === 'p2-proved', 'a fixed P2 row WITH a proof is run and passes', p2Proved)
   // A proof that runs the audit suite must not move the real current-layer pointer: a closed row cannot change which
   // corpus layer is current. The fixture writes the sim root it was handed, so the redirect is measured, not assumed.
   const NL = String.fromCharCode(10)

@@ -257,6 +257,13 @@ try {
     '★ the receipt itself reports the (now empty) pending list instead of omitting the field', typed.parsed && typed.parsed.pendingSteps)
   ok(typed.parsed && /推荐/.test(String(typed.parsed.procedureNote)) && /不是门禁/.test(String(typed.parsed.procedureNote)),
     'the receipt says, in words, that the skeleton is a recommendation and not a gate', typed.parsed && typed.parsed.procedureNote)
+  // ★ RULE E26 (TB-2683): the skeleton's step ② must say HOW the debate is opened — 轮流 / 举手 / 邀请.
+  //   Until now only 「轮数由院士」was pinned, and that sentence belongs to E29 (the round count), so the three
+  //   expansion modes had NO assertion at all. This reads the RECEIPT's own skeleton (not the module constant).
+  const step2 = typed.parsed && typed.parsed.procedure && typed.parsed.procedure.steps && typed.parsed.procedure.steps[1]
+  ok(!!step2 && /轮流/.test(String(step2.what)) && /举手/.test(String(step2.what)) && /邀请/.test(String(step2.what)),
+    '★ E26: the receipt\'s step ② names all three ways to OPEN the debate (轮流发言 / 举手后发言 / 主席邀请发言)',
+    step2 && step2.what)
   const backSum = kernel.meetings.summary({ meeting: typed.parsed.meeting })
   ok(backSum.type === 'debate' && backSum.subject === subj2, '★ read-back from the service confirms what the tool claimed', { type: backSum.type, subject: backSum.subject })
   const plain = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '一般议事' })

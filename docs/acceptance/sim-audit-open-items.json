@@ -126,8 +126,8 @@
       "proof": {
         "cmd": "node tests/release-ready.test.mjs",
         "expect": 0,
-        "timeoutMs": 600000,
-        "note": "90 passed, 0 failed: the gate refuses a report that predates a worktree edit."
+        "timeoutMs": 900000,
+        "note": "154 passed / 0 failed on tree 85c7f453: the gate refuses a report that predates a worktree edit."
       }
     },
     {
@@ -171,8 +171,8 @@
       "proof": {
         "cmd": "node tests/release-ready.test.mjs",
         "expect": 0,
-        "timeoutMs": 600000,
-        "note": "permanent fixtures for A11/A12/A13/A13b/A14/A15/A16/A16b plus the duplicateDigestIn(messages) half-vector assertion; measured 148 passed / 0 failed on tree 15417e55"
+        "timeoutMs": 900000,
+        "note": "permanent fixtures for A11/A12/A13/A13b/A14/A15/A16/A16b plus the duplicateDigestIn(messages) half-vector assertion; measured 154 passed / 0 failed on tree 85c7f453 (317 s quiet, 384.2 s under T1 k=3)"
       },
       "fixedAt": "2026-11-10T03:18:00+08:00",
       "resolution": "TB-2653 / task-128 closed in three passes: legacy-stamp compat branch deleted (824bcaba), corpus layer ownership + single-writer pointer + AUDIT_CORPUS_NOT_CURRENT (141c5cc4), message layer no longer prints the same digest twice (15417e55). Two residual boundaries are recorded on purpose and are NOT holes to fix: --head-iso is a test hook that only relaxes \"report older than HEAD\", and the trust boundary is the file system itself (whoever can rewrite current-layer.json can rewrite the gate source).",
@@ -287,7 +287,7 @@
       "proof": {
         "cmd": "node tests/vmu-run257-refusal-hints.test.mjs",
         "expect": 0,
-        "note": "83 passed, 0 failed: every hint value is generated from the registry and checked against it."
+        "note": "87 passed, 0 failed: every hint value is generated from the registry and checked against it."
       }
     },
     {
@@ -325,7 +325,12 @@
       "status": "fixed",
       "owner": "env-lane",
       "source": "AUDIT-14 O-1; TB-2657 / task-136",
-      "evidence": "root cause reproduced byte for byte: docs/acceptance/sim-gate-scope.md lines 4-6 are markdown blockquotes, and handing those lines to bash makes the leading '> ' a redirect that creates a file named after the first word of each line (the third line has no file because it contains a command substitution); D:/_tmp/env/incident-1512-doc-quote-redirect.md has the timeline and the exclusion evidence. The three files are deleted; the guard is promoted from a scratch script to scripts/check-repo-hygiene.mjs with tests/repo-hygiene.test.mjs."
+      "evidence": "root cause reproduced byte for byte: docs/acceptance/sim-gate-scope.md lines 4-6 are markdown blockquotes, and handing those lines to bash makes the leading '> ' a redirect that creates a file named after the first word of each line (the third line has no file because it contains a command substitution); D:/_tmp/env/incident-1512-doc-quote-redirect.md has the timeline and the exclusion evidence. The three files are deleted; the guard is promoted from a scratch script to scripts/check-repo-hygiene.mjs with tests/repo-hygiene.test.mjs.",
+      "proof": {
+        "cmd": "node tests/repo-hygiene.test.mjs",
+        "expect": 0,
+        "note": "the three zero-byte files are deleted and the guard is now scripts/check-repo-hygiene.mjs (promoted from the scratch script): tests/repo-hygiene.test.mjs fails if any of the three reappears or if the guard stops detecting the doc-quote redirect"
+      }
     },
     {
       "id": "audit14-o34-suite-hygiene",
@@ -338,7 +343,7 @@
       "proof": {
         "cmd": "node tests/vmu-run257-prompt-receipt-parity.test.mjs",
         "expect": 0,
-        "note": "97 passed, 0 failed; a missing corpus now fails by name instead of reading as green."
+        "note": "125 passed, 0 failed; a missing corpus now fails by name instead of reading as green."
       }
     },
     {

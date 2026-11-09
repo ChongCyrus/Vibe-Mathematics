@@ -279,12 +279,15 @@ export function runLedgerProofs(items, opts = {}) {
   for (const it of items || []) {
     const status = String((it && it.status) || '')
     const severity = String((it && it.severity) || '')
-    if (status !== 'fixed' || !(severity === 'P0' || severity === 'P1')) continue
+    // Every `fixed` row is a claim that something was fixed, so every `fixed` row owes a runnable proof. Severity
+    // used to buy an exemption here (only P0/P1 were proven); that made `fixed` mean two different things depending
+    // on a label, and let 24 closed rows contain one whose "evidence" was a sentence. Severity does not buy an exemption.
+    if (status !== 'fixed') continue
     const id = String((it && it.id) || '(no id)')
     const proof = it && it.proof
     const cmd = proof && typeof proof.cmd === 'string' ? proof.cmd.trim() : ''
     const expect = proof && Number.isInteger(proof.expect) ? proof.expect : null
-    if (!cmd || expect === null) { missing.push({ id, why: 'fixed ' + severity + ' has no proof:{cmd,expect} — a closed item without a runnable proof is a sentence, not evidence' }); continue }
+    if (!cmd || expect === null) { missing.push({ id, why: 'fixed ' + (severity || '(no severity)') + ' has no proof:{cmd,expect} — a closed item without a runnable proof is a sentence, not evidence; severity does not buy an exemption (every fixed row owes a proof)' }); continue }
     if (!PROOF_CMD.test(cmd)) { missing.push({ id, why: 'proof.cmd must be `node <tests|scripts>/…mjs`, got ' + JSON.stringify(cmd) + ' (no shell, no arbitrary binaries)' }); continue }
     const rowTimeout = proof && proof.timeoutMs !== undefined ? proof.timeoutMs : null
     if (rowTimeout !== null && !(Number.isInteger(rowTimeout) && rowTimeout > 0 && rowTimeout <= MAX_PROOF_TIMEOUT_MS)) {
@@ -415,7 +418,7 @@ const REMEDY = {
   AUDIT_VERDICT_CONTRADICTION: { owner: 'sim-lane (the report writer)', readyIf: 'prose verdict and machine verdict say the same thing; a report that argues with itself is unread, not clean' },
   AUDIT_FIDELITY_RECOMPUTE_UNMEASURED: { owner: 'run-lane (the rich live corpus) or sim-lane (the receipts)', readyIf: 'the gate can load real-fields.jsonl plus the corpus and recompute compared/gaps itself' },
   AUDIT_FIDELITY_MISMATCH: { owner: 'sim-lane (scripts/sim/audit/all.mjs fidelity section vs the shared ruler)', readyIf: 'the recomputed compared/gaps equal the stamped ones; the message names the differing tool.field paths' },
-  AUDIT_EVIDENCE_MISSING: { owner: 'the owner of each fixed-but-unproven ledger row', readyIf: 'every fixed P0/P1 row carries proof:{cmd,expect} naming a node script under tests/ or scripts/' },
+  AUDIT_EVIDENCE_MISSING: { owner: 'the owner of each fixed-but-unproven ledger row', readyIf: 'every fixed row (P0, P1 AND P2) carries proof:{cmd,expect} naming a node script under tests/ or scripts/' },
   AUDIT_EVIDENCE_FAILED: { owner: 'the owner of the ledger row whose proof failed', readyIf: 'running the proof command reproduces the recorded exit code; a claim that does not reproduce is not evidence' },
   OVERRIDE_REASON_INVALID: { owner: 'whoever passed -OverrideReleaseGate', readyIf: 'the reason names what is known and why it is acceptable now (>=24 non-space characters, not a verbatim repeat of the previous override)' },
 }
@@ -593,11 +596,11 @@ export function assess(facts) {
   })
   add('AUDIT_P0_UNLEDGERED', 'audit report names P0 finding(s) with no ledger row: ' + (unledgered.length ? unledgered.map((p) => String((p && p.id) || (p && p.title) || '(unnamed)')).join('; ') : '(none)') + ' — an untracked P0 is how "open P0 = 0" stays empty', unledgered.length === 0, { owner: (unledgered.map((p) => String((p && p.owner) || 'unassigned')).join('; ') || 'sim-lane (the ledger)') })
 
-  // R2: a `fixed` P0/P1 is a claim that something was fixed. The gate RUNS the ledger's proof command, because a
-  // sentence like "see last round" is exactly the evidence a leaked bypass looks like when it is typed into a ledger.
+  // R2: a `fixed` row is a claim that something was fixed -- P0, P1 or P2 alike. The gate RUNS the ledger's proof
+  // command, because a sentence like "see last round" is exactly the evidence a leaked bypass looks like when typed.
   const proofs = facts.ledgerProofs || { ok: false, ran: [], missing: [{ id: '(ledger)', why: 'the gate did not run the ledger proofs' }], failed: [] }
-  const fixedClosed = (items.items || []).filter((it) => String(it.status) === 'fixed' && (String(it.severity) === 'P0' || String(it.severity) === 'P1'))
-  add('AUDIT_EVIDENCE_MISSING', fixedClosed.length === 0 ? 'no fixed P0/P1 rows to prove' : 'fixed P0/P1 row(s) without a runnable proof: ' + (proofs.missing || []).map((m) => m.id + ' (' + m.why + ')').join('; '), (proofs.missing || []).length === 0)
+  const fixedClosed = (items.items || []).filter((it) => String(it.status) === 'fixed')
+  add('AUDIT_EVIDENCE_MISSING', fixedClosed.length === 0 ? 'no fixed rows to prove' : 'fixed row(s) without a runnable proof: ' + (proofs.missing || []).map((m) => m.id + ' (' + m.why + ')').join('; '), (proofs.missing || []).length === 0)
   add('AUDIT_EVIDENCE_FAILED', 'proof command(s) did not exit as the ledger says: ' + (proofs.failed || []).map((f) => f.id + ' `' + f.cmd + '` expected ' + String(f.expect) + ' got ' + String(f.actual) + (f.timeoutMs ? ' (timeoutMs ' + f.timeoutMs + (f.cached ? ', cached result' : '') + ')' : '')).join('; '), (proofs.failed || []).length === 0)
   // R6: an override is a claim about THIS run. A reason that says nothing, or the same paragraph as last time, is a
   // rubber stamp; it is refused as a bypass too (the original reasons stay listed either way).
