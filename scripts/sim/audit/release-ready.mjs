@@ -31,6 +31,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 // ONE RULER (TB-2653 R3): the gate recomputes the fidelity reading with the SAME module all.mjs prints with. A report
@@ -39,7 +40,7 @@ import { RICH_REAL, loadRich, loadSimFields, withoutGlossary, readBaseline, meas
 // ONE RULER (TB-2609 / corpus-stale): the enumeration AND the digest of "which receipts did this audit measure" live
 // in corpus-files.mjs, shared with all.mjs. They used to be two loops that disagreed about which directory the corpus
 // lives in, so a clean tree was refused with AUDIT_CORPUS_STALE. Re-exported below for existing import sites.
-import { resolveReportCorpus } from './corpus-files.mjs'
+import { resolveReportCorpus, readCurrentLayer } from './corpus-files.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..', '..', '..')
@@ -216,7 +217,7 @@ export function treeHashOf(repo = REPO) {
 // file scanned only CHILD directories of the sim root, so the gate re-hashed an older `--out` layer and refused a
 // clean tree. The layer rule (the sim root itself is a layer, the newest receipts mtime wins, and the report says
 // why) and the digest (`scenario + ' ' + sha256(bytes)`, sorted inside the one implementation) now have one ruler.
-export { corpusLayers, corpusDigestOf, manifestCorpusFiles, newestCorpusDir, resolveReportCorpus } from './corpus-files.mjs'
+export { CURRENT_LAYER_FILE, DEFAULT_SIM_ROOT, corpusDigestOf, corpusFilesIn, currentLayerPath, manifestCorpusFiles, readCurrentLayer, resolveReportCorpus, sha256Hex } from './corpus-files.mjs'
 
 /** The audit id all.mjs derives: sha256(corpusId | tree hash). Public on purpose — it BINDS, it does not hide. */
 export function deriveAuditId(corpusId, treeHash) {
@@ -274,9 +275,15 @@ export function runLedgerProofs(items, opts = {}) {
     const rel = cmd.replace(/^node\s+/, '')
     const abs = join(root, rel)
     if (!existsSync(abs)) { missing.push({ id, why: 'proof.cmd points at a missing file: ' + rel }); continue }
+    // A proof that runs `scripts/sim/audit/all.mjs` writes a new corpus layer AND moves the single-writer pointer.
+    // Proving a ledger row must not change which layer is current: that would make the audited report stop being
+    // "about the current layer" as a side effect of closing a row. Redirect only that proof's sim root, not the shape.
+    const redirectsSimRoot = /scripts[\/]sim[\/]audit[\/]all\.mjs$/.test(rel)
+    const proofSimRoot = String(opts.proofSimRoot || join(tmpdir(), 'release-ready-proofs-' + process.pid))
+    const env = redirectsSimRoot ? { ...process.env, VMU_SIM_ROOT: proofSimRoot } : process.env
     let code = null
     try {
-      execFileSync(process.execPath, [abs], { cwd: root, timeout: timeoutMs, stdio: 'ignore' })
+      execFileSync(process.execPath, [abs], { cwd: root, timeout: timeoutMs, stdio: 'ignore', env })
       code = 0
     } catch (e) {
       code = typeof e.status === 'number' ? e.status : null
@@ -469,24 +476,43 @@ export function assess(facts) {
     // report measured" (no file list, no layer) versus "I re-read it and it is not the same corpus". Firing both made a
     // replay of an old stamp look stale when the real defect was that nothing could be re-read at all (audit-r14 A11).
     const corpusStaleByCode = corpus.ok !== true && String(corpus.code || '') === 'AUDIT_CORPUS_STALE'
-    const corpusUnmeasured = corpus.ok !== true && !corpusStaleByCode
-    add('AUDIT_CORPUS_UNMEASURED', 'cannot re-read the corpus the report measured: ' + String(corpus.why || 'unknown') + ' — a report about receipts nobody can point at is a report about nothing', !corpusUnmeasured)
+    // The pointer is the second half of "which layer is current". A report can be perfectly self-consistent about an
+    // OLDER layer -- honest and still not current. Without this, "the digest matches" answered "which corpus did the
+    // audit measure" but never "is that corpus still the one on this machine".
+    const pointer = facts.currentLayer || { ok: false, path: '(unknown)', dir: null, why: 'the gate did not read the layer pointer' }
     const manCorpus = man && man.corpus && typeof man.corpus === 'object' ? man.corpus : null
     const claimedCorpusId = manCorpus && typeof manCorpus.corpusId === 'string' ? manCorpus.corpusId : ''
+    const claimedDir = manCorpus && typeof manCorpus.dir === 'string' ? manCorpus.dir : ''
+    // UNMEASURED answers exactly one question: "can the corpus be re-read at all?" A layer that WAS re-read and then
+    // disagreed is STALE below -- reporting it as unmeasured too would put two answers on one failure, and the reader
+    // could no longer tell "nothing was measured" from "something was measured and did not match".
+    const corpusUnmeasured = corpus.ok !== true && (String(corpus.code || '') === 'AUDIT_CORPUS_UNMEASURED' || String(corpus.code || '') === '')
+    const unmeasuredWhy = [
+      corpusUnmeasured ? String(corpus.why || 'unknown') : '',
+      pointer.ok !== true ? 'and the current layer pointer cannot be read: ' + String(pointer.why || 'unknown') : '',
+    ].filter(Boolean).join(' ')
+    add('AUDIT_CORPUS_UNMEASURED', 'cannot re-read the corpus the report measured: ' + unmeasuredWhy + ' — a report about receipts nobody can point at is a report about nothing', !(corpusUnmeasured || pointer.ok !== true))
+    // NOT_CURRENT is its own refusal: it fires when both layers are real and readable and the report simply names the
+    // older one. If the pointer is missing, that is UNMEASURED above, not this -- two answers, two questions.
+    const reportGeneratedAt = man && typeof man.generatedAt === 'string' ? man.generatedAt : '(unknown)'
+    add('AUDIT_CORPUS_NOT_CURRENT', 'the report measured corpus layer ' + (claimedDir || '(unnamed)') + ' (generatedAt ' + reportGeneratedAt + ') but the current layer is ' + String(pointer.dir || '(none)') + ' (generatedAt ' + String(pointer.generatedAt || '(unknown)') + ') — a report may honestly describe an older layer, but an older layer is not the current one, and the release gate only accepts the current one', !(corpus.ok === true && pointer.ok === true && claimedDir !== '' && claimedDir !== pointer.dir))
     const layerNotes = [
       (corpus.missing || []).length ? 'missing from the layer: ' + corpus.missing.map((m) => m.scenario).slice(0, 5).join(', ') : '',
       (corpus.mismatched || []).length ? 'changed after the report was written: ' + corpus.mismatched.map((m) => m.scenario).slice(0, 5).join(', ') : '',
-      (corpus.extras || []).length ? 'corpus dirs that appeared after the report was written: ' + corpus.extras.map((m) => m.scenario).slice(0, 5).join(', ') : '',
+      (corpus.extras || []).length ? 'corpus dirs the layer holds but the report does not list: ' + corpus.extras.map((m) => m.scenario).slice(0, 5).join(', ') : '',
     ].filter(Boolean).join('; ')
     const corpusMatches = Boolean(corpus.ok && claimsOrigin && claimedCorpusId && claimedCorpusId === corpus.corpusId && !layerNotes)
     const generatedMs = man && typeof man.generatedAt === 'string' ? Date.parse(man.generatedAt) : NaN
     // A stamp older than the receipts it claims to have measured is a report from an earlier corpus wearing the new
     // corpus id: the id only binds if the writing time and the files agree about WHEN.
-    const generatedFresh = corpus.ok && Number.isFinite(generatedMs) && corpus.newestMs !== null && generatedMs + 1000 >= corpus.newestMs
+    // "The stamp predates the receipts" is a NAMED claim and must only be made when that comparison actually fails:
+    // deriving it from corpus.ok made a digest mismatch wear the timing clause, which reads as evidence that is not there.
+    const predatesReceipts = Number.isFinite(generatedMs) && corpus.newestMs !== null && generatedMs + 1000 < corpus.newestMs
+    const generatedFresh = corpus.ok === true && Number.isFinite(generatedMs) && !predatesReceipts
     // Stale: the gate DID re-read a corpus, and it is not the one the report describes (changed bytes, a vanished file,
     // a corpus dir born after the report, or a stamp older than the receipts). An unmeasured corpus is never called
     // stale: it is refused one line above, by its own name.
-    add('AUDIT_CORPUS_STALE', 'audit report claims corpus ' + (claimedCorpusId ? claimedCorpusId.slice(0, 20) : '(missing)') + ' but the layer ' + String(corpus.dir || '(none)') + ' hashes to ' + String(corpus.corpusId || '(unread)').slice(0, 20) + (layerNotes ? ' [' + layerNotes + ']' : '') + (generatedFresh ? '' : '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one'), !(corpusStaleByCode || (corpus.ok === true && !(generatedFresh && corpusMatches))))
+    add('AUDIT_CORPUS_STALE', 'audit report claims corpus ' + (claimedCorpusId ? claimedCorpusId.slice(0, 20) : '(missing)') + ' but the layer ' + String(corpus.dir || '(none)') + ' hashes to ' + String(corpus.corpusId || '(unread)').slice(0, 20) + (layerNotes ? ' [' + layerNotes + ']' : '') + (predatesReceipts ? '; and its generatedAt ' + String(man && man.generatedAt) + ' predates the newest receipt — the report measured a corpus that is no longer this one' : ''), !(corpusStaleByCode || (corpus.ok === true && !(generatedFresh && corpusMatches))))
     // R1b: the audit id is DERIVED from (corpus id, tree hash). If the gate recomputes a different id, the report's
     // stamp was not produced by the formula it claims -- either hand-edited or copied from another run.
     const derivedId = claimsOrigin && claimedCorpusId ? deriveAuditId(claimedCorpusId, claimedTree) : null
@@ -566,9 +592,13 @@ function collectFacts() {
   // stale. Fidelity is recomputed from THOSE files -- the report's own list -- not from every foreign corpus that
   // happens to live in the same layer (those predate the audit and were never its measurement).
   const manifestForCorpus = audit && audit.report ? audit.report.manifest : null
-  const corpus = resolveReportCorpus(root, manifestForCorpus)
+  // The report names the layer it measured; the pointer names the layer that is current. Both are read as FACTS --
+  // neither is guessed (audit-r14 A13b was a report that omitted one corpus dir and recomputed over the smaller list;
+  // A13b-adjacent was a report that honestly named an OLD layer and was still READY).
+  const corpus = resolveReportCorpus(manifestForCorpus)
+  const currentLayer = readCurrentLayer(root)
   const corpusId = corpus.corpusId
-  const corpusFilesForFidelity = corpus.files.length ? corpus.files : (corpus.layer && corpus.layer.files) || []
+  const corpusFilesForFidelity = corpus.files
   const fidelityRecomputed = corpusFilesForFidelity.length ? recomputeFidelity(corpusFilesForFidelity, { declaredPath: flagValue('--declared', undefined), richPath: flagValue('--rich', undefined) }) : { ok: false, why: corpus.why || 'no corpus files to measure', compared: null, gaps: null, liveToolsWithFieldList: null, gapList: [] }
   // R2: run the ledger proofs unless a fixture test explicitly asks not to (the fixture scripts complete in ms).
   const ledgerProofs = hasFlag('--no-proofs')
@@ -587,7 +617,7 @@ function collectFacts() {
       writeFileSync(join(root, 'release-ready-last-override.json'), JSON.stringify({ reason: override.reason, at: override.at, by: override.by }, null, 2))
     } catch { /* recording the bypass is best-effort; refusing it is not */ }
   }
-  return { root, audit, head, gate, openItems, drift, treeHash, corpus: { ...corpus, corpusId }, fidelityRecomputed, ledgerProofs, override, overrideCheck, overrideRejected: overrideReason !== null && !(overrideCheck && overrideCheck.ok) }
+  return { root, audit, head, gate, openItems, drift, treeHash, corpus: { ...corpus, corpusId }, currentLayer, fidelityRecomputed, ledgerProofs, override, overrideCheck, overrideRejected: overrideReason !== null && !(overrideCheck && overrideCheck.ok) }
 }
 
 // Only run when executed directly; importing this file (tests import assess/parseAuditReport) must have no side effects.
@@ -595,7 +625,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const facts = collectFacts()
   const verdict = assess(facts)
   if (hasFlag('--json')) {
-    console.log(JSON.stringify({ ...verdict, facts: { root: facts.root, audit: facts.audit && { path: facts.audit.path, mtimeMs: facts.audit.mtimeMs, report: facts.audit.report }, head: facts.head, gate: facts.gate, drift: facts.drift && { ok: facts.drift.ok, changed: (facts.drift.changed || []).length, newestMs: facts.drift.newestMs, newestPath: facts.drift.newestPath, why: facts.drift.why || null }, tree: facts.treeHash && { ok: facts.treeHash.ok, head: facts.treeHash.head, hash: facts.treeHash.hash, changed: facts.treeHash.changed, why: facts.treeHash.why || null }, corpus: facts.corpus && { ok: facts.corpus.ok, dir: facts.corpus.dir, files: (facts.corpus.files || []).length, corpusId: facts.corpus.corpusId, newestMs: facts.corpus.newestMs, why: facts.corpus.why || null }, fidelityRecomputed: facts.fidelityRecomputed && { ok: facts.fidelityRecomputed.ok, liveToolsWithFieldList: facts.fidelityRecomputed.liveToolsWithFieldList, compared: facts.fidelityRecomputed.compared, gaps: facts.fidelityRecomputed.gaps, why: facts.fidelityRecomputed.why || null }, ledgerProofs: facts.ledgerProofs && { ok: facts.ledgerProofs.ok, ran: (facts.ledgerProofs.ran || []).length, missing: facts.ledgerProofs.missing || [], failed: facts.ledgerProofs.failed || [] }, override: facts.override, overrideRejected: facts.overrideRejected || false, overrideCheck: facts.overrideCheck || null, openItems: { ok: facts.openItems.ok, why: facts.openItems.why || null, bad: facts.openItems.bad || [], count: (facts.openItems.items || []).length } } }, null, 2))
+    console.log(JSON.stringify({ ...verdict, facts: { root: facts.root, audit: facts.audit && { path: facts.audit.path, mtimeMs: facts.audit.mtimeMs, report: facts.audit.report }, head: facts.head, gate: facts.gate, drift: facts.drift && { ok: facts.drift.ok, changed: (facts.drift.changed || []).length, newestMs: facts.drift.newestMs, newestPath: facts.drift.newestPath, why: facts.drift.why || null }, tree: facts.treeHash && { ok: facts.treeHash.ok, head: facts.treeHash.head, hash: facts.treeHash.hash, changed: facts.treeHash.changed, why: facts.treeHash.why || null }, corpus: facts.corpus && { ok: facts.corpus.ok, dir: facts.corpus.dir, files: (facts.corpus.files || []).length, corpusId: facts.corpus.corpusId, newestMs: facts.corpus.newestMs, missing: (facts.corpus.missing || []).length, mismatched: (facts.corpus.mismatched || []).length, extras: (facts.corpus.extras || []).length, why: facts.corpus.why || null }, currentLayer: facts.currentLayer && { ok: facts.currentLayer.ok, path: facts.currentLayer.path, dir: facts.currentLayer.dir, generatedAt: facts.currentLayer.generatedAt, why: facts.currentLayer.why || null }, fidelityRecomputed: facts.fidelityRecomputed && { ok: facts.fidelityRecomputed.ok, liveToolsWithFieldList: facts.fidelityRecomputed.liveToolsWithFieldList, compared: facts.fidelityRecomputed.compared, gaps: facts.fidelityRecomputed.gaps, why: facts.fidelityRecomputed.why || null }, ledgerProofs: facts.ledgerProofs && { ok: facts.ledgerProofs.ok, ran: (facts.ledgerProofs.ran || []).length, missing: facts.ledgerProofs.missing || [], failed: facts.ledgerProofs.failed || [] }, override: facts.override, overrideRejected: facts.overrideRejected || false, overrideCheck: facts.overrideCheck || null, openItems: { ok: facts.openItems.ok, why: facts.openItems.why || null, bad: facts.openItems.bad || [], count: (facts.openItems.items || []).length } } }, null, 2))
   } else if (verdict.ready) {
     console.log('READY: sim gate green, audit fresh and clean, no open P0 — a real run may start')
   } else {

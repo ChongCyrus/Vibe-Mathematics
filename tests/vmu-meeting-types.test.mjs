@@ -76,6 +76,12 @@ try {
   ok(ids.length === 6, 'the id list is non-empty (RULE E)', ids.length)
   ok(['ordinary', 'academic', 'debate', 'closure', 'paper', 'planning'].every((t) => ids.includes(t)),
     'the six ids are the rule\'s own list (正常/学术交流/辩论/结题/论文交流/未来规划策划)', ids)
+  // The LABELS must be the RULE'S OWN WORDS too (only punctuation normalised), not a test-local paraphrase:
+  // renaming 「正常会议」to 「例会」has to be a red, otherwise the catalog stops speaking the rule's vocabulary.
+  const RULE_LABELS = ['正常会议', '学术交流', '辩论', '结题', '论文交流', '未来规划策划']
+  const normLabel = (x) => String(x).replace(/[\s\/／]/g, '')
+  const labels = proc.MEETING_TYPES.map((x) => normLabel(x.label))
+  ok(JSON.stringify(labels) === JSON.stringify(RULE_LABELS), 'the six labels are the RULE\'s own words (正常会议/学术交流/辩论/结题/论文交流/未来规划策划), in order', labels)
   ok(new Set(ids).size === ids.length, 'no duplicate type id')
   const debate = proc.MEETING_TYPES.find((t) => t.id === 'debate')
   ok(!!debate && debate.subjectRequired === true, 'ONLY the debate type requires the object field (the rule names only debate)', debate)

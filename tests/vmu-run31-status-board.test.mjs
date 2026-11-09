@@ -68,6 +68,18 @@ console.log('=== 0. THE FOUR FIELDS ARE DECLARED, WITH ONE NAMED SOURCE EACH ===
   const everySource = STATUS_BOARD_FIELDS.every((f) => typeof f.source === 'string' && f.source.trim() !== '')
   ok(everySource, '③ every field names the ledger it is DERIVED from - the board adds no storage of its own',
     { sources: STATUS_BOARD_FIELDS.map((f) => f.source) })
+  // ③b STRONGER: the source must NAME THE LEDGER THE READER ACTUALLY READS. A non-empty string is not enough -
+  // a plausible-looking but FALSE source (say 'vmu.records.list' on the plan row) is exactly the defect this line
+  // exists to catch, and it passes ③. Each entry lists the ledger token(s) the row is genuinely derived from.
+  const DERIVED_FROM = {
+    objective: ['vmu.turn.objective'],
+    plan: ['vmu.tasks'],
+    tasks: ['vmu.tasks'],
+    current: ['vmu.records'],
+  }
+  const misattributed = STATUS_BOARD_FIELDS.filter((f) => !(DERIVED_FROM[f.key] || []).every((t) => String(f.source).includes(t)))
+  ok(misattributed.length === 0, '③b the source NAMES the ledger actually read (a false-but-plausible source is a red)',
+    { misattributed: misattributed.map((f) => [f.key, f.source]) })
   ok(JSON.stringify(STATUS_BOARD_READ_OPS['vmu.tasks']) === JSON.stringify(['list']) &&
     JSON.stringify(STATUS_BOARD_READ_OPS['vmu.records']) === JSON.stringify(['list', 'get']),
     '④ the read legs are DECLARED operations of the two kernel ledgers, not invented verbs', { readOps: STATUS_BOARD_READ_OPS })

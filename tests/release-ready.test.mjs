@@ -67,7 +67,7 @@ const manifestOf = (over = {}) => ({
   auditId: rr.deriveAuditId(CORPUS_ID, TREE.hash),
   generatedAt: GENERATED_AT,
   tree: { ok: true, head: TREE.head, hash: TREE.hash, changed: TREE.changed },
-  corpus: { scenarios: 15, receipts: 887, corpusId: CORPUS_ID },
+  corpus: { scenarios: 15, receipts: 887, corpusId: CORPUS_ID, dir: TMP },
   fidelity: { liveToolsWithFieldList: 69, compared: 69, gaps: 0 },
   checks: { verdict: 'PASS', failures: 0, warnings: 2 },
   p0: [],
@@ -129,7 +129,8 @@ const cleanLedger = () => ({
 })
 const baseFacts = () => ({
   root: TMP,
-  corpus: { ok: true, dir: TMP, files: [{ scenario: 'mainline', receiptsPath: join(TMP, 'receipts.jsonl') }], corpusId: CORPUS_ID, newestMs: Date.parse(GENERATED_AT), why: null },
+  corpus: { ok: true, dir: TMP, files: [{ scenario: 'mainline', receiptsPath: join(TMP, 'receipts.jsonl') }], corpusId: CORPUS_ID, newestMs: Date.parse(GENERATED_AT), missing: [], mismatched: [], extras: [], why: null },
+  currentLayer: { ok: true, path: join(TMP, 'current-layer.json'), dir: TMP, corpusId: CORPUS_ID, auditId: null, generatedAt: GENERATED_AT, at: GENERATED_AT, pid: 1, why: null },
   fidelityRecomputed: { ok: true, liveToolsWithFieldList: 69, compared: 69, gaps: 0, gapList: [], why: null },
   ledgerProofs: { ok: true, ran: [], missing: [], failed: [] },
   gate: { ran: true, exitCode: 0, wallMs: 68000, tail: '=== sim gate: 73 passed, 0 failed ===', error: null },
@@ -473,13 +474,14 @@ console.log('--- 6. the CLI: skipping the gate is a reason, --json is parseable,
   // now refuses a report that cannot name the receipts it hashed; the attack is measured with an EMPTY ledger because
   // a ledger carrying the repo's real open P0s would hide the corpus reason under OPEN_P0.
   const a11Root = join(TMP, 'a11-root')
-  mkdirSync(join(a11Root, 'corpus-mainline'), { recursive: true })
-  writeFileSync(join(a11Root, 'corpus-mainline', 'receipts.jsonl'), '{"seq":1,"ok":true}' + String.fromCharCode(10))
-  const a11Layer = rr.newestCorpusDir(a11Root)
+  const a11LayerDir = join(a11Root, 'run-2026-11-01-1')
+  mkdirSync(join(a11LayerDir, 'corpus-mainline'), { recursive: true })
+  writeFileSync(join(a11LayerDir, 'corpus-mainline', 'receipts.jsonl'), '{"seq":1,"ok":true}' + String.fromCharCode(10))
+  const a11Layer = { dir: a11LayerDir, files: rr.corpusFilesIn(a11LayerDir) }
   const a11CorpusId = rr.corpusDigestOf(a11Layer.files)
   const a11Manifest = manifestOf({ auditId: rr.deriveAuditId(a11CorpusId, TREE.hash) })
   delete a11Manifest.corpus.corpusFiles // THE ATTACK: no file list, only a digest that really matches a layer on disk
-  a11Manifest.corpus = { ...a11Manifest.corpus, scenarios: 1, receipts: 1, corpusId: a11CorpusId }
+  a11Manifest.corpus = { ...a11Manifest.corpus, scenarios: 1, receipts: 1, corpusId: a11CorpusId, dir: a11LayerDir }
   const a11Report = write('A11-no-list-AUDIT.md', reportText({ manifest: a11Manifest }))
   const a11Ledger = write('A11-empty-ledger.json', JSON.stringify({ items: [] }))
   const a11Run = spawnSync(process.execPath, [SCRIPT, '--no-gate', '--no-proofs', '--root=' + a11Root, '--audit=' + a11Report, '--open-items=' + a11Ledger, '--json', '--head-iso=2026-11-09T00:00:00+08:00'], { cwd: REPO, encoding: 'utf8', timeout: 120000 })
@@ -493,6 +495,113 @@ console.log('--- 6. the CLI: skipping the gate is a reason, --json is parseable,
   ok(!a11Codes.includes('AUDIT_CORPUS_STALE'), 'A11: and it is NOT called stale — the gate never re-read a corpus it cannot identify', a11Codes)
   ok(a11Reason !== null && /does not name the files it measured/.test(String(a11Reason.message)), 'A11: the message says WHY — the report never named the files, so there was nothing to re-read', a11Reason && a11Reason.message)
   ok(!a11Codes.includes('OPEN_P0'), 'A11: the empty ledger keeps OPEN_P0 out of the way, so the corpus reason is the one on trial', a11Codes)
+
+  console.log('--- 6c. A13b/A13/A14/A15/A16/A16b: the layer is NAMED and the layer is CURRENT (audit-r14)')
+  {
+    // The model: a report names the one layer it measured, the pointer names the one that is current, and the gate
+    // compares directories -- no mtime guessing anywhere. These fixtures build REAL layers on disk (real receipts,
+    // real digest, real derived audit id) because a fixture that only edits a string cannot prove the gate re-reads.
+    const layerGate = (root, reportPath) => {
+      const emptyLedger = write('layer-empty-ledger-' + process.pid + '.json', JSON.stringify({ items: [] }))
+      const r = spawnSync(process.execPath, [SCRIPT, '--no-gate', '--no-proofs', '--root=' + root, '--audit=' + reportPath, '--open-items=' + emptyLedger, '--json', '--head-iso=2026-11-09T00:00:00+08:00'], { cwd: REPO, encoding: 'utf8', timeout: 120000 })
+      let json = null
+      try { json = JSON.parse(r.stdout) } catch { json = null }
+      const reasons = json && Array.isArray(json.reasons) ? json.reasons : []
+      return { status: r.status, json, codes: reasons.map((x) => x.code), reason: (code) => reasons.find((x) => x.code === code) || null }
+    }
+    const layerFixture = (name, scenarios) => {
+      const root = join(TMP, 'layer-' + name)
+      const dir = join(root, 'run-' + name)
+      for (const sc of scenarios) {
+        mkdirSync(join(dir, 'corpus-' + sc), { recursive: true })
+        writeFileSync(join(dir, 'corpus-' + sc, 'receipts.jsonl'), '{"scenario":"' + sc + '","seq":1,"ok":true}' + String.fromCharCode(10))
+      }
+      const files = rr.corpusFilesIn(dir)
+      const generatedAt = new Date().toISOString()
+      const listOf = (names) => files.filter((f) => names.includes(f.scenario)).map((f) => ({ scenario: f.scenario, path: f.receiptsPath, bytes: f.bytes, sha256: f.sha256 }))
+      const idOf = (names) => rr.corpusDigestOf(files.filter((f) => names.includes(f.scenario)))
+      const manifestFor = (names, over) => manifestOf({ generatedAt, auditId: rr.deriveAuditId(idOf(names), TREE.hash), corpus: { scenarios: names.length, receipts: names.length, corpusId: idOf(names), dir, corpusFiles: listOf(names) }, ...(over || {}) })
+      const point = (pointerDir) => writeFileSync(join(root, 'current-layer.json'), JSON.stringify({ dir: pointerDir, corpusId: idOf(scenarios), auditId: null, generatedAt, pid: process.pid, at: generatedAt }) + String.fromCharCode(10))
+      const report = (manifest) => write(name + '-AUDIT.md', reportText({ manifest }))
+      return { root, dir, files, generatedAt, listOf, idOf, manifestFor, point, report }
+    }
+
+    // A13b: the report lists ONE of the TWO corpus dirs the layer holds and recomputes a digest over the smaller list.
+    // Before this, extras only counted files NEWER than generatedAt, so an omitted older dir was invisible.
+    {
+      const fx = layerFixture('a13b', ['mainline', 'end-to-end'])
+      const manifest = fx.manifestFor(['mainline'])
+      fx.point(fx.dir)
+      const run = layerGate(fx.root, fx.report(manifest))
+      const stale = run.reason('AUDIT_CORPUS_STALE')
+      ok(run.status === 7 && run.codes.includes('AUDIT_CORPUS_STALE'), 'A13b: a report that omits a corpus dir the layer holds is NOT READY (exit 7)', { status: run.status, codes: run.codes })
+      ok(stale !== null && String(stale.message).includes('end-to-end'), 'A13b: the reason NAMES the omitted scenario end-to-end (a count that matches the smaller list is not a measurement)', stale && stale.message)
+    }
+
+    // A13: every file is listed, but the corpus id is a label that does not hash to them.
+    {
+      const fx = layerFixture('a13', ['mainline'])
+      const manifest = fx.manifestFor(['mainline'], { corpus: { scenarios: 1, receipts: 1, corpusId: 'sha256:' + 'd'.repeat(64), dir: fx.dir, corpusFiles: fx.listOf(['mainline']) } })
+      fx.point(fx.dir)
+      const run = layerGate(fx.root, fx.report(manifest))
+      const stale = run.reason('AUDIT_CORPUS_STALE')
+      ok(run.status === 7 && run.codes.includes('AUDIT_CORPUS_STALE'), 'A13: a corpus id that is not the digest of the listed files is NOT READY', { status: run.status, codes: run.codes })
+      ok(stale !== null && String(stale.message).includes('sha256:dddd') && String(stale.message).includes('hashes to'), 'A13: the reason names BOTH digests (the claimed label and what the layer really hashes to)', stale && stale.message)
+      ok(stale !== null && !String(stale.message).includes('predates'), 'A13: and it does NOT claim the stamp is older than the receipts -- that comparison passes here, so the clause must not appear', stale && stale.message)
+    }
+
+    // A14: the report names a layer that is not on disk.
+    {
+      const fx = layerFixture('a14', ['mainline'])
+      const gone = join(fx.root, 'run-gone')
+      const manifest = fx.manifestFor(['mainline'], { corpus: { scenarios: 1, receipts: 1, corpusId: fx.idOf(['mainline']), dir: gone, corpusFiles: fx.listOf(['mainline']) } })
+      fx.point(fx.dir)
+      const run = layerGate(fx.root, fx.report(manifest))
+      const unmeasured = run.reason('AUDIT_CORPUS_UNMEASURED')
+      ok(run.status === 7 && run.codes.includes('AUDIT_CORPUS_UNMEASURED'), 'A14: a layer the report names but that does not exist is UNMEASURED', { status: run.status, codes: run.codes })
+      ok(unmeasured !== null && String(unmeasured.message).includes(gone), 'A14: the reason NAMES the missing directory', unmeasured && unmeasured.message)
+      ok(!run.codes.includes('AUDIT_CORPUS_STALE'), 'A14: and it is not called stale -- nothing was re-read, so nothing can differ', run.codes)
+    }
+
+    // A15: a legal layer with an EXTRA corpus dir born before the report (the old extras filter only saw new files).
+    {
+      const fx = layerFixture('a15', ['mainline'])
+      const manifest = fx.manifestFor(['mainline'])
+      mkdirSync(join(fx.dir, 'corpus-x'), { recursive: true })
+      writeFileSync(join(fx.dir, 'corpus-x', 'receipts.jsonl'), '{"scenario":"x","seq":1,"ok":true}' + String.fromCharCode(10))
+      fx.point(fx.dir)
+      const run = layerGate(fx.root, fx.report(manifest))
+      const stale = run.reason('AUDIT_CORPUS_STALE')
+      ok(run.status === 7 && run.codes.includes('AUDIT_CORPUS_STALE'), 'A15: an extra corpus dir in the layer is stale even when it is older than the report', { status: run.status, codes: run.codes })
+      ok(stale !== null && String(stale.message).includes('does not list: x'), 'A15: the reason names the extra scenario x', stale && stale.message)
+    }
+
+    // A16: a report that is HONEST about an older layer. Every digest agrees; it is simply not the current layer.
+    {
+      const fx = layerFixture('a16', ['mainline'])
+      const oldDir = join(fx.root, 'run-old')
+      mkdirSync(join(oldDir, 'corpus-mainline'), { recursive: true })
+      writeFileSync(join(oldDir, 'corpus-mainline', 'receipts.jsonl'), '{"scenario":"mainline","seq":9,"ok":true}' + String.fromCharCode(10))
+      const oldFiles = rr.corpusFilesIn(oldDir)
+      const oldId = rr.corpusDigestOf(oldFiles)
+      const oldManifest = manifestOf({ generatedAt: fx.generatedAt, auditId: rr.deriveAuditId(oldId, TREE.hash), corpus: { scenarios: 1, receipts: 1, corpusId: oldId, dir: oldDir, corpusFiles: oldFiles.map((f) => ({ scenario: f.scenario, path: f.receiptsPath, bytes: f.bytes, sha256: f.sha256 })) } })
+      fx.point(fx.dir)
+      const run = layerGate(fx.root, fx.report(oldManifest))
+      const notCurrent = run.reason('AUDIT_CORPUS_NOT_CURRENT')
+      ok(run.status === 7 && run.codes.includes('AUDIT_CORPUS_NOT_CURRENT'), 'A16: a self-consistent report about an OLDER layer is refused (honest is not current)', { status: run.status, codes: run.codes, layer: oldDir })
+      ok(notCurrent !== null && String(notCurrent.message).includes(oldDir) && String(notCurrent.message).includes(fx.dir), 'A16: the reason names BOTH directories (the one measured and the one current)', notCurrent && notCurrent.message)
+      ok(!run.codes.includes('AUDIT_CORPUS_STALE'), 'A16: the older layer is not called stale -- it hashes to what the report says; it is simply not current', run.codes)
+    }
+
+    // A16b: no pointer at all. That is UNMEASURED and the message names the pointer file, not a guess.
+    {
+      const fx = layerFixture('a16b', ['mainline'])
+      const run = layerGate(fx.root, fx.report(fx.manifestFor(['mainline'])))
+      const unmeasured = run.reason('AUDIT_CORPUS_UNMEASURED')
+      ok(run.status === 7 && run.codes.includes('AUDIT_CORPUS_UNMEASURED'), 'A16b: a missing layer pointer is UNMEASURED, not an assumed match', { status: run.status, codes: run.codes })
+      ok(unmeasured !== null && String(unmeasured.message).includes('current-layer.json'), 'A16b: the reason names the missing pointer file current-layer.json', unmeasured && unmeasured.message)
+    }
+  }
 
   // The newest REAL report (when the audit has been run on this machine) must parse as attributable, not forged.
   if (existsSync(REAL_AUDIT)) {
@@ -522,6 +631,27 @@ console.log('--- 6b. R2: ledger proofs are RUN, not read (shape alone let A5 thr
   const missing = proofRun([{ id: 'no-proof', title: 'x', severity: 'P1', status: 'fixed', owner: 'lane' }, row('bad-cmd', 'python -c print(1)', 0), row('gone', 'node tests/does-not-exist.mjs', 0)])
   ok(missing.missing.length === 3, 'no proof, a non-node command and a missing file are each named', missing.missing)
   ok(missing.missing.some((m) => m.id === 'bad-cmd' && /node <tests\|scripts>/.test(m.why)), 'the command shape is constrained to node tests|scripts (no shell)', missing.missing)
+  // A proof that runs the audit suite must not move the real current-layer pointer: a closed row cannot change which
+  // corpus layer is current. The fixture writes the sim root it was handed, so the redirect is measured, not assumed.
+  const NL = String.fromCharCode(10)
+  const writerFor = (rel) => [
+    'import { writeFileSync } from "node:fs"',
+    'writeFileSync("' + rel + '", String(process.env.VMU_SIM_ROOT || "(unset)") + String.fromCharCode(10))',
+    'process.exit(0)',
+    '',
+  ].join(NL)
+  mkdirSync(join(root, 'scripts', 'sim', 'audit'), { recursive: true })
+  writeFileSync(join(root, 'scripts', 'sim', 'audit', 'all.mjs'), writerFor('scripts/sim/audit/proof-env.txt'))
+  writeFileSync(join(root, 'tests', 'plain.mjs'), writerFor('tests/plain-env.txt'))
+  const auditRow = { id: 'audit-proof', title: 'x', severity: 'P1', status: 'fixed', owner: 'lane', proof: { cmd: 'node scripts/sim/audit/all.mjs', expect: 0 } }
+  const auditProof = rr.runLedgerProofs([auditRow], { root })
+  const envOut = join(root, 'scripts', 'sim', 'audit', 'proof-env.txt')
+  const envSeen = existsSync(envOut) ? readFileSync(envOut, 'utf8').trim() : ''
+  ok(auditProof.ok === true && /release-ready-proofs-/.test(envSeen), 'a proof that runs audit/all is handed a scratch sim root, so it cannot move the real current-layer pointer', { envSeen, ran: auditProof.ran })
+  const plainProof = rr.runLedgerProofs([{ ...auditRow, id: 'plain-proof', proof: { cmd: 'node tests/plain.mjs', expect: 0 } }], { root })
+  const plainOut = join(root, 'tests', 'plain-env.txt')
+  const plainSeen = existsSync(plainOut) ? readFileSync(plainOut, 'utf8').trim() : ''
+  ok(plainProof.ok === true && plainSeen !== envSeen, 'the redirect is narrow: a non-audit proof keeps the inherited environment', { plainEnv: plainSeen, auditEnv: envSeen })
   const openRows = [{ id: 'open-p1', title: 'x', severity: 'P1', status: 'open', owner: 'lane', condition: 'y' }]
   ok(proofRun(openRows).ok === true, 'open rows need no proof (still open is not a fixed claim)')
   // The real ledger: one cheap row, run for real. The full sweep is a release-time job (lead: re-run proofs on a
@@ -552,20 +682,21 @@ console.log('--- 8. TB-2662 red team: every vector must be NAMED (refused for th
     try { results = JSON.parse(readFileSync(join(RT, 'run-all-latest.json'), 'utf8')) } catch { results = null }
     const vectors = results && Array.isArray(results.results) ? results.results : []
     const byStatus = (st) => vectors.filter((v) => v.status === st).map((v) => v.id)
-    ok(rt.status === 0, 'run-all exits 0 (exit 0 means all nine are named, not merely refused)', { status: rt.status, wall, tail: String(rt.stdout || '').slice(-300) })
-    // Sixteen rows for thirteen vectors: A5/A6 carry named sub-cases, A8 is split into A8a (fake numbers) and A8b
-    // (real numbers, hand-typed), and A10/A10extra/A11 cover the corpus-layer attacks. Counts are the harness's own
-    // verdicts, and each NEUTRALIZED row is explained: A8b has no yield by design (a forgery with true numbers costs
-    // the same measurement), A6-blank is dropped by flagValue before validation (an empty excuse records nothing).
+    ok(rt.status === 0, 'run-all exits 0 (exit 0 means every row is judged: named, or neutralized with evidence)', { status: rt.status, wall, tail: String(rt.stdout || '').slice(-300) })
+    // Counts are MEASURED, not pinned to a number that rots when a vector is added: every row must be judged (named or
+    // neutralized-with-evidence), and no row may be masked, leaked, half or errored. A14/A15/A16/A16b joined A1-A13b
+    // when the corpus-layer model became "the report names the layer and the pointer names the current one".
     const counts = results && results.counts ? results.counts : {}
-    ok(vectors.length === 16, 'the harness ran thirteen vectors (sixteen rows)', vectors.length)
-    ok(counts.named === 14 && counts.neutralized === 2, 'fourteen rows NAMED and two NEUTRALIZED (A8b and A6-blank dissolve by design)', counts)
+    const neutralizedRows = vectors.filter((v) => v.status === 'neutralized')
+    ok(vectors.length >= 16, 'the harness ran at least sixteen rows (A1-A16b)', vectors.length)
+    ok((counts.named || 0) + (counts.neutralized || 0) === vectors.length && (counts.named || 0) > 0, 'every row is NAMED or NEUTRALIZED -- no row is left unjudged', counts)
     ok((counts.masked || 0) === 0, 'no row is MASKED (a refusal for an unrelated reason would hide the tested judgement)', counts.masked)
     ok((counts.leaked || 0) === 0, 'no row is LEAKED (READY)', counts.leaked)
     ok((counts.half || 0) === 0 && (counts.error || 0) === 0, 'no row is HALF or errored', counts)
     ok(byStatus('masked').length === 0, 'no vector is MASKED (refused for an unrelated reason, so the attack was never tested)')
     ok(byStatus('leaked').length === 0, 'no vector is LEAKED (READY)')
     ok(byStatus('half').length === 0, 'no vector is HALF (refused, judgment fired, required detail missing)')
+    ok(neutralizedRows.every((v) => v.evidence !== null && v.evidence !== undefined && (typeof v.evidence === 'object' ? Object.keys(v.evidence).length > 0 : String(v.evidence).trim() !== '')), 'every NEUTRALIZED row carries evidence (a row that dissolves by design must say why)', neutralizedRows.map((v) => ({ id: v.id, evidence: v.evidence })))
     console.log('  (red team ' + wall + ' ms)')
   }
 }

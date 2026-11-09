@@ -236,11 +236,19 @@ fidelity 的 live 字段集是**外部数据**，而且只有**一份**：`D:/_t
 
 闸不只读散文：它解析报告末尾 ```json audit-report 块，并**自己重算**再比对。
 
+**语料层只有一个写者，闸只认当前层**：`all.mjs` 每次运行写自己的层并在结束时原子更新指针
+`<sim root>/current-layer.json`（内容 `{"dir","corpusId","auditId","generatedAt","pid","at"}`，`.tmp` + 同目录 `rename`）；
+闸读报告点名的 `corpus.dir` 与指针的 `dir`，两者不同 ⇒ `AUDIT_CORPUS_NOT_CURRENT`，指针缺失 ⇒ `AUDIT_CORPUS_UNMEASURED`。
+**可以诚实地声明旧层，但旧层不是当前层，放行闸只认当前层。**
+台账里若有 proof 本身要跑 `scripts/sim/audit/all.mjs`，闸给它一个临时 `VMU_SIM_ROOT`——关掉一条台账行不能顺便把指针挪走，
+否则「报告点名的层」会因为记账动作而不再是当前层。
+
 | code | 何时出现（今天真会开火的情形） |
 |---|---|
 | `AUDIT_UNVERIFIABLE` | 报告里没有可解析的 audit-report 块（手打 12 行报告就是这一类） |
 | `AUDIT_TREE_UNMEASURED` / `AUDIT_TREE_CHANGED` | 块里的 treeHash 算不出来 / 与当前工作树（逐文件 blob）不符 |
-| `AUDIT_CORPUS_UNMEASURED` / `AUDIT_CORPUS_STALE` | 闸找不到报告声称的语料目录 / 语料 sha 与块不符，或 `generatedAt` 早于语料最新 mtime |
+| `AUDIT_CORPUS_UNMEASURED` / `AUDIT_CORPUS_STALE` | 报告点名的层读不到（或 `corpusFiles` 清单缺失）／层重读后 sha 与清单不符、层里有多余语料目录，或 `generatedAt` 早于层内语料最新 mtime |
+| `AUDIT_CORPUS_NOT_CURRENT` | 报告自洽地描述了一个**旧层**，而 `<sim root>/current-layer.json` 指向新层：可以诚实地声明旧层，但旧层不是当前层 |
 | `AUDIT_ID_MISMATCH` | `auditId` 不等于 `deriveAuditId(corpusId, treeHash)`（伪自证块在此关掉） |
 | `AUDIT_CHECKS_ABSENT` / `AUDIT_VERDICT_CONTRADICTION` | 块里没有 checks / 散文 PASS 与块内 verdict+failures 矛盾 |
 | `AUDIT_FIDELITY_RECOMPUTE_UNMEASURED` / `AUDIT_FIDELITY_MISMATCH` | 闸没能重算 fidelity / 重算出的 liveToolsWithFieldList、compared、gaps 与块不符 |
@@ -252,7 +260,9 @@ fidelity 的 live 字段集是**外部数据**，而且只有**一份**：`D:/_t
 | `SIM_GATE_NOT_RUN` / `SIM_GATE_FAILED` | 门禁没现跑 / 现跑非 0 |
 
 - 红队夹具与判据在 `D:/_tmp/gate-redteam/`（TB-2662，audit-r14 所有）：`node run-all.mjs` 会重建夹具再逐条跑，
-  `exit 0` 的语义是 9/9 named。`tests/release-ready.test.mjs` §8 直接调它并断言 12 行全部 named（A5/A6 各带子用例）。
-- 实测（2026-11-09 18:5x，gate `release-ready.mjs` 修复后）：`9/9 NAMED (named 9 / half 0 / masked 0 / leaked 0)`、exit 0。
+  `exit 0` 的语义是**每一行都被判过**（named 或 neutralized-with-evidence），不是某个固定行数——夹具随 corpus-layer
+  模型从 A1–A13b 扩到 A1–A16b。`tests/release-ready.test.mjs` §8 直接调它，断言「行数 ≥16、named+neutralized=行数、
+  masked/leaked/half/error 全 0、每条 neutralized 带 evidence」；具体 named 数以该次运行为准，不写死。
+- 实测（2026-11-10 01:5x，A13b/A16 指针判据落地后）：`22 rows: 20 named, 2 neutralized (A8b, A6-blank), 0 masked, 0 half, 0 leaked`、exit 0。
 - R8 的 exit 语义用真用例钉住：往 baseline 注入一条不成立的声明 ⇒ `audit/all` 正文 p0 非空 ⇒ **exit 1**
   （`tests/sim-fidelity-baseline.test.mjs` §7 同时断言 `checks.failures === p0.length`）。

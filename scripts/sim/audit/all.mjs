@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // scripts/sim/audit/all.mjs — the ONE entry point for "simulate faithfully, then prove the simulation covers what it claims".
 //
-//   node scripts/sim/audit/all.mjs                  # all scenarios -> D:/_tmp/sim/corpus-<name>, then four checks
+//   node scripts/sim/audit/all.mjs                  # all scenarios -> D:/_tmp/sim/run-<stamp>-<pid>/corpus-<name>
 //   node scripts/sim/audit/all.mjs --strict         # a missing coverage map is a FAILURE, not a warning
 //   node scripts/sim/audit/all.mjs --only mainline  # one scenario
 //   node scripts/sim/audit/all.mjs --keep           # keep scenario workspaces for inspection
+//   node scripts/sim/audit/all.mjs --out <dir>      # pin the layer (a test or a manual run); the pointer moves there
 //
 // WHY THIS EXISTS (RUN 240). The user's requirement is not "run some scenarios": it is
 //   (a) COVERAGE that cannot silently shrink — every one of the 93 rules in 宏观层面v5r运行规则.md, and every tool
@@ -17,17 +18,18 @@
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { REPO } from '../harness.mjs'
 import { audit as auditReceipts } from './receipts.mjs'
 // ★ TB-2648 §7 MIXED-GEN — the audit's numbers are only about the CODE if every corpus it reads is one generation: a
 // receipts file from run A next to a pairs file from run B would make coverage and fidelity describe two trees at once.
 import { checkCorpus } from '../corpus-stamp.mjs'
 // ONE RULER: the enumeration and the digest of "which receipts did this audit measure" are shared with the release gate
-// (release-ready.mjs). Two loops that looked identical disagreed about the layer and refused a clean tree with
-// AUDIT_CORPUS_STALE; the gate re-reads the file list this report names, hashed by this same implementation.
-import { corpusDigestOf, corpusFilesIn, newestCorpusDir } from './corpus-files.mjs'
+// (release-ready.mjs). The report NAMES the layer it measured (`corpus.dir`) and this run owns that layer; the gate
+// re-reads exactly it and refuses a report that names an older layer (audit-r14 A13b: a layer guessed by mtime plus
+// membership guessed by mtime let a report omit one corpus dir and still be READY).
+import { CURRENT_LAYER_FILE, DEFAULT_SIM_ROOT, corpusDigestOf, corpusFilesIn } from './corpus-files.mjs'
 import { treeHashOf } from './release-ready.mjs'
 import { RICH_REAL, loadRich, loadSimFields, withoutGlossary, readBaseline, measureFidelity } from './fidelity-measure.mjs'
 
@@ -36,8 +38,15 @@ const flag = (n) => argv.includes('--' + n)
 const opt = (n, d) => { const eq = argv.find((a) => a.startsWith('--' + n + '=')); if (eq !== undefined) return eq.slice(('--' + n + '=').length); const i = argv.indexOf('--' + n); return i === -1 ? d : argv[i + 1] }
 const STRICT = flag('strict')
 const KEEP = flag('keep')
-const BASE = opt('out', 'D:/_tmp/sim')
 const ONLY = opt('only', null)
+// Every run writes its OWN layer: a directory that holds only this run's corpus-<scenario> output. The report names it
+// and the gate re-reads only it, so "which files did this audit measure" is answered by the writer, not guessed from
+// mtimes. --out pins the layer for tests/manual runs; without it the layer is unique per run.
+const SIM_ROOT = process.env.VMU_SIM_ROOT || DEFAULT_SIM_ROOT
+const runStamp = new Date().toISOString().replace(/[:.]/g, '-')
+const PINNED_OUT = opt('out', null)
+const BASE = PINNED_OUT === null ? join(SIM_ROOT, 'run-' + runStamp + '-' + process.pid) : resolve(PINNED_OUT)
+const POINTER_PATH = join(dirname(BASE), CURRENT_LAYER_FILE)
 
 const SCEN_DIR = join(REPO, 'scripts', 'sim', 'scenarios')
 const names = readdirSync(SCEN_DIR).filter((n) => n.endsWith('.mjs')).map((n) => n.replace(/\.mjs$/, '')).sort()
@@ -237,17 +246,20 @@ for (const w of warnings) say('  WARN ' + w)
 // grow while the porcelain sha stayed identical), the corpus it measured, and every P0-class finding, each of which
 // must have a row in docs/acceptance/sim-audit-open-items.json.
 const receiptsTotal = scenarios.reduce((n, s) => n + (corpora[s].receipts || []).length, 0)
-// The corpus this report measured, named file by file: the release gate re-reads THESE files, so "the corpus" is a
-// list a reader can re-hash, not a number in a sentence. The list comes from the ONE enumeration implementation
-// (corpus-files.mjs), restricted to the scenarios this run actually executed: a foreign `corpus-*` directory that
-// already lived in BASE (an older reference run, a manual --out) predates this audit and is not part of it, and the
-// gate applies the same rule — it counts as stale only a corpus dir whose receipts appeared AFTER generatedAt.
-const measuredCorpus = corpusFilesIn(BASE).filter((f) => scenarios.includes(f.scenario))
+// The corpus this report measured, named file by file: the release gate re-reads THESE files FROM THE LAYER THIS RUN
+// OWNS, so "the corpus" is a list a reader can re-hash, not a number in a sentence. The list is every corpus dir in the
+// layer -- not "every scenario I meant to run": a layer that holds a corpus dir this run did not produce has been
+// written by somebody else, and that must be a named failure here rather than an unlisted extra the gate discovers.
+const layerFiles = corpusFilesIn(BASE)
+const measuredCorpus = layerFiles
+const foreignLayers = layerFiles.filter((f) => !scenarios.includes(f.scenario))
 const corpusFileList = measuredCorpus.map((f) => ({ scenario: f.scenario, path: f.receiptsPath, bytes: f.bytes, sha256: f.sha256 }))
 const corpusId = corpusDigestOf(measuredCorpus)
-const layer = newestCorpusDir(BASE)
-say('- corpus layer the gate will re-read: `' + String(layer.dir || '(none)') + '` — ' + String(layer.rule))
+say('- corpus layer (this run owns it; the report names it): `' + BASE + '`')
 say('- corpus files: ' + corpusFileList.length + ' receipt file(s), ' + corpusFileList.reduce((n, f) => n + (f.bytes || 0), 0) + ' byte(s), id ' + corpusId.slice(0, 20))
+if (foreignLayers.length) {
+  failures.push('corpus layer ' + BASE + ' holds corpus dir(s) this run did not produce: ' + foreignLayers.map((f) => f.scenario).slice(0, 5).join(', ') + ' — a layer is owned by one run, and a report cannot vouch for a file its run never wrote')
+}
 if (measuredCorpus.length !== scenarios.length) {
   failures.push('corpus file list: ' + measuredCorpus.length + ' of ' + scenarios.length + ' scenario(s) produced a readable receipts.jsonl — the report would name a corpus it did not measure')
 }
@@ -263,11 +275,28 @@ const auditManifest = {
   auditId: derivedAuditId,
   generatedAt: new Date().toISOString(),
   tree: { ok: tree.ok, head: tree.head, hash: tree.hash, changed: tree.changed },
-  corpus: { scenarios: scenarios.length, receipts: receiptsTotal, corpusId, dir: BASE, layerRule: layer.rule, corpusFiles: corpusFileList },
+  corpus: { scenarios: scenarios.length, receipts: receiptsTotal, corpusId, dir: BASE, corpusFiles: corpusFileList },
   fidelity: fidelitySummary,
   checks: { verdict: failures.length === 0 ? 'PASS' : 'FAIL', failures: failures.length, warnings: warnings.length },
   p0,
 }
+// SINGLE-WRITER POINTER: this layer is now the current one. Written as tmp + rename in the SAME directory because a
+// rename is atomic there -- a truncated pointer would make the gate unable to tell which layer is current, and "no
+// pointer" must stay distinguishable from "an older pointer". The pointer is DATA on the sim root (never in the repo):
+// a report may honestly describe an older layer, but the release gate only accepts the current one.
+const pointer = {
+  dir: BASE,
+  corpusId,
+  auditId: derivedAuditId,
+  generatedAt: auditManifest.generatedAt,
+  pid: process.pid,
+  at: new Date().toISOString(),
+}
+mkdirSync(dirname(POINTER_PATH), { recursive: true })
+const pointerTmp = POINTER_PATH + '.' + process.pid + '.tmp'
+writeFileSync(pointerTmp, JSON.stringify(pointer, null, 2) + String.fromCharCode(10))
+renameSync(pointerTmp, POINTER_PATH)
+say('- current layer pointer: `' + POINTER_PATH + '` -> ' + BASE)
 say('')
 say('```json audit-report')
 say(JSON.stringify(auditManifest, null, 2))
