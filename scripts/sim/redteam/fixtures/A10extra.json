@@ -1,0 +1,13 @@
+{
+  "id": "A10extra",
+  "attack": "a corpus dir appears in the named layer after the report was written",
+  "why": "an extra corpus directory is a corpus the report did not measure; it must be named, not ignored by mtime",
+  "wouldBeWrongIf": "READY (the old mtime filter ignored it), or a message that does not name appeared-after-audit",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_STALE",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "extra dirs=\\[appeared-after-audit\\]"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "A16",
+  "attack": "an honest report about an OLD layer while the pointer names a NEW one",
+  "why": "a report may honestly describe an older layer; the gate accepts only the layer current-layer.json names",
+  "wouldBeWrongIf": "READY (the A16 rehearsal: a self-consistent old-layer report passed), or STALE -- an old layer is not a changed one",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_NOT_CURRENT",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectCodesAbsent": [
+      "AUDIT_CORPUS_STALE"
+    ],
+    "expectMessagePattern": "current layer"
+  }
+}

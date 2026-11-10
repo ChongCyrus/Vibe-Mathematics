@@ -124,8 +124,17 @@ try {
     '正：重复 ack 不改变交付状态（ack 前后 status 快照逐字相等：boxes/pending/acked/seq/notice）')
   ok(String(r2.message || '').includes('already settled') && String(r2.message || '').includes(mailId),
     '正：message 说清「这一行已被谁在何时结算」，并点名那一行', r2.message)
-  ok(String(r2.hint || '').includes('not a missing mail'),
+  // The hint moved to a copyable Chinese sentence (TB-2704/2708): pin the FACTS it must carry, not the old wording.
+  ok(String(r2.hint || '').includes('这不是丢件'),
     '正：hint 明确它「不是一封不存在的信」（旧口径把两者混为一谈）', r2.hint)
+  ok(String(r2.hint || '').includes('notice.acked') && String(r2.hint || '').includes('{action:"status"}'),
+    '正：hint 给的可照抄事实之一 — status 面的 notice.acked 才是「已结算」的读数', r2.hint)
+  ok(String(r2.hint || '').includes('{action:"pending"') && String(r2.hint || '').includes('{action:"list"'),
+    '正：hint 给的可照抄事实之二 — 仍在箱中的行用 pending / list 取 id 再重试', r2.hint)
+  ok(String(r2.hint || '').includes('ids 是一次性的'),
+    '正：hint 明说 ack 的 ids 是一次性的（第二次拿同一个 id 必被拒的原因）', r2.hint)
+  ok(!String(r2.hint || '').includes('not a missing mail'),
+    '反：旧的英文措辞不再出现（新句必须自己承担纠正，而不是靠旧字面量）', r2.hint)
 
   // ── 2. 真的不存在 vs 已结算：两种拒绝都带 facts，且可区分 ──────────────────────────────────────────────────
   console.log('=== 2. 真不存在仍是 ACK_UNKNOWN，且同样走 facts 通道 ===')

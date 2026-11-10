@@ -375,7 +375,7 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   const strict = createRecords({ clock: c.clock, settings: { 'vmu.records.requireSettledRecords': true } })
   const e2 = throwsNamed(() => strict.put({ track: 'progress', kind: 'progress', title: 'x', body: 'y' }), 'VMU_STATE', 'requireSettledRecords +: an unsettled write is refused')
   ok(!!e2 && /requireSettledRecords/.test(String(e2.hint)), 'requireSettledRecords +: the refusal names the key')
-  ok(strict.put({ track: 'progress', kind: 'progress', title: 'x', body: 'y', settled: true }).ok === true, 'requireSettledRecords: a settled write passes')
+  ok(strict.put({ track: 'progress', kind: 'progress', title: 'x', body: 'y', finalAck: true }).ok === true, 'requireSettledRecords: a settled write passes')
   const loose = createRecords({ clock: c.clock, settings: S({ 'vmu.records.requireSettledRecords': false }) })
   ok(loose.put({ track: 'progress', kind: 'progress', title: 'x', body: 'y' }).ok === true, 'requireSettledRecords −: with the knob off the write passes')
   // pointerPropagation

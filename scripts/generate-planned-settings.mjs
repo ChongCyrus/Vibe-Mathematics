@@ -50,6 +50,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -339,9 +340,9 @@ export function keysOf(text) {
 }
 
 async function main() {
-  const argv = process.argv.slice(2)
-  const write = argv.includes('--write')
-  const asJson = argv.includes('--json')
+  const MODE = modeFrom(process.argv, { script: 'generate-planned-settings.mjs', allow: ['--json'] })
+  const write = MODE === 'write'
+  const asJson = process.argv.includes('--json')
   const volumes = docVolumes()
   const core = await coreKeys()
   const mirrors = mirrorVolumes(volumes, core)
@@ -383,7 +384,7 @@ async function main() {
     console.log('planned settings: REWRITTEN from the docs (' + defs.length + ' planned keys, ' + next.split('\n').length + ' lines)')
     process.exit(0)
   }
-  // --check (the default): print the difference, then fail.
+  // No flag = dry run (the same difference, exit 0); --check = the same report as a failure.
   const was = new Set(keysOf(prev))
   const now = new Set(keysOf(next))
   const added = [...now].filter((k) => !was.has(k))
@@ -391,8 +392,8 @@ async function main() {
   console.error('planned settings: STALE — settings/planned.js is not what the docs yield (' + defs.length + ' planned keys)')
   if (added.length) console.error('  missing from planned.js (' + added.length + '): ' + added.slice(0, 8).join(', ') + (added.length > 8 ? ' …' : ''))
   if (removed.length) console.error('  no longer declared in the docs (' + removed.length + '): ' + removed.slice(0, 8).join(', ') + (removed.length > 8 ? ' …' : ''))
-  console.error('  run: node scripts/generate-planned-settings.mjs --write')
-  process.exit(1)
+  console.error('  run: node scripts/generate-planned-settings.mjs --write' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+  process.exit(exitCodeFor(MODE, true))
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) await main()

@@ -18,6 +18,7 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
+import { modeFrom } from './_lib/generator-cli.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const KERNEL = join(HERE, '..', 'vibe-math-vmu', 'kernel')
@@ -382,6 +383,9 @@ const main = async () => {
   const block = [BEGIN, '<!-- 本块由 `scripts/generate-zero-mechanism-matrix.mjs` 生成（生成式 ✓，勿手写 ✗） -->', '', table, '', last, END].join('\n')
 
   const args = process.argv.slice(2)
+  // MODE CONTRACT (scripts/_lib/generator-cli.mjs): no flag = dry run (report only), --check = drift is a failure,
+  // --write rewrites the block. --selftest stays an extra switch (it never reaches the write path).
+  const MODE = modeFrom(process.argv, { script: 'generate-zero-mechanism-matrix.mjs', allow: ['--selftest'] })
   if (args.includes('--selftest')) {
     // **自证（不写文件 ✓）**：① 期望改错 ⇒ **必红** ✗✓；② `EXPECT_UNDECIDED` ⇒ **不红但计数** ✓
     const real = { ...EXPECT }
@@ -468,20 +472,23 @@ const main = async () => {
     }
   }
 
-  if (args.includes('--write')) {
+  if (MODE === 'write') {
     const doc = readFileSync(DOC, 'utf8')
     const next = doc.includes(BEGIN) ? doc.replace(new RegExp(BEGIN + '[\\s\\S]*?' + END), block) : doc.trimEnd() + '\n\n' + block + '\n'
     writeFileSync(DOC, next)
     console.log('written: ' + mism.length + ' mismatches, ' + unregistered + ' unregistered')
-  } else if (args.includes('--check')) {
+  } else {
     const doc = readFileSync(DOC, 'utf8')
     const m = doc.match(new RegExp(BEGIN + '([\\s\\S]*?)' + END))
-    if (!m) { console.log('FAIL generated block not found in 11-gates-and-development.md'); process.exit(1) }
-    const onDisk = (BEGIN + m[1] + END).trim()
-    if (onDisk !== block.trim()) { console.log('FAIL matrix drifted (run without --write/--check to see, then --write)'); process.exit(1) }
-    console.log(last)
-  } else {
-    console.log(table); console.log(last)
+    const drifted = !m || (BEGIN + m[1] + END).trim() !== block.trim()
+    if (MODE === 'check') {
+      if (!m) { console.log('FAIL generated block not found in 11-gates-and-development.md'); process.exit(1) }
+      if (drifted) { console.log('FAIL matrix drifted (run with --write to refresh it)'); process.exit(1) }
+      console.log(last)
+    } else {
+      console.log(table); console.log(last)
+      if (drifted) console.log('DRIFT: the generated block is not what the modules yield — run with --write (dry run: nothing written)')
+    }
   }
   for (const x of mism) console.log('FINDING ' + x)
   process.exit(mism.length > 0 ? 1 : 0)

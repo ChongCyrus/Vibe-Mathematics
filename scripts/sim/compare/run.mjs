@@ -930,11 +930,15 @@ export function headShortSha(repo = REPO) {
 /**
  * Which real rows the parity gate is allowed to use. A row without a usable build sha cannot be attributed to a
  * checkout, so by default (--only-build HEAD) only rows stamped with the current HEAD are compared and the
- * unknown-build rows are counted as excluded. The stamp comes from the driver's sealed `run-metadata` event at the
- * journal head (TB-2641); journals written before it fall back to a `BUILD REV:` text grep, and rows labelled
- * `working-tree`/dirty count as unknown because that label names no checkout. If the corpus carries no usable stamp
- * at all, the filter falls back to the unknown rows and says so in `fallback`, so the gate measures instead of
- * silently comparing an empty corpus.
+ * unknown-build rows are counted as excluded. The stamp comes from the sealed `run-metadata` event at the journal
+ * head (TB-2641), but TB-2693 measured the ORDER: the driver prepends that frame AFTER the server is stopped, so a
+ * session that is still running cannot read it (run75's first frame was `{"type":"session",…}` and the run-time
+ * count of run-metadata frames was 0). The live build proof is the driver's `TARBALL build=` line plus the
+ * `run-metadata.json` file written before the server starts; the journal frame is a post-run reading only and must
+ * never be treated as a condition the running session can satisfy. Journals written before the frame existed fall
+ * back to a `BUILD REV:` text grep, and rows labelled `working-tree`/dirty count as unknown because that label
+ * names no checkout. If the corpus carries no usable stamp at all, the filter falls back to the unknown rows and
+ * says so in `fallback`, so the gate measures instead of silently comparing an empty corpus.
  * Modes: "any" (no filter), "null"/"unknown" (only rows without a usable sha), a sha prefix (only stamped rows).
  */
 export function filterByBuild(rows, requested, headSha = null) {

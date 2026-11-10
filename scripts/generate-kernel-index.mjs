@@ -4,15 +4,18 @@
 // this session keeps finding stale. The modules already carry good headers - the header of audit.js cites its spec volumes,
 // budget.js names its quota classes - so the index is derived from them and can be checked rather than trusted.
 //
-//   node scripts/generate-kernel-index.mjs --check   (default: report)
+//   node scripts/generate-kernel-index.mjs         (no flag: dry run, report only)
+//   node scripts/generate-kernel-index.mjs --check   (same report, exit 1 when stale)
 //   node scripts/generate-kernel-index.mjs --write
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const KERNEL = join(REPO, 'vibe-math-vmu', 'kernel')
 const DOC = join(REPO, 'vibe-math-vmu', 'docs', '02-architecture.md')
+const MODE = modeFrom(process.argv, { script: 'generate-kernel-index.mjs' })
 const BEGIN = '<!-- BEGIN GENERATED: kernel-index -->'
 const END = '<!-- END GENERATED: kernel-index -->'
 
@@ -55,12 +58,24 @@ const doc = readFileSync(DOC, 'utf8')
 const a = doc.indexOf(BEGIN)
 const b = doc.indexOf(END)
 const next = a >= 0 && b >= 0 ? doc.slice(0, a) + lines + doc.slice(b + END.length) : doc.replace(/\n*$/, '\n') + '\n' + lines + '\n'
-const check = !process.argv.includes('--write')
-if (check) {
-  if (a < 0 || b < 0) { console.error('kernel-index: the generated block is MISSING from docs/02'); process.exit(1) }
-  if (doc !== next) { console.error('kernel-index: docs/02 is STALE - run node scripts/generate-kernel-index.mjs --write'); process.exit(1) }
-  console.log('kernel-index: docs/02 matches the kernel (' + rows.length + ' modules, ' + headerless.length + ' headerless)')
-} else {
+const SUMMARY = 'kernel-index: docs/02 matches the kernel (' + rows.length + ' modules, ' + headerless.length + ' headerless)'
+if (MODE === 'write') {
   writeFileSync(DOC, next)
   console.log('kernel-index: written (' + rows.length + ' modules, ' + headerless.length + ' headerless)')
+} else {
+  // NAME the modules that differ, so a stale index is a finding a reader can act on instead of a message that only
+  // says "STALE". The old message left the reader to diff a generated table by eye.
+  const inIndex = a >= 0 && b >= 0 ? new Set([...doc.slice(a, b).matchAll(/^\| `([^`]+)` \|/gm)].map((m) => m[1])) : new Set()
+  const addedMods = mods.filter((m) => !inIndex.has(m))
+  const goneMods = [...inIndex].filter((m) => !mods.includes(m))
+  if (a < 0 || b < 0) { console.error('kernel-index: the generated block is MISSING from docs/02'); process.exit(1) }
+  if (doc !== next) {
+    console.error('kernel-index: docs/02 is STALE - run node scripts/generate-kernel-index.mjs --write' + (MODE === 'read' ? ' (dry run: nothing written)' : '') +
+      (addedMods.length ? ' | not in the index: ' + addedMods.join(', ') : '') +
+      (goneMods.length ? ' | named but gone: ' + goneMods.join(', ') : '') +
+      (!addedMods.length && !goneMods.length ? ' | a header or export list changed' : ''))
+  } else {
+    console.log(SUMMARY)
+  }
+  process.exit(exitCodeFor(MODE, doc !== next))
 }

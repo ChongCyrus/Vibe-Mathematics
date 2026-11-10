@@ -99,6 +99,28 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       void exec
       if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
       const op = String(args.op || 'status')
+      // ★★★ TASK-173 / TB-2690 (F75-12): THE DELIVERY MODE HAS A PER-CALL DOOR ON THIS FACE. `vmu.turn.deliverMode` is
+      // resolved once at construction (`host-deliver.js`), and a config-declared mode shadows it - so the 75th live run's
+      // fourteen member turns were all activation/continuation and the caller route (the member's prompt comes back to the
+      // calling session, which plays the turn) was unreachable. `deliver_mode` overrides THAT CALL only: it is threaded onto
+      // the turn, changes no configuration, persists nothing, and the receipt reports `deliveryPath` /
+      // `deliverModeSource` (arg|config|setting) / `deliverModeReason`. An unknown value is refused BY NAME, because a typo
+      // that silently fell back to the deployment default would look exactly like "the override worked".
+      const deliverModeGiven = Object.prototype.hasOwnProperty.call(args, 'deliver_mode') || Object.prototype.hasOwnProperty.call(args, 'deliverMode')
+      const deliverModeRaw = Object.prototype.hasOwnProperty.call(args, 'deliver_mode') ? args.deliver_mode : args.deliverMode
+      let deliverModeArg = null
+      if (deliverModeGiven) {
+        const v = deliverModeRaw === null || deliverModeRaw === undefined ? '' : String(deliverModeRaw).trim()
+        if (v !== 'caller' && v !== 'subagents') {
+          return refused('VMU_INVALID_ARGUMENT', 'unknown deliver_mode: ' + JSON.stringify(deliverModeRaw === undefined ? null : deliverModeRaw),
+            'deliver_mode is a PER-CALL route: "caller" - the CALLING session plays this member turn and the reply comes back on the next call; "subagents" - the host runs the member turn. Omit the argument to use the deployment default (the receipt names it in deliverModeSource). Known values: caller | subagents')
+        }
+        if (op !== 'step' && op !== 'drive') {
+          return refused('VMU_INVALID_ARGUMENT', 'deliver_mode applies to op:"step" and op:"drive" only; this call is op:"' + op + '"',
+            'the delivery mode decides how THIS turn is played, so it is only meaningful where a turn is dispatched. Call op:"step" or op:"drive" with deliver_mode, or omit it')
+        }
+        deliverModeArg = v
+      }
       // ★★★ ROUND 45 (measured on a real machine): THE CONTRACT PROMISED THE ROSTER INFERENCE AND THE CODE DID NOT DO IT.
       // This parameter's own description says "缺省时由内核名册推断" - when omitted, inferred from the KERNEL ROSTER -
       // but the fallback was `[]`, so a caller that (reasonably) omitted `members` got `stopped:'no-members'` every
@@ -258,7 +280,42 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // session skip?" is in the receipt itself instead of one page down under `status`. Same value the kernel derived
     // from the SAME rows `turns` carries - not a second tally; null only for a kernel too old to have the reading.
     const skippedTotals = status.skippedTotals === undefined ? null : status.skippedTotals
+    // ★★★ TB-2694 / F75-06 (MEASURED on the 75th live run): a member calling THIS op from its OWN session read
+    // `turns:0 / turnReceipts:[]` — that session mounts a SECOND kernel over the same root, so the list above cannot
+    // describe it. The durable `turns` row is the only cross-instance fact: settlement projects `status/codes/skipped/
+    // emptyReply` into it (kernel/turn/index.js#noteSettledTurn) and `member_sessions` maps a child session to its
+    // member. `lastTurn` is READ-ONLY: step/abandon/prompt stay refused for a member by `memberAllowed` above.
+    const callerAgentId = (() => { try { return String((exec && exec.agent && exec.agent.id) || '') } catch (e) { return '' } })()
+    const memberRead = callerAgentId !== '' && !callerAgentId.startsWith('session-')
+    let lastTurn = null
+    if (memberRead) {
+      let memberId = null
+      try { if (typeof kernel.memberBySession === 'function') memberId = kernel.memberBySession(callerAgentId) } catch (e) { memberId = null }
+      if (!memberId && kernel.turn && typeof kernel.turn.memberBySession === 'function') {
+        try { memberId = kernel.turn.memberBySession(callerAgentId) } catch (e) { memberId = null }
+      }
+      if (!memberId && kernel.store && typeof kernel.store.read === 'function') {
+        try {
+          const pairs = kernel.store.read('member_sessions')
+          const hit = Array.isArray(pairs) ? pairs.filter((p) => p && String(p.session) === callerAgentId)[0] : null
+          memberId = hit && typeof hit.member === 'string' ? hit.member : null
+        } catch (e) { memberId = null }
+      }
+      if (memberId && kernel.store && typeof kernel.store.read === 'function') {
+        try {
+          const rows = kernel.store.read('turns')
+          const row = Array.isArray(rows) ? rows.filter((r) => r && String(r.member) === String(memberId)).slice(-1)[0] : null
+          if (row) lastTurn = { id: typeof row.turn === 'string' ? row.turn : null,
+            codes: Array.isArray(row.codes) ? row.codes.slice() : [],
+            skipped: Number.isFinite(Number(row.skipped)) ? Number(row.skipped) : 0,
+            emptyReply: typeof row.emptyReply === 'boolean' ? row.emptyReply : null,
+            status: typeof row.status === 'string' ? row.status : null,
+            at: typeof row.at === 'string' ? row.at : null }
+        } catch (e) { lastTurn = null }
+      }
+    }
     return { ok: true, status, turns: perTurn, skippedTotals,
+      ...(memberRead ? { lastTurn, lastTurnMeans: 'READ-ONLY durable projection of YOUR OWN last turn (turns fold + member_sessions): id = turn id, codes = refusal codes recorded at settlement, skipped = fields kept but not executed, emptyReply = the loop settled with no usable reply, status = how it ended, at = when it opened. `turns` above is THIS kernel instance\'s memory and is empty in your own session — this line is the cross-instance answer. You cannot step/abandon/prompt from here.' } : {}),
       turnsMeans: 'HOST BOOKKEEPING of each turn the loop settled (or still has open), NOT the member\'s intent: executed = reply fields dispatched and the face.op channel, skipped = fields kept but not executed (each with a code), writes = tool writes with their record ids, codes = refusal codes, unavailable = what this kernel CANNOT see (e.g. tool calls a member made in its own child session). `openedBy` says which door opened the turn: drive (the caller\'s step/drive), activation (the background pump), wait (a meeting wake), null (unknown/legacy). Bounded to the last rows; an empty list means no turn settled in THIS kernel session, not that nothing happened.',
       ...(status.turnReceiptsMeans === undefined ? {} : { turnsUnavailableMeans: status.turnReceiptsMeans }) }
   }
@@ -386,7 +443,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // does (it keeps only code/message/hint). A refusal that hides the work in flight is worse than no refusal.
           let stepped
           try {
-            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg })
+            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg, deliverMode: deliverModeArg })
           } catch (e) {
             const parked = parkedRefusal(e)
             if (parked) return parked
@@ -451,7 +508,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg }))) }
+        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg, deliverMode: deliverModeArg }))) }
         catch (e) { const parked = parkedRefusal(e); if (parked) return parked; throw e }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
@@ -483,7 +540,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         const out = kernel.turn.abandon({ turn: wantTurn, why: args.why })
         return Object.assign({ action: 'abandon' }, out)
       }
-      if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg }))
+      if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg, deliverMode: deliverModeArg }))
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: status, prompt, reply, step, drive, abandon, reopen-closure')
     }
     // ★ PHASE 8 / round 36: SERIALIZE the tool calls. Root may issue several step calls in ONE assistant message (parallel
@@ -556,6 +613,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）。★ 一轮只推 ONE 个成员：drive{rounds:N} 最多推动 N 个成员，不是「N 个成员各跑一轮」——推不动时回执 notAdvanced 说明为什么停下'),
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
         opened_by: param('string', '★ 仅 step／drive：这一轮是哪扇门开的——wait＝会议唤醒后由所办结算（省略＝drive＝调用方直接开的）；op:"status" 的 turns[].openedBy 用它记账'),
+        deliver_mode: param('string', '★ 仅 step／drive：本次投递模式，只影响这一次调用、不写设置也不持久化——caller＝把成员提示词交回给调用方自己演（所办代跑；回执 deliveryPath:"caller"、memberWorkShare.officeRelayedActs 会记它），subagents＝交给宿主 Agent 跑；省略＝用部署默认，回执 deliverModeSource（arg|config|setting）与 deliverModeReason 说明实际走了哪条、为什么。非法值具名拒'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
         reply_for: param('string', '★ 这个回复属于哪个成员（它的提示词是上一次 step 交回的那个）；不传 = 沿用旧行为'),
         meeting: param('string', '★ op:"step"／op:"drive"／op:"reply" 用：这一轮属于哪场会议。step/drive 时它被记在回合上（回执 awaiting:true 且 memberPrompt.meeting 给出），成员交回的 say 因此被记成「该成员本人」在该会的发言（回执 executed[].onBehalf），不再以 no-meeting-bound 被跳过；reply 时它绑定这份汇报，与停着的回合所属会议不一致会被具名拒 VMU_TURN_REPLY_CONFLICT，省略则继承停着那回合的会议。不传 = 不绑定（say 只进 notes 并在回执说明原因）'),

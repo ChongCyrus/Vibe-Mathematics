@@ -1,0 +1,13 @@
+{
+  "id": "A15",
+  "attack": "a corpus dir appears in the named layer; the report's list and digest are both true for the older set",
+  "why": "a corpus dir that is not in the list was never measured; the gate must name it",
+  "wouldBeWrongIf": "READY, or a message that prints an equal digest pair instead of naming the extra dir",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_STALE",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "extra dirs=\\[appeared-in-the-named-layer\\]"
+  }
+}

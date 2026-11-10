@@ -16,7 +16,9 @@
 // 不复制任何被测逻辑。
 //
 // Run: node tests/vmu-run248-notice-delivery.test.mjs   (targeted only)
+import { existsSync, mkdirSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -65,7 +67,11 @@ const call = async (b, name, args = {}) => {
   try { return { raw, parsed: JSON.parse(raw) } } catch (e) { return { raw, parsed: undefined } }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run248-notice-'))
+// TB-2695: a proof must build its own evidence on any machine. D:/_tmp is only a fast local disk when it exists;
+// otherwise use the OS temp dir. VMU_TEST_TMP_ROOT still overrides both (same fallback as tests/repo-hygiene.test.mjs:23).
+const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+mkdirSync(TMP_ROOT, { recursive: true })
+const root = await mkdtemp(join(TMP_ROOT, 'vmu-run248-notice-'))
 try {
   const b = await boot(root, { packs: ['v5r'] })
   const kernel = b.kernel

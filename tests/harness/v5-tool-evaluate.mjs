@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import os from 'node:os'
 import { createHash } from 'node:crypto'
 import { createHost } from '../helpers/v5-tool-host.mjs'
 // ★ G4: the v5 preset is archived; the digest is computed from the seam-resolved file.
@@ -10,7 +11,10 @@ const repository = fileURLToPath(new URL('../../', import.meta.url))
 const directory = path.resolve(process.env.V5_EVAL_DIR || path.join(repository, '..', '.v5-tool-harness'))
 const home = path.join(directory, 'home'), profile = path.join(home, 'profiles', 'v5-tools')
 fs.mkdirSync(profile, { recursive: true })
-const exe = 'C:/Users/Cai Xingjian/AppData/Local/Programs/DeepSeek Harness/DeepSeek Harness.exe'
+// Derived from this machine's profile, not written down: the probe always runs on the machine that hosts the
+// desktop build (override with DSH_DESKTOP_EXE when it lives elsewhere).
+const exe = process.env.DSH_DESKTOP_EXE || path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe')
+const credentialsPath = (process.env.DSH_CREDENTIALS || path.join(os.homedir(), '.dsh', '.credentials.yaml')).replaceAll('\\', '/')
 const cli = path.join(path.dirname(exe), 'resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js')
 // An empty isolated elan home prevents a user shim from downloading a compiler.
 const env = { ...process.env, DSH_HOME: home, ELAN_HOME: path.join(directory, 'empty-elan'), ELECTRON_RUN_AS_NODE: '1', DSH_TELEMETRY_DISABLED: '1' }
@@ -30,7 +34,7 @@ fs.writeFileSync(path.join(profile, 'cordis.patch.yml'), `- id: session-title-ll
   disabled: true
 - id: credentials
   config:
-    path: 'C:/Users/Cai Xingjian/.dsh/.credentials.yaml'
+    path: '${credentialsPath}'
     watch: false
 - id: llm-deepseek
   config:

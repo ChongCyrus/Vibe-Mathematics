@@ -18,6 +18,35 @@ const allNormal = got.sections.map((s) => s.text).join('\n')
 const combos = Object.fromEntries(got.combos.map((c) => [c.slot, c.chars]))
 const sum = Object.values(combos).reduce((a, b) => a + b, 0)
 
+// ★ TB-2705 (2026-11-10) — the three water levels are RE-DERIVED from a measurement, never hand-tuned.
+// Each baseline is `measured + max(1%, 3 chars)`; the margins and the attribution live here, next to the numbers,
+// so the next round must re-derive instead of bumping an integer. What made the old pins lie was not the number:
+// it was that legal teaching and returning duplication shared one silent number.
+// Diagnostics (docs/acceptance/prompt-budget-tripwires.md): HEAD 92bc6d94 measured fixture-tools 1291 and the
+// three-seat normal sum 74047. TB-2692 then added teaching (+164 in this section: the four shape codes, V7) and
+// +1566 across the normal prompts, and this round deleted the one real duplication it found — the UNKNOWN_FIELD
+// sentence was stated twice inside the SAME section (once here, once in the receipt-contract line below): −46.
+const FIXTURE_TOOLS_MEASURED = 1409 // 1291 + 164 (TB-2692 teaching) − 46 (deleted duplication)
+const FIXTURE_TOOLS_MARGIN = Math.max(Math.ceil(FIXTURE_TOOLS_MEASURED * 0.01), 3) // 15
+const FIXTURE_TOOLS_CEILING = FIXTURE_TOOLS_MEASURED + FIXTURE_TOOLS_MARGIN // 1424
+// ★ TB-2707 (2026-11-10) — F75-16 archive sentence: the shared `v5r-turn-channels` block went from the
+// unconditional 「全文落 Members/…/Turns/<turn>.md」 to the conditional/checkable/named-failure sentence.
+// Measured per seat: 169 → 324 chars ⇒ +155 (the design note estimated 152→305 ≈ +153; the real render is +155).
+// Shared block ⇒ all three seats pay it once: +465. This is TEACHING (it closes a real-machine defect where a
+// reader looked for a file that never existed), accounted for line by line — no teaching was deleted to pay for it.
+const RUN2707_ARCHIVE_SENTENCE = { chair: 155, member: 155, temp: 155, sum: 465 }
+// ★ RUN 260 / TB-2699 (2026-11-10) — the office-consult gate escape was taught into the CHAIR prose only
+// (`v5r-core.js` V5R_PROSE_CHAIR paper line): when `final` is refused with `VMU_OFFICE_CONSULT_REQUIRED`, let the
+// office answer `vibe_v5_paper { action:"consult", … }`, then retry `final`. Measured +94 chars, one seat (chair),
+// in every phase that carries the chair tool section ⇒ chair/normal and the three-seat sum each +94.
+const RUN260_CONSULT_TEACHING = { chair: 94, sum: 94 }
+const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair // 28778
+const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 288
+const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29066
+const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum // 76034
+const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 761
+const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 76795
+
 let passed = 0
 let failed = 0
 const ok = (cond, label, detail) => {
@@ -48,7 +77,23 @@ test('§1 the shared fixture-tools section: duplicates gone, the pinned contract
   )
   // the cut must be shared by all three seats (it was one section rendered three times)
   ok(chair === member && member === temp, '§1g the three seats still render the same fixture-tools text (one section, not three)')
-  ok(chair.length <= 1300, '§1h the section is at its compressed size (<=1300 chars)', chair.length)
+  ok(chair.length <= FIXTURE_TOOLS_CEILING, '§1h the section is at its compressed size (<= ' + FIXTURE_TOOLS_CEILING + ' = measured ' + FIXTURE_TOOLS_MEASURED + ' + max(1%,3) margin ' + FIXTURE_TOOLS_MARGIN + '; TB-2705)', chair.length)
+  // ★ TB-2705 §1h3 — WHY an exact pin next to a tolerated ceiling: the ceiling is `measured + max(1%,3)`, so a
+  // baseline lowered by one char would still pass the ceiling (the margin eats it) and the accounting would lie.
+  // This assertion is the anti-lamp for 「基线改小 1 字符」: the recorded measurement must equal the live section.
+  ok(
+    chair.length === FIXTURE_TOOLS_MEASURED,
+    '§1h3 the recorded measurement is the live section length (a change must re-baseline the accounting, even +1 char; the ceiling alone cannot see it)',
+    { live: chair.length, recorded: FIXTURE_TOOLS_MEASURED },
+  )
+  // ★ TB-2705 §1h2 — the DUPLICATION dimension, not a length dimension: a section is allowed to grow for a new
+  // fact, but the SAME fact stated twice is exactly what RUN 247 spent a task deleting. Machine form: every named
+  // refusal code in this shared section may be taught at most once. Injecting a second mention of any code turns
+  // this red even when the length is still under the ceiling.
+  const codeCounts = {}
+  for (const m of chair.matchAll(/VMU_[A-Z0-9_]+/g)) codeCounts[m[0]] = (codeCounts[m[0]] || 0) + 1
+  const repeatedCodes = Object.entries(codeCounts).filter(([, n]) => n > 1)
+  ok(repeatedCodes.length === 0, '§1h2 duplication counter: no refusal code is taught twice in the same fixture-tools section', JSON.stringify(repeatedCodes))
 })
 
 test('§2 the shared turn-channels section: the repeated urgency sentence is gone', () => {
@@ -56,7 +101,15 @@ test('§2 the shared turn-channels section: the repeated urgency sentence is gon
   ok(says(chair, '【三通道的紧急语义】'), '§2a the section still names the three channels')
   ok(says(chair, '紧急') && says(chair, '非紧急'), '§2b both urgency readings survive')
   ok(denies(chair, '未读时块头在最上方，'), '§2c the redundant block-header sentence is gone (the caveat "no unread => no header" stays pinned)')
-  ok(chair.length <= 1210, '§2d the section is at its compressed size (<=1210 chars)', chair.length)
+  // §2d 的基线按同样口径重定：TB-2705 诊断时实测 1159（RUN 256 压缩后），TB-2707 把无条件的归档句换成
+  // 「仅当 truncated:true／写完回读校验／archiveMissing 具名失败」后实测 1314（+155，逐条记账见上面
+  // RUN2707_ARCHIVE_SENTENCE 注释）。上限 = 实测 + max(1%, 3) 余量，不为教学让路而删句子。
+  const CHANNELS_MEASURED = 1314
+  const CHANNELS_MARGIN = Math.max(Math.ceil(CHANNELS_MEASURED * 0.01), 3) // 14
+  const CHANNELS_CEILING = CHANNELS_MEASURED + CHANNELS_MARGIN // 1328
+  ok(chair.length <= CHANNELS_CEILING, '§2d the section is at its compressed size (<= ' + CHANNELS_CEILING + ' = measured ' + CHANNELS_MEASURED + ' + margin ' + CHANNELS_MARGIN + '; TB-2707 +155)', chair.length)
+  // the exact pin (see §1h3): a 1-char lowering of the baseline must be visible, not absorbed by the margin
+  ok(chair.length === CHANNELS_MEASURED, '§2e the recorded measurement is the live section length (a change must re-baseline the accounting, even +1 char)', { live: chair.length, recorded: CHANNELS_MEASURED })
 })
 
 test('§3 seat-faces teaching rows: behaviour detail merged, selection guidance kept', () => {
@@ -84,16 +137,26 @@ test('§4 the charter merges: only restatements were removed', () => {
 })
 
 test('§5 the water levels: the round did not grow the prompts', () => {
-  ok(combos.chair <= 28615, '§5a chair normal within the RUN 247 ceiling (28615)', combos.chair)
-  ok(sum <= 75414, '§5b three-seat normal within the audited ceiling (75414)', sum)
-  // ★ RUN 258 / AUDIT-14 (2026-11-09): the tripwire is refreshed to the CURRENT measured value with ZERO slack — any
-  // added character turns this red, and a growth must be paid for by deleting at least as much redundancy in the same
-  // change. History: round C 73931 → D-2 73969 (+38 post-round-C teaching from other lanes) → now 74214 (+245).
-  // Attribution of the +245: +6 is THIS round's AUDIT-14 P1-7 fix (`need:"latex"` → `need:"xelatex"`: +2 in
-  // blocks-b paper line, +2 on each of v5r-core's two paper variants) — the rest (+239) is teaching that landed in this
-  // shared worktree from the md-lane/notice-lane prompt edits after D-2; this pin does not police their budget
-  // (`audit-prompt-budget` caps are untouched: chair/meeting 34671 < 36500, PASS). Re-measure before re-baselining.
-  ok(sum <= 74214, '§5c the compressed water level itself: <= 74214 (zero slack; RUN 258 measured 74214 = 73969 + 6 from the need:xelatex fix + 239 from other lanes post-D-2 teaching)', sum)
+  ok(combos.chair <= CHAIR_NORMAL_CEILING, '§5a chair normal within the audited ceiling (' + CHAIR_NORMAL_CEILING + ' = measured ' + CHAIR_NORMAL_MEASURED + ' + margin ' + CHAIR_NORMAL_MARGIN + '; TB-2705 re-derivation, TB-2707 +155)', combos.chair)
+  // ★ TB-2705 (2026-11-10): §5b and §5c are both re-derived from the SAME measurement by the formula above.
+  // §5b is the audited ceiling (measured + max(1%,3) margin; legal teaching has room, duplication does not get
+  // a free pass because §1h2 / §3 / §4 count it structurally). §5c is the same re-derivation kept as the second
+  // site: a future edit that bumps one but forgets the other is caught by the tighter of the two. Attribution:
+  // 「本轮因 TB-2692（F75-03 题目硬规则、归属口径、四个形状码、parked、REACHABLE INSTEAD）增长 1566 字符，
+  // 其中 1428 是教学、138（=46×3 席）是已删重复（本轮的 K）」— the deleted 46 is the UNKNOWN_FIELD duplication in
+  // v5r-fixture-tools, which is shared by all three seats.
+  ok(sum <= NORMAL_SUM_CEILING, '§5b three-seat normal within the audited ceiling (' + NORMAL_SUM_CEILING + ' = measured ' + NORMAL_SUM_MEASURED + ' + margin ' + NORMAL_SUM_MARGIN + '; TB-2705)', sum)
+  // ★ RUN 258 / AUDIT-14 (2026-11-09): the compressed water level — kept as its own pin so a round must consciously
+  // re-derive it. History: round C 73931 → D-2 73969 (+38 post-round-C teaching from other lanes) → RUN 258 74214
+  // (+245) → TB-2692 teaching → TB-2705 re-derivation to the value above.
+  ok(sum <= NORMAL_SUM_CEILING, '§5c the compressed water level itself: <= ' + NORMAL_SUM_CEILING + ' (= measured ' + NORMAL_SUM_MEASURED + ' + max(1%,3) margin ' + NORMAL_SUM_MARGIN + '; TB-2705 re-derivation, the same value as §5b on purpose)', sum)
+  // ★ TB-2705 §5d — the exact pins that make 「基线改小 1 字符」 visible (the margin would otherwise swallow it):
+  // the two recorded measurements ARE the live ones; any change, even +1 char, must re-baseline the accounting.
+  ok(
+    combos.chair === CHAIR_NORMAL_MEASURED && sum === NORMAL_SUM_MEASURED,
+    '§5d the recorded measurements are the live ones (any change, even +1 char, must re-baseline the accounting; the ceiling is derived, not hand-tuned)',
+    { chair: combos.chair, recordedChair: CHAIR_NORMAL_MEASURED, sum, recordedSum: NORMAL_SUM_MEASURED },
+  )
   ok(allNormal.length > 0, '§5d the assembly is non-empty (the guards above are not vacuous)')
 })
 

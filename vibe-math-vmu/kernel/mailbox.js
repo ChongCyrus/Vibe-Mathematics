@@ -465,6 +465,34 @@ export function createMailbox({
   const listRow = (e, reads) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind, channel: channelOf(e),
     read: e.read === true, todo: e.todo === true, bytes: bytesOf(e.text), urgent: urgentOfEntry(e),
     ackRequired: reads.ackRequired, acked: reads.acked })
+  /**
+   * ★ TB-2691 / F75-13 — THE ALL-BOXES NOTICE BLOCK, COMPUTED ONCE.
+   *
+   * The block used to be an inline IIFE inside `status()` only, so `vibe_v5_inbox {action:"list"}` could not
+   * answer "how many rows are still owed an ack" without doing arithmetic of its own — and a second ruler
+   * measuring one fact is the defect this round exists to remove. It is now THIS one function: `status()`
+   * hangs it on `notice`, `list()` returns the same block, and the pack face (`vibe_v5_inbox` list) forwards
+   * it untouched (no perBox copy, no second sum). `asOf` / `asOfSource` say WHEN and FROM WHERE the counts
+   * were read, so the two faces can be compared instead of trusted (run 75 F75-13 / V11).
+   */
+  const noticeBlockOf = (per) => {
+    const ids = Object.keys(per || {})
+    const perBox = {}
+    let unackedRowsAllBoxes = 0
+    const pendingMembers = []
+    for (const key of ids) {
+      const raw = per[key] && per[key].pending
+      const n = Number.isFinite(Number(raw)) ? Number(raw) : 0
+      perBox[key] = n
+      unackedRowsAllBoxes += n
+      if (n > 0) pendingMembers.push(key)
+    }
+    const unackedRows = unackedRowsAllBoxes
+    return { acked: unackedRowsAllBoxes === 0, ackRequired: unackedRowsAllBoxes > 0, unackedRows,
+      unackedRowsAllBoxes, perBox, pendingMembers, settledBy: 'ack',
+      asOf: clock(), asOfSource: 'mailbox.boxes() of this kernel instance, after pullShared',
+      means: 'the delivery criterion of the turn notice block: a row is delivered until mailbox.ack settles it, and reading (open/setState read) does not settle anything. unackedRows is the ALL-BOXES total (every member together) and unackedRowsAllBoxes is the same number under its true name; perBox splits that total by member id (perBox[a] + perBox[b] + … === unackedRowsAllBoxes); pendingMembers names who is owed at least one ack. acked:true means no member is owed an ack. The block is produced once, by noticeBlockOf(), and is returned by BOTH status().notice and list().notice; asOf is the clock reading of that production and asOfSource names the source, so the two faces can be compared on the same criterion (TB-2691 / F75-13).' }
+  }
   const openView = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind, channel: channelOf(e),
     text: e.text, replyTo: e.replyTo === undefined ? null : e.replyTo, urgent: urgentOfEntry(e) })
   const findEntry = (member, id) => {
@@ -953,7 +981,7 @@ export function createMailbox({
       }
       if (!fresh.length) {
         return { ok: true, member: id, delivered: 0, acked: [], notified: 0, remaining: allPending.length,
-          reason: 'already-notified', hint: 'list()/open() expose the bodies; ack() settles the delivery layer' }
+          reason: 'already-notified', hint: 'REACHABLE INSTEAD: 用 vibe_vmu_mailbox {action:"list", member:"<成员 id>"} 或 {action:"open", id:"<条目 id>"} 读正文，{action:"ack", ids:[…]} 结算投递层' }
       }
       const urgentRows = fresh.filter((e) => e.urgent)
       const plainRows = fresh.filter((e) => !e.urgent)
@@ -1049,7 +1077,7 @@ export function createMailbox({
       // A repeated id inside ONE call is settled once (the same id names the same row); the validation below then
       // sees a list whose every id must still be held, so a single call cannot half-settle itself.
       const list = [...new Set((Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean))]
-      if (!list.length) throw refuse('VMU_INVALID_ARGUMENT', 'ack needs at least one entry id', 'pass ids from pending()')
+      if (!list.length) throw refuse('VMU_INVALID_ARGUMENT', 'ack needs at least one entry id', 'REACHABLE INSTEAD: 先从 vibe_vmu_mailbox {action:"pending", member:"<成员 id>"} 的回执里取 ids，再重试本调用')
       // ★ TB-2606-B / task-95 — TWO DIFFERENT FACTS, TWO DIFFERENT NAMES. Measured in the 2606th run: the office
       // acked one row and the member then acked the SAME id; the refusal said "no pending entry ml-17 for r-1",
       // i.e. it reported "that never existed" for a row that existed and was already SETTLED. A reader cannot
@@ -1086,7 +1114,7 @@ export function createMailbox({
           wanted + ' was already settled by ' + String(settled.ackedBy || 'an earlier ack') + ' at ' +
             String(settled.ackedAt || 'an unrecorded time') +
             '; this repeated ack changed nothing (the body was dropped when it was settled)',
-          'this is not a missing mail: the row is in the ack ledger (status() counts it as acked), and ack ids are single-use — use pending()/list() for rows that are still open')
+          'REACHABLE INSTEAD: 这不是丢件 — 该行已在 ack 台账里（vibe_vmu_mailbox {action:"status"} 的 notice.acked 会把它算作已结算），ack 的 ids 是一次性的；仍在箱中的行请用 vibe_vmu_mailbox {action:"pending", member:"<成员 id>"} 或 {action:"list", member:"<成员 id>"} 取 id 再重试')
         err.ackedAt = settled.ackedAt === undefined ? null : settled.ackedAt
         err.ackedBy = settled.ackedBy === undefined ? null : settled.ackedBy
         err.settledBy = 'ack'
@@ -1139,7 +1167,7 @@ export function createMailbox({
       const box = boxes.get(id) || []
       const rows = box.filter((e) => want === 'all' || (want === 'unread' ? e.read !== true : e.todo === true))
       const entries = rows.map((e) => listRow(e, ackReadsOf(id, e)))
-      return { ok: true, member: id, status: want, count: entries.length, entries }
+      return { ok: true, member: id, status: want, count: entries.length, entries, notice: noticeBlockOf(mailbox.boxes()) }
     },
 
     /**
@@ -1423,23 +1451,7 @@ export function createMailbox({
         // old name (callers exist) and now also says what it is (`unackedRowsAllBoxes`) plus the per-box split
         // (`perBox`). All three come from THIS single loop — a second pass would be a second answer, and the
         // acceptance test sums `perBox` independently and compares it with `unackedRowsAllBoxes`.
-        notice: (() => {
-          const ids = Object.keys(per)
-          const perBox = {}
-          let unackedRowsAllBoxes = 0
-          const pendingMembers = []
-          for (const key of ids) {
-            const raw = per[key] && per[key].pending
-            const n = Number.isFinite(Number(raw)) ? Number(raw) : 0
-            perBox[key] = n
-            unackedRowsAllBoxes += n
-            if (n > 0) pendingMembers.push(key)
-          }
-          const unackedRows = unackedRowsAllBoxes
-          return { acked: unackedRowsAllBoxes === 0, ackRequired: unackedRowsAllBoxes > 0, unackedRows,
-            unackedRowsAllBoxes, perBox, pendingMembers, settledBy: 'ack',
-            means: 'the delivery criterion of the turn notice block: a row is delivered until mailbox.ack settles it, and reading (open/setState read) does not settle anything. unackedRows is the ALL-BOXES total (every member together) and unackedRowsAllBoxes is the same number under its true name; perBox splits that total by member id (perBox[a] + perBox[b] + … === unackedRowsAllBoxes); pendingMembers names who is owed at least one ack. acked:true means no member is owed an ack.' }
-        })(),
+        notice: noticeBlockOf(per),
         seq, durable,
         // G7 self-report (Round 9): whether a durable commit log is bound is READABLE, never inferred.
         durableLog: { bound: !!(durableQueue && durableQueue.durable === true) },

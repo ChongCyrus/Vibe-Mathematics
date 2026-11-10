@@ -11,8 +11,9 @@
 // coverage debt, which is what the ledger does for whole files.
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { REPO } from './_lib/repo-root.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+const K = join(REPO, 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 let pass = 0, fail = 0
 const failures = []

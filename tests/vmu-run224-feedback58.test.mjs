@@ -21,8 +21,8 @@
 import { mkdtempSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { REPO } from './_lib/repo-root.mjs'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const VMU = join(REPO, 'vibe-math-vmu')
 const TMP = 'D:/_tmp/r224'
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')

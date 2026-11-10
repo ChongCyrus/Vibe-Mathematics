@@ -22,8 +22,8 @@
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { REPO } from './_lib/repo-root.mjs'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const VMU = join(REPO, 'vibe-math-vmu')
 const TMP = 'D:/_tmp/r221'
 mkdirSync(TMP, { recursive: true })
@@ -79,8 +79,8 @@ has(SRC_TOOLS, 'proofStateFrom:',
   '★ ① the receipt says where its `proofState` came from')
 has(SRC_TOOLS, 'null ON PURPOSE: a settlement verifies nothing',
   '★ ① `proofStateEvidence` is null WITH A REASON, not a silence')
-has(SRC_TOOLS, 'proofGate: proofGateOut',
-  '★ ① `proofGate` is now the READ-BACK value (a settled locked card no longer reads `null`)')
+has(SRC_TOOLS, 'proofGate: proofGateFinal',
+  '★ ① `proofGate` is now the READ-BACK value (a settled locked card no longer reads `null`; RUN 2699 moved the receipt to the single-producer result, see docs/03 §3.1h)')
 
 has(SRC_SCOPE, 'const denyCountBySeat = {}',
   '★ ② the deny count is computed PER SEAT')

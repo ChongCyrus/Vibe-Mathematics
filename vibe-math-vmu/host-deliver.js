@@ -44,30 +44,43 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       err.hint = 'vmu.turn.deliverMode (or config.deliverMode) is either "subagents" - the host runs the member turn - or "caller" - the calling session plays it and returns the reply through vibe_vmu_turn { reply }'
       throw err
     }
-    const callerSeam = declaredDeliverMode === 'caller' ? deliverByReturning() : null
+    // ★★★ TASK-173 / TB-2690 (F75-12): THE CALLER SEAM IS BUILT IN EVERY DEPLOYMENT, NOT ONLY WHEN THE CONSTRUCTION-TIME
+    // MODE IS `caller`. The 75th live run measured why: fourteen member turns all took the activation/continuation route,
+    // `memberWorkShare.officeRelayedActs` stayed 0, and the delivery mode had no live reader at all - a config-declared
+    // `subagents` shadowed the setting, so the caller route F75-12 wanted to exercise (the member doing the work in its OWN
+    // turn, the office handing the prompt back) was unreachable in exactly the deployment that wanted it. The seam below is
+    // therefore always available and the DISPATCHER at the bottom of this function picks it per CALL, from
+    // `turn.deliverMode?: "caller" | "subagents"` - a per-call argument that overrides this construction-time default for
+    // THAT call only. It rewrites nothing here and persists nothing: the declared mode still names the default route.
+    const callerSeam = typeof deliverByReturning === 'function' ? deliverByReturning() : null
+    // The receipt vocabulary is arg|config|setting; the construction-time strings above are more precise than that, so the
+    // kind is derived once and the precise string is still reported in `deliverModeReason`.
+    const declaredModeKind = deliverModeSource.startsWith('config.') ? 'config' : 'setting'
+    const modeOfTurn = (turn) => (turn && (turn.deliverMode === 'caller' || turn.deliverMode === 'subagents')
+      ? turn.deliverMode : null)
     // Attached to whichever seam object is returned, so a diagnostic can answer "why did setting
     // vmu.turn.deliverMode change nothing?" from a reading instead of from re-deriving the precedence in source.
     const withMode = (seam) => {
       try {
         seam.deliverMode = declaredDeliverMode
-        seam.deliverModeSource = deliverModeSource
-        seam.deliverModeMeans = 'the mode was resolved ONCE, at construction, reading ' + deliverModeSource +
-          ' - a config-declared mode shadows the setting vmu.turn.deliverMode, so a runtime write to that key cannot change this seam'
+        seam.deliverModeSource = declaredModeKind
+        seam.deliverModeMeans = 'the mode is resolved ONCE, at construction, reading ' + deliverModeSource +
+          ' - that is the DEFAULT route. Since task-173 a single call may override it by passing deliverMode:"caller" | "subagents"' +
+          ' on that call (it travels as turn.deliverMode); the override affects that call only, rewrites nothing here and is not persisted,' +
+          ' and a config-declared mode still shadows the setting vmu.turn.deliverMode for the default'
       } catch { /* a frozen seam keeps its behaviour; these fields are a reading, not a capability */ }
       return seam
     }
 
-  // ★★★★★★★ ROUND 87 — IN CALLER MODE THIS FUNCTION MUST **BE** THE SEAM, NOT A WRAPPER AROUND IT.
+  // ★★★★★★★ ROUND 87 — THE RETURNED OBJECT MUST CARRY THE SEAM'S CAPABILITIES, NOT HIDE THEM BEHIND A PLAIN ARROW.
   // MEASURED ON A REAL MACHINE: the refusals below reached it twenty-one times in a single run -
-  // "this delivery seam does not accept a caller-supplied reply" - because the wrapper returned at the end of this
-  // function is a plain arrow: `async ({ turn, text }) => callerSeam({ turn, text })`. That arrow has no `.supply`, so
-  // `supplyMemberReply` refused EVERY reply the calling session handed back, and the caller-played route never once
-  // delivered a member turn. The run looked like "replies are flowing" from the transcript alone, because the task
-  // instructions quoted the phrase `supplied-by-caller` back into it; the seam's own fields were absent throughout
-  // (`stopReason:"supplied-by-caller"`: 0 occurrences, `deliveryPath:"caller"`: 0). A wrapper that hides the capability
-  // it wraps is the whole bug, so in caller mode the seam ITSELF is returned - carrying `supply`, `pending` and
-  // `awaiting` with it - and the subagents bridge keeps its own wrapper below.
-  if (callerSeam) return withMode(callerSeam)
+  // "this delivery seam does not accept a caller-supplied reply" - because the previous wrapper was
+  // `async ({ turn, text }) => callerSeam({ turn, text })`, a plain arrow with no `.supply`, so `supplyMemberReply`
+  // refused EVERY reply the calling session handed back and the caller-played route never once delivered a member turn.
+  // Task-173 keeps that lesson AND the per-call override: the dispatcher returned at the end of this function forwards
+  // `supply/pending/awaiting/consumePending/clear` from the caller seam, so a deployment whose DEFAULT is `subagents` can
+  // still play one turn through the caller route (`deliverMode:"caller"` on that call) and answer it on the next call.
+  // The mode itself is no longer decided by an early return - it is decided per call, and the receipt says which route ran.
     const turnDeliver = async ({ turn, text } = {}) => {
       // ★ ROUND 80: DECLARED FIRST, BECAUSE THE REFUSAL BELOW READS THEM. T1 caught a temporal dead zone here: the
       // missing-seam hint reports parentKind and the agents keys, but both were declared further down, so that path
@@ -361,7 +374,52 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
     // `kernel/turn/index.js`'s, and the service is resolved AT CALL TIME (a plugin's `apply` can run before the
     // subagents service mounts, and binding "absent" now would refuse every command forever). A host without the verb
     // produces the bridge's NAMED refusal; the kernel reports the seam as absent in `status().seams.sendMessage/interrupt`.
-  return withMode(turnDeliver)
+  // ★★★ TASK-173 / TB-2690 (F75-12): ONE SEAM, TWO ROUTES, CHOSEN PER CALL. The dispatcher below is what the kernel
+  // receives as `deliver({ turn, text })`. It reads `turn.deliverMode` (a per-call argument threaded through
+  // `step`/`drive` -> `open` -> `turnForDeliver`) and falls back to the construction-time default. The route it takes is
+  // reported BACK on the envelope (`deliveryPath`, `deliverMode`, `deliverModeSource`, `deliverModeReason`), so a receipt
+  // says which route ran instead of leaving it to be inferred from the transcript. The caller seam's capabilities
+  // (`supply/pending/awaiting/consumePending/clear`) are forwarded, so a `subagents` deployment can play ONE caller turn
+  // and answer it on the next call - which is exactly the seam F75-12 measured as unreachable.
+  const deliver = async (args = {}) => {
+    const turn = args && args.turn ? args.turn : null
+    const asked = modeOfTurn(turn)
+    const mode = asked || declaredDeliverMode
+    const source = asked ? 'arg' : declaredModeKind
+    const reason = asked
+      ? 'this call carried deliverMode:"' + asked + '" on the turn: a PER-CALL override of the construction-time default (' +
+        deliverModeSource + '). It affects THIS call only - the default is not rewritten and nothing is persisted - so a later' +
+        ' call without the argument is back on ' + declaredDeliverMode
+      : 'no per-call deliverMode was passed, so the mode resolved ONCE at construction from ' + deliverModeSource +
+        '; a single call can still override it with deliverMode:"caller" | "subagents"'
+    const seam = mode === 'caller' ? callerSeam : turnDeliver
+    if (!seam) {
+      const err = new Error('delivery mode "caller" was requested for this call, but this deployment built no caller seam')
+      err.code = 'VMU_ENGINE_UNAVAILABLE'
+      err.hint = 'the caller route needs deliverByReturning(); this host did not provide it. Retry with deliverMode:"subagents" (the host bridge), or fix the deployment so the caller seam exists'
+      throw err
+    }
+    const out = await seam(args)
+    if (!out || typeof out !== 'object') return out
+    const decorated = Object.assign({}, out, {
+      deliverMode: mode,
+      deliverModeSource: source,
+      deliverModeReason: reason,
+    })
+    // A caller-played envelope always names its route. The host bridge names its own path when it has one (`one-shot`,
+    // `activation`, `continuation`), so only the gap is filled here - the receipt keeps the route that actually ran.
+    if (typeof decorated.deliveryPath !== 'string' || decorated.deliveryPath === '') {
+      if (mode === 'caller') decorated.deliveryPath = 'caller'
+    }
+    return decorated
+  }
+  // ROUND 87 (kept for the per-call route): the seam's capabilities are forwarded, not hidden behind a plain arrow.
+  for (const name of ['supply', 'pending', 'awaiting', 'consumePending', 'clear']) {
+    if (callerSeam && typeof callerSeam[name] === 'function') {
+      deliver[name] = (...a) => callerSeam[name](...a)
+    }
+  }
+  return withMode(deliver)
 }
 
 // ★★★★★★★ TASK-16 / LIVE RUN 31 (the institute's own defect note): THE MEMBER TURN, RESUMED IN THE MEMBER'S OWN SESSION.

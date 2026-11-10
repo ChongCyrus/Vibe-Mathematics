@@ -14,14 +14,19 @@
 //                                                to run while the settings table is stale, on purpose)
 //   6. derived counts -> README / checklist      (last: it counts whatever the steps above produced)
 //
-//   node scripts/regen-all.mjs            # write everything
-//   node scripts/regen-all.mjs --check    # verify everything, exit 1 on any drift
+//   node scripts/regen-all.mjs            # dry run: verify everything, write NOTHING
+//   node scripts/regen-all.mjs --check    # verify everything, exit 1 on any drift (the closing gate)
+//   node scripts/regen-all.mjs --write    # write everything
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { modeFrom } from './_lib/generator-cli.mjs'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const CHECK = process.argv.includes('--check')
+const MODE = modeFrom(process.argv, { script: 'regen-all.mjs' })
+// The child flag is explicit in every mode: a bare child used to mean "check" only because each script happened to
+// default that way, and TB-2698 gave a bare run a dry-run meaning — so the chain never relies on a child's default.
+const STEP_FLAG = MODE === 'write' ? '--write' : '--check'
 const STEPS = [
   ['coverage debt (docs/acceptance/audit-coverage-debt.md)', 'scripts/generate-coverage-debt.mjs', '--write'],
   ['glossary table (docs/01-§7)', 'scripts/generate-glossary-table.mjs'],
@@ -54,7 +59,7 @@ const STEPS = [
 
 let failed = 0
 for (const [label, script] of STEPS) {
-  const args = [join(REPO, script)].concat(CHECK ? ['--check'] : ['--write'])
+  const args = [join(REPO, script), STEP_FLAG]
   const r = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8' })
   const out = String(r.stdout || '') + String(r.stderr || '')
   const last = out.trim().split('\n').filter(Boolean).slice(-1)[0] || ''
@@ -62,6 +67,8 @@ for (const [label, script] of STEPS) {
   if (!okStep) failed++
   console.log((okStep ? '  ok   ' : '  FAIL ') + label + (last ? ' :: ' + last.slice(0, 140) : ''))
 }
+const verb = MODE === 'write' ? 'written' : 'in sync'
 console.log('')
-console.log('=== vmu regen-all: ' + (STEPS.length - failed) + '/' + STEPS.length + ' ' + (CHECK ? 'in sync' : 'written') + ' ===')
-process.exit(failed === 0 ? 0 : 1)
+console.log('=== vmu regen-all: ' + (STEPS.length - failed) + '/' + STEPS.length + ' ' + verb
+  + (MODE === 'read' ? ' (dry run: nothing written)' : '') + ' ===')
+process.exit(MODE === 'read' ? 0 : failed === 0 ? 0 : 1)

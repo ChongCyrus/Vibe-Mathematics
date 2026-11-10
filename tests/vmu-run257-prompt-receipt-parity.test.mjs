@@ -19,13 +19,20 @@
 //    regeneration; this file only keeps the machine gate consistent with the corpus it reads.
 // Regenerate with: node scripts/sim/run.mjs --scenario end-to-end --out D:/_tmp/sim/e2e-audit
 
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureParityCorpus, removeLastPair } from './_lib/parity-corpus.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// The corpus path is a PARAMETER (env var or argv[2]); the default is only a convenience for this checkout.
-const SIM = process.argv[2] || process.env.VMU_PROMPT_RECEIPT_CORPUS || 'D:/_tmp/sim/e2e'; // PORTABLE-ALLOW: default dev corpus root only; argv[2]/VMU_PROMPT_RECEIPT_CORPUS override it, and a missing corpus exits 1 instead of passing on zero checks
+// TB-2695: the corpus is BUILT BY THIS SUITE when no path is given. It used to default to D:/_tmp/sim/e2e, which made
+// the suite green only on the author's machine and made it unusable as a ledger proof. argv[2] / VMU_PROMPT_RECEIPT_CORPUS
+// still name an existing corpus (a reviewer's frozen snapshot); they are not the default any more.
+const EXPLICIT = process.argv[2] || process.env.VMU_PROMPT_RECEIPT_CORPUS || '';
+const generated = EXPLICIT ? null : ensureParityCorpus({ log: (m) => console.log('  ' + m) });
+const SIM = EXPLICIT || generated.dir;
 const DOC = path.join(REPO, 'docs/acceptance/prompt-vs-receipts.md');
 
 let passed = 0;
@@ -41,9 +48,37 @@ function eq(a, b, label) { ok(a === b, label, 'got ' + JSON.stringify(a) + ' exp
 // RULE: this suite is a SNAPSHOT-CONSISTENCY GATE. If the corpus is absent it must FAIL — never skip, never
 // degrade to zero checks (the previous shape could age into a false green once D:/_tmp self-cleans).
 if (!existsSync(SIM) || !existsSync(path.join(SIM, 'pairs.jsonl')) || !existsSync(path.join(SIM, 'receipts.jsonl'))) {
-  console.log('FAIL corpus missing at ' + SIM + ' (pass the corpus path as argv[2] or VMU_PROMPT_RECEIPT_CORPUS)');
+  console.log('FAIL corpus missing at ' + SIM + (EXPLICIT ? ' (the path passed as argv[2] or VMU_PROMPT_RECEIPT_CORPUS does not hold a corpus)' : ' (the in-suite generator returned a directory without pairs.jsonl/receipts.jsonl)'));
   console.log('FAIL this gate REFUSES to skip: a zero-check run would report success on nothing');
   process.exit(1);
+}
+// S0c (TB-2695): when this suite generated the corpus, the generator measured TWO generations and reports whether they
+// agree. 'byte-identical' is the normal case. 'confined-residual' means the only difference was the known record-order
+// product defect (rec-2/rec-3 minting order, tracked in the ledger) — reported here, never retried until it looks green.
+if (generated) {
+  const d = generated.determinism || {};
+  ok(d.status === 'byte-identical' || d.status === 'confined-residual', 'S0c the two generations of the corpus agree (status: ' + String(d.status) + ')', d.residual);
+  ok(Boolean(d.expected) && d.expected.pairs === 47, 'S0c2 the generator expected the measured 47-pair shape', d.expected);
+  if (d.status === 'confined-residual') {
+    console.log('  NOTE: two generations differed only on the known record-order defect (' + (d.allowlisted || []).length + ' allowlisted path(s)); the ledger tracks the product fix, this suite reports the residual instead of retrying until green');
+    console.log('  determinism: canonical (blueprint record writer is last-writer-wins between r-acad and r-1 under concurrency) -- product defect under investigation, see TB-2697');
+  }
+  // S0b (anti-regression, permanent): a corpus with ONE pair missing must make THIS suite exit 1 by name. The child
+  // process is this same file reading a shortened copy, so a version of the suite that tolerated a short corpus would
+  // also report this row as green -- which is exactly what the row is there to prevent.
+  const probeRoot = mkdtempSync(path.join(tmpdir(), 'vmu-parity-b2-'));
+  try {
+    const probe = path.join(probeRoot, 'corpus');
+    cpSync(generated.dir, probe, { recursive: true });
+    removeLastPair(probe);
+    const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), probe], { encoding: 'utf8', timeout: 120000 });
+    const out = String(child.stdout || '') + String(child.stderr || '');
+    const firstFail = out.split(String.fromCharCode(10)).filter((l) => l.startsWith('FAIL ')).slice(0, 1).join(' ');
+    ok(child.status === 1, 'S0b a corpus with one pair missing makes this suite exit 1 (a short corpus cannot satisfy the gate)', 'exit ' + String(child.status));
+    ok(out.includes('S1a 47 pairs'), 'S0b2 and the refusal NAMES the count it measured (S1a 47 pairs)', firstFail);
+  } finally {
+    rmSync(probeRoot, { recursive: true, force: true });
+  }
 }
 ok(existsSync(SIM), 'corpus exists at ' + SIM);
 ok(existsSync(DOC), 'report exists at ' + path.join('docs/acceptance/prompt-vs-receipts.md'));
@@ -176,7 +211,21 @@ for (const p of pairs.filter(wouldBeGap)) {
   else a2.push(p.pairIndex);
 }
 const counted = [].concat(a2, toolGapPairs.map((x) => x.pair), noCaller.map((x) => x.pair), seatMismatch.map((x) => x.pair));
+// TB-2705 / P5a (Lead ruling): 守恒必须是断言，不是散文；A2 的定义句必须写出「谁在调用」。
+//   a2            — 该席位自己发起的调用（callerSeat === nextPrompt.seat），回执有读数而提示词 0 命中。
+//   toolGapPairs  — 工具名 0 命中（没有席位做这个调用；bridge/office 读）。最小闭合单位是「工具」，不是 pair。
+//   seatMismatch  — 调用者席位 ≠ 被配对提示词的席位（语料/配对口径问题，不是教学缺失）。
+//   noCaller      — 回执没记 caller 的 bridge 读（本代语料为空；断言位置保留，语料丢 caller 列会立刻变红）。
+const A2_DEFINITION = 'A2 = 该席位自己发起的调用（callerSeat === nextPrompt.seat），其回执里有读数而提示词 0 命中；bridge/office 读不算 A2。';
+const CONSERVATION_BASE = actionGapPairs.length; // 当前语料的 wouldBeGap 基数（RUN 269: 6）——不写死数字，掉对会立刻红
+const bucketTotal = a2.length + toolGapPairs.length + noCaller.length + seatMismatch.length;
 console.log('A2 caliber RUN 260: a2=' + JSON.stringify(a2));
+console.log('  ' + A2_DEFINITION);
+console.log('  CONSERVATION buckets=' + bucketTotal + '/' + CONSERVATION_BASE
+  + ' = a2(' + a2.length + ')[seat-called, prompt 0-hit]'
+  + ' + toolGapPairs(' + toolGapPairs.length + ')[tool-never-taught / bridge]'
+  + ' + seatMismatch(' + seatMismatch.length + ')[caller-seat != prompt-seat / caliber]'
+  + ' + noCaller(' + noCaller.length + ')[caller-unrecorded]');
 console.log('  toolGapPairs=' + JSON.stringify(toolGapPairs));
 console.log('  noCaller=' + JSON.stringify(noCaller));
 console.log('  seatMismatch=' + JSON.stringify(seatMismatch));
@@ -201,6 +250,7 @@ eq(toolLevelGaps.slice().sort().join(','), 'vibe_vmu_records,vibe_vmu_vote', 'S4
 eq(counted.length, actionGapPairs.length, 'S4e8 CONSERVATION: a2 + toolGapPairs + noCaller + seatMismatch = every wouldBeGap pair');
 eq(counted.slice().sort((a, b) => a - b).join(','), actionGapPairs.join(','), 'S4e9 CONSERVATION: the four buckets are a partition of S4d, no pair vanishes and none is double-counted');
 eq(a2.length + toolGapPairs.length, actionGapPairs.length - noCaller.length - seatMismatch.length, 'S4e10 CONSERVATION (m07103 two-term form, remainder named): the snapshot remainder is exactly noCaller+seatMismatch');
+eq(bucketTotal, CONSERVATION_BASE, 'S4e11 CONSERVATION (TB-2705 explicit four buckets): a2 + toolGapPairs + seatMismatch + noCaller = every wouldBeGap pair (' + CONSERVATION_BASE + ')');
 
 // ---- S4f. controls: the caliber must still FIRE, and tool-level closure must be observable ----
 // Without these, P1+P2 could only ever prove "the set shrank". Synthetic pairs never touch the corpus.
@@ -252,7 +302,16 @@ eq(astrict.join(','), '40,43,44,45,46', 'S5b capability-gate markers: 4 refusing
 // ---- S6. B class evidence: readings present in receipts, absent in prompts --
 const memberActedPairs = pairs.filter((p) => JSON.stringify(p.receipt).includes('memberActed'));
 ok(memberActedPairs.length >= 30, 'S6a memberActed is a mass reading (' + memberActedPairs.length + ' pairs)');
-ok(!allPrompts.includes('memberActed'), 'S6b memberActed never taught');
+// TB-2692 taught 代笔 semantics into the shared status-board line (`memberActed:false` + `actedForMember` +
+// `writtenFrom`), so the RUN 257 shape "memberActed never taught" is no longer true -- keeping it would pin a
+// stale claim, not a property. The property that survives is PLACEMENT: memberActed may only be named inside that
+// derivation/代笔 reading line, never as a standalone action-name teaching. Both directions are asserted, with a
+// control proving a teaching line elsewhere is caught (weakening this to "somewhere in a prompt" would drop that).
+const memberActedLinesOf = (t) => t.split('\n').filter((l) => l.includes('memberActed'));
+const isProxyReceiptLine = (l) => l.includes('memberActed:false') && l.includes('actedForMember');
+ok([...prompts.values()].some((t) => memberActedLinesOf(t).length > 0), 'S6b0 memberActed is taught somewhere (presence, non-vacuous)');
+ok([...prompts.values()].every((t) => memberActedLinesOf(t).every(isProxyReceiptLine)), 'S6b memberActed is named only in the 代笔回执/归属 reading line (memberActed:false + actedForMember)');
+ok(memberActedLinesOf('用 memberActed 报告动作归属').length === 1 && !memberActedLinesOf('用 memberActed 报告动作归属').every(isProxyReceiptLine), 'S6b control: a bare teaching line naming memberActed is caught, so S6b is placement not presence');
 const notifyRows = pairs.filter((p) => JSON.stringify(p.receipt).includes('notifyRows'));
 ok(notifyRows.length >= 1, 'S6c notifyRows exists in receipts');
 ok(!notifyRows.some((p) => has(p, 'notifyRows')), 'S6d notifyRows never taught in the paired prompt');

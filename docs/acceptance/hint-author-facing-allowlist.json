@@ -1,0 +1,188 @@
+{
+  "tb": "TB-2708",
+  "generated": "from the judge run that printed unresolvable=51",
+  "entries": [
+    {
+      "file": "vibe-math-vmu/host-deliver.js",
+      "line": 399,
+      "name": "deliverByReturning",
+      "why": "host author: the delivery seam diagnostic. Only the DSH host bridge that implements deliverByReturning() reads this; a seat never sees the string (it is not inside any tool receipt).",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/pack.js",
+      "line": 960,
+      "name": "declarePackTools",
+      "why": "host author: declaring pack tools requires a host bridge capability. The refusal is raised while the HOST wires a pack declaration, not in a seat receipt.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/registry.js",
+      "line": 133,
+      "name": "contract",
+      "why": "host author: pack/service version negotiation happens inside the host bridge; contract() is that bridge's own view of what this build publishes.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/skills.js",
+      "line": 128,
+      "name": "declare",
+      "why": "host author: skill declarations are made by the host / skills registry (declare()), not by a seat; the hint is read while wiring members.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/resume.js",
+      "line": 662,
+      "name": "snapshot",
+      "why": "host author: snapshot() is an adapter seam the EMBEDDER injects; the reader is the host author wiring that adapter, never a seat.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/packs/v3/middleware/dataplane.js",
+      "line": 545,
+      "name": "createCard",
+      "why": "host author: the v3 middleware refuses a hand-written card; the reader is the pack author who produced the bytes, and no seat receipt carries this hint.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/packs/v3/middleware/dataplane.js",
+      "line": 545,
+      "name": "composeCard",
+      "why": "host author: same refusal as createCard() above — read by the pack/host author writing card bodies, not by a seat.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/packs/v3/middleware/methods.js",
+      "line": 397,
+      "name": "createMethodCard",
+      "why": "host author: method cards are written by the pack middleware; the hint addresses the pack author (host side), not a seat.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/packs/v3/middleware/methods.js",
+      "line": 413,
+      "name": "createMethodCard",
+      "why": "host author: second site of the same middleware refusal, read by the pack author appending applications.",
+      "owner": "host-integration"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/board.js",
+      "line": 115,
+      "name": "canTransition",
+      "why": "kernel author: whoever injects the tasks ledger must supply canTransition(). The refusal appears while wiring the board, not in a seat receipt.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/index.js",
+      "line": 2316,
+      "name": "open",
+      "why": "kernel author: the ledger refuses outside a member-scoped turn; the hint cites kernel/turn/index.js open(), an internal constructor the kernel author calls.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/lifecycle.js",
+      "line": 116,
+      "name": "stages",
+      "why": "kernel author: the stage table is declared by whoever builds the team lifecycle, and stages() is that builder's own accessor — no seat can type it.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/pack.js",
+      "line": 95,
+      "name": "compressText",
+      "why": "kernel author: corrupt payloads are diagnosed for whoever produced the bytes with compressText(); a seat only sees the surrounding pack receipt.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/replay.js",
+      "line": 173,
+      "name": "emptyState",
+      "why": "kernel author: replay verification compares snapshots the kernel itself produced; emptyState() is an internal comparator, not a tool.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/replay.js",
+      "line": 178,
+      "name": "emptyState",
+      "why": "kernel author: same replay comparator (second call site), read by kernel authors auditing replay determinism.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/replay.js",
+      "line": 178,
+      "name": "apply",
+      "why": "kernel author: apply() replays a recorded operation inside the replay verifier; an internal seam, never a seat-facing call.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/replay.js",
+      "line": 179,
+      "name": "emptyState",
+      "why": "kernel author: replay comparator call site again (apply path), reader is the kernel author.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/replay.js",
+      "line": 179,
+      "name": "apply",
+      "why": "kernel author: replay apply path (second site), internal.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/replay.js",
+      "line": 185,
+      "name": "emptyState",
+      "why": "kernel author: replay comparator in the diff path, internal.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/replay.js",
+      "line": 185,
+      "name": "apply",
+      "why": "kernel author: replay apply in the diff path, internal.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/stateversion.js",
+      "line": 93,
+      "name": "wrap",
+      "why": "kernel author: state migrations are authored by kernel authors; wrap() is the versioning wrapper they call around a migrator.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/stateversion.js",
+      "line": 101,
+      "name": "wrap",
+      "why": "kernel author: second wrap() site in the migration registry, read by the kernel author registering a migration.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/stateversion.js",
+      "line": 175,
+      "name": "wrap",
+      "why": "kernel author: third wrap() site (legacy-shape migration), read by the kernel author.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/trust.js",
+      "line": 224,
+      "name": "score",
+      "why": "kernel author: dispute resolution reads the score record produced by the trust kernel; score() is its internal producer, not a seat tool.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/trust.js",
+      "line": 224,
+      "name": "explain",
+      "why": "kernel author: explain() is the trust kernel's internal explanation reader; the seat-facing surface is the tool schema, not this string.",
+      "owner": "kernel-core"
+    },
+    {
+      "file": "vibe-math-vmu/kernel/mailbox.js",
+      "line": 1388,
+      "name": "persist",
+      "why": "kernel author: restore() consumes a mailbox snapshot written by persist(); the hint is raised during an operator/kernel-level restore, not in a seat receipt.",
+      "owner": "kernel-core"
+    }
+  ]
+}

@@ -441,6 +441,37 @@ export async function turns(h, { log = () => {} } = {}) {
     return { ok: r.ok === true && row !== null && ledger.progressShape.leaksUndefined === false && ledger.progressShape.leaksObjectObject === false, code: row ? row.code || null : null }
   })
 
+  // ── 13c. RELEASING A PARKED TURN: the four facts only this door writes ───────────────────────────────────────
+  // MEASURED (TB-2695 follow-up): the fidelity audit found four live fields that nothing in this corpus produced —
+  // `vibe_vmu_turn.ageMs`, `openedBy`, `clearedParked`, `why`. They belong to the RELEASE door for a PARKED turn:
+  // `park()` holds a prompt and returns (no lock is held), and `op:"abandon"` names nothing, so the kernel closes the
+  // prompt the caller is holding and answers with how long it waited (ageMs), which door opened it (openedBy), the
+  // stated reason (why) and whether THIS call cleared the seam slot (clearedParked). The abandon calls above name a
+  // row that is already settled or whose seat is gone, so they cannot reach this shape. Filling the gap is better
+  // than declaring it (scripts/sim/audit/fidelity-declared.json says so in its own header).
+  await step('release-parked-turn', 'turn', async () => {
+    await park('r-2', 'normal', '这张提示没人会答：用具名释放出口关门')
+    const r = await record('vibe_vmu_turn', { op: 'abandon', why: '总结材料已经够：这条 parked 提示不再需要回答' })
+    const inner = r.receipt || r
+    ledger.abandonParked = {
+      ok: r.ok === true,
+      abandoned: inner.abandoned === true,
+      closedWith: inner.closedWith || null,
+      member: inner.member || null,
+      openedBy: inner.openedBy === undefined ? null : inner.openedBy,
+      ageMs: inner.ageMs === undefined ? null : inner.ageMs,
+      why: inner.why === undefined ? null : inner.why,
+      clearedParked: inner.clearedParked === undefined ? null : inner.clearedParked,
+      parkedCleared: inner.parkedCleared === undefined ? null : inner.parkedCleared,
+      settledBy: inner.settledBy || null,
+      means: 'the release door for a PARKED turn closes the prompt the caller holds (abandoned:true) and reports how long it waited, which door opened it, the stated reason and whether this seam cleared the slot — the four facts no other path in this corpus can produce',
+    }
+    return {
+      ok: r.ok === true && inner.abandoned === true && inner.openedBy !== undefined && inner.ageMs !== undefined && inner.clearedParked !== undefined && inner.why !== undefined,
+      code: r.code || null,
+    }
+  })
+
   // ── 14. What the rounds wrote on disk ───────────────────────────────────────────────────────────────────────
   const finalTree = tree(h.root)
   steps.push({ name: 'tree', kind: 'observe', ok: true, code: null, files: { before: finalTree.length, after: finalTree.length } })

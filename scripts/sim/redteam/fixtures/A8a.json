@@ -1,0 +1,17 @@
+{
+  "id": "A8a",
+  "attack": "a real stamp over a fidelity reading that is off by one compared",
+  "why": "the stamped numbers must equal the numbers the gate recomputes from the receipts",
+  "wouldBeWrongIf": "READY, or a refusal that never says the reading was recomputed",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_FIDELITY_MISMATCH",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "recomput",
+    "allowedSecondary": {
+      "AUDIT_FIDELITY_COUNTS_INCONSISTENT": "compared != liveTools also fires; a weaker check than the recomputation",
+      "AUDIT_FIDELITY_GAPS": "only if gaps differed, which they do not"
+    }
+  }
+}

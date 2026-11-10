@@ -9,7 +9,8 @@
 // as broken. Both headers now say which one they mean.
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+import { REPO } from './_lib/repo-root.mjs'
+const K = join(REPO, 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 let pass = 0, fail = 0
 const failures = []

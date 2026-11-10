@@ -83,8 +83,13 @@ try {
     'and the receipt NAMES the criterion (acked / ackRequired) instead of leaving the reader to infer it from wording')
   ok(MAILBOX_SRC.includes('settledBy: \'ack\'') && MAILBOX_SRC.includes('unackedRows: want.map('),
     'with settledBy:ack and the un-acked rows themselves, including any cut by the limit')
-  ok(MAILBOX_SRC.includes('notice: (() => {') && MAILBOX_SRC.includes('pendingMembers'),
-    'status() reports the same criterion in aggregate, grouped by recipient')
+  // TB-2691 replaced the inline IIFE with the single producer noticeBlockOf(per); the pin follows the SHAPE while
+  // still requiring that the aggregate face derives from that one function (not a second loop) and keeps pendingMembers.
+  ok(MAILBOX_SRC.includes('const noticeBlockOf = (per) =>') && MAILBOX_SRC.includes('notice: noticeBlockOf(per)')
+    && MAILBOX_SRC.includes('pendingMembers'),
+    'status() reports the same criterion in aggregate, grouped by recipient (single producer noticeBlockOf)')
+  ok(MAILBOX_SRC.includes('notice: noticeBlockOf(mailbox.boxes())'),
+    'list() reads the SAME producer over all boxes, so the two faces cannot disagree on the aggregate')
   // The pin reads the FUNCTION BODY (from its name to the next one), because the docblock above it quotes the old
   // expression to explain the defect — a whole-file substring check would be triggered by the explanation itself.
   const replyTextBody = HARNESS_SRC.slice(HARNESS_SRC.indexOf('function replyTextOf'), HARNESS_SRC.indexOf('function simulateSubagents'))

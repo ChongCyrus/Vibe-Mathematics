@@ -19,8 +19,8 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { REPO } from './_lib/repo-root.mjs'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const TMP = 'D:/_tmp/sim-tests/expected-refusals'
 
 let passed = 0

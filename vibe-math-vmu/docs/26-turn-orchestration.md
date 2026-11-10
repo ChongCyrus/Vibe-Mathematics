@@ -5078,3 +5078,30 @@ proceed() only applies to a meeting WAITING for its scheduled start: m1 is sched
 - **段预算与运行器上限也在量「机器当时有多忙」。** `audit/all` 段预算 75000→150000（`tests/sim-gate.test.mjs:53`），基线 56725→62000（`docs/acceptance/sim-gate-scope.md:10`、`:20-22`）：允许量 77500 ms > 并发实测 75031 ms，`drift=1.25`/`floor=1500` 不动；`release-ready.test.mjs` 的 runner 上限 800000 与权重 317（`tests/run-tests.mjs:227`、`:287-293`、`:314`、`:331`）是 317 s 实测的 2.52×，180 s 是被负载杀。
 - **台账终态 28 = fixed 24 / accepted 2 / open 2（均 P2）。** `audit14-p0-2` 已 fixed（355.9.2 的两条修法）；新开 `RULES-E33-SOURCE-GREP`、`RULES-E26-ROTATION-ASSERTION` 两条 P2——只问存在不问语义的余账，不写成已完成。
 - **口径：判据的成本记在判据自己头上；预算是为诚实工作量买的，超时仍然 FAIL。**
+
+## ROUND 267 —— 判据的措辞比实现宽，就是一条在树里过夜的债
+
+- **病：一句拒因对 P0/P1 成立、对 P2 不成立。** `runLedgerProofs` 原来写 `if (status !== 'fixed' || !(severity === 'P0' || severity === 'P1')) continue`（`85c7f453:scripts/sim/audit/release-ready.mjs:282`），P2 的 fixed 行整段免证；被它放过的真实行是 `audit14-o1-repo-hygiene`（P2 / fixed / 无 proof / 闸仍 READY）。现改为 `if (status !== 'fixed') continue`（`92bc6d94:…:285`），拒因钉一句 `severity does not buy an exemption (every fixed row owes a proof)`（`:290`）；判据侧 `tests/release-ready.test.mjs:259-260`、`:674` 读这句话。
+- **补的 proof 自己会红。** `node tests/repo-hygiene.test.mjs`（expect 0）基线 `19 passed / 0 failed`；副本里把守卫 `scripts/check-repo-hygiene.mjs` 的两条判据改成永真 ⇒ `8 passed / 11 failed`，红点逐条点名 H1/H2/H3 类（`tests/repo-hygiene.test.mjs:102`、`:103`、`:116`）。**没有被弄假过的 proof 不算证据，只是句子**。
+- **病：台账 note 里的数字没人判。** 24 条 fixed 行里 12 行 `proof.note` 写「N passed」，闸只跑 cmd 比 expect ⇒ 数字写错没有东西会红；实测 2 行过期（83→87、97→125），2 行刚修（148/90→154）。口径：**数字归闸、语义归 note**——TB-2684（task-167，sim-lane）正把「解析收尾行 `N passed`/`M failed` 进 facts（解析不出记 `unparsed`）+ 静态禁令（note 命中数字即红）」落成判据。
+- **两次 exit 7 是流程错，不是产品错。** 第 75 次 attempt-1 报 `[AUDIT_TREE_CHANGED]`（`276ca831` vs `f49a3020`，起跑时车道还在写仓库）；attempt-2 报 `[AUDIT_STALE]` + 同码（HEAD 从 `85c7f453` 走到 `92bc6d94`，commit 后没重生成审计）。两条判据都对（`92bc6d94:scripts/sim/audit/release-ready.mjs:399`/`:404`/`:406` 的 owner 与 readyIf，判据行 `:455`、`:478`）。
+- **树静默的定义要写死。** 口径原文：**「树静默不是『我以为没人动』，是『闸的输入在闸运行期间不可变』，判据只能是跑前跑后 tree hash 相等」**；顺序 **commit → `all.mjs` → 放行闸 → 起跑，一气呵成**。attempt-3 照此一次即过（build `92bc6d94`）。
+- **override 是一条假的已审计。** `-OverrideReleaseGate` 会把「审计没读这棵树」写成正式记录，而这条洞刚被 A11/A13b/A16/A16b 四轮焊死；拒绝它不是拒绝紧急放行，是拒绝在报告里留假 fact——真紧急就修树、重跑 `all.mjs`。
+- **覆盖账 79/91 → 90/91。** TB-2683 把 11 条 cheap 规则补到「改坏即红」（E3 E14 E15 E16 E34 E36 F1 F2 G8 G14 = RED，E26 = STRENGTHENED：新断言读 `vibe_v5_meeting` 回执的 `procedure.steps[1].what`，改 `轮流发言`→`依次发言` 单条即红）；余 E30（需新场景）1 条待实测、G1/C10 2 条部署受限。口径句：「93 条有落点与具名判据，90 条已证改坏即红，1 条待实测，2 条受部署限制」。
+- **`regen-all` 的 17/17 不是自动成立。** 在 `92bc6d94` 上 `regen-all --check` 是 16/17：`docs/acceptance/rule-conformance-matrix.md` 因 E26 新断言陈旧，连带 `audit-declaration-criterion` 从 94/0 变 93/1——生成物是判据的输入，改了判据要重生成（`--write` 归收口，不在文档车道）。
+- **口径：数字由生产者量，措辞不许比实现宽；树在闸的运行窗口内必须是不动的。**
+## ROUND 268 —— 回执要能回答「你量了什么」，判据要能回答「你真的执行了吗」
+
+- **病：一份读数在线上走了两遍，预算就被重复撑爆。** `attend` 答案 16 163 B 超 12 000 B 契约，超的全是拷贝不是内容；改法 = 读数摊平到顶层、`receipt` 只留 `see` 指针（`vibe-math-vmu/kernel/meetings.js` 的 `WIRE_RECEIPT_SEE`/`wireReceipt`）。
+- **补：录制面不动，线上只走一份。** `receiptsView` 仍持全量读数——「线上只有一份」不等于「全局只有一份」。
+- **病：差集不具名，「挂载了」会被读成「被授权了」。** temp 席 `declared 48 / allow 8 / deny 40` 与 `measured 40` 之间那 32 行没有名字；补 = `toolHelp` 增发 `wireOnly`/`declarationOnly`，逐行给 `governed`/`deniedBy`。**裁定：不写 `permitted:false`**——那 32 面 temp 真能 call，写「不许」是假话。
+- **病：拒因提示教了一个跑不通的调用。** 四个站点共用一句可照抄的四步提示，反关灯 = 旧句与 `roster()` 必须消失。
+- **病：同一个词两个生产者。** `proofRefState` 的测量与判定各只有一处，`unknown` = NOT CHECKED 不是 `missing`；F75-14「render ≠ 编译」判 ALREADY-TRUE 并补 `renderOkMeans`。
+- **病：判据自己会写盘。** 生成器 CLI 收成一处三态（无参只读 / `--check` 判差 / `--write` 才写），判据改成行为判据（克隆里快照 `mtimeMs`+`sha256` 前后相等）；**它的反关灯也不许靠环境**——树已同步时「拆守卫的裸跑」不红，所以先造一个计数探针。
+- **病：未确认的本地写被当成「别人更新」。** `synchronize()` 会把 `writer`/`updatedAt`/`fingerprint` 回滚；补 = `noteLocalWrite`+`foldPending`+`strictlyNewer`+`staleRows`/`heldBack`，受控必现、自然 0/102 由分支触发。
+- **病：一个名字两个意思。** `put` 的 `settled` 是准入闸、消费后不落库，却被 5 处当领域事实传；补 = 起新名 `finalAck`，旧词只作 deprecated 别名且必须具名消费（`finalAckSource:"legacy-settled"`），两词相反时具名拒；**shim 是债，另立退场单**。
+- **病：同一句总句回答三个问题。** 论文面三个「完成」（归档行集 / 定稿行 / render 结果）共用一句总说明；补 = 只改总句、逐个点名，算术零改动。
+- **病：变异「昨天红今天绿」。** 真因是套件硬编码本机 checkout 根，变异装置在副本里变异、套件 import 原仓 ⇒ **变异从未被执行**（`NO-OP-IMPORT`）。方法学一句：**先证明「变异被执行过」，再解释「为什么没红」**；装置侧残留原仓路径就抛 `MUTATION-PATH-LEAK`。本轮 PROVEN 13 → **43**（REHEARSED 47 / UNDECIDABLE 3）。
+- **病：提示词与 hint 教了不存在的工具。** 全树 58 处不可达命令名 = 修 32 + 登记 26（`fixed+registered === 58` 硬对账）；登记表带 STALE 检查，改完忘了删条目会红。
+- **病：字数闸只有上限。** 基线改小 1 字符会被 1% 余量吞掉；补 = 上限 + **等式 pin** + 重复计数三件套，涨预算前先判「教学」还是「重复」。
+- **方法学：`node --check` 不建作用域（重复声明只有 `import()` 才报）；shared 块一句 ×3 席，改完必须跑水位断言。** 本轮到 T1 **850 PASS / 0 FAIL**、`regen-all --check` 17/17、五门禁 PASS，提交 `本节所在提交（RUN 269 收口）`。

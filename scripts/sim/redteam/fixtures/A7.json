@@ -1,0 +1,16 @@
+{
+  "id": "A7",
+  "attack": "the block claims 7 fidelity gaps (named) where the recompute finds 0",
+  "why": "a count is not actionable: when a report claims gaps it must NAME them, and the refusal must name the claim",
+  "wouldBeWrongIf": "READY, or refusal saying only 'gaps 7' with no tool.field names anywhere",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_FIDELITY_GAPS",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "([a-z_]{3,}\\.[A-Za-z0-9_.]{3,}|gapList)",
+    "allowedSecondary": {
+      "AUDIT_FIDELITY_MISMATCH": "the recomputed gaps are 0, so the mismatch also fires; it does not prove the gap-count rule names the gaps"
+    }
+  }
+}

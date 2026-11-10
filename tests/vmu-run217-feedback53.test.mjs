@@ -23,8 +23,8 @@
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { REPO } from './_lib/repo-root.mjs'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const VMU = join(REPO, 'vibe-math-vmu')
 const TMP = 'D:/_tmp/r217'
 mkdirSync(TMP, { recursive: true })
@@ -92,8 +92,10 @@ ok(!SRC_BLUEPRINT.includes("const bodyPrefixDroppedMeans = dup.matched === null\
 
 // ★ RUN 221 (run 57 / FEEDBACK56 1.1): the block is now COMPUTED (a settlement reads the card back), so the pin asks
 // that the receipt still answers "is it locked" and that the settlement path labels its read-back — not for one literal.
-ok(SRC_TOOLS.includes('proofGate: proofGateOut') && SRC_TOOLS.includes('const proofGateOut = settlementReadback !== null'),
-  '★ ③ the card write answers "is it LOCKED", not only "was it filed"', SRC_TOOLS.includes('proofGate: proofGateOut'))
+// ★ RUN 2699 (F75-04): the computed gate is now called `proofGateFinal` (the lock branch plus the ONE pointer-state
+// judge); the receipt still prints it under `proofGate`, so the pin follows the receipt, not the variable.
+ok(SRC_TOOLS.includes('proofGate: proofGateFinal') && SRC_TOOLS.includes('const proofGateFinal = Object.assign({}, proofGateOut'),
+  '★ ③ the card write answers "is it LOCKED", not only "was it filed"', SRC_TOOLS.includes('proofGate: proofGateFinal'))
 ok(SRC_TOOLS.includes('read proofGate.locked, not `ok`'),
   '★ ③ and it says which field answers that question', SRC_TOOLS.includes('read proofGate.locked'))
 ok(SRC_TOOLS.includes('REGISTER A NEW CARD'),

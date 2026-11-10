@@ -29,8 +29,8 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { REPO } from './_lib/repo-root.mjs'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const VMU = join(REPO, 'vibe-math-vmu')
 const PATH = 'Shared/Protocol.md'
 const PATH_ALT = 'Shared/Alt.md'

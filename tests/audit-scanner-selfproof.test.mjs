@@ -40,6 +40,11 @@ const TESTS = join(REPO, 'tests')
 // Deleting an entry is REQUIRED when the file gains a self-proof; adding one requires saying, in the commit, why a
 // new scanner may ship without proof.
 const UNPROVEN = new Set([
+  // Phase-3 (TB-2680, plugin layer): a receipt-superset comparator whose negative controls are three lamps run OUTSIDE
+  // the repository (`D:/_tmp/tb2680-lamps`, deleted with the temp tree) — an unscanner: it walks the two branch
+  // handlers and compares key sets, so "0 findings" could also mean "read nothing". Registered rather than pretended;
+  // delete this row the day it grows an in-repo `--selftest` (the same three lamps, run from `tests/`).
+  'audit-plugin-receipt-superset',
   'audit-bus-emit-shape.test', 'audit-claim-traceability.test', 'audit-code-size.test', 'audit-code-status.test',
   // Phase-12 lane file (member scope declaration): direct behaviour assertions over an exported table, no scan to
   // prove. Registered rather than pretended; delete this row the day it grows a runnable --self-test.

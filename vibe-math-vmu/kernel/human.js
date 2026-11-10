@@ -353,7 +353,7 @@ export function createHuman({ clock = () => 0, log = null, settings = {}, bus = 
         queueDropped += 1
         return { ok: false, code: CODE.queueFull, gated: true, action: act, subject: subj,
           message: 'the approval queue is full (' + c.queueCap + '): the action is NOT queued and NOT run',
-          hint: 'decide() or liftVeto() the pending requests first (vmu.human.approvalQueueCap)', enforced: ['vmu.human.approvalQueueCap'], fired: [CODE.queueFull] }
+          hint: 'REACHABLE INSTEAD: 先用 vibe_vmu_human {action:"decide"} 或 {action:"liftVeto"} 处理排队中的审批请求，再重试本调用（上限 vmu.human.approvalQueueCap）', enforced: ['vmu.human.approvalQueueCap'], fired: [CODE.queueFull] }
       }
       id = 'approval-' + (++seq)
       rec = { id, action: act, subject: subj, askedAt: Number.isFinite(at) ? Number(at) : clock(), decidedAt: null, decision: null, reason: null, pendingReason: null, attempts: 0, decidedBy: null }

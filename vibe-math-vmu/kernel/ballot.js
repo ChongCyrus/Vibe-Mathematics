@@ -314,7 +314,7 @@ export function createBallot({
   const castNow = async (member, value, { kind = 'decisive' } = {}) => {
     // A pause also freezes CASTING: a ballot whose voters can keep voting is not frozen at all (§5).
     if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: this ballot cannot be voted in',
-      'resume() first (vibe_vmu_control {action:"resume"})')
+      'REACHABLE INSTEAD: 用 vibe_vmu_control {action:"resume"} 解除内核暂停后重试本调用')
     if (state !== 'open' && state !== 'frozen') {
       record('cast-refused', { member, reason: 'ballot is not open', state })
       throw refuse('VMU_STATE', 'the ballot is not open', 'state=' + state)
@@ -414,7 +414,7 @@ export function createBallot({
     async open({ by = null } = {}) {
       // A pause freezes new ballots (docs/08 §5): the ledger is not the only thing control flow gates.
       if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: no ballot can be opened',
-        'resume() first (vibe_vmu_control {action:"resume"})')
+        'REACHABLE INSTEAD: 用 vibe_vmu_control {action:"resume"} 解除内核暂停后重试本调用')
       if (state === 'open' || state === 'frozen') {
         throw refuse('VMU_STATE', 'the ballot is already open', 'state=' + state)
       }
@@ -423,7 +423,7 @@ export function createBallot({
       if (state === 'tallied') {
         record('open-refused', { target, by, reason: 'already-settled', previous: outcome ? outcome.outcome : null })
         throw refuse('VMU_STATE', 'this ballot was already settled: re-opening would keep the previous votes',
-          'call reopen() to clear the votes and debate again, or start a fresh ballot')
+          'REACHABLE INSTEAD: 用 vibe_vmu_meeting {action:"reopen", ballotId:"<选票 id>"} 清掉旧票后重开，或另开一张新选票（本面不提供重开动作）')
       }
       /**
        * F34 — THE OPENING CRITERION, enforced where a debate STARTS (the evidence's gap: this face judged who may

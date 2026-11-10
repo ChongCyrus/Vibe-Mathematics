@@ -652,7 +652,7 @@ for (const P of PRESETS) {
   // EXCLUSIONS (documented, auditable; PURE CODE constructs that never reach a prompt):
   //   1. `TEX_DRIVE_YEAR_ROOTS = ['D:/texlive', 'C:/texlive']` — the candidate-root list the detector
   //      walks; resolveKnownTool reads it, nothing concatenates it into agent text.
-  //   2. resolveKnownTool's PATH-fallback defaults `'C:/Users/Default'`, `'C:/Program Files'`,
+  //   2. resolveKnownTool's PATH-fallback defaults `<drive>:/Users/Default`, `C:/Program Files`,
   //      `'C:/Program Files (x86)'` — used only when the host env vars are absent.
   // Where they live today: v2 L136/146/148/149 · v3 L169/179/181/182 · v4 L57/67/69/70 · v5 L67/77/79/80.
   // The anti-vacuity check re-derives them on every run, so a refactor that drops them is CAUGHT instead

@@ -1151,6 +1151,28 @@ function childIdOf(handle) {
  * history, because a turn that is not answered must be re-asked rather than silently remembered. `pending()` reads
  * it (for a status receipt) and `supply(reply)` fills it.
  */
+/**
+ * ★★★ TASK-173 / TB-2690 (F75-12): WHICH DELIVERY ROUTE RAN, AND WAS IT A PER-CALL OVERRIDE?
+ * The seam (`host-deliver.js`) reports `deliverMode` / `deliverModeSource` / `deliverModeReason` on the envelope it returns;
+ * the turn carries the per-call argument it was opened with. The seam's answer wins (it is the one that actually routed),
+ * the turn is the fallback (a seam that was replaced or a resumed turn that never re-entered the dispatcher). The values are
+ * `null` when neither names a mode - "not reported" is not the same fact as "the default applied", so it is not invented here.
+ */
+function deliveryModeReadingOf(turn, delivered) {
+  const dm = (delivered && typeof delivered.deliverMode === 'string' && delivered.deliverMode !== '' ? delivered.deliverMode : null)
+    || (turn && typeof turn.deliverMode === 'string' && turn.deliverMode !== '' ? turn.deliverMode : null)
+  if (dm === null) return { deliverMode: null, deliverModeSource: null, deliverModeReason: null }
+  return {
+    deliverMode: dm,
+    deliverModeSource: (delivered && typeof delivered.deliverModeSource === 'string' && delivered.deliverModeSource !== '')
+      ? delivered.deliverModeSource
+      : ((turn && typeof turn.deliverModeSource === 'string' && turn.deliverModeSource !== '') ? turn.deliverModeSource : 'arg'),
+    deliverModeReason: (delivered && typeof delivered.deliverModeReason === 'string' && delivered.deliverModeReason !== '')
+      ? delivered.deliverModeReason
+      : ((turn && typeof turn.deliverModeReason === 'string' && turn.deliverModeReason !== '') ? turn.deliverModeReason : null),
+  }
+}
+
 export function deliverByReturning() {
   let pendingPrompt = null
   let answeredFor = null
@@ -1852,7 +1874,7 @@ const rowsOfSync = (listed) => (isPromise(listed) ? null : ledgerRowsOf(listed))
  * cannot start awaiting things; a reader that hands back a Promise is reported as unreadable instead of being rendered
  * as "nothing here".
  */
-export function liveStatusReadings({ records = null, rosterIds = [], votes = null, meeting = null, meetings = null, member = null } = {}) {
+export function liveStatusReadings({ records = null, rosterIds = [], votes = null, meeting = null, meetings = null, member = null, closureVote = null } = {}) {
   const readList = readerOf(records, 'list')
   const readGet = readerOf(records, 'get')
   const parseMd = readerOf(records, 'mdParse')
@@ -1982,6 +2004,35 @@ export function liveStatusReadings({ records = null, rosterIds = [], votes = nul
       else votesUnknown += 1
     }
   }
+  // ★★★ TB-2690 / F75-08 (the 75th real machine report): THE CLOSURE BOARD READS THE KERNEL'S OWN TALLY WHEN ONE IS
+  // HANDED IN. Measured on that run: the office board printed「已投 2/5（同意 2）」while the kernel held
+  // `votesCast:4, votesFor:4, votesTotal:4, eligible:["r-acad","r-1","r-2","r-3"], notEligible:[]`. Two defects, one
+  // reading: the denominator was `turn.rosterIds` (EVERY seat, temp included - so 5) and the numerator was this
+  // orchestrator's local map, which in a per-member-session deployment never sees the other members' judgements. A
+  // closure vote is "every ENFRANCHISED member judged it solved", so the denominator is the eligible set by
+  // DEFINITION. `closureVote` (the orchestrator's reading of the merged vote map + the durable `closure_votes` rows) is
+  // that number computed once, by the kernel, on one basis; this reader may not recompute it from a narrower roster.
+  // `votesTotal` therefore comes from the reading, `notEligible` is NAMED and never added to it, and the as-of instant
+  // is the newest vote ROW's `at` - a CONTENT time, so two assemblies of the same state stay byte-identical (the
+  // prompt-diffability property this file asserts) instead of drifting with the read clock.
+  const cv = closureVote !== null && typeof closureVote === 'object' ? closureVote : null
+  const cvAsOf = cv !== null && Number.isFinite(Number(cv.votersAsOf)) && Number(cv.votersAsOf) > 0 ? Number(cv.votersAsOf) : null
+  const tally = cv === null
+    ? null
+    : {
+      votesCast: Number.isFinite(Number(cv.votesCast)) ? Number(cv.votesCast) : 0,
+      votesFor: Number.isFinite(Number(cv.votesFor)) ? Number(cv.votesFor) : 0,
+      votesAgainst: Number.isFinite(Number(cv.votesAgainst)) ? Number(cv.votesAgainst) : 0,
+      votesTotal: Number.isFinite(Number(cv.votesTotal)) ? Number(cv.votesTotal) : 0,
+      eligible: Array.isArray(cv.eligible) ? cv.eligible.map(String) : null,
+      notEligible: Array.isArray(cv.notEligible) ? cv.notEligible.map(String) : [],
+      asOf: cvAsOf === null ? null : new Date(cvAsOf).toISOString(),
+    }
+  const shownCast = tally === null ? votesCast : tally.votesCast
+  const shownFor = tally === null ? votesFor : tally.votesFor
+  const shownAgainst = tally === null ? votesAgainst : tally.votesAgainst
+  const shownUnknown = tally === null ? votesUnknown : 0
+  const shownTotal = tally === null ? (roster.length === 0 ? null : roster.length) : tally.votesTotal
   let motionsPending = null
   let motionsWhy = null
   let motionsDetail = null
@@ -2003,18 +2054,29 @@ export function liveStatusReadings({ records = null, rosterIds = [], votes = nul
       motionsWhy = '会议 ' + String(meeting) + ' 的动议读不到：' + String((e && e.message) || e)
     }
   }
-  if (votes && typeof votes.size === 'number' && votes.size > 0) {
+  if (tally !== null || (votes && typeof votes.size === 'number' && votes.size > 0)) {
+    const detail = {
+      votesCast: shownCast, votesTotal: shownTotal, votesFor: shownFor, votesAgainst: shownAgainst, votesUnknown: shownUnknown,
+      denominator: tally === null
+        ? '本回合 turn.rosterIds；投票资格过滤在 balloting 面，本读数看不到，所以分母不缩小'
+        : '具备结题表决权的成员数（closureVote.eligible，may-vote）；notEligible 永不进分母',
+      motionsPending, motionsWhy, motions: motionsDetail,
+    }
+    if (tally !== null) {
+      detail.eligible = tally.eligible
+      detail.notEligible = tally.notEligible
+      detail.notEligibleMeans = 'judged but holds no closure-vote permission: recorded, neither counted nor listed as missing'
+      detail.asOfSource = tally.asOf === null ? null : 'closure_votes 行：最新一条投票的 at（closureVote.votersAsOf）'
+      detail.tallySource = 'kernel closureVoteOf：合并后的 closureVotes + durable closure_votes 行'
+    }
     out.closure = liveValue(
-      '已投 ' + String(votesCast) + '/' + (roster.length === 0 ? '?（本回合无在册名单）' : String(roster.length)) +
-        '（同意 ' + String(votesFor) + '、反对 ' + String(votesAgainst) + (votesUnknown > 0 ? '、其他 ' + String(votesUnknown) : '') + '）' +
+      '已投 ' + String(shownCast) + '/' + (shownTotal === null ? '?（本回合无在册名单）' : String(shownTotal)) +
+        '（同意 ' + String(shownFor) + '、反对 ' + String(shownAgainst) + (shownUnknown > 0 ? '、其他 ' + String(shownUnknown) : '') + '）' +
         '｜未决动议 ' + (motionsPending === null ? '（未读到）' : String(motionsPending)),
-      voteSource,
-      {
-        votesCast, votesTotal: roster.length, votesFor, votesAgainst, votesUnknown,
-        denominator: '本回合 turn.rosterIds；投票资格过滤在 balloting 面，本读数看不到，所以分母不缩小',
-        motionsPending, motionsWhy, motions: motionsDetail,
-      },
-      null, null,
+      tally === null ? voteSource : '本回合编排器的 closureVote（closure_votes 耐久账 + 合并票图） + 本回合绑定会议的动议',
+      detail,
+      tally === null ? null : tally.asOf,
+      tally === null ? null : 'closure_votes 行最新 at',
     )
   } else if (motionsPending !== null) {
     out.closure = liveValue('未决动议 ' + String(motionsPending), voteSource,
@@ -2148,6 +2210,13 @@ export function createTurnOrchestrator({
   // Phases the PACK declares, beyond the framework's own. See PHASES: which phases exist is institution
   // vocabulary, so the framework validates and the pack names.
   extraPhases = null,
+  // ★★★ TB-2690 / F75-08: ONE closure tally, computed by the kernel. The board's `[结题]` line used to count this
+  // turn's own votes against `turn.rosterIds` (temp seats included) — measured on the 75th run as「已投 2/5」while the
+  // kernel held「4/4」. This seam is a THUNK so the reading is taken at assembly time (after the merge), and it is
+  // the same `closureVoteOf` view `vibe_vmu_turn {op:"status"}` reports: denominator = the enfranchised set, durable
+  // `closure_votes` rows included, `notEligible` named and never counted. Absent ⇒ the old local reading, which now
+  // says out loud that it is local.
+  closureVote = null,
   prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString(),
   // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams. Both are optional; a loop without them can still
   // START turns, and a caller that asks for the missing verb gets a NAMED refusal rather than a silent no-op.
@@ -2314,6 +2383,27 @@ export function createTurnOrchestrator({
     if (!pending) return null
     ledgerWrites.delete(turn.id)
     return await pending
+  }
+  // ★★★ TB-2694 / F75-06: THE SETTLEMENT PROJECTION. `noteSharedTurn` above records the OPEN fact; a member's own
+  // session mounts a SECOND kernel, so `codes/skipped/emptyReply/status` only reach it if they land in the same durable
+  // row. This is best-effort like its sibling: counted in `ledgerRecorded`/`ledgerFailed`/`ledgerSkipped`, and never
+  // allowed to break a receipt — a turn whose settlement failed is still settled in this kernel's memory.
+  const noteSettledTurn = (row) => {
+    if (!turnLedger || typeof turnLedger.record !== 'function') return
+    if (!row || typeof row.turn !== 'string' || row.turn === '') return
+    const fact = { id: row.turn, member: row.member, phase: row.phase, at: typeof row.openedAt === 'string' ? row.openedAt : null,
+      status: typeof row.status === 'string' ? row.status : null,
+      codes: Array.isArray(row.codes) ? row.codes : [],
+      skipped: Array.isArray(row.skipped) ? row.skipped.length : 0,
+      emptyReply: typeof row.emptyReply === 'boolean' ? row.emptyReply : null,
+      closedWith: typeof row.closedWith === 'string' ? row.closedWith : null }
+    let pending = null
+    try { pending = turnLedger.record(fact) } catch (e) { ledgerFail(row, e); return }
+    if (!pending || typeof pending.then !== 'function') return
+    Promise.resolve(pending).then(() => { counts.ledgerRecorded += 1 }, (e) => {
+      if (e && e.code === 'VMU_STORE_FAILED' && /not open/.test(String(e.message))) { counts.ledgerSkipped += 1; return }
+      ledgerFail(row, e)
+    })
   }
   const lastRefusal = { code: null, message: null }
   // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
@@ -2542,6 +2632,15 @@ export function createTurnOrchestrator({
       votes: closureVotes,
       meeting: turn && turn.meeting !== undefined && turn.meeting !== null ? String(turn.meeting) : null,
       meetings: faces && faces['vmu.meetings'] ? faces['vmu.meetings'] : null,
+      // TB-2690 / F75-08: the kernel's own tally (eligible denominator, durable rows). A seam that throws is a NAMED
+      // gap, not a silent fallback to the narrow local count — the board must not quietly answer a different question.
+      closureVote: (() => {
+        if (typeof closureVote !== 'function') return null
+        try {
+          const got = closureVote()
+          return got !== null && typeof got === 'object' && got.ok !== false ? got : null
+        } catch (e) { return null }
+      })(),
     })
   }
   /** The board object is what `assemble` renders and what `status()` reports; both get the SAME live object. */
@@ -2657,6 +2756,10 @@ export function createTurnOrchestrator({
       // and `turnReceiptsMeans` spells out which is which.
       notices: null, truncated: null, excerptLen: null, emptyReply: null,
       replyFullPath: null, replyFullSha256: null, replyFullBytes: null, replyArchiveWhy: null,
+      // ★★ TB-2694 / F75-16: a claimed archive is only claimed after the write seam READ IT BACK (kernel/index.js#
+      // writeTurnArchive). `true` names the case where a seam said "written" and the file could not be read back — the
+      // receipt then carries no replyFullPath, and this boolean + replyArchiveWhy say why by name (`archiveMissing:`).
+      archiveMissing: null,
       // ★★★ RUN 257 / TB-2611 (task-90): WHO RAN THE TURN is a row-level fact, present from OPEN time. A seat-own-session
       // turn carries the path the delivery seam reported (`activation` / `continuation` / `one-shot` / a host seam name);
       // a turn the CALLING session played carries `"caller"`; null means the ledger does not say (legacy row or a silent
@@ -2731,6 +2834,9 @@ export function createTurnOrchestrator({
       if (typeof patch.replyFullSha256 === 'string' && patch.replyFullSha256 !== '') next.replyFullSha256 = patch.replyFullSha256
       if (Number.isFinite(patch.replyFullBytes)) next.replyFullBytes = Math.max(0, Math.floor(patch.replyFullBytes))
       if (typeof patch.replyArchiveWhy === 'string' && patch.replyArchiveWhy !== '') next.replyArchiveWhy = patch.replyArchiveWhy
+      // ★★ TB-2694 / F75-16: the missing-archive verdict is a row fact, copied from the write seam (never recomputed).
+      if (patch.archiveMissing === true) next.archiveMissing = true
+      else if (patch.truncated === true) next.archiveMissing = false
       if (typeof patch.code === 'string' && patch.code !== '' && !next.codes.includes(patch.code)) next.codes = next.codes.concat([patch.code])
       if (Array.isArray(patch.executed)) {
         next.executed = patch.executed.map((e) => {
@@ -2766,6 +2872,9 @@ export function createTurnOrchestrator({
     next.unavailable = unavailableForTurn(next, patch && typeof patch === 'object' ? patch : null)
     turnReceipts.set(next.turn, next)
     while (turnReceipts.size > TURN_RECEIPT_CAP) turnReceipts.delete(turnReceipts.keys().next().value)
+    // ★★★ TB-2694 / F75-06: THIS is the one place a turn stops being open, so this is where the settlement projection
+    // reaches the durable row a member's own kernel can read. Not awaited: the receipt is already the caller's answer.
+    if (next.status !== 'open') noteSettledTurn(next)
     return next
   }
 
@@ -2784,11 +2893,38 @@ export function createTurnOrchestrator({
   // So the turn carries the binding from the moment it is opened: `open` puts it on the turn, `nextTurn` puts it on the
   // spec, and the caller-played seam parks it with the prompt so the reply inherits it (see deliverByReturning).
   const normalizeMeetingId = (meeting) => (meeting === null || meeting === undefined || String(meeting).trim() === '' ? null : String(meeting).trim())
-  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, rosterIds = null, chairId = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1, meeting = null, openedBy = null } = {}) => {
+  // ★★★ TASK-173 / TB-2690 (F75-12): THE DELIVERY MODE HAS A PER-CALL DOOR. Before this, `host-deliver.js` resolved the
+  // mode ONCE at construction and a config-declared `subagents` shadowed the setting, so the caller route had no live
+  // reader: the 75th live run's fourteen member turns were all activation/continuation and `memberWorkShare.officeRelayedActs`
+  // stayed 0. `step`/`drive` now accept `deliverMode` for THAT call only (threaded onto the turn, which is the one channel
+  // `host-deliver.js` forwards), and the seam reports which route ran (`deliveryPath`, `deliverModeSource`, `deliverModeReason`).
+  // Refused BY NAME rather than silently falling back: a typo must not look like "the default happened to apply".
+  const DELIVER_MODES = ['caller', 'subagents']
+  const normalizeDeliverModeArg = (mode, where) => {
+    if (mode === null || mode === undefined || mode === '') return null
+    const v = String(mode).trim()
+    if (!DELIVER_MODES.includes(v)) {
+      fail('VMU_INVALID_ARGUMENT', 'unknown deliverMode: ' + String(mode),
+        'deliverMode is a PER-CALL argument: "caller" - the calling session plays this member turn and hands the reply back on the next call; "subagents" - the host runs the member turn. Omit it to use the deployment default. Refused at ' + where)
+    }
+    return v
+  }
+  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, rosterIds = null, chairId = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1, meeting = null, openedBy = null, deliverMode = null, deliverModeSource = null, deliverModeReason = null } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     const knownPhases = extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES
     if (typeof phase !== 'string' || !knownPhases.includes(phase)) {
       fail('VMU_INVALID_ARGUMENT', 'unknown phase: ' + String(phase), 'known phases: ' + (extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES).join(', '))
+    }
+    // TASK-173 / F75-12: the per-call delivery mode travels on the TURN, because `host-deliver.js` forwards the turn
+    // verbatim and drops extra arguments (`deliver({ turn, text })`). Null means "no per-call override: the deployment
+    // default applies"; the source/reason are written here so every downstream reading (and the receipt) can say it
+    // without re-deriving the precedence from source.
+    const requestedDeliverMode = normalizeDeliverModeArg(deliverMode, 'open')
+    const deliverModeReading = requestedDeliverMode === null ? null : {
+      deliverMode: requestedDeliverMode,
+      deliverModeSource: typeof deliverModeSource === 'string' && deliverModeSource !== '' ? deliverModeSource : 'arg',
+      deliverModeReason: typeof deliverModeReason === 'string' && deliverModeReason !== '' ? deliverModeReason
+        : 'this call passed deliverMode:"' + requestedDeliverMode + '": a PER-CALL override - it affects this turn only, rewrites no construction-time configuration and is not persisted',
     }
     seq += 1
     // R1 ZERO POLICY (round 466): `roleLabel` BELONGS IN THIS LIST. It was missing, so `turn.roleLabel` was always
@@ -2801,7 +2937,11 @@ export function createTurnOrchestrator({
       // a meeting wait wake settle turns differently, and `op:"status"` used to say nothing about the difference - the
       // office could not tell a turn its own step opened from one a wait woke. Value domain: 'drive' | 'activation' |
       // 'wait' | null (unknown/legacy caller).
-      openedBy: openedBy === null || openedBy === undefined || String(openedBy).trim() === '' ? null : String(openedBy).trim() }
+      openedBy: openedBy === null || openedBy === undefined || String(openedBy).trim() === '' ? null : String(openedBy).trim(),
+      // TASK-173 / F75-12: null when this turn did not override the deployment's construction-time delivery mode.
+      deliverMode: deliverModeReading === null ? null : deliverModeReading.deliverMode,
+      deliverModeSource: deliverModeReading === null ? null : deliverModeReading.deliverModeSource,
+      deliverModeReason: deliverModeReading === null ? null : deliverModeReading.deliverModeReason }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -3222,10 +3362,18 @@ export function createTurnOrchestrator({
     if (delivered && delivered.awaiting === true) {
       // ★ RUN 241 / M4: the caller-played route also delivered this turn to somebody - the member is named here for the
       // same reason as in the envelope branch: a delivery record is a (member, turn) pair, stamped when it returns.
+      // ★ TASK-173 / F75-12: and the ROUTE is reported, not assumed: `deliveryPath` used to be hard-coded 'caller' here,
+      // which was true only while the caller seam was the sole way an awaiting envelope could exist.
+      const awaitingMode = deliveryModeReadingOf(turn, delivered)
+      const awaitingPath = (delivered && typeof delivered.deliveryPath === 'string' && delivered.deliveryPath !== '')
+        ? delivered.deliveryPath : 'caller'
       lastAttribution = { member: turn && typeof turn.member === 'string' ? String(turn.member) : null,
         turn: turn && typeof turn.id === 'string' ? String(turn.id) : null,
-        childId: null, stopReason: null, deliveryPath: 'caller', attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
-      return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null, deliveryPath: 'caller',
+        childId: null, stopReason: null, deliveryPath: awaitingPath, attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call',
+        deliverMode: awaitingMode.deliverMode, deliverModeSource: awaitingMode.deliverModeSource, deliverModeReason: awaitingMode.deliverModeReason }
+      return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null, deliveryPath: awaitingPath,
+        // ★ TASK-173 / F75-12: the receipt says WHICH ROUTE ran and whether the mode was a per-call override.
+        deliverMode: awaitingMode.deliverMode, deliverModeSource: awaitingMode.deliverModeSource, deliverModeReason: awaitingMode.deliverModeReason,
         // ★ E12 / task-19: the awaiting envelope names the meeting the prompt is bound to, on the envelope AND on the
         // held prompt, so "which meeting does this round belong to" is readable without a second call and survives
         // into the reply that answers it.
@@ -3244,6 +3392,8 @@ export function createTurnOrchestrator({
     // honest value for a seam that does not bind meetings (activation/one-shot); the turn's own binding is the
     // fallback at the dispatch site, so this only OVERRIDES when the seam really named one.
     lastReplyMeeting = delivered && typeof delivered.meeting === 'string' && delivered.meeting !== '' ? delivered.meeting : null
+    // ★ TASK-173 / F75-12: the settled route's mode reading, from the seam (it routed) with the turn as fallback.
+    const settledMode = deliveryModeReadingOf(turn, delivered)
     lastAttribution = {
       // ★★★ RUN 241 / FEEDBACK64 M4: A DELIVERY IS A PAIR (member, child), AND THE SLOT IS SINGLE. Run 64 read
       // `lastAttribution.childId` naming r-acad's child while the same receipt called it r-1's most recent delivery: the
@@ -3254,6 +3404,11 @@ export function createTurnOrchestrator({
       turn: turn && typeof turn.id === 'string' ? String(turn.id) : null,
       // ★ ROUND 88: WHICH ROUTE DELIVERED, reported by the seam itself (host bridge or caller-played).
       deliveryPath: (delivered && delivered.deliveryPath) || null,
+      // ★ TASK-173 / F75-12: the delivery MODE reading travels with the path, so a receipt can distinguish the deployment
+      // default from a per-call override without re-reading construction-time configuration.
+      deliverMode: settledMode.deliverMode,
+      deliverModeSource: settledMode.deliverModeSource,
+      deliverModeReason: settledMode.deliverModeReason,
       childId: (delivered && delivered.childId) || null,
       stopReason: (delivered && delivered.stopReason) || null,
       attribution: (delivered && delivered.attribution) || 'the delivery adapter returned an envelope without an attribution note',
@@ -4644,6 +4799,11 @@ export function createTurnOrchestrator({
           deliveryDeadlineMs: Number.isFinite(a.deliveryDeadlineMs) ? a.deliveryDeadlineMs : null,
           deliveryGraceMs: Number.isFinite(a.deliveryGraceMs) ? a.deliveryGraceMs : null,
           attribution: typeof a.attribution === 'string' ? a.attribution : null,
+          // ★ TASK-173 / F75-12: which delivery mode ran, and whether it was a per-call override. Null means the seam did
+          // not report a mode at all (legacy/unknown), which is NOT the same fact as "the deployment default applied".
+          deliverMode: typeof a.deliverMode === 'string' ? a.deliverMode : null,
+          deliverModeSource: typeof a.deliverModeSource === 'string' ? a.deliverModeSource : null,
+          deliverModeReason: typeof a.deliverModeReason === 'string' ? a.deliverModeReason : null,
           means: DELIVERY_MEANS,
         }
       }
@@ -4670,6 +4830,10 @@ export function createTurnOrchestrator({
           continuation: d.continuation && typeof d.continuation === 'object' ? d.continuation : null,
           ...(d.deliveredLate === true ? { deliveredLate: true, deliveryWaitedMs: d.deliveryWaitedMs === undefined ? null : d.deliveryWaitedMs, deliveryDeadlineMs: d.deliveryDeadlineMs === undefined ? null : d.deliveryDeadlineMs, deliveryGraceMs: d.deliveryGraceMs === undefined ? null : d.deliveryGraceMs } : {}),
           attribution: typeof d.attribution === 'string' ? d.attribution : null,
+          // ★ TASK-173 / F75-12: the awaiting route reports the same mode reading the settled route does.
+          deliverMode: typeof d.deliverMode === 'string' ? d.deliverMode : null,
+          deliverModeSource: typeof d.deliverModeSource === 'string' ? d.deliverModeSource : null,
+          deliverModeReason: typeof d.deliverModeReason === 'string' ? d.deliverModeReason : null,
           means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; activation = an independent child session ran it through startActivation (childId + stopReason name that child); subagents = the same, through the older one-shot verb. This value is the verb the seam actually used, not a normalised category',
         }
       }
@@ -4702,12 +4866,21 @@ export function createTurnOrchestrator({
         // ★ RUN 256 / TB-2616: the prompt is now PARKED on the caller — keep its assembled text (and its own id) so the
         // resume can continue THIS prompt instead of assembling a second one over the same turn.
         rememberParkedPrompt(turn, asm, raw.memberPrompt)
+        // ★ TASK-173 / F75-12: the awaiting receipt names the route AND the mode reading at the TOP level, not only inside
+        // `delivery`: a caller that reads `deliveryPath` off the receipt must not have to open a nested object, and the
+        // four F75-12 reverse lamps read exactly these fields.
+        const awaitingReceiptMode = deliveryModeReadingOf(turn, raw)
         return { ok: true, awaiting: true, turn, membersFrom: spec && typeof spec.membersFrom === 'string' ? spec.membersFrom : null, memberPrompt: raw.memberPrompt || null,
           // ★ E12 / task-19: the turn-level reading of the binding, beside the one on `memberPrompt` — a caller that
           // reads only the top level must not have to open the prompt object to learn which meeting it is answering.
           meeting: (raw && typeof raw.meeting === 'string' && raw.meeting !== '' ? raw.meeting : (turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null)),
+          deliveryPath: (raw && typeof raw.deliveryPath === 'string' && raw.deliveryPath !== '') ? raw.deliveryPath : 'caller',
+          deliverMode: awaitingReceiptMode.deliverMode, deliverModeSource: awaitingReceiptMode.deliverModeSource, deliverModeReason: awaitingReceiptMode.deliverModeReason,
           assembled: { chars: asm.text.length, sources: asmSources, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true,
-          delivery: deliveryOf(Object.assign({}, raw, { deliveryPath: (raw && raw.deliveryPath) || 'caller' })),
+          delivery: deliveryOf(Object.assign({}, raw, {
+            deliveryPath: (raw && raw.deliveryPath) || 'caller',
+            deliverMode: awaitingReceiptMode.deliverMode, deliverModeSource: awaitingReceiptMode.deliverModeSource, deliverModeReason: awaitingReceiptMode.deliverModeReason,
+          })),
           fields: [], executed: [], skipped: [], refused: [],
           attribution: Object.assign({}, lastAttribution) }
       }
@@ -4777,6 +4950,11 @@ export function createTurnOrchestrator({
         replyArchiveWhy: replyTruncated === true && !(replyArchive && replyArchive.ok === true)
           ? String((replyArchive && replyArchive.why) || 'the archive seam gave no reason')
           : null,
+        // ★★ TB-2694 / F75-16: a claimed archive whose file does not read back is named, not smoothed over. The write
+        // seam verifies the file itself (kernel/index.js#writeTurnArchive: read back + sha256 over the reply text) and
+        // answers `archiveMissing:true`; this row carries the same named fact, so `op:"status"` cannot show a
+        // `replyFullPath` next to a file nobody can open.
+        archiveMissing: replyTruncated === true && !!(replyArchive && replyArchive.archiveMissing === true),
       }
       let parsed
       try {
@@ -4809,7 +4987,31 @@ export function createTurnOrchestrator({
         // prompt carried, how the text was cut, and where the full copy went. The row is NOT marked settled here (the
         // refusal already says this turn did not apply); only the evidence slots are filled, so the office can check the
         // prompt and the archive through `op:"status"` instead of re-running the turn.
-        try { noteTurnReceipt(turn, evidence) } catch { /* the ledger must never replace the refusal */ }
+        // ★★★ TB-2694 / F75-06: AND IT MUST BE REACHABLE FROM THE MEMBER'S OWN KERNEL. A parse refusal is a SETTLED
+        // fact (the turn produced an answer this loop could not apply), but the row used to stay `open` here — so the
+        // durable `turns` projection never fired, and a member reading `lastTurn` in its own session saw no refusal
+        // code at all (run 75: `refuse` was refused with VMU_TURN_UNKNOWN_FIELD and the member could not read that).
+        // The code is recorded the same way the dispatch-failure branch below records it.
+        // ★★★ RUN 257 / TB-2639 CONTRACT (kept): that settlement is TRUE ONLY WHEN THE SEAT'S OWN SESSION PRODUCED THE
+        // ANSWER. On the CALLER-PLAYED route (`deliveryPath:"caller"`, deliverByReturning) the calling session played
+        // this member turn, so the refusal is the caller's own round-trip, not the member's end state: the row must stay
+        // `open` for exactly the reason documented on closeOrphanTurn (:5451-5459 above) — the resume consumed the seam
+        // slot and the orphan door is what closes it. Settling it here would leave that door unreachable and would make
+        // the "the refusal already says this turn did not apply" reading a lie. Evidence slots are filled in both cases
+        // (RUN 250): only `status`/the durable projection are the route-dependent part.
+        const parseDeliveryPath = (() => {
+          try {
+            if (e && typeof e.deliveryPath === 'string' && e.deliveryPath !== '') return e.deliveryPath
+            return lastAttribution && typeof lastAttribution.deliveryPath === 'string' ? lastAttribution.deliveryPath : null
+          } catch { return null }
+        })()
+        const parseCallerPlayed = parseDeliveryPath === 'caller'
+        try {
+          noteTurnReceipt(turn, parseCallerPlayed
+            ? evidence
+            : Object.assign({ status: 'failed', code: e && e.code ? String(e.code) : null }, evidence))
+          if (!parseCallerPlayed) rememberSettledTurn(turn, { fields: [], source: null })
+        } catch { /* the ledger must never replace the refusal */ }
         throw e
       }
       // ★★★★★★★ ROUND 39 (live run 39 / F-11) — THE SIDE-EFFECT DISCLOSURE BELONGED TO EVERY APPLY-REFUSAL, NOT TO ONE CODE.
@@ -4870,6 +5072,11 @@ export function createTurnOrchestrator({
       }
       if (resumeSource) forgetParkedPrompt(turn && turn.id)
       return { ok: true, turn, assembled: { chars: asm.text.length, sources: asmSources, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
+        // ★ TASK-173 / TB-2690 (F75-12): the route and the mode reading on the TOP level of the settled receipt too, so a
+        // reverse lamp can read `deliveryPath` / `deliverModeSource` without opening `delivery`. Null means the seam did not
+        // report a route (not "the default applied"), which is the honest value for a legacy seam.
+        deliveryPath: (lastAttribution && typeof lastAttribution.deliveryPath === 'string' && lastAttribution.deliveryPath) ? lastAttribution.deliveryPath : null,
+        deliverMode: (lastAttribution && lastAttribution.deliverMode) || null, deliverModeSource: (lastAttribution && lastAttribution.deliverModeSource) || null, deliverModeReason: (lastAttribution && lastAttribution.deliverModeReason) || null,
         replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
         replyTruncated, replyLimitChars: REPLY_EXCERPT_MAX, replyExcerptMeans,
         // ★ RUN 256 / TB-2616: the resume facts travel to the receipt an operator reads — WHICH prompt was continued.
@@ -5468,7 +5675,7 @@ export function createTurnOrchestrator({
       } else {
         throw refuse('VMU_TURN_REENTRANT',
           'a turn is already in progress, so this run() would nest inside it' + (ageMs === null ? '' : ' (that turn has been in flight for ' + String(ageMs) + ' ms; it is closed by name once it passes ' + String(ABANDON_AFTER_MS) + ' ms)'),
-          'the loop keeps ONE turn at a time (attribution, the member reply slot and the notice queue are single-turn state); call run() again after the in-flight turn settles - drive()/step() already do this for you. REACHABLE INSTEAD: `vibe_vmu_turn { op:"abandon" }` closes a turn whose delivery seam never returned (op:"status" turnLoop names the in-flight turn and how long it has held the lock)')
+          'the loop keeps ONE turn at a time (attribution, the member reply slot and the notice queue are single-turn state); the in-flight turn must settle before another can start - use vibe_vmu_turn { op:"status" } to read turnLoop (it names the in-flight turn and how long it has held the lock), then retry with vibe_vmu_turn { op:"step" } or { op:"drive" } after it settles. REACHABLE INSTEAD: `vibe_vmu_turn { op:"abandon" }` closes a turn whose delivery seam never returned')
       }
     }
     const myToken = { seq: ++lockSeq, at: Date.now() }
@@ -5533,7 +5740,7 @@ export function createTurnOrchestrator({
     const row = rows.find((r) => r && String(r.id) === String(memberId))
     return row && typeof row.slot === 'string' && row.slot !== '' ? row.slot : null
   }
-  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null, membersFrom = null, meeting = null, openedBy = null } = {}) => {
+  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null, membersFrom = null, meeting = null, openedBy = null, deliverMode = null } = {}) => {
     // (g): the ONE shape-owner for a selection. Plain id strings are accepted here too, because the roster default
     // must never be used as a silent substitute for a caller's explicit list.
     const list = normalizeMembersSelection(members)
@@ -5560,6 +5767,9 @@ export function createTurnOrchestrator({
       // dispatch/activation pump) reports the same `openedBy` on the ledger row. A caller that settles a wait wake can pass
       // 'wait' explicitly; the default for the direct route is 'drive' (see drive/step below).
       openedBy: openedBy === null || openedBy === undefined || String(openedBy).trim() === '' ? null : String(openedBy).trim(),
+      // ★ TASK-173 / F75-12: the spec carries the PER-CALL delivery mode, so `runOne`'s `merged = {..., ...spec}` hands it
+      // to `open` and the turn (not the deployment) carries the override. Everything else about the mode is unchanged.
+      deliverMode: deliverMode === null || deliverMode === undefined || deliverMode === '' ? null : String(deliverMode),
       membersFrom: membersFrom === null ? null : membersFrom }
   }
 
@@ -5607,7 +5817,9 @@ export function createTurnOrchestrator({
     return out
   }
   const MEMBER_FAILURE_LIMIT = 3
-  const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null, meeting = null, openedBy = null } = {}) => {
+  const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null, meeting = null, openedBy = null, deliverMode = null } = {}) => {
+    // ★ TASK-173 / F75-12: validated BEFORE any turn is opened, so a typo is a named refusal and never a silent fallback.
+    const driveDeliverMode = normalizeDeliverModeArg(deliverMode, 'op:"drive"')
     // (g): the batch route owns the same shape rule as step(), so a batch also accepts plain id strings and refuses an
     // unreadable entry by name instead of falling back to the default roster.
     const selection = normalizeMembersSelection(members)
@@ -5681,7 +5893,7 @@ export function createTurnOrchestrator({
     const parkedForDrive = parkedOf(parkedPromptNow())
     if (parkedForDrive && !closeParkedOverdue(parkedForDrive)) refuseParkedOverwrite('dispatching', parkedForDrive)
     for (let i = 1; i <= n; i += 1) {
-      const spec = nextTurn({ members: selection, phase, why, nextStep, role, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy })
+      const spec = nextTurn({ members: selection, phase, why, nextStep, role, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy, deliverMode: driveDeliverMode })
       // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
       // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
       // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
@@ -5791,7 +6003,9 @@ export function createTurnOrchestrator({
    * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
-  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, selectionShape = null, phase = 'normal', why = null, nextStep = null, role = null, meeting = null, openedBy = null } = {}) => {
+  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, selectionShape = null, phase = 'normal', why = null, nextStep = null, role = null, meeting = null, openedBy = null, deliverMode = null } = {}) => {
+    // ★ TASK-173 / F75-12: validated before the turn is opened (the mode is a per-CALL argument, not a setting write).
+    const stepDeliverMode = normalizeDeliverModeArg(deliverMode, 'op:"step"')
     // ★★★ LIVE RUN 23 (the institute's own report, item 2): THE CHAIR RAIL'S HINT NAMED A PARAMETER THAT DID NOT EXIST.
     // `VMU_CHAIR_ACT_NOT_DELEGATED` tells the caller to "give the chair its own turn first:
     // `vibe_vmu_turn {op:"step", member:"academician-1"}`" — singular `member`. This signature had no `member`, so the
@@ -6013,7 +6227,7 @@ export function createTurnOrchestrator({
         }
       })()
       : null
-    const spec = resumeSpec || nextTurn({ members, phase, why, nextStep, role, membersFrom, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy })
+    const spec = resumeSpec || nextTurn({ members, phase, why, nextStep, role, membersFrom, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy, deliverMode: stepDeliverMode })
     // ★ RUN 256 / TB-2616: the resume is a READING on the receipt, not a claim the caller has to infer from an id: the
     // caller must be able to see that THIS call settled the turn it replied to (and which prompt that was).
     const resumedFrom = resumeSpec
@@ -6219,6 +6433,11 @@ export function createTurnOrchestrator({
         return 'UNREADABLE COMPARISON: the kernel offered ' + String(c.offered) + ' but the seam reported no child id for where the turn ran, so "continued" and "started fresh" cannot be told apart from this receipt (null means NOT READABLE, never either answer)'
       })()
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, meeting: (r.meeting || (r.memberPrompt && r.memberPrompt.meeting) || null), deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
+        // ★ TASK-173 / TB-2690 (F75-12): the awaiting envelope names the MODE and where it came from, on the SAME level as
+        // `deliveryPath` (the office reads this receipt, not the internal return shape). null means the seam did not report one.
+        deliverMode: r.deliverMode || (r.attribution && r.attribution.deliverMode) || null,
+        deliverModeSource: r.deliverModeSource || (r.attribution && r.attribution.deliverModeSource) || null,
+        deliverModeReason: r.deliverModeReason || (r.attribution && r.attribution.deliverModeReason) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         ...toolCallsReading, ...memberCallsReading,
         membersFrom: membersFromReading, delegation: r.delivery || null,
@@ -6229,6 +6448,11 @@ export function createTurnOrchestrator({
         // SETTLED receipt only had it nested in `receipt.delivery`/`delegation` — the institute read that as "the
         // field does not exist" and could not compare the three cases. One name, on every shape.
         deliveryPath: deliveredThrough,
+        // ★ TASK-173 / TB-2690 (F75-12): the settled receipt carries the same three names as the awaiting one (`delivery`
+        // nests them too, but the office reads the top level, so the mode reading is not one hop deeper than the path).
+        deliverMode: (r.delivery && r.delivery.deliverMode) || null,
+        deliverModeSource: (r.delivery && r.delivery.deliverModeSource) || null,
+        deliverModeReason: (r.delivery && r.delivery.deliverModeReason) || null,
         deliveryPathMeans: deliveredThrough === null
           ? 'the delivery seam did not report a path on this receipt — null means NOT READABLE, never "nothing was delivered"'
           : (deliveredThrough === 'caller'

@@ -5,14 +5,17 @@
 // scripts/check-rules-coverage.mjs). A hand-written table beside it would be a second copy that drifts — the
 // exact failure the four-question gate exists to prevent. This script is the only writer of the .md, and
 // `--check` (used by scripts/regen-all.mjs) fails when the committed .md differs from a fresh render.
+// THE MODE CONTRACT IS SHARED (scripts/_lib/generator-cli.mjs): no flag = dry run (report only, exit 0), --check = the
+// same report as a RED, --write = rewrite. This script's old default was WRITE, the opposite of the family's rule.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const LEDGER = join(REPO, 'docs/acceptance/rules-ledger.json')
 const OUT = join(REPO, 'docs/acceptance/rule-conformance-matrix.md')
-const CHECK = process.argv.includes('--check')
+const MODE = modeFrom(process.argv, { script: 'generate-rule-matrix.mjs' })
 const led = JSON.parse(readFileSync(LEDGER, 'utf8'))
 const ICON = { DONE: '✅', PARTIAL: '◐', MISSING: '❌', DECIDED: '📌' }
 const lines = []
@@ -65,12 +68,14 @@ lines.push('`node scripts/check-rules-coverage.mjs` (structural) and `--check` (
 lines.push('resolving turns the gate red — that is intended: a renamed symbol must not silently keep a claim alive.')
 lines.push('')
 const text = lines.join('\n')
-if (CHECK) {
-  const cur = existsSync(OUT) ? readFileSync(OUT, 'utf8') : ''
-  if (cur !== text) { console.error('rule matrix is stale: run node scripts/generate-rule-matrix.mjs --write'); process.exit(1) }
-  console.log('rule matrix in sync (' + led.items.length + ' rows)')
-} else {
+const SUMMARY = 'rule matrix in sync (' + led.items.length + ' rows)'
+if (MODE === 'write') {
   writeFileSync(OUT, text)
   console.log('rule matrix written: ' + led.items.length + ' rows (' + (counts.DONE || 0) + ' DONE, ' +
     (counts.PARTIAL || 0) + ' PARTIAL, ' + (counts.MISSING || 0) + ' MISSING, ' + (counts.DECIDED || 0) + ' DECIDED)')
+} else {
+  const cur = existsSync(OUT) ? readFileSync(OUT, 'utf8') : ''
+  if (cur === text) console.log(SUMMARY)
+  else console.error('rule matrix is stale: run node scripts/generate-rule-matrix.mjs --write' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+  process.exit(exitCodeFor(MODE, cur !== text))
 }

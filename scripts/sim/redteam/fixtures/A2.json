@@ -1,0 +1,16 @@
+{
+  "id": "A2",
+  "attack": "a genuine stamp over a block that measured nothing (fidelity.compared: 0) and still says PASS",
+  "why": "compared 0 with gaps 0 is a measurement of nothing; the gate must refuse it as a zero reading, not as 'no findings'",
+  "wouldBeWrongIf": "READY, or a refusal that only mentions a mismatch (that would catch the number, not the emptiness)",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_FIDELITY_MEASURED_NOTHING",
+    "expectExit": 7,
+    "expectReady": false,
+    "allowedSecondary": {
+      "AUDIT_FIDELITY_MISMATCH": "the recomputed compared is 67, not 0, so the mismatch also fires; it does not prove the zero-reading rule works",
+      "AUDIT_FIDELITY_COUNTS_INCONSISTENT": "also true whenever compared differs from the live tool count"
+    }
+  }
+}

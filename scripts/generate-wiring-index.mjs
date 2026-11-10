@@ -38,6 +38,7 @@
 //   writer/checker at a copy of 00-README.md so the guard can be exercised without touching the real doc.
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { modeFrom, exitCodeFor } from './_lib/generator-cli.mjs'
 import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -141,7 +142,10 @@ export async function stalenessReport() {
   const out = { hard: [], soft: [] }
   const results = await Promise.all(checks.map(async (c) => {
     try {
-      const { stdout, stderr } = await run(process.execPath, [join(REPO, 'scripts', c.script)],
+      // The child is asked for its CHECK, never for its default: a bare child used to mean "check" only by
+      // convention, and TB-2698 gave bare runs a dry-run meaning — passing --check keeps this probe's verdict
+      // independent of what the child's default happens to be.
+      const { stdout, stderr } = await run(process.execPath, [join(REPO, 'scripts', c.script), '--check'],
         { cwd: REPO, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' })
       return { c, status: 0, stdout: String(stdout || ''), stderr: String(stderr || '') }
     } catch (e) {
@@ -319,9 +323,9 @@ export function spliceBlock(docText, block) {
 }
 
 async function main() {
-  const argv = process.argv.slice(2)
-  const write = argv.includes('--write')
-  const asJson = argv.includes('--json')
+  const MODE = modeFrom(process.argv, { script: 'generate-wiring-index.mjs', allow: ['--json'] })
+  const write = MODE === 'write'
+  const asJson = process.argv.includes('--json')
 
   // CLASS ① INPUT MISSING — checked FIRST, so a bad seam is never reported as "stale" (round-6 finding).
   const missing = missingInputs()
@@ -391,8 +395,8 @@ async function main() {
     process.exit(0)
   }
   console.error('wiring index: STALE — the block in ' + README_FILE + ' is not what the artefacts yield')
-  console.error('  run: node scripts/generate-wiring-index.mjs --write')
-  process.exit(1)
+  console.error('  run: node scripts/generate-wiring-index.mjs --write' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+  process.exit(exitCodeFor(MODE, true))
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) await main()

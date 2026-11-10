@@ -181,7 +181,7 @@ export function createDirections({ kernel = null } = {}) {
         rec = rc.supersede({ id, reason: 'direction card "' + key + '" updated (' + (changed.join(', ') || 'no field changed') + ')', title, body, tags, by })
         mode = 'updated'
       } else {
-        rec = rc.put({ id, track: DIRECTION_TRACK, kind: DIRECTION_KIND, title, body, tags, settled: true, by })
+        rec = rc.put({ id, track: DIRECTION_TRACK, kind: DIRECTION_KIND, title, body, tags, finalAck: true, by })
       }
       const view = findRow(id)
       return {

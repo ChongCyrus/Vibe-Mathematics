@@ -15,9 +15,11 @@
 //   §6  the CLI: skipping the gate can only ever be NOT READY, --json is parseable, an override keeps the reasons,
 //       and AUDIT-14 P0-2 forgeries (a hand-typed PASS, a "compared 0; gaps 0" report) are red by name while a
 //       report in the real shape is accepted as attributable
+//   §8  the red team: the in-repo runner (TB-2689) must name every vector; until its fixture roster lands the fact is
+//       recorded as MEASURED-ELSEWHERE, never green and never skipped (TB-2695)
 //
-// Runs offline and needs no gate run: the red/green products are fixtures. Loaded through file: URLs so the Chinese
-// repository path never has to be encoded by hand.
+// Every fixture is made under os.tmpdir() and removed in a finally (TB-2695: a proof builds its own evidence; no
+// default path into D:/_tmp). Runs offline and needs no gate run.
 
 import { spawnSync } from 'node:child_process'
 import { requireFile } from './_lib/require-file.mjs'
@@ -33,7 +35,9 @@ const REPO = resolve(HERE, '..')
 const TMP = join(tmpdir(), 'sim-tests-release-ready-' + process.pid)
 const MOD = pathToFileURL(join(REPO, 'scripts', 'sim', 'audit', 'release-ready.mjs')).href
 const SCRIPT = join(REPO, 'scripts', 'sim', 'audit', 'release-ready.mjs')
-const REAL_AUDIT = process.env.VMU_REAL_AUDIT || 'D:/_tmp/sim/p02-audit/AUDIT.md' // PORTABLE-ALLOW: read-only evidence from a real gate run; overridable via VMU_REAL_AUDIT, and when missing the on-disk row FAILS, never skips
+// TB-2695: no default path into D:/_tmp. A proof builds its own evidence; VMU_REAL_AUDIT is an OPTIONAL extra check
+// for a developer holding a report from a real gate run -- never a requirement, and never a fallback that hides a miss.
+const REAL_AUDIT = process.env.VMU_REAL_AUDIT || ''
 
 const rr = await import(MOD)
 
@@ -273,6 +277,66 @@ console.log('--- 2c. R1/R2/R3/R4/R5/R6: corpus, proofs, recomputation, verdict, 
   ok(rr.validateOverride('TB-2653: R3 lands, gate red only on AUDIT_EVIDENCE_FAILED, acceptable for this dry run', null).ok === true, 'a reason that says what is known is accepted')
 }
 
+console.log('--- 2d. proof counts are MEASURED by the gate; a note may not restate them (TB-2684)')
+{
+  // Parser self-proof. The three expected values below test the PARSER, not the suites: the samples are LITERAL text,
+  // so they stay 154 / 43 / unparsed as the suites grow. Do not "fix" them to today's totals -- that would turn a
+  // parser test into a copy of the thing it is supposed to measure.
+  const s1 = rr.suiteCountsOf('=== release-ready: 154 passed, 0 failed ===')
+  ok(s1.counts === 'ok' && s1.passed === 154 && s1.failed === 0, 'parser: a one-line tally reads as 154 passed / 0 failed', s1)
+  const s2 = rr.suiteCountsOf('--- vmu-run: 43 passed, 0 failed ---')
+  ok(s2.counts === 'ok' && s2.passed === 43 && s2.failed === 0, 'parser: a second suite shape reads as 43 passed / 0 failed', s2)
+  const s3 = rr.suiteCountsOf('all rows checked, nothing to report')
+  ok(s3.counts === 'unparsed' && s3.passed === null && s3.failed === null, 'parser: no tally line is UNPARSED, never 0 (a silent 0 would read as a clean suite)', s3)
+  ok(rr.suiteCountsOf('0 passed, 0 failed').counts === 'unparsed', 'parser: 0 passed / 0 failed is unparsed too (a suite that ran nothing measured nothing)')
+  // ... and the gate puts those counts next to the exit code it already recorded, stamped with when it measured them.
+  mkdirSync(join(TMP, 'tests'), { recursive: true })
+  const countsFixture = join(TMP, 'tests', 'fixture-counts.mjs')
+  writeFileSync(countsFixture, "console.log('--- fixture: 2 passed, 1 failed ---')" + String.fromCharCode(10))
+  const counted = rr.runLedgerProofs([{ id: 'counts-row', severity: 'P2', status: 'fixed', proof: { cmd: 'node tests/fixture-counts.mjs', expect: 0 } }], { root: TMP, timeoutMs: 30000 })
+  const countedRow = counted.ran[0] || {}
+  ok(counted.ran.length === 1 && countedRow.counts === 'ok' && countedRow.passed === 2 && countedRow.failed === 1, 'the gate records the counts the suite printed (2 passed / 1 failed) next to the exit code', countedRow)
+  ok(Number.isFinite(countedRow.ms) && typeof countedRow.measuredAt === 'string', 'and stamps how long it took and when it was measured, so no note has to carry a number')
+  const silentFixture = join(TMP, 'tests', 'fixture-silent.mjs')
+  writeFileSync(silentFixture, "console.log('nothing to count here')" + String.fromCharCode(10))
+  const silent = rr.runLedgerProofs([{ id: 'silent-row', severity: 'P2', status: 'fixed', proof: { cmd: 'node tests/fixture-silent.mjs', expect: 0 } }], { root: TMP, timeoutMs: 30000 })
+  ok(silent.ran[0] && silent.ran[0].counts === 'unparsed' && silent.ran[0].passed === null, 'a suite with no tally line is unparsed in facts -- not a silent 0', silent.ran[0])
+  // A note is a claim about MEANING. The real ledger is scanned for notes that restate a number the gate can measure.
+  const ledgerText = requireFile(join(REPO, 'docs', 'acceptance', 'sim-audit-open-items.json'), 'the ledger whose notes this criterion scans')
+  const ledger = JSON.parse(ledgerText)
+  const fixedRows = (ledger.items || []).filter((i) => i.status === 'fixed')
+  ok(fixedRows.length >= 20, 'precondition: the ledger has fixed rows to scan (an empty scan would pass vacuously)', fixedRows.length)
+  const offenders = rr.noteCountClaims(ledger.items || [])
+  ok(offenders.length === 0, 'no proof.note restates a count -- the gate measures it, a copy can only rot', offenders)
+  const plantedClaim = rr.noteCountClaims([{ id: 'planted-row', proof: { note: '999 passed, 0 failed: the thing is fixed' } }])
+  ok(plantedClaim.length === 1 && plantedClaim[0].id === 'planted-row' && plantedClaim[0].token === '999 passed', 'a note that restates a count is NAMED (row id + the matched token)', plantedClaim)
+  const semantic = rr.noteCountClaims([{ id: 'semantic-row', proof: { note: 'the gate refuses a report that predates a worktree edit' } }])
+  ok(semantic.length === 0, 'a note that says what the evidence proves is not red (the rule is not a wall)')
+}
+
+console.log('--- 2e. every code assess() can add carries an owner and a ready-if (TB-2684 follow-up)')
+{
+  // The code set is COMPUTED from the add(CODE, ...) sites in the source, never hand-listed: a list of 30 codes would
+  // go stale the day the 31st is added -- which is exactly how AUDIT_CORPUS_NOT_CURRENT reached owner "unassigned".
+  const gateSource = requireFile(join(REPO, 'scripts', 'sim', 'audit', 'release-ready.mjs'), 'the gate source whose add sites and REMEDY table this criterion compares')
+  const scan = rr.remedyGaps(gateSource)
+  ok(scan.codes.length >= 20, 'precondition: the scan finds the refusal sites in the source (an empty scan would pass vacuously)', scan.codes.length)
+  ok(scan.entries.length === Object.keys(rr.REMEDY).length, 'the source scan reads as many REMEDY entries as the loaded module (the parser and the table agree)', [scan.entries.length, Object.keys(rr.REMEDY).length])
+  ok(scan.gaps.length === 0, 'every code assess() can add has a REMEDY entry with a non-empty owner and would-be-ready-if', scan.gaps)
+  ok(scan.codes.includes('AUDIT_CORPUS_NOT_CURRENT'), 'the A16 code is among the scanned codes (it was the one with no entry)', scan.codes.slice(-4))
+  ok(typeof rr.REMEDY.AUDIT_CORPUS_NOT_CURRENT.owner === 'string' && rr.REMEDY.AUDIT_CORPUS_NOT_CURRENT.owner.trim() !== '', 'the A16 entry names an owner')
+  ok(typeof rr.REMEDY.AUDIT_CORPUS_NOT_CURRENT.readyIf === 'string' && rr.REMEDY.AUDIT_CORPUS_NOT_CURRENT.readyIf.trim() !== '', 'the A16 entry says what would make it green')
+  const mutatedSource = gateSource.split(String.fromCharCode(10)).filter((line) => !line.trim().startsWith('AUDIT_CORPUS_NOT_CURRENT:')).join(String.fromCharCode(10))
+  const mutatedScan = rr.remedyGaps(mutatedSource)
+  ok(mutatedScan.gaps.some((g) => g.code === 'AUDIT_CORPUS_NOT_CURRENT'), 'negative control: deleting that REMEDY entry from the source is caught by name', mutatedScan.gaps)
+  // Reported, never failed: an explanatory REMEDY row is allowed to exist; a missing row is not. The proof that this
+  // direction does not turn into a wall is that deleting an EMIT SITE moves the row into `unused` while `gaps` stays empty.
+  ok(Array.isArray(scan.unused), 'unused REMEDY entries are REPORTED, not failed (an explanatory row is allowed to exist, a missing row is not)', scan.unused)
+  const noEmitSource = gateSource.split(String.fromCharCode(10)).filter((line) => !line.includes("add('AUDIT_CORPUS_NOT_CURRENT'")).join(String.fromCharCode(10))
+  const noEmitScan = rr.remedyGaps(noEmitSource)
+  ok(noEmitScan.gaps.length === 0 && noEmitScan.unused.includes('AUDIT_CORPUS_NOT_CURRENT'), 'reported, not failed: a REMEDY row whose code has no emit site is listed as unused and gaps stays empty', { gaps: noEmitScan.gaps, unused: noEmitScan.unused })
+}
+
 console.log('--- 2b. every refusal names an owner and what would make it green (TB-2609 follow-up)')
 {
   // The tree is edited by several lanes at once, so NOT READY is the normal state for part of the day. A reason that
@@ -391,8 +455,23 @@ console.log('--- 5. the real repository: drift is measurable and only loadable c
   ok(ledgerAsCode.length === 0, 'the ledger itself is not treated as code')
   const head = rr.headCommitMs(REPO)
   ok(Number.isFinite(head) && head > 0, 'HEAD has a readable commit time', head)
-  const newest = rr.newestAudit(process.env.VMU_SIM_ROOT || 'D:/_tmp/sim') // PORTABLE-ALLOW: dev audit root; overridable via VMU_SIM_ROOT, and a root with no AUDIT.md FAILS the row below, never skips
-  ok(newest !== null && existsSync(newest.path), 'the newest AUDIT.md under the sim root is found (or the run was never audited)', newest && newest.path)
+  // TB-2695: this used to read a machine-local sim root and pass only on a machine that had run the audit there. The search is now
+  // measured on two layers this suite plants itself; the empty case is asserted too, because "found nothing" must be
+  // null rather than a report borrowed from wherever the checkout happens to be.
+  const simRoot = process.env.VMU_SIM_ROOT || join(TMP, 'sim-root-newest-audit')
+  const olderLayer = join(simRoot, 'run-2026-11-01-1')
+  const newerLayer = join(simRoot, 'run-2026-11-02-2')
+  mkdirSync(olderLayer, { recursive: true })
+  mkdirSync(newerLayer, { recursive: true })
+  writeFileSync(join(olderLayer, 'AUDIT.md'), 'AUDIT: FAIL \u2014 0 failure(s), 0 warning(s)\n')
+  writeFileSync(join(newerLayer, 'AUDIT.md'), 'AUDIT: PASS \u2014 0 failure(s), 0 warning(s)\n')
+  const olderDate = new Date(Date.parse('2026-11-01T00:00:00Z'))
+  const newerDate = new Date(Date.parse('2026-11-02T00:00:00Z'))
+  utimesSync(join(olderLayer, 'AUDIT.md'), olderDate, olderDate)
+  utimesSync(join(newerLayer, 'AUDIT.md'), newerDate, newerDate)
+  const newest = rr.newestAudit(simRoot)
+  ok(newest !== null && resolve(newest.path) === resolve(join(newerLayer, 'AUDIT.md')), 'the newest AUDIT.md under the sim root is the one this suite planted last (measured on self-made layers, not on a scratch directory somebody once had)', newest && newest.path)
+  ok(rr.newestAudit(join(TMP, 'sim-root-without-reports')) === null, 'a root with no report returns null, not a report from somewhere else')
 
   // The tree hash must bind CONTENT, not just the set of dirty paths, and must be stable across two calls. The
   // in-place edit happens INSIDE the repo on purpose: a file under D:/_tmp is not part of the tree this gate measures. PORTABLE-ALLOW: prose in a comment, not an execution path
@@ -624,15 +703,28 @@ console.log('--- 6. the CLI: skipping the gate is a reason, --json is parseable,
     }
   }
 
-  // The newest REAL report (when the audit has been run on this machine) must parse as attributable, not forged.
-  if (existsSync(REAL_AUDIT)) {
-    const real = rr.parseAuditReport(readFileSync(REAL_AUDIT, 'utf8'))
-    ok(real.manifest !== null && real.manifest.tool === 'scripts/sim/audit/all.mjs', 'the real audit report on disk carries a provenance block', real.manifestError)
-    ok(real.manifest && /^sha256:[0-9a-f]{64}$/.test(String(real.manifest.tree.hash)), 'and it names the tree hash it read', real.manifest && real.manifest.tree.hash)
-    ok(real.manifest && Number.isInteger(real.manifest.fidelity.compared) && Number.isInteger(real.manifest.fidelity.liveToolsWithFieldList), 'and the fidelity counts are integers, not prose', real.manifest && real.manifest.fidelity)
-    ok(real.manifest && Array.isArray(real.manifest.p0), 'and its P0 findings are a list', real.manifest && real.manifest.p0)
+  // TB-2695: this block used to REQUIRE a report left behind by a real gate run under D:/_tmp, so the suite's verdict
+  // depended on a scratch directory existing. A proof may not need one. The report below is written here by
+  // reportText() -- the same shape all.mjs prints (verdict line + fenced `json audit-report` block) -- and parsed
+  // back. VMU_REAL_AUDIT, when set, adds a check of a real report: an addition, never a requirement.
+  const ownReportPath = join(TMP, 'own-report', 'AUDIT.md')
+  mkdirSync(dirname(ownReportPath), { recursive: true })
+  writeFileSync(ownReportPath, reportText({ manifest: manifestOf() }))
+  const ownReport = rr.parseAuditReport(readFileSync(ownReportPath, 'utf8'))
+  ok(ownReport.manifest !== null && ownReport.manifest.tool === 'scripts/sim/audit/all.mjs', 'the report this suite wrote carries a provenance block', ownReport.manifestError)
+  ok(ownReport.manifest && /^sha256:[0-9a-f]{64}$/.test(String(ownReport.manifest.tree.hash)), 'and it names the tree hash it read', ownReport.manifest && ownReport.manifest.tree.hash)
+  ok(ownReport.manifest && Number.isInteger(ownReport.manifest.fidelity.compared) && Number.isInteger(ownReport.manifest.fidelity.liveToolsWithFieldList), 'and the fidelity counts are integers, not prose', ownReport.manifest && ownReport.manifest.fidelity)
+  ok(ownReport.manifest && Array.isArray(ownReport.manifest.p0), 'and its P0 findings are a list', ownReport.manifest && ownReport.manifest.p0)
+  ok(existsSync(ownReportPath) && statSync(ownReportPath).size > 200, 'the bytes parsed above are bytes this suite wrote (POSITIVE CONTROL: delete the writeFileSync above and this row names the missing file)', ownReportPath)
+  if (REAL_AUDIT) {
+    if (existsSync(REAL_AUDIT)) {
+      const real = rr.parseAuditReport(readFileSync(REAL_AUDIT, 'utf8'))
+      ok(real.manifest !== null && real.manifest.tool === 'scripts/sim/audit/all.mjs', 'VMU_REAL_AUDIT: the named report carries a provenance block', real.manifestError)
+    } else {
+      ok(false, 'VMU_REAL_AUDIT points at ' + REAL_AUDIT + ' but no file is there (unset it, or fix the path)')
+    }
   } else {
-    ok(false, 'no real audit report at ' + REAL_AUDIT + ' (set VMU_REAL_AUDIT): the on-disk report check is measurement, not an optional skip; run node scripts/sim/audit/all.mjs --out ' + dirname(REAL_AUDIT) + ' first')
+    console.log('  (VMU_REAL_AUDIT is not set: the on-disk sample is the self-made one; the default path into D:/_tmp is gone, TB-2695)')
   }
 }
 
@@ -711,43 +803,74 @@ console.log('--- 6b. R2: ledger proofs are RUN, not read (shape alone let A5 thr
 
 console.log('--- 8. TB-2662 red team: every vector must be NAMED (refused for the tested reason), none masked or leaked')
 {
-  // The harness lives outside the repo because it is a probe, not a product (TB-2662, audit-r14). It rebuilds its own
-  // fixtures from the CURRENT audit context before every run, so a fixture cannot be tuned to pass a fixed gate.
-  const RT = process.env.VMU_REDTEAM_ROOT || 'D:/_tmp/gate-redteam' // PORTABLE-ALLOW: probe harness root; overridable via VMU_REDTEAM_ROOT, and a missing harness FAILS the section below, never skips
-  const HARNESS = join(RT, 'run-all.mjs')
-  if (!existsSync(HARNESS)) {
-    ok(false, 'red-team harness missing at ' + HARNESS + ' (TB-2662 owns it): the gate cannot claim 9/9 named without it')
-  } else {
+  // TB-2695: the red team now lives IN THE REPO (TB-2689: scripts/sim/redteam/run.mjs + data/ + fixtures/), and this
+  // section prefers that runner -- no D:/_tmp, no probe harness outside the checkout. While TB-2689's fixture roster
+  // has not landed, the honest record is MEASURED-ELSEWHERE in the facts: not a green row, and not a silent skip. The
+  // absence is printed and carried, so nobody can read "red team green" out of this suite or out of the gate facts
+  // that quote it. The legacy out-of-repo harness stays reachable only when VMU_REDTEAM_ROOT names it explicitly.
+  const REDTEAM_DIR = join(REPO, 'scripts', 'sim', 'redteam')
+  const RUNNER = join(REDTEAM_DIR, 'run.mjs')
+  const ROSTER = join(REDTEAM_DIR, 'fixtures', 'INDEX.json')
+  const EXTERNAL = process.env.VMU_REDTEAM_ROOT || ''
+  const EXTERNAL_HARNESS = EXTERNAL ? join(EXTERNAL, 'run-all.mjs') : ''
+  const facts = { redteam: null }
+  const fencedPayload = (text, tag) => {
+    const m = String(text).match(new RegExp('```json ' + tag + '\\n([\\s\\S]*?)\\n```'))
+    if (!m) return null
+    try { return JSON.parse(m[1]) } catch { return null }
+  }
+  const judgeRows = (rows, counts, label) => {
+    const byStatus = (st) => rows.filter((v) => v.status === st).map((v) => v.id)
+    ok(rows.length >= 16, label + ': at least sixteen rows ran (A1-A16b)', rows.length)
+    ok((counts.named || 0) + (counts.neutralized || 0) === rows.length && (counts.named || 0) > 0, label + ': every row is NAMED or NEUTRALIZED -- no row is left unjudged', counts)
+    ok((counts.masked || 0) === 0, label + ': no row is MASKED (a refusal for an unrelated reason would hide the tested judgement)', counts.masked)
+    ok((counts.leaked || 0) === 0, label + ': no row is LEAKED (READY)', counts.leaked)
+    ok((counts.half || 0) === 0 && (counts.error || 0) === 0 && (counts.wrongCode || 0) === 0, label + ': no row is HALF, errored or wrong-code', counts)
+    ok(byStatus('masked').length === 0 && byStatus('leaked').length === 0 && byStatus('half').length === 0, label + ': the per-row statuses agree with the tally', { masked: byStatus('masked'), leaked: byStatus('leaked'), half: byStatus('half') })
+    const neutralizedRows = rows.filter((v) => v.status === 'neutralized')
+    ok(neutralizedRows.every((v) => (v.evidence !== null && v.evidence !== undefined && (typeof v.evidence === 'object' ? Object.keys(v.evidence).length > 0 : String(v.evidence).trim() !== '')) || (typeof v.why === 'string' && v.why.trim() !== '')), label + ': every NEUTRALIZED row carries evidence (a row that dissolves by design must say why)', neutralizedRows.map((v) => ({ id: v.id, evidence: v.evidence, why: v.why })))
+  }
+
+  if (existsSync(RUNNER) && existsSync(ROSTER)) {
     const started = Date.now()
-    const rt = spawnSync(process.execPath, [HARNESS], { cwd: RT, encoding: 'utf8', timeout: 600000, maxBuffer: 64 * 1024 * 1024 })
+    const rt = spawnSync(process.execPath, [RUNNER, '--json'], { cwd: REPO, encoding: 'utf8', timeout: 900000, maxBuffer: 64 * 1024 * 1024 })
+    const wall = Date.now() - started
+    const payload = fencedPayload(rt.stdout, 'redteam')
+    facts.redteam = { status: 'measured-here', measuredHere: true, runner: RUNNER, exit: rt.status, wallMs: wall, vectors: payload && payload.vectors, named: payload && payload.named, neutralized: payload && payload.neutralized }
+    ok(rt.status === 0, 'the in-repo red team exits 0 (exit 0 means every row is judged: named, or neutralized with evidence)', { status: rt.status, wall, tail: String(rt.stdout || '').slice(-300) })
+    ok(payload !== null && Array.isArray(payload.rows), 'and its --json payload parses (the fenced `json redteam` block run.mjs prints)', rt.stdout && String(rt.stdout).slice(-200))
+    if (payload) {
+      judgeRows(payload.rows, { named: payload.named, neutralized: payload.neutralized, masked: payload.masked, half: payload.half, leaked: payload.leaked, error: payload.error, wrongCode: payload.wrongCode }, 'in-repo red team')
+      console.log('  (red team ' + wall + ' ms, in repo)')
+    }
+  } else if (EXTERNAL && existsSync(EXTERNAL_HARNESS)) {
+    const started = Date.now()
+    const rt = spawnSync(process.execPath, [EXTERNAL_HARNESS], { cwd: EXTERNAL, encoding: 'utf8', timeout: 900000, maxBuffer: 64 * 1024 * 1024 })
     const wall = Date.now() - started
     let results = null
-    try { results = JSON.parse(readFileSync(join(RT, 'run-all-latest.json'), 'utf8')) } catch { results = null }
+    try { results = JSON.parse(readFileSync(join(EXTERNAL, 'run-all-latest.json'), 'utf8')) } catch { results = null }
     const vectors = results && Array.isArray(results.results) ? results.results : []
-    const byStatus = (st) => vectors.filter((v) => v.status === st).map((v) => v.id)
-    ok(rt.status === 0, 'run-all exits 0 (exit 0 means every row is judged: named, or neutralized with evidence)', { status: rt.status, wall, tail: String(rt.stdout || '').slice(-300) })
-    // Counts are MEASURED, not pinned to a number that rots when a vector is added: every row must be judged (named or
-    // neutralized-with-evidence), and no row may be masked, leaked, half or errored. A14/A15/A16/A16b joined A1-A13b
-    // when the corpus-layer model became "the report names the layer and the pointer names the current one".
     const counts = results && results.counts ? results.counts : {}
-    const neutralizedRows = vectors.filter((v) => v.status === 'neutralized')
-    ok(vectors.length >= 16, 'the harness ran at least sixteen rows (A1-A16b)', vectors.length)
-    ok((counts.named || 0) + (counts.neutralized || 0) === vectors.length && (counts.named || 0) > 0, 'every row is NAMED or NEUTRALIZED -- no row is left unjudged', counts)
-    ok((counts.masked || 0) === 0, 'no row is MASKED (a refusal for an unrelated reason would hide the tested judgement)', counts.masked)
-    ok((counts.leaked || 0) === 0, 'no row is LEAKED (READY)', counts.leaked)
-    ok((counts.half || 0) === 0 && (counts.error || 0) === 0, 'no row is HALF or errored', counts)
-    ok(byStatus('masked').length === 0, 'no vector is MASKED (refused for an unrelated reason, so the attack was never tested)')
-    ok(byStatus('leaked').length === 0, 'no vector is LEAKED (READY)')
-    ok(byStatus('half').length === 0, 'no vector is HALF (refused, judgment fired, required detail missing)')
-    ok(neutralizedRows.every((v) => v.evidence !== null && v.evidence !== undefined && (typeof v.evidence === 'object' ? Object.keys(v.evidence).length > 0 : String(v.evidence).trim() !== '')), 'every NEUTRALIZED row carries evidence (a row that dissolves by design must say why)', neutralizedRows.map((v) => ({ id: v.id, evidence: v.evidence })))
-    // A12 is the same shape as A15 but at the file level: the layer's digest re-reads to exactly what the report
-    // claims, so the useful sentence names the changed scenario, not two identical hashes.
+    facts.redteam = { status: 'measured-here', measuredHere: true, runner: EXTERNAL_HARNESS, exit: rt.status, wallMs: wall, vectors: vectors.length, named: counts.named, neutralized: counts.neutralized }
+    ok(rt.status === 0, 'the explicitly named out-of-repo harness exits 0', { status: rt.status, wall })
+    judgeRows(vectors, counts, 'out-of-repo red team (VMU_REDTEAM_ROOT)')
+    // A12 is the duplicate-digest shape: the useful sentence names the changed scenario, not two identical hashes.
     const a12 = vectors.find((v) => v.id === 'A12')
     const a12Text = a12 ? (a12.messageHead || []).join(' ') : ''
     const a12Tokens = a12Text.match(/sha256:[0-9a-f]{12,}/g) || []
     ok(a12 !== undefined && a12Text.includes('mismatched=[actions-extra]'), 'A12: the reason names the file that differs (mismatched=[actions-extra])', a12 && a12.messageHead)
     ok(a12Tokens.length - new Set(a12Tokens).size === 0, 'A12: the reason does not print the same digest twice', { message: a12Text, a12Tokens })
-    console.log('  (red team ' + wall + ' ms)')
+    console.log('  (red team ' + wall + ' ms, out of repo)')
+  } else {
+    const missing = []
+    if (!existsSync(RUNNER)) missing.push(RUNNER)
+    if (!existsSync(ROSTER)) missing.push(ROSTER)
+    facts.redteam = { status: 'MEASURED-ELSEWHERE', measuredHere: false, missing, why: 'the in-repo red team has not landed its fixture roster (TB-2689), so this suite refuses to grade a 23-vector verdict it did not measure', unprovenHere: ['audit14-p0-2-release-gate-forgeable'] }
+    console.log('RED TEAM: MEASURED-ELSEWHERE — ' + facts.redteam.why)
+    console.log('  missing: ' + missing.join(', '))
+    console.log('  not proven here: ' + facts.redteam.unprovenHere.join(', '))
+    ok(facts.redteam.status === 'MEASURED-ELSEWHERE' && facts.redteam.measuredHere === false, 'TB-2695: an unmeasured red team is recorded as MEASURED-ELSEWHERE in the facts, never silently skipped and never turned green', facts.redteam)
+    ok(facts.redteam.unprovenHere.length > 0, 'and the record names the ledger row whose closure this suite does NOT prove here', facts.redteam.unprovenHere)
   }
 }
 

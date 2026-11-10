@@ -330,9 +330,43 @@ try {
     const parked = await K.turn.step({ members: ['r-1'], phase: 'normal', why: 'run256 loop reading' })
     const parkedTurnId = parked.memberPrompt.turnId
     const parkedPromptId = parked.memberPrompt.promptId
-    const a1 = JSON.stringify(K.turn.turnLoop())
-    const b1 = JSON.stringify(K.turn.status().turnLoop)
-    ok(a1 === b1, '§6a while parked, the two readers are the same object shape and values', { bytes: a1.length })
+    // ★★★ A DURATION READ AT TWO INSTANTS IS NOT THE SAME FACT (k=3 flake, RUN 269). §6a/§6f compare two READERS of
+    // the loop, and two calls can never land on the same instant: `turnLoopReading()` advances `inFlightForMs` and
+    // `parkedForMs` with the WALL clock on purpose (`vibe-math-vmu/kernel/turn/index.js:2335` - a duration that DECIDES
+    // a timeout keeps the wall clock, so an injected frozen clock could never let it time out; TB-2636 names those
+    // reads instead of migrating them). Under a loaded run the two calls then differ by real milliseconds, which is
+    // why this assertion went red at k=3 while passing alone. The exemption is narrow on purpose: exactly these three
+    // keys are blanked, the key list must be EXACTLY what this state can carry (a new duration may not be excused
+    // silently), and each blanked value must still be a finite, non-negative duration that never runs backwards.
+    // Everything else must agree byte for byte - that is the fact §6a is about.
+    const liveDurationsOf = (loop) => {
+      const out = []
+      if (Number.isFinite(loop.inFlightForMs)) out.push(['inFlightForMs', loop.inFlightForMs])
+      if (Number.isFinite(loop.parkedForMs)) out.push(['parkedForMs', loop.parkedForMs])
+      for (const [i, w] of (Array.isArray(loop.wakeQueue) ? loop.wakeQueue : []).entries()) {
+        if (w && Number.isFinite(w.queuedForMs)) out.push(['wakeQueue[' + i + '].queuedForMs', w.queuedForMs])
+      }
+      return out
+    }
+    const blankDurations = (loop) => {
+      const copy = { ...loop }
+      copy.inFlightForMs = '<duration>'
+      copy.parkedForMs = '<duration>'
+      if (Array.isArray(copy.wakeQueue)) copy.wakeQueue = copy.wakeQueue.map((w) => ({ ...w, queuedForMs: '<duration>' }))
+      return JSON.stringify(copy)
+    }
+    const loopA = K.turn.turnLoop()
+    const loopB = K.turn.status().turnLoop
+    const durationsA = liveDurationsOf(loopA)
+    const durationsB = liveDurationsOf(loopB)
+    ok(blankDurations(loopA) === blankDurations(loopB),
+      '§6a while parked, the two readers are the same object shape and values (excluding the live durations)',
+      { bytes: blankDurations(loopA).length, durations: durationsA.map((d) => d[0]) })
+    ok(durationsA.map((d) => d[0]).join(',') === 'parkedForMs' && durationsB.map((d) => d[0]).join(',') === 'parkedForMs',
+      '§6a2 the ONLY thing time may move in this state is the parked age (the exemption is that narrow)',
+      { a: durationsA.map((d) => d[0]), b: durationsB.map((d) => d[0]) })
+    ok(durationsB[0][1] >= durationsA[0][1] && durationsA[0][1] >= 0,
+      '§6a3 and both readers report a duration that only moves FORWARD', { a: durationsA[0][1], b: durationsB[0][1] })
     const loop = K.turn.turnLoop()
     ok(loop.parked === true && loop.parkedTurn === parkedTurnId && loop.parkedMember === 'r-1' && loop.parkedPromptId === parkedPromptId,
       '§6b the parked period is READ (turn, member, prompt)', { parked: loop.parked, turn: loop.parkedTurn })
@@ -342,9 +376,14 @@ try {
     ok(typeof loop.parkedMeans === 'string' && loop.parkedMeans.length > 40, '§6e and the reading spells itself out', loop.parkedMeans)
     await K.turn.supplyMemberReply(fence({ say: '完成' }), 'r-1')
     await attempt(() => K.turn.step({ members: ['r-1'], phase: 'normal', why: 'run256 loop reading apply' }))
-    const a2 = JSON.stringify(K.turn.turnLoop())
-    const b2 = JSON.stringify(K.turn.status().turnLoop)
-    ok(a2 === b2, '§6f after the parked turn settles, the two readers still agree')
+    const loopA2 = K.turn.turnLoop()
+    const loopB2 = K.turn.status().turnLoop
+    ok(blankDurations(loopA2) === blankDurations(loopB2),
+      '§6f after the parked turn settles, the two readers still agree (excluding the live durations)',
+      { bytes: blankDurations(loopA2).length, durations: liveDurationsOf(loopA2).map((d) => d[0]) })
+    ok(!liveDurationsOf(loopA2).some((d) => d[0] === 'parkedForMs' || d[0] === 'inFlightForMs') &&
+      !liveDurationsOf(loopB2).some((d) => d[0] === 'parkedForMs' || d[0] === 'inFlightForMs'),
+      '§6f2 and neither reader now carries a parked or in-flight age (there is nothing to be old)')
     const loop2 = K.turn.turnLoop()
     ok(loop2.parked === false && loop2.openTurns === 0, '§6g and nothing is parked or open', { parked: loop2.parked, openTurns: loop2.openTurns })
   }

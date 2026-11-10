@@ -16,6 +16,7 @@
 import { mint as mintId } from './ids.js'
 import { ENFORCED_SCOPE } from './mathjobs.js'   // C-45 的口径常量（拒绝/回执都带作用域）
 
+
 export const FORMAL_KEYS = Object.freeze([
   'vmu.math.leanCommand',
   'vmu.math.leanArgs',
@@ -186,25 +187,25 @@ export function createFormal(opts) {
 
   const axioms = (q) => {
     const r = notes.get(String((q && q.id) || ''))
-    if (!r) return refuse('VMU_FORMAL_NOT_FOUND', '找不到形式化记录 ' + String((q && q.id) || ''), '先 check() 取 id')
+    if (!r) return refuse('VMU_FORMAL_NOT_FOUND', '找不到形式化记录 ' + String((q && q.id) || ''), 'REACHABLE INSTEAD: 先调 vibe_vmu_formal {action:"check", request:{…}} 取得回执 id；再用 vibe_vmu_formal {action:"axioms", query:{id:"<回执 id>"}} 重试本调用')
     return { ok: true, id: r.id, axioms: r.axiomDecls.slice(), whitelist: cfg().axiomWhitelist.slice() }
   }
   const sorryReport = (q) => {
     const r = notes.get(String((q && q.id) || ''))
-    if (!r) return refuse('VMU_FORMAL_NOT_FOUND', '找不到形式化记录 ' + String((q && q.id) || ''), '先 check() 取 id')
+    if (!r) return refuse('VMU_FORMAL_NOT_FOUND', '找不到形式化记录 ' + String((q && q.id) || ''), 'REACHABLE INSTEAD: 先调 vibe_vmu_formal {action:"check", request:{…}} 取得回执 id；再用 vibe_vmu_formal {action:"sorryReport"} 重试本调用')
     return { ok: true, id: r.id, positions: r.sorryPositions.slice(), allowed: r.allowedSorry }
   }
   const artifactsOf = (q) => {
     const id = String((q && q.id) || '')
     const list = artifacts.get(id)
-    if (!list) return refuse('VMU_FORMAL_NOT_FOUND', '找不到产物 ' + id, '先 check() 取 id')
+    if (!list) return refuse('VMU_FORMAL_NOT_FOUND', '找不到产物 ' + id, 'REACHABLE INSTEAD: 先调 vibe_vmu_formal {action:"check", request:{…}} 取得回执 id；再用 vibe_vmu_formal {action:"artifacts", id:"<回执 id>"} 重试本调用')
     return { ok: true, id, count: list.length, droppedArtifacts, artifacts: list.slice() }
   }
   /** ⑤ 复现：同 argv/env 指纹；不一致 ⇒ `VMU_MATH_REPRO_MISMATCH` ＋ **差异** ✓。 */
   const reproduce = (q) => {
     const id = String((q && q.id) || '')
     const r = notes.get(id)
-    if (!r) return refuse('VMU_FORMAL_NOT_FOUND', '找不到形式化记录 ' + id, '先 check() 取 id')
+    if (!r) return refuse('VMU_FORMAL_NOT_FOUND', '找不到形式化记录 ' + id, 'REACHABLE INSTEAD: 先调 vibe_vmu_formal {action:"check", request:{…}} 取得回执 id；再用 vibe_vmu_formal {action:"reproduce", id:"<回执 id>"} 重试本调用')
     if (typeof spawn !== 'function') return refuse('VMU_EXTERNAL_UNAVAILABLE', 'spawn 接缝未注入；无法复现', '由宿主注入 spawn')
     const c = cfg()
     const args2 = []

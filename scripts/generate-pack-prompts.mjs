@@ -10,24 +10,23 @@
  * module, and it records the corpus sha256 INSIDE the module so any later difference is a check failure rather than
  * a silent divergence.
  *
- * USAGE: node scripts/generate-pack-prompts.mjs [--check]
- *   without --check it writes packs/v5r/prompts/v5r-prompts.js; with it, drift is a FAILURE (that is what the chain calls).
+ * USAGE: node scripts/generate-pack-prompts.mjs [--check | --write]
+ *   no flag = dry run (report only); --check = drift is a FAILURE (what the chain calls); --write rewrites the module.
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const CORPUS_REL = 'prompt-corpus-v5/prompt-corpus-v5.json'
 const CORPUS = join(REPO, CORPUS_REL)
 const OUT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-prompts.js')
-// CHECK BY DEFAULT (round 507): this used to write unless `--check` was passed, the reverse of every other generator in
-// scripts/. A default that overwrites a generated file is the wrong default, so --write is now the opt-in and --check
-// remains an accepted alias so any existing call site keeps working.
-const WRITE = process.argv.includes('--write')
-const CHECK = !WRITE
+// MODE CONTRACT (scripts/_lib/generator-cli.mjs): no flag = dry run (report only, exit 0), --check = the same report as
+// a failure, --write = rewrite. Round 507 already made check the default here; TB-2698 puts that rule in one place.
+const MODE = modeFrom(process.argv, { script: 'generate-pack-prompts.mjs' })
 
 const raw = readFileSync(CORPUS)
 const sha = createHash('sha256').update(raw).digest('hex')
@@ -118,16 +117,16 @@ if (empty.length) {
   process.exit(1)
 }
 
-if (CHECK) {
-  const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : ''
-  if (current !== next) {
-    console.error('FAIL - pack prompts: packs/v5r/prompts/v5r-prompts.js is not what ' + CORPUS_REL + ' yields'
-      + ' (run `node scripts/generate-pack-prompts.mjs` to rewrite it)')
-    process.exit(1)
-  }
-  console.log('  pack prompts: up to date (' + entries.length + ' prompts, ' + chars + ' chars, sha ' + sha.slice(0, 12) + ')')
-} else {
+if (MODE === 'write') {
   writeFileSync(OUT, next)
   console.log('  pack prompts: WROTE ' + entries.length + ' prompts (' + chars + ' chars, ' + Object.keys(kinds).length
     + ' kinds, sha ' + sha.slice(0, 12) + ') into vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js')
+} else {
+  const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : ''
+  if (current !== next) {
+    console.error('FAIL - pack prompts: packs/v5r/prompts/v5r-prompts.js is not what ' + CORPUS_REL + ' yields'
+      + ' (run `node scripts/generate-pack-prompts.mjs --write` to rewrite it)' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+    process.exit(exitCodeFor(MODE, true))
+  }
+  console.log('  pack prompts: up to date (' + entries.length + ' prompts, ' + chars + ' chars, sha ' + sha.slice(0, 12) + ')')
 }

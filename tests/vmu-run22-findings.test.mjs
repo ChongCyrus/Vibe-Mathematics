@@ -70,7 +70,10 @@ console.log('=== VMU RUN 22 FINDINGS (a settled ballot must refuse, not kill) ==
   // pinning one branch's private nesting. The serializer is still `boundedToolResult` for both.
   ok(/return boundedToolResult\(liftFiredWaiters\(discloseActOnSeat\(kernel, exec, args, Object\.assign\(\{\s*ok: false/.test(src),
     '③c the refusal still uses the SAME serializer as a success, now through the RUN 239 envelope')
-  ok(/return boundedToolResult\(liftFiredWaiters\(discloseActOnSeat\(kernel, exec, args, outNow\)\)\)/.test(src),
+  // ★ TB-2691 / F75-11: the nest gained an OPTIONAL fifth argument (`spec.name`, so `discloseActOnSeat` can name the
+  // tool on a relayed write). Compatible extension - the pinned property is "success goes through the SAME nest as a
+  // refusal", not "the call has exactly four arguments". Same reasoning as ③a's RUN 230 comment.
+  ok(/return boundedToolResult\(liftFiredWaiters\(discloseActOnSeat\(kernel, exec, args, outNow(, spec\.name)?\)\)\)/.test(src),
     '③c\' a successful result uses the SAME nest (one shape, two outcomes)')
 }
 

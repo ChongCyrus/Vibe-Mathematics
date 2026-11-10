@@ -20,7 +20,9 @@
 // it says nothing about whether a model follows the recommendation. That is a real-machine question.
 //
 // RULE E: every loop/every() below is preceded by an explicit NON-EMPTY assertion.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cpSync, existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -67,7 +69,10 @@ const call = async (b, name, args = {}) => {
   return { raw, parsed, missing: false }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-meeting-types-'))
+// TB-2695: a proof must build its own evidence on any machine. D:/_tmp is only a fast local disk when it exists;
+// otherwise use the OS temp dir. VMU_TEST_TMP_ROOT still overrides both (same fallback as tests/repo-hygiene.test.mjs:23).
+const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const root = await mkdtemp(join(TMP_ROOT, 'vmu-meeting-types-'))
 try {
   // ── ① THE CATALOG LIVES IN THE PACK ────────────────────────────────────────────────────────────────────────
   console.log('=== 1. THE MEETING TYPE CATALOG IS THE PACK\'S OWN VOCABULARY ===')
@@ -262,7 +267,7 @@ try {
   //   expansion modes had NO assertion at all. This reads the RECEIPT's own skeleton (not the module constant).
   const step2 = typed.parsed && typed.parsed.procedure && typed.parsed.procedure.steps && typed.parsed.procedure.steps[1]
   ok(!!step2 && /轮流/.test(String(step2.what)) && /举手/.test(String(step2.what)) && /邀请/.test(String(step2.what)),
-    '★ E26: the receipt\'s step ② names all three ways to OPEN the debate (轮流发言 / 举手后发言 / 主席邀请发言)',
+    '★ E26: the receipt step ② names all three ways to OPEN the debate (轮流发言 / 举手后发言 / 主席邀请发言)',
     step2 && step2.what)
   const backSum = kernel.meetings.summary({ meeting: typed.parsed.meeting })
   ok(backSum.type === 'debate' && backSum.subject === subj2, '★ read-back from the service confirms what the tool claimed', { type: backSum.type, subject: backSum.subject })
@@ -729,6 +734,101 @@ try {
   const code2 = afterTurn.error ? afterTurn.error.code : null
   ok(code2 === null || (code2 !== 'VMU_CHAIR_ACT_NOT_DELEGATED'),
     '★★ after the chair took a real turn the chair-turn rail no longer fires (it gates on a recorded fact, not on a caller claim)', { code: code2 })
+
+  // ── ⑪ E33 RUNTIME: SWAPPING THE PACK SWAPS THE MEETING-TYPE CATALOG ──────────────────────────────────────────
+  console.log('=== 11. E33 RUNTIME: A SWAPPED PACK SWAPS THE MEETING-TYPE CATALOG ===')
+  // THE DEBT THIS CLOSES (docs/acceptance/sim-audit-open-items.json::RULES-E33-SOURCE-GREP): the only proof that the
+  // vocabulary lives in the pack was a SOURCE GREP of kernel/meetings.js ("no institutional id is hardcoded here") —
+  // which stays green even if the pack is replaced or emptied, so it never showed that a swap CHANGES the catalog.
+  // This block boots a real COPY of the whole entry tree with ONE frozen row added to the pack's MEETING_TYPES and
+  // reads the pack face back. The row's id/label are SENTINELS that exist nowhere in the repo: a constant (or a
+  // kernel-side table) cannot produce them, so the only source is the patched pack file — that is the falsifier.
+  // The matching KERNEL gate is asserted separately: it reads vmu.meetings.typeCatalog (a second layer, declared by
+  // the pack's settings defaults or by a pre-kernel manifest), so "the pack face follows the pack" and "the kernel
+  // gate follows the declaration" are two honest facts, not one.
+  const SENTINEL_ID = 'review-x7'
+  const SENTINEL_LABEL = '评审会X7'
+  const swapBase = await mkdtemp(join('D:/_tmp', 'vmu-e33-swap-'))
+  const bootEntry = async (entryUrl, config) => {
+    const specs = []
+    const ctx = { effect: (fn) => fn(), on: () => () => {}, tools: { register: async (s) => { specs.push(s); return () => {} } } }
+    const e = await import(entryUrl)
+    const handle = e.apply(ctx, Object.assign({ clock: () => 1000 }, config))
+    await handle.ready()
+    return { handle, specs, specOf: (n) => specs.find((s) => s.name === n) }
+  }
+  try {
+    // (a) a COPY of the entry tree with one extra catalog row, at the pack's own anchor
+    const vmuCopy = join(swapBase, 'vibe-math-vmu')
+    cpSync(join(REPO, 'vibe-math-vmu'), vmuCopy, { recursive: true })
+    const procCopy = join(vmuCopy, 'packs', 'v5r', 'meeting-procedures.js')
+    const procSrc = await readFile(procCopy, 'utf8')
+    const anchor = "  Object.freeze({ id: 'planning', label: '未来规划/策划', purpose: '基于现状与约束，给出备选路线与阶段计划。', subjectRequired: false }),\n])"
+    ok(procSrc.includes(anchor), 'the swap fixture patches the pack catalog at a REAL anchor (a failed patch must be a red, never a silent no-op)', procSrc.includes(anchor))
+    await writeFile(procCopy, procSrc.replace(anchor,
+      anchor.slice(0, -3)
+      + "  Object.freeze({ id: '" + SENTINEL_ID + "', label: '" + SENTINEL_LABEL + "', purpose: '评审一个交付物。', subjectRequired: false }),\n])"))
+
+    // (b) the SWAPPED boot: the pack read face must follow the pack's own source
+    const bSwap = await bootEntry(pathToFileURL(join(vmuCopy, 'vibe-math-vmu.js')).href, { root: join(swapBase, 'root-swap'), packs: ['v5r'] })
+    const swapTypes = await call(bSwap, 'vibe_v5_meeting', { action: 'types' })
+    ok(swapTypes.parsed && swapTypes.parsed.ok === true && swapTypes.parsed.action === 'types', 'the pack read face answers action types with ok', swapTypes.parsed && swapTypes.parsed.action)
+    const swapIds = swapTypes.parsed && Array.isArray(swapTypes.parsed.types) ? swapTypes.parsed.types.map((t) => t.type) : []
+    ok(swapIds.length === 7 && swapIds.includes(SENTINEL_ID),
+      '★ E33 runtime: the swapped pack adds its OWN type to the catalog — the read face follows the pack, not a framework constant', { count: swapIds.length, ids: swapIds })
+    const sentinelRow = swapTypes.parsed && swapTypes.parsed.types.find((t) => t.type === SENTINEL_ID)
+    ok(!!sentinelRow && sentinelRow.label === SENTINEL_LABEL,
+      '★★ the row is the PATCHED row: its label is the sentinel the copy declared, so no constant can satisfy it', sentinelRow && sentinelRow.label)
+    ok(/packs\/v5r\/meeting-procedures\.js/.test(String(swapTypes.parsed.typeCatalogSource)) && !/kernel\//.test(String(swapTypes.parsed.typeCatalogSource)),
+      '★ typeCatalogSource names the PACK files and not the kernel (a read face that cannot say where its rows live is a table pretending to be a fact)', swapTypes.parsed.typeCatalogSource)
+
+    // (c) anti-lamp-off: the SAME assertion on the UNPATCHED repository must NOT see the sentinel
+    const bPlain = await bootEntry(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(swapBase, 'root-plain'), packs: ['v5r'] })
+    const plainTypes = await call(bPlain, 'vibe_v5_meeting', { action: 'types' })
+    const plainIds = plainTypes.parsed && Array.isArray(plainTypes.parsed.types) ? plainTypes.parsed.types.map((t) => t.type) : []
+    ok(plainIds.length === 6 && !plainIds.includes(SENTINEL_ID),
+      '★★ anti-lamp-off: the unpatched repository still declares six and NOT the sentinel — the swap is the only source of the seventh', { count: plainIds.length })
+    // the swapped type is NOT automatically legal at the kernel gate: the gate reads the DECLARED catalog (a second
+    // layer), so a pack that adds a type must also declare it. Pinning the boundary keeps the two layers distinguishable.
+    const swapKernel = bSwap.handle.kernel
+    await swapKernel.members.hire({ id: 'c-1', slot: 'chair' })
+    const swapOpen = (() => { try { return { value: swapKernel.meetings.open({ type: SENTINEL_ID, chair: 'c-1', actor: 'c-1', roster: ['c-1'], materials: 'x' }) } } catch (e) { return { error: e } } })()
+    ok(!!swapOpen.error && swapOpen.error.code === 'VMU_NO_SUCH_OBJECT',
+      '★ the pack catalog and the KERNEL gate are two layers: a type the pack adds is still refused by the kernel until it is also declared in vmu.meetings.typeCatalog', swapOpen.error && swapOpen.error.code)
+
+    // (d) the DECLARATION side: a pre-kernel manifest catalog is a LIVE gate, not a stored string
+    const bMan = await boot({ root: join(swapBase, 'root-man'), packs: ['v5r'], packManifests: [{ id: 'review-inst', meetingTypeCatalog: ['评审会'] }] })
+    const manCatalog = bMan.handle.kernel.settingsSnapshot()['vmu.meetings.typeCatalog']
+    ok(Array.isArray(manCatalog) && manCatalog.includes('评审会'), '★ a pre-kernel manifest declaration reaches the RESOLVED settings the kernel gate reads', manCatalog)
+    const manKernel = bMan.handle.kernel
+    await manKernel.members.hire({ id: 'c-1', slot: 'chair' })
+    const manOpen = (() => { try { return { value: manKernel.meetings.open({ type: '评审会', chair: 'c-1', actor: 'c-1', roster: ['c-1'], materials: 'x' }) } } catch (e) { return { error: e } } })()
+    ok(!!manOpen.value && manOpen.value.ok === true && manOpen.value.type === '评审会',
+      '★★ the declared type really CONVENES — the declaration is a live gate, not a string that was stored and forgotten', manOpen.value && manOpen.value.type)
+    const manRefuse = (() => { try { return { value: manKernel.meetings.open({ type: 'weekly-sync', chair: 'c-1', actor: 'c-1', roster: ['c-1'], materials: 'x' }) } } catch (e) { return { error: e } } })()
+    ok(!!manRefuse.error && manRefuse.error.code === 'VMU_NO_SUCH_OBJECT' && /评审会/.test(String(manRefuse.error.hint)),
+      '★★ an undeclared type is refused by name and the hint lists the declared catalog INCLUDING the added one', manRefuse.error && manRefuse.error.hint)
+
+    // (e) B / named refusal: a catalog declared AFTER the kernel exists is refused BY NAME, never accepted with zero effect
+    const bLate = await boot({ root: join(swapBase, 'root-late'), packs: ['v5r', { id: 'late-inst', meetingTypeCatalog: ['评审会'] }] })
+    const lateErr = (bLate.handle.packErrors() || []).find((e) => e.id === 'late-inst')
+    ok(!!lateErr && lateErr.code === 'VMU_PACK_DECLARATION_TOO_LATE' && /meetingTypeCatalog/.test(String(lateErr.message)),
+      '★ E33 B: a catalog declared after the kernel exists is refused BY NAME, naming the key — never accepted with zero effect', lateErr && lateErr.code)
+    const lateCatalog = bLate.handle.kernel.settingsSnapshot()['vmu.meetings.typeCatalog']
+    ok(JSON.stringify(lateCatalog) === JSON.stringify(['ordinary', 'academic', 'debate', 'closure', 'paper', 'planning']),
+      '★ E33 B: the refused declaration did NOT silently change the catalog', lateCatalog)
+
+    // (f) B / empty declaration: "declared none" must NOT be silently replaced by the six-type catalog
+    const bEmpty = await boot({ root: join(swapBase, 'root-empty'), packs: [], packManifests: [{ id: 'empty-inst', meetingTypeCatalog: [] }] })
+    const emptyCatalog = bEmpty.handle.kernel.settingsSnapshot()['vmu.meetings.typeCatalog']
+    ok(emptyCatalog === undefined,
+      '★★ E33 B: an EMPTY declaration leaves NO catalog — the framework does not silently substitute the six-type catalog', emptyCatalog)
+    const emptyOpen = (() => { try { return { value: bEmpty.handle.kernel.meetings.open({ type: 'weekly-sync', chair: 'c-1', actor: 'c-1', roster: ['c-1'], materials: 'x' }) } } catch (e) { return { error: e } } })()
+    ok(!!emptyOpen.value && emptyOpen.value.ok === true,
+      '★★ E33 B: with no catalog declared the kernel gate is OFF (zero mechanism) — the honest "declared none", not a hidden default', emptyOpen.value && emptyOpen.value.type)
+  } finally {
+    try { await rm(swapBase, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) } catch { /* a live kernel may still hold files on Windows; the boot roots are throwaway */ }
+  }
 
 console.log('')
 if (failures.length) { console.error('FAILURES:'); for (const f of failures) console.error('  · ' + f) }

@@ -789,7 +789,7 @@ export function createLibrary({
     async restore({ id } = {}) {
       const trashed = await readTrash()
       const t = trashed.find((r) => r.id === id)
-      if (!t) throw refuse('VMU_NO_SUCH_OBJECT', 'nothing trashed with id ' + String(id), 'listTrash() shows what can be restored')
+      if (!t) throw refuse('VMU_NO_SUCH_OBJECT', 'nothing trashed with id ' + String(id), 'REACHABLE INSTEAD: 用 vibe_vmu_retention {action:"trash"} 看什么还能恢复（回执给示例 id），再用 vibe_vmu_retention {action:"restore", id:"<对象 id>"} 恢复')
       const dir = KINDS[t.kind] ? join(root, 'Members', t.member, KINDS[t.kind]) : dirname(t.file)
       const to = join(dir, id + '.md')
       gate(to, 'library write')
@@ -839,7 +839,7 @@ export function createLibrary({
       if (!rec) throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id ' + String(id), 'call list() for the head list')
       if (rev === undefined || rev === null) throw refuse('VMU_INVALID_ARGUMENT', 'revision needs rev', 'pass rev:<n>; use revisions({id}) to list them')
       const file = join(dirname(rec.file), id + '@' + String(rev) + '.md')
-      if (!(await exists(file))) throw refuse('VMU_NO_SUCH_OBJECT', 'no revision ' + String(rev) + ' for ' + id, 'revisions() lists the frozen versions')
+      if (!(await exists(file))) throw refuse('VMU_NO_SUCH_OBJECT', 'no revision ' + String(rev) + ' for ' + id, 'REACHABLE INSTEAD: 版本列表没有独立工具面；保留/冻结读数用 vibe_vmu_retention {action:"status"}，恢复某个对象用 vibe_vmu_retention {action:"restore", id:"<对象 id>"}')
       const raw = await readFile(file, 'utf8')
       const meta = parseRecord(raw)
       return { ok: true, id, rev: Number(rev), by: meta.by || null, reason: meta.reason || null, at: meta.at || null, baseline: meta.baseline === 'true', fingerprint: meta.fingerprint || null, body: bodyOf(raw) }

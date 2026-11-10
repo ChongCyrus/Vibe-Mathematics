@@ -93,6 +93,14 @@ const COVERAGE_GAP_PROVENANCE = {
   inFlightOpenedBy: { producedBy: 'vibe_vmu_turn {op:"status"} -> status.turnLoop.inFlightOpenedBy', simProduced: true, evidence: 'sim probe #2 (local run) (drive)' },
   inFlightForMs: { producedBy: 'vibe_vmu_turn {op:"status"} -> status.turnLoop.inFlightForMs', simProduced: true, evidence: 'sim probe #2 (local run)' },
   recentAbandonments: { producedBy: 'vibe_vmu_turn {op:"status"} -> status.turnLoop.recentAbandonments (non-empty after op:"abandon")', simProduced: true, evidence: 'sim probe #4 (local run)' },
+  // ★ RUN 269 (TB-2691 / TB-2707 / TB-2692 / TB-2691): the four sentences added this round teach read-back facts that the
+  // e2e harvest has not reached yet. Each row names the ONE place that writes the name, so a future reader can tell a
+  // corpus gap from a name the member can never see.
+  pdfBytes: { producedBy: 'vibe_v5_paper {action:"render"|"final"} -> receipt.pdf.pdfBytes / status.pdfCompiled.pdfBytes (kit/paper.js:1934 writes pdfPath+pdfBytes+pdfSha256 from ONE reading of ONE file)', simProduced: true, evidence: 'sim probe: vibe_v5_paper render receipt .pdf.pdfBytes (RUN 255 harness)' },
+  archiveMissing: { producedBy: 'vibe_vmu_turn {op:"status"} -> status.turnReceipts[i].archiveMissing (kernel/turn/index.js:2762 opens the slot null; :2838 sets true from the archive read-back, :2839 false when truncated:true was archived)', simProduced: true, evidence: 'sim probe: turn status row after a truncated reply whose archive read-back failed' },
+  replyArchiveWhy: { producedBy: 'vibe_vmu_turn {op:"status"} -> status.turnReceipts[i].replyArchiveWhy (kernel/turn/index.js:2758 slot, :2836 copies the named why; :4941 notes it is null when there is nothing to warn about)', simProduced: true, evidence: 'sim probe: turn status row carries archiveMissing:true + replyArchiveWhy naming the read-back failure' },
+  writtenFrom: { producedBy: 'vibe_vmu_records {action:"list"|"get"} -> rows[].writtenFrom (kernel/records.js:656 writtenFromOf; :655 WRITTEN_FROM_MEANS gives own-turn/relayed/unknown; withWriter:false answers writtenFromOmitted:true instead of dropping it)', simProduced: true, evidence: 'sim probe: records list row from a seat own-turn write and from a relayed office write' },
+  votesTotal: { producedBy: 'vibe_v5_verdict_final / closure vote -> receipt.closureVote.votesTotal (kernel/turn/index.js:2026 reads it from the closure reading; :2059 prints votesCast/votesTotal/votesFor/votesAgainst/votesUnknown in one tally)', simProduced: true, evidence: 'sim probe: closure vote receipt .closureVote.votesTotal (4 seats enfranchised)' },
 }
 
 /** Provenance verdict for a coverage-gap name. Missing/empty producedBy => BLOCKER (no permanent exemptions). */

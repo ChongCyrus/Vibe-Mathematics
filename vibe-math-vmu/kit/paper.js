@@ -197,6 +197,10 @@ export function createPaperFlow({
           // compile recorded — the same facts the receipt needs, so the face does not re-open the row and get it wrong.
           const entry = { id: row.id, title: row.title, pdfPath: body.pdfPath,
             pdfBytes: body.pdfBytes === undefined ? null : body.pdfBytes,
+            // ★★★ RUN 2691 (TB-2691 / F75-15): the file hash the compile recorded from the SAME buffer it counted. A
+            // ledger row written before this run has no such field (`null`), and the status face names that absence
+            // instead of letting "bytes match" stand in for "same file".
+            pdfSha256: body.pdfSha256 === undefined ? null : body.pdfSha256,
             engine: body.engine === undefined ? null : body.engine,
             tried: Array.isArray(body.tried) ? body.tried : [] }
           const key = [
@@ -1516,6 +1520,8 @@ export function createPaperFlow({
       if (pdf && pdf.ok === true) {
         state.finalPdfRecordId = pdf.recordId === undefined || pdf.recordId === null ? null : String(pdf.recordId)
         state.finalPdfBytes = pdf.pdfBytes === undefined || pdf.pdfBytes === null ? null : Number(pdf.pdfBytes)
+        // ★★★ RUN 2691 (TB-2691 / F75-15): the finalisation records WHICH bytes it finalised, same source as the row.
+        state.finalPdfSha256 = pdf.pdfSha256 === undefined || pdf.pdfSha256 === null ? null : String(pdf.pdfSha256)
         writeState(state)
       }
       return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: missingAfter, pdf,
@@ -1921,10 +1927,14 @@ export function createPaperFlow({
     }
     const put = records.put({
       track: TRACK, kind: 'paper-pdf', title: recordName(state.target, 'pdf'),
-      body: JSON.stringify({ pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, engine: r.engine, tried: r.tried, argv: r.argv, elapsedMs: r.elapsedMs, timeoutMs: r.timeoutMs }),
+      // ★★★ RUN 2691 (TB-2691 / F75-15): `pdfBytes` and `pdfSha256` are written from ONE reading of ONE file (`r` is the
+      // latex seam's success return, which counted and hashed the same buffer). A row that carries only a byte count
+      // cannot prove the disk file is the compiled file — run 75's verifier could compute sha256(disk)=591d23a6… while
+      // the archive row carried only its OWN body fingerprint, so the check ended ARITHMETIC-BLOCKED.
+      body: JSON.stringify({ pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, pdfSha256: r.pdfSha256 === undefined ? null : r.pdfSha256, engine: r.engine, tried: r.tried, argv: r.argv, elapsedMs: r.elapsedMs, timeoutMs: r.timeoutMs }),
       settled: true, by: author,
     })
-    return { ok: true, target: state.target, engine: r.engine, pdfPath: r.pdfPath, pdfBytes: r.pdfBytes,
+    return { ok: true, target: state.target, engine: r.engine, pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, pdfSha256: r.pdfSha256 === undefined ? null : r.pdfSha256,
       // ★★ RUN 154 (G10): run 4 verified the fix from xelatex's own log because the receipt did not carry the argv that
       // proves "absolute + forward slashes". The successful compile now returns the same argv the failure path always did.
       // ★★ RUN 158: the source name reported on success MUST be the one the request carried (folder + '.tex'); the

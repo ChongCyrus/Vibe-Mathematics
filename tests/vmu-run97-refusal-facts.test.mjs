@@ -152,7 +152,10 @@ await ok('host.js routes BOTH refusal builders through refusalFacts (no per-fact
   assert.ok(src.indexOf('export function refusalFacts(e)') >= 0)
   assert.ok(src.indexOf("extra && typeof extra === 'object' ? refusalFacts(extra) : {}") >= 0,
     'the face-level refused() must use the copying rule')
-  assert.ok(src.indexOf('}, refusalAttribution(e), refusalFacts(e)))') >= 0,
+  // TB-2691 / F75-11 added an OPTIONAL trailing `spec.name` to this call (the bridge names the tool so a relayed
+  // write can be attributed). It does not change the property: both refusal builders still route through the one
+  // copying rule. Pin the rule, not the arity - otherwise every compatible extension reads as a contract break.
+  assert.ok(/\}, refusalAttribution\(e\), refusalFacts\(e\)\)(, spec\.name)?\)/.test(src),
     'the host bridge must use the copying rule')
   assert.ok(src.indexOf("extra.hostStack ? { hostStack: String(extra.hostStack).slice(0, 2000) } : {}") < 0,
     'the old two-field allow-list must be gone')

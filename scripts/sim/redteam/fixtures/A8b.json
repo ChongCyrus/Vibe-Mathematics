@@ -1,0 +1,16 @@
+{
+  "id": "A8b",
+  "attack": "a hand-typed block whose numbers are TRUE (the one forgery the gate cannot and should not catch)",
+  "why": "the honest boundary of provenance: a true block typed by hand is indistinguishable; the matrix must say so instead of claiming 100% detection",
+  "wouldBeWrongIf": "the gate CATCHES it (then the 'neutralized' claim is false and the vector is masked), or the claimed/ recomputed readings disagree (then it is not actually true)",
+  "expects": {
+    "judge": "neutralized",
+    "forgeryDetectionCodes": [
+      "AUDIT_UNVERIFIABLE",
+      "AUDIT_ID_MISMATCH",
+      "AUDIT_TREE_CHANGED",
+      "AUDIT_FIDELITY_MISMATCH"
+    ],
+    "neutralizedWhy": "the block is a true statement about a real corpus: no provenance check can tell it from all.mjs output, and refusing it would refuse honest reports too. Recorded as a known boundary, not a win."
+  }
+}

@@ -49,6 +49,11 @@ const writeByDefault = []
 for (const e of entries) {
   const src = readFileSync(join(REPO, e.script), 'utf8')
   const writesOnWriteFlag = /process\.argv\.includes\('--write'\)/.test(src)
+    // TB-2698: the opt-in may now live in the ONE implementation every generator calls (`modeFrom`), so the property
+    // being tested is "writing must be asked for", not "this literal string appears in this file".
+    // TB-2698 (approved): before the contract, a script could pass this probe with either literal; the probe's old
+    // premise — that each generator parses `--write` itself — no longer holds once they all delegate to `modeFrom`.
+    || /modeFrom\(process\.argv/.test(src)
   const checks = /--check/.test(src)
   if (!writesOnWriteFlag && !checks) writeByDefault.push(e.script)
 }

@@ -338,9 +338,13 @@ console.log('\n=== 10. every event name can actually fire: hand / motion / secon
   const m2 = o2.meeting
   t2.wait({ meeting: m2, member: 'acad', until: 'attend-all' })
   const a1 = t2.attend({ meeting: m2, member: 'r-1' })
-  ok(a1.receipt.firedWaiters.length === 0, '★★ until:"attend-all" does NOT fire while a roster member is still missing', a1.receipt.firedWaiters.length)
+  // TB-2694 / F75-05: on an ATTEND answer the waiter facts are at the top level (`a.firedWaiters`) — the answer no
+  // longer ships a second full copy of the readings inside `receipt`. Other acts (speak/hand/motion/…) are unchanged.
+  const fwOf = (res) => (Array.isArray(res && res.firedWaiters) ? res.firedWaiters
+    : (Array.isArray(res && res.receipt && res.receipt.firedWaiters) ? res.receipt.firedWaiters : []))
+  ok(fwOf(a1).length === 0, '★★ until:"attend-all" does NOT fire while a roster member is still missing', fwOf(a1).length)
   const a2 = t2.attend({ meeting: m2, member: 'r-2' })
-  ok(a2.receipt.firedWaiters.length === 1 && a2.receipt.firedWaiters[0].member === 'acad', '★★★ ...and fires on the arrival that completes the roster', a2.receipt.firedWaiters)
+  ok(fwOf(a2).length === 1 && fwOf(a2)[0].member === 'acad', '★★★ ...and fires on the arrival that completes the roster', fwOf(a2))
 }
 
 console.log('\n=== 11. close(): meeting-closed fires, and what is still armed is cancelled ===')

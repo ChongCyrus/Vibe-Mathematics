@@ -84,11 +84,15 @@ function requireSpeaker(kernel, member) {
   const row = roster.filter((m) => m.id === id)[0]
   if (!row) {
     throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster',
-      'the roster holds ' + roster.length + ' member(s); call roster() for the live ids')
+      // ★★★ TB-2694 / F75-17: the SAME sentence the pack uses (packs/v5r/tools.js#ROSTER_ID_REACHABLE_HINT).
+      'REACHABLE INSTEAD: 先 vibe_v5_overview {member:"<你的 id>"}（主席席读名册：回执 roster[] 带 id/slot/state，挑 state:"live" 的那个），再 vibe_v5_inbox {action:"list", member:"<roster id>"} 确认这个名字收得到消息，然后用这个 id 重试本调用')
   }
   if (row.state !== undefined && row.state !== 'live') {
     throw refuse('VMU_STATE', 'member "' + id + '" is ' + String(row.state) + ', so it cannot speak',
-      'roster() shows who is live')
+      // ★★★ TB-2694 / F75-17: this branch used to answer with a thing to read that does not exist on this deployment —
+      // no such tool is registered, so the sentence taught a call that cannot run. It now names the REAL face and the
+      // REAL parameter: `member` is the parameter to retry with, and only a seat whose state is "live" can speak.
+      'REACHABLE INSTEAD: 本面要的形参是 `member`，而且只有 state:"live" 的席位能说话 — 先 vibe_v5_overview {member:"<你的 id>"}（主席席读名册：回执 roster[] 带 id/slot/state），挑一个 state:"live" 的 id，用 member:"<roster id>" 重试本调用；本面不会替你换人，也不会把非 live 席位当成活着')
   }
   return id
 }
@@ -468,6 +472,11 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
     return Object.assign({
       ok: true, tool, track, kind,
       recordId: written.id, rev: written.rev, settled: isSettled,
+      // ★ TB-2691 / F75-11: the write receipt names the KIND OF ACT (own-turn / relayed / unknown) recorded on the
+      // row, so a reader at the moment of writing does not have to read the row back to learn whether a seat
+      // actually ran this write.
+      writtenFrom: written.writtenFrom,
+      writtenFromMeans: written.writtenFromMeans,
       ...mergeEcho(written),
       // ★ AUDIT C5b: the receipt says whether a progress figure came in and WHERE it was kept — a card's 进度 is now a
       // card field, not a passing remark. Same shape as `vibe_v5_record_progress`'s own echo.
@@ -1002,7 +1011,10 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     // doc sentence beside it says `total` is the track's hit count. The read now WALKS the whole track (list with
     // limit 0 is the kernel's whole-set read) and slices the page afterwards: `total` is the truth, `returned` is the
     // page, `truncated` says which one you got. Measured in the same run: paper `limit:4` answered 4 for 195 rows.
-    try { listed = records.list({ track, limit: 0 }) } catch (e) {
+    // ★ TB-2691 / F75-11: this face reads the SAME records rows as `vibe_vmu_records list`, so it must offer the
+    // same per-row provenance (`writtenFrom`) by default and honour `withWriter:false` the same way (the kernel owns
+    // both the field and the omission flag).
+    try { listed = records.list({ track, limit: 0, withWriter: args.withWriter !== false }) } catch (e) {
       if (!e || e.code !== 'VMU_INVALID_ARGUMENT') throw e
       skipped.push(track)
       continue
@@ -1064,6 +1076,13 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
       ? '「' + kindGiven + '」is a TRACK name (vmu.records.tracks declares it), not a card KIND: this filter compares a row\'s `kind`, so it matched nothing and the zero below is not evidence that the member wrote nothing. Read that track instead: vibe_v5_read_library { member, track:"' + kindGiven + '" }.'
       : 'no row among the read tracks carries kind "' + kindGiven + '": the kinds present here are ' + (kindsPresent.size ? Array.from(kindsPresent).join(', ') : '(none)') + '. `kind` filters a row\'s kind, not its track.')
   return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: kindGiven,
+    // ★ TB-2691 / F75-11: this face reads the SAME records rows as `vibe_vmu_records list`, so it says the same
+    // thing about provenance: on by default (`writerSource` per card), and an explicit omission is ANSWERED here.
+    withWriter: args.withWriter !== false,
+    writtenFromOmitted: args.withWriter === false,
+    withWriterMeans: args.withWriter === false
+      ? 'the caller asked withWriter:false: every card omits `writtenFrom` on purpose; this receipt carries writtenFromOmitted:true instead of leaving the absence to be guessed'
+      : 'every card carries `writtenFrom` (own-turn / relayed / unknown): the KIND of act that wrote the row, recorded at write time. It is deliberately NOT writerSource, which keeps its old meaning (which FIELD answered the writer question: by/writer/owner). Pass withWriter:false to omit it',
     kindGiven, kindMatched, kindsPresent: Array.from(kindsPresent), kindNote,
     panelPointer: panelPointer.pointer, panelPointerMeans: panelPointer.means,
     tracks, declaredTracks: declared,

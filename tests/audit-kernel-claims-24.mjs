@@ -17,9 +17,10 @@
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from "node:url"
 import { dirname } from "node:path"
+import { REPO } from './_lib/repo-root.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-const K = 'D:\\wd\\vibemath开发\\Vibe-Mathematics\\vibe-math-vmu\\kernel'
+const K = join(REPO, 'vibe-math-vmu', 'kernel')
 const u = (f) => pathToFileURL(join(K, f)).href
 
 // ★ the probe's prelude defined this; the shipper starts at the first import, so it is restored here.

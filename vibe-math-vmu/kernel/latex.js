@@ -5,6 +5,7 @@
 // NEVER hard-codes “Chinese first”: it tries the order the caller/pack settings declares, and reports exactly which
 // engines it tried. Absent a spawn seam the face is NOT constructed (kernel/index.js), and a direct call refuses by name.
 import { writeFile, readFile, access, mkdir, constants as FS } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 export const LATEX_CODES = Object.freeze({
@@ -161,10 +162,19 @@ export function createLatexFace(opts = {}) {
           outDir,
           message: 'exit 0 but no PDF at ' + pdfPath, hint: 'write \\\\documentclass with a PDF-producing engine, and put the output in outDir' }
       }
+      // ★★★ RUN 2691 (TB-2691 / F75-15): the PDF's bytes and its sha256 come from the SAME buffer, read ONCE here.
+      // The archive row used to carry `pdfBytes` with no file hash, so a verifier could see the byte count but not prove
+      // the file on disk was the file this compile produced (run 75: 100 587 B on disk, row had only a body fingerprint).
+      // `pdfSha256` is the file's sha256 — not the row body's — so `sha256(disk) === row.pdfSha256` is checkable.
       let bytes = null
-      try { const b = await fs.readBytes(pdfPath); bytes = b && b.length !== undefined ? b.length : null } catch { bytes = null }
+      let sha = null
+      try {
+        const buf = await fs.readBytes(pdfPath)
+        if (Buffer.isBuffer(buf)) { bytes = buf.length; sha = createHash('sha256').update(buf).digest('hex') }
+        else if (buf && buf.length !== undefined) { bytes = buf.length; sha = createHash('sha256').update(Buffer.from(buf)).digest('hex') }
+      } catch { bytes = null; sha = null }
       stats.ok += 1
-      return { ok: true, engine, tried, argv, outDir, pdfPath, pdfBytes: bytes, elapsedMs, timeoutMs: ms, at: clock() }
+      return { ok: true, engine, tried, argv, outDir, pdfPath, pdfBytes: bytes, pdfSha256: sha, elapsedMs, timeoutMs: ms, at: clock() }
     }
     stats.noEngine += 1
     return { ok: false, code: LATEX_CODES.noEngine, tried, engineOrder: engines,
@@ -184,8 +194,27 @@ export function createLatexFace(opts = {}) {
     return run
   }
 
+  // ★★★ RUN 2691 (TB-2691 / F75-15): a read-only disk reading for the paper status face. It reads the PDF ONCE and
+  // answers the three questions a verifier asks: does the file exist, how many bytes, and WHICH bytes (sha256). The
+  // archive row records the sha; this face lets a read compare disk to it without a second stat call anywhere else.
+  const pdfReading = async (pdfPath) => {
+    const p = pdfPath === undefined || pdfPath === null ? '' : String(pdfPath).trim()
+    if (p === '') return { ok: false, exists: false, pdfBytes: null, pdfSha256: null, why: 'no pdfPath was named, so no file could be read' }
+    let exists = false
+    try { exists = await fs.exists(p) } catch { exists = false }
+    if (!exists) return { ok: false, exists: false, pdfBytes: null, pdfSha256: null, why: 'no file at the recorded pdfPath' }
+    try {
+      const buf = await fs.readBytes(p)
+      return { ok: true, exists: true, pdfBytes: buf && buf.length !== undefined ? buf.length : null,
+        pdfSha256: createHash('sha256').update(Buffer.isBuffer(buf) ? buf : Buffer.from(buf)).digest('hex') }
+    } catch (e) {
+      return { ok: false, exists: true, pdfBytes: null, pdfSha256: null, why: 'the file exists but could not be read: ' + String((e && e.message) || e) }
+    }
+  }
+
   return {
     check,
+    pdfReading,
     status: () => ({ ok: true, code: null, checks: stats.checks, okChecks: stats.ok, failed: stats.failed, timeouts: stats.timeouts, noEngine: stats.noEngine, interrupted: stats.interrupted,
       engineOrder: engineOrder(), serial: true, last }),
   }

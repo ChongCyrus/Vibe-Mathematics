@@ -256,7 +256,14 @@ export function packToolFaceGate({ kernel = null, exec = null, toolName = '', de
  * what the tool intended — and it is stated only for a seat that really exists on the roster: a name that is not a
  * seat did not act under any name, and `null` is a real answer for "the office", not "could not tell".
  */
-export function discloseActOnSeat(kernel = null, exec = null, args = null, out = null) {
+// ★★★ TB-2691 / F75-09 (MEASURED in run 75): A READ FACE MUST NOT REUSE THE WRITE-FACE SENTENCE. `vibe_v5_read_library`
+// is a pure read, yet its receipt said "the record was written IN THAT SEAT'S NAME, but the seat did not act in its own
+// turn" — a sentence about a WRITE, attached to a call that wrote nothing. The face set is CLOSED on purpose: the
+// disclosure answers "who tried / who acted"; for a read the honest answer is "who VIEWED, and whose library", plus a
+// named `wroteAnything:false`. A face is listed here only when it provably writes no record, and the write faces keep the
+// sentence verbatim (the anti-lamp pins that this fix is not a global deletion).
+const READ_ONLY_ACT_FACES = new Set(['vibe_v5_read_library'])
+export function discloseActOnSeat(kernel = null, exec = null, args = null, out = null, toolName = null) {
   if (!out || typeof out !== 'object' || Array.isArray(out)) return out
   if (out.memberActed !== undefined) return out
   const namedMember = args && typeof args === 'object' && typeof args.member === 'string' ? args.member.trim() : ''
@@ -315,6 +322,30 @@ export function discloseActOnSeat(kernel = null, exec = null, args = null, out =
     })
   }
   const actedBySeat = caller !== null && caller === namedMember
+  // ★★★ TB-2691 / F75-09: the READ-ONLY branch — same call/question inputs, but the claim is "who viewed whose
+  // library" instead of "the record was written in that seat's name". `memberActed` stays (a read DOES run from a
+  // session; the sim-wide gate asks every seat-naming receipt whether it is a boolean), while `wroteAnything:false`
+  // says by name that no write happened and `viewedBy`/`readForMember` name the two seats of a read.
+  if (READ_ONLY_ACT_FACES.has(String(toolName || ''))) {
+    return Object.assign({}, out, {
+      memberActed: actedBySeat,
+      callerIsSeat: actedBySeat,
+      callerIsSeatMeans: 'this key answers ONE question: did this READ call run from the named seat and its own session? It says nothing about a write — a read writes no record',
+      ranInOwnTurn: out.turnDelivered === true || actedBySeat,
+      ranInOwnTurnMeans: 'true when this read ran from the seat own session, or when the kernel reported a delivered turn for this seat (out.turnDelivered)',
+      actedForMember: namedMember,
+      callerMember: caller === null ? null : caller,
+      viewedBy: caller,
+      readForMember: namedMember,
+      wroteAnything: false,
+      wroteAnythingMeans: 'false: this face is a READ, so no receipt here claims that a seat, the office, or anyone wrote a record',
+      memberActedMeans: 'this was a READ of [' + namedMember + '] library: it wrote nothing in any seat name, so no write attribution applies. '
+        + (caller === null
+          ? 'The caller was the OFFICE (a root session, which is not a seat): `viewedBy:null` names that, and `readForMember:"' + namedMember + '"` names whose library was read. '
+          : 'The caller was member "' + caller + '": `viewedBy:"' + caller + '"` names who read it, and `readForMember:"' + namedMember + '"` names whose library was read. ')
+        + '`memberActed` here answers only whether the CALL ran from that seat own session (' + String(actedBySeat) + '), never whether anything was written',
+    })
+  }
   return Object.assign({}, out, {
     // ★★★ RUN 241 / FEEDBACK64 M6: `memberActed` answered TWO questions with one key - "did this call run from that
     // seat?" and "did the seat do the thing in its own turn?" - and run 64 read `memberActed:false` on r-acad's first
@@ -403,8 +434,18 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       // said "written through the office/human path". The member is resolved here with the SAME criterion the seat-face
       // gate above uses, so what the caller MAY write and what the caller CAN see cannot disagree.
       const callerMemberNow = resolveTurnMember(kernel, exec)
-      const out = await handler(args && typeof args === 'object' ? args : {},
-        { kernel, agent: (exec && exec.agent) || null, callerMember: callerMemberNow, exec: exec || null, packId: id })
+      // ★ TB-2691 / F75-11: the caller is resolved HERE (kit handlers ignore `callerMember`), so the provenance of
+      // the write must travel from here too. The seam is opened for exactly one dispatch and closed in `finally`:
+      // a crash cannot leave the next call believing it ran as somebody else.
+      const beginCaller = kernel && kernel.records && typeof kernel.records.beginTurnCaller === 'function'
+        ? kernel.records.beginTurnCaller(callerMemberNow) : null
+      let out
+      try {
+        out = await handler(args && typeof args === 'object' ? args : {},
+          { kernel, agent: (exec && exec.agent) || null, callerMember: callerMemberNow, exec: exec || null, packId: id })
+      } finally {
+        if (beginCaller) beginCaller()
+      }
       // THE CONTRACT: a handler returns an OBJECT (or returns nothing). A non-object is wrapped
       // rather than passed through, because a bare string would be JSON-encoded a SECOND time by
       // the one serializer downstream (`boundedToolResult` stringifies a string as a JSON string).
@@ -413,7 +454,7 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       // ★★★ RUN 225-C / RUN 228: WHO ACTED? The disclosure itself lives in `discloseActOnSeat` above, because the
       // kernel faces need the SAME answer (RUN 228 measured `vibe_vmu_meeting` receipts naming a seat with no
       // `memberActed` at all). One rule, one implementation, every face — the alternative is two sentences that drift.
-      return discloseActOnSeat(kernel, exec, args, out)
+      return discloseActOnSeat(kernel, exec, args, out, name)
     },
   }
 }

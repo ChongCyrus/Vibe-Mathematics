@@ -14,13 +14,16 @@
  * A key whose default cannot be recovered is emitted with `def: null` and a doc that SAYS SO - a missing default
  * is recorded, not guessed.
  *
- * USAGE: node scripts/generate-wired-schema.mjs [--write]   (without --write it only reports)
+ * USAGE: node scripts/generate-wired-schema.mjs             (no flag: dry run, report only)
+ *        node scripts/generate-wired-schema.mjs --check     (same report, exit 1 when stale)
+ *        node scripts/generate-wired-schema.mjs --write     (rewrite the generated block)
  *        node scripts/generate-wired-schema.mjs --selftest  (the KEY_SHAPE / comment self-probe only)
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stripComments } from '../tests/_lib/strip-comments.mjs'
+import { modeFrom } from './_lib/generator-cli.mjs'
 // ★ task-7 (hot-truth): the DECLARED hot class of a generated row must be the one the MECHANISM gives, and the kernel
 // already owns that fact in ONE table: `CONSTRUCTION_ONLY_KEYS` (with `constructionOnlyReasonOf`). Until this round
 // `render()` hard-coded `hot: HOT.H1` for every row, so the forty-seven `vmu.meetings.*` rows promised "next turn"
@@ -563,6 +566,7 @@ export function splice(schemaText, block) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const MODE = modeFrom(process.argv, { script: 'generate-wired-schema.mjs', allow: ['--selftest'] })
   // ROUND 3: `--selftest` runs ONLY the shape/comment probe (no collection, no schema read) so the guard can be
   // proved falsifiable on its own, the same way the mutant families are run.
   if (process.argv.includes('--selftest')) {
@@ -574,7 +578,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log('=== WIRED-SCHEMA KEY SHAPE: ' + (okAll ? 'GREEN' : 'RED') + ' ===')
     process.exit(okAll ? 0 : 1)
   }
-  const write = process.argv.includes('--write')
+  const write = MODE === 'write'
   const { defs, perModule, skipped } = collect()
   for (const m of perModule) console.log('  ' + m.module.padEnd(16) + ' keys=' + String(m.keys).padStart(3) + '  default recovered=' + m.recovered)
   const missing = defs.filter((d) => d.literal === null)
@@ -586,8 +590,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const stale = next !== schemaText
   console.log('  schema ' + (stale ? (write ? 'REWRITTEN' : 'DRIFT') : 'already in sync') + ' (' + schemaText.split('\n').length + ' -> ' + next.split('\n').length + ' lines)')
   if (write && stale) writeFileSync(SCHEMA, next)
-  // `--check` is what the regeneration chain calls: drift must be a FAILURE, not a printout.
-  if (!write && stale) { console.log('  DRIFT: settings/schema.js is not what the modules yield - run with --write'); process.exitCode = 1 }
+  // `--check` is what the regeneration chain calls: drift must be a FAILURE, not a printout. With no flag the same
+  // drift is a REPORT (exit 0), so a bare run can be used to look without writing.
+  if (!write && stale) {
+    console.log('  DRIFT: settings/schema.js is not what the modules yield - run with --write' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+    if (MODE === 'check') process.exitCode = 1
+  }
   if (write && stale) console.log('  WROTE ' + defs.length + ' wired keys into ' + SCHEMA)
 
   // INVARIANTS (round 79, fixed round 81): checked against the text that WILL BE / HAS BEEN written (`next`),

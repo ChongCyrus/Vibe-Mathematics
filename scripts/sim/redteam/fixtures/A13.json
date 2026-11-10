@@ -1,0 +1,16 @@
+{
+  "id": "A13",
+  "attack": "the file list omits a scenario the layer holds, while the corpus id is the full one",
+  "why": "under-counting the corpus is a measurement error; the gate must say the report does not list a dir the layer holds",
+  "wouldBeWrongIf": "READY, or a message that only reports a digest mismatch and never the omission",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_STALE",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "does not list",
+    "allowedSecondary": {
+      "AUDIT_FIDELITY_MISMATCH": "a shorter list also makes the recomputed fidelity differ: a real second inconsistency, not the judgement this vector tests"
+    }
+  }
+}

@@ -101,8 +101,12 @@ const nonEmptyString = (v) => typeof v === 'string' && v.length > 0
 
   ok(att.ok === true && att.state === 'scheduled',
     '§2a. attending before the start time is allowed and does not open the meeting (the wait must be able to fill up)', { state: att.state })
-  ok(att.elapsedMs === null && att.receipt && att.receipt.lateReads && att.receipt.lateReads.elapsedMs === null,
-    '§2b. ★★ the attend receipt no longer carries a NEGATIVE elapsedMs on a scheduled meeting (F71-13: the run read one and saw a broken clock)', { elapsedMs: att.elapsedMs, lateReads: att.receipt && att.receipt.lateReads && att.receipt.lateReads.elapsedMs })
+  // TB-2694 / F75-05: the RETURN VALUE's `receipt` is now a pointer (the full copy of the readings is what made one
+  // attend answer 16 163 B); the same readings are on the top level of this answer, and the RECORDED receipt below
+  // still carries them in full — so both places are checked, not one.
+  const rec2 = ((svc.receiptsView({ limit: 10 }).receipts) || []).filter((r) => r && r.action === 'attend').slice(-1)[0] || null
+  ok(att.elapsedMs === null && att.receipt && att.receipt.see && rec2 && rec2.lateReads && rec2.lateReads.elapsedMs === null,
+    '§2b. ★★ the attend receipt no longer carries a NEGATIVE elapsedMs on a scheduled meeting (F71-13: the run read one and saw a broken clock)', { elapsedMs: att.elapsedMs, lateReads: rec2 && rec2.lateReads && rec2.lateReads.elapsedMs, receipt: att.receipt })
   ok(att.startsInMs > 0,
     '§2c. instead it carries startsInMs > 0 — the honest reading for a meeting that has not started', att.startsInMs)
   ok(nonEmptyString(att.lateMeans) && att.lateMeans.includes('NOT JUDGED YET'),

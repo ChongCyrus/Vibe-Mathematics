@@ -2,8 +2,13 @@
 /**
  * Regenerate the count sentences quoted by shipped docs FROM THE TREE (D1: derive, don't type).
  *
- *   node scripts/update-doc-counts.mjs          # rewrite in place
+ *   node scripts/update-doc-counts.mjs          # dry run: report what would change, write nothing (exit 0)
  *   node scripts/update-doc-counts.mjs --check  # exit 1 if anything would change (converges: whole-line rewrites)
+ *   node scripts/update-doc-counts.mjs --write  # rewrite in place
+ *
+ * The mode default is READ, not write: on 2026-11-10 a "verification" run of this script dirtied five documents
+ * (its old header said "rewrite in place"), and the six sibling generators did not. The convention now lives in
+ * scripts/_lib/generator-cli.mjs and is proven by tests/generator-cli-convention.test.mjs.
  *
  * Authority: `node tests/run-tests.mjs --counts` (the gate's own JOB list) + `package.json#files`
  * (shipped FILE counts). Shapes come from tests/helpers/doc-counts-format.mjs, shared with the guard
@@ -18,10 +23,12 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { claims, MARKERS } from '../tests/helpers/doc-counts-format.mjs'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const checkOnly = process.argv.includes('--check')
+const MODE = modeFrom(process.argv, { script: 'update-doc-counts.mjs' })
+const WRITE = MODE === 'write'
 
 const derived = JSON.parse(spawnSync(process.execPath, [join(REPO, 'tests', 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8' }).stdout.trim())
 // ── THE SCOPED COUNT (PHASE 6 FIX) ───────────────────────────────────────────────────────────────────────────────
@@ -67,7 +74,7 @@ const apply = (file, fn) => {
   if (after === null) { log.push('MARKER MISS: ' + file); return }
   if (after !== before) {
     changed++
-    if (checkOnly) log.push('WOULD CHANGE ' + file)
+    if (!WRITE) log.push('WOULD CHANGE ' + file)
     else { writeFileSync(p, after); log.push('updated ' + file) }
   }
 }
@@ -89,8 +96,8 @@ apply('docs/AUDIT-CHECKLIST.md', (s) => {
   return out
 })
 
-log.push((checkOnly ? 'check: ' : '') + 'derived JOBS total=' + derived.total + ' suites=' + derived.suites + ' probes=' + derived.probes
+log.push((MODE === 'check' ? 'check: ' : MODE === 'read' ? 'dry-run: ' : '') + 'derived JOBS total=' + derived.total + ' suites=' + derived.suites + ' probes=' + derived.probes
   + ' | shipped FILES tests/*.mjs=' + shipped.total + ' (' + shipped.suites + ' suites + ' + shipped.probes + ' probes/scripts)'
   + ' | files changed=' + changed)
 console.log(log.join('\n'))
-process.exit(checkOnly && changed ? 1 : 0)
+process.exit(exitCodeFor(MODE, changed > 0))

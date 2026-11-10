@@ -651,7 +651,16 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const KNOWN_UNBASELINED = [
     'v5r-charter-org/researcher: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
     'v5r-charter-org/temp: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
-  ]
+    // ★★ RUN 2692 / F75-03 (task-175): this is a NEW rule, not a missing combination. The live run
+    // (build 92bc6d94) let the chair replace the placeholder problem with one of its own (「奇数求和」) and
+    // then prove it, so the charter now pins the problem to `vibe_v5_start`'s `problem` and forbids rewriting
+    // the proposition card. The capture is a FROZEN historical artefact and must not be edited, so no
+    // captured charter can contain a line written after it. Frozen per ROLE VARIANT, by exact line, under
+    // the same guard as the entries above: T71b reddens on any NEW gap and must SHRINK when one closes.
+    'v5r-charter-opening/academician: ★ 题目由 `vibe_v5_start` 的 `problem` 给出（即上「本所本期目标」）；成员不得自行替换或改写命题卡；异议写 `note`，等所办裁决。',
+    'v5r-charter-opening/researcher: ★ 题目由 `vibe_v5_start` 的 `problem` 给出（即上「本所本期目标」）；成员不得自行替换或改写命题卡；异议写 `note`，等所办裁决。',
+    'v5r-charter-opening/temp: ★ 题目由 `vibe_v5_start` 的 `problem` 给出（即上「本所本期目标」）；成员不得自行替换或改写命题卡；异议写 `note`，等所办裁决。',
+ ]
   // ★★ F5 (phase 12, 2026-10-24): SOME LINES ARE REWRITTEN ON PURPOSE, and the direction is the opposite of the
   // list above. The rule 「提示词与规则完全相符自洽：删除『m 票机制』『每轮结束返回 JSON 机制』」 requires the prompt to
   // stop teaching mechanisms the runtime no longer has, so those paragraphs were REPLACED by the current doors

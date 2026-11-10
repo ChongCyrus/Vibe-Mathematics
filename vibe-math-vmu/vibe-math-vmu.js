@@ -741,6 +741,9 @@ export function apply(ctx, config = {}) {
       // name list stays available under `appliedPacks` (the manifest-id view) - no existing field changes meaning.
       applied: appliedIdMap.map((m) => ({ requestId: m.requestId, manifestId: m.manifestId })),
       appliedPacks: appliedPacks.map((a) => a.id),
+      // TB-2680（Lead 2026-11-10 裁定）：`appliedPacks` 保持 id 字符串数组（公开形状冻结）；每条的全量事实
+      // （id/applied/declarations/dataOnly/carries）落在 appliedPacksDetail，整条拷贝、不挑键，与上面同源。
+      appliedPacksDetail: appliedPacks.map((a) => Object.assign({}, a)),
       idMap: appliedIdMap.reduce((acc, m) => { if (m.requestId) acc[m.requestId] = m.manifestId; return acc }, {}),
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
@@ -783,6 +786,9 @@ export function apply(ctx, config = {}) {
       packSources: packRequested.map((p) => ({ id: p.id, via: p.via })),
       applied: packErrors.length === 0,
       appliedPacks: appliedPacks.map((a) => a.id),
+      // TB-2680（Lead 2026-11-10 裁定）：`appliedPacks` 保持 id 字符串数组（公开形状冻结）；每条的全量事实
+      // （id/applied/declarations/dataOnly/carries）落在 appliedPacksDetail，整条拷贝、不挑键，与上面同源。
+      appliedPacksDetail: appliedPacks.map((a) => Object.assign({}, a)),
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
       // ROUND 26 / task-141: WHICH defaults were folded, and which were NOT (with the key list, so a reader - or the
@@ -1319,6 +1325,9 @@ export function apply(ctx, config = {}) {
       // name list stays available under `appliedPacks` (the manifest-id view) - no existing field changes meaning.
       applied: appliedIdMap.map((m) => ({ requestId: m.requestId, manifestId: m.manifestId })),
       appliedPacks: appliedPacks.map((a) => a.id),
+      // TB-2680（Lead 2026-11-10 裁定）：`appliedPacks` 保持 id 字符串数组（公开形状冻结）；每条的全量事实
+      // （id/applied/declarations/dataOnly/carries）落在 appliedPacksDetail，整条拷贝、不挑键，与上面同源。
+      appliedPacksDetail: appliedPacks.map((a) => Object.assign({}, a)),
       idMap: appliedIdMap.reduce((acc, m) => { if (m.requestId) acc[m.requestId] = m.manifestId; return acc }, {}),
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
@@ -1348,6 +1357,9 @@ export function apply(ctx, config = {}) {
       packs: packRequested.map((p) => p.id),
       packSources: packRequested.map((p) => ({ id: p.id, via: p.via })),
       appliedPacks: appliedPacks.map((a) => a.id),
+      // TB-2680（Lead 2026-11-10 裁定）：`appliedPacks` 保持 id 字符串数组（公开形状冻结）；每条的全量事实
+      // （id/applied/declarations/dataOnly/carries）落在 appliedPacksDetail，整条拷贝、不挑键，与上面同源。
+      appliedPacksDetail: appliedPacks.map((a) => Object.assign({}, a)),
       errors: packErrors.map((e) => ({ id: e.id, code: e.code, message: e.message })),
       loading: packsLoading,
       defaults: Object.keys(packDefaults).length,

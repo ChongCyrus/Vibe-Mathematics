@@ -25,6 +25,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
 import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 // PORTABILITY (independent reviewer, round 5): the old form resolved REPO from `process.argv[1]` treated as a
 // DIRECTORY, which only worked while this file sat exactly one level under the repo. `import.meta.url` is the
@@ -112,7 +113,9 @@ export function renderBlock(defs, statusLines = []) {
 
 const isMain = process.argv[1] && process.argv[1].endsWith('generate-planned-codes.mjs')
 if (isMain) {
-  const mode = process.argv.includes('--write') ? 'write' : process.argv.includes('--check') ? 'check' : 'json'
+  // MODE CONTRACT (scripts/_lib/generator-cli.mjs): no flag = dry run, --check = stale is a failure, --write rewrites.
+  const MODE = modeFrom(process.argv, { script: 'generate-planned-codes.mjs', allow: ['--json'] })
+  const asJson = process.argv.includes('--json')
   // ---- INPUT + MARKER GUARD (before ANY write path is reachable) ---------------------------------
   // Round-6 reviewer experiment: pointing VMU_CONTRACT at a file WITHOUT the marker pair made
   // `splitContract` return {head:text, tail:''}, so `--write` appended the whole 366-line block into that
@@ -123,7 +126,7 @@ if (isMain) {
     process.exit(2)
   }
   const text = readFileSync(CONTRACT, 'utf8')
-  if (!(text.includes(BEGIN) && text.includes(END)) && mode !== 'json') {
+  if (!(text.includes(BEGIN) && text.includes(END)) && !asJson) {
     console.error('planned codes registry: no PLANNED-CODES markers in ' + CONTRACT)
     console.error('  add the marker pair once (BEGIN + END), then --write; refusing to touch the file.')
     process.exit(2)
@@ -190,18 +193,18 @@ if (isMain) {
     '',
   ]
   const next = head.replace(/\s*$/, '\n\n') + renderBlock(defs, statusLines) + '\n' + tail.replace(/^\s*/, '\n')
-  if (mode === 'json' || process.argv.includes('--json')) {
+  if (asJson) {
     console.log(JSON.stringify({ codes: defs.length, families: families.length, defs }, null, 1))
     process.exit(0)
   }
   console.log('planned codes=' + defs.length + ' (hand-registered=' + registered.size + ', families skipped=' + families.length + ')')
   if (next === text) { console.log('planned codes registry: up to date (' + defs.length + ' planned codes)'); process.exit(0) }
-  if (mode === 'write') {
+  if (MODE === 'write') {
     writeFileSync(CONTRACT, next, 'utf8')
     console.log('planned codes registry: REWRITTEN (' + defs.length + ' planned codes)')
     process.exit(0)
   }
   console.error('planned codes registry: STALE — the contract block is not what the docs yield (' + defs.length + ' planned codes)')
-  console.error('run: node scripts/generate-planned-codes.mjs --write')
-  process.exit(1)
+  console.error('run: node scripts/generate-planned-codes.mjs --write' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+  process.exit(exitCodeFor(MODE, true))
 }

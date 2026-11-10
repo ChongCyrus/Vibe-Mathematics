@@ -1,0 +1,35 @@
+{
+  "id": "A5",
+  "attack": "the report names a P0 and the ledger says fixed with no proof at all",
+  "why": "a fixed row is a claim; the gate must require a runnable proof and refuse the row that has a sentence instead",
+  "wouldBeWrongIf": "READY (the 'see last round' bypass), or refusal only by AUDIT_EVIDENCE_FAILED with no row named",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_EVIDENCE_MISSING",
+    "expectExit": 7,
+    "expectReady": false,
+    "allowedSecondary": {
+      "AUDIT_EVIDENCE_FAILED": "a proof that runs but does not match would be this code; here there is no proof at all",
+      "AUDIT_P0_UNLEDGERED": "would fire if the ledger had no row for the P0; the row exists -- the attack is that it proves nothing"
+    }
+  },
+  "variants": [
+    {
+      "id": "A5-oldshape-empty",
+      "why": "the same claim in the OLD ledger shape: proof.evidence is an empty string, not a cmd -- shape-checking must not accept it",
+      "ledgerItem": {
+        "evidence": ""
+      }
+    },
+    {
+      "id": "A5-proof-not-runnable",
+      "why": "a proof whose command names a file that does not exist: the gate runs it and refuses, not trusts it",
+      "ledgerItem": {
+        "proof": {
+          "cmd": "node tests/does-not-exist.mjs",
+          "expect": 0
+        }
+      }
+    }
+  ]
+}

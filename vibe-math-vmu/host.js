@@ -1040,8 +1040,9 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         until: param('string', 'list：时间窗上界（ISO 时间戳；直接抄回执里的 writesWindow.to）'),
         dryRun: param('boolean', 'prune：true = 只预告会移哪些行，不动数据；reindex：true = 只对账并列出会补/会换哪些索引行，不写任何行'),
         includeUntracked: param('boolean', 'list：默认 false —— `track` 为 undefined 的行（图书馆的 ruling 卡与其它无轨头）不进页面；true 时显式带出它们。被排除的数量与 id 在 excluded.untracked / excluded.untrackedIds，绝不静默丢'),
+        withWriter: param('boolean', 'list：默认 true —— 每行带 writtenFrom（own-turn = 行上那位成员在自己回合里跑的这次写；relayed = 行指名了成员但调用来自所办/别的席位；unknown = 两者都确定不了）。它不叫 writerSource：那个名字已有一个公开语义（哪个字段答的：by/writer/owner），见 docs/03 §3.1g。false 时省略它，回执写 writtenFromOmitted:true 而不是留空让人猜'),
       },
-      run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, since, until, dryRun, includeUntracked } = {}, exec = null) => {
+      run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, since, until, dryRun, includeUntracked, withWriter } = {}, exec = null) => {
         try {
           // ★★★ RUN 256 (TB-2624 item 2): the taskbooks say `records.get` and this face refused `unknown action: get`
           // even though `expand` has always been the by-id read. The alias is ONE line into the SAME branch — copying
@@ -1084,7 +1085,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             }
             const libItems = await kernel.library.list({ withWriter: true })
             const libRows = Array.isArray(libItems) ? libItems : []
-            const query = { external: libRows, externalSource: 'library', includeUntracked: includeUntracked === true, limit: limitArg }
+            // ★ TB-2691 / F75-11: provenance is on by default on this face too; `withWriter:false` asks the kernel
+            // to omit it and to SAY so on the receipt (the kernel owns the omission flag, not this forwarder).
+            const withWriterOn = withWriter !== false
+            const query = { external: libRows, externalSource: 'library', includeUntracked: includeUntracked === true, limit: limitArg, withWriter: withWriterOn }
             if (trackArg !== null) query.track = trackArg
             if (kindArg !== null) query.kind = kindArg
             if (byFilterArg !== null) query.by = byFilterArg
@@ -1961,7 +1965,7 @@ export function toHostSpec(spec, kernel = null) {
         const outNow = await spec.run(args || {}, exec)
         // RUN 239: the two branches below must read as ONE shape (a refusal is a receipt of the same species as a
         // success). The waiter lift happens INSIDE the envelope for both, so neither branch nests them differently.
-        return boundedToolResult(liftFiredWaiters(discloseActOnSeat(kernel, exec, args, outNow)))
+        return boundedToolResult(liftFiredWaiters(discloseActOnSeat(kernel, exec, args, outNow, spec.name)))
       } catch (e) {
         // ★★ ROUND 36 (measured on a real machine): THIS BRANCH USED TO RETURN A DIFFERENT SHAPE FROM THE OTHER ONE.
         // The success path goes through `boundedToolResult`, documented in receiptbounds.js as "the ONE place a tool
@@ -1977,7 +1981,7 @@ export function toHostSpec(spec, kernel = null) {
           code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
           message: String((e && e.message) || e),
           hint: (e && e.hint) || null,
-        }, refusalAttribution(e), refusalFacts(e)))))
+        }, refusalAttribution(e), refusalFacts(e)), spec.name)))
       }
     },
   }

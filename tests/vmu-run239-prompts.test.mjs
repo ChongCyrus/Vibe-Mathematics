@@ -426,8 +426,10 @@ try {
   // ★ RUN 254-C (the RUN 253 read-only audit, W2 gate gaps ③/④): two fixes, both pinned here.
   //   ③ The 72nd run's byte figures (16 463 / 496 / 15 967 B) had been written INTO the prompt. Measurements belong in
   //     the acceptance docs; a prompt that carries one run's numbers goes stale the moment the archive header changes.
-  //     The prompt now states the shape ("header ≈0.3–0.6 KB", "check the file yourself with sha256sum", "trust the
-  //     receipt you actually got") and §10e2 asserts the digits are GONE.
+  //     The prompt stopped carrying one run's digits and taught the shape instead; §10e2 asserts the digits are GONE.
+  //     ★ TB-2707（F75-16）把「≈0.3–0.6 KB 归档头」这句也删了：真机上有读者照「全文落 Members/…」去找文件，
+  //     那个文件从未存在。现在只说「仅当 truncated:true 时写到该路径，写完回读校验 sha256；读不回时回执
+  //     archiveMissing:true + replyArchiveWhy 具名说明」——§10e 因此改为断言新的具名失败键。
   //   ④ `tool_help`'s `source` was unstated: `count:null`/`tools:null` reads as "this seat has no tools" when it means
   //     "there was no live session, so nothing was measured". The prompt now says which is which and names
   //     `declaredCount` as the declaration set; §10i2 denies the permission misreading.
@@ -441,8 +443,11 @@ try {
       '§10c ·10 the verdict element shape is printed verbatim, and `verdict` is named as ANOTHER tool\'s key')
     ok(says(blocksASource, '被具名拒 `VMU_INVALID_ARGUMENT`'),
       '§10d ·10 the consequence of the wrong key is named (a named refusal, not a silent drop)')
-    ok(says(blocksBSource, '只覆盖正文') && says(blocksBSource, 'sha256sum') && says(blocksBSource, '以实收回执为准'),
-      '§10e ·10 the archive receipt is taught as covering the reply TEXT only, verifiable by checking the file yourself')
+    // ★ TB-2707（F75-16）把「以实收回执为准」升级成可执行口径：回执 `archiveMissing:true` + `replyArchiveWhy`
+    //   具名说明「写了但读不回」。断言仍是同一个事实（回执说清 sha 覆盖什么、以及什么时候不能把路径当已归档），
+    //   只是旧措辞换成了新措辞——不是放宽：新增了 `archiveMissing:true` 这个具名失败键的要求。
+    ok(says(blocksBSource, '只覆盖正文') && says(blocksBSource, 'sha256sum') && says(blocksBSource, 'archiveMissing:true'),
+      '§10e ·10 the archive receipt is taught as covering the reply TEXT only, verifiable by checking the file yourself, with a named failure (`archiveMissing:true`) when the write-back cannot be read')
     ok(denies(blocksBSource, '16 463') && denies(blocksBSource, '15 967') && denies(blocksBSource, '第 72 次真机实测'),
       '§10e2 ·10 the live run\'s byte figures stay in the docs, not in the prompt (RUN 254-C W2 gate)')
 

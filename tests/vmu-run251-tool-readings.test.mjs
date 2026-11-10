@@ -452,6 +452,102 @@ test('§9 RUN 254-D — the folded state is a separate field, and the translatio
   turn.setVisibleToolsProvider(null)
 })
 
+test('§10b TB-2694 / D (F75-17): the roster-id hint is COPYABLE — one sentence, and the two calls it names really run', async () => {
+  // THE LIVE MEASUREMENT (run 75, build 92bc6d94): `VMU_NO_SUCH_OBJECT` answered "the roster holds the live ids" —
+  // no tool name, no parameter name, no REACHABLE INSTEAD, and no tool called `roster()` exists. "Copy the hint" was
+  // therefore not an action. The repair is ONE sentence, used by the pack AND by kit/handlers.js#requireSpeaker, that
+  // the prompt side (TB-2692 §6) already teaches word for word: who reads the roster, how to list it, how to pick a
+  // usable id, what to do with it.
+  has(PACK, "const ROSTER_ID_REACHABLE_HINT = 'REACHABLE INSTEAD: ", '§10b1 ★★★ the pack owns ONE named sentence for this repair')
+  has(PACK, 'vibe_v5_overview {member:"<你的 id>"}', '§10b2 ★★★ ...step 1 is the tool + parameter the prompt teaches')
+  has(PACK, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§10b3 ★★★ ...step 2 is the tool + parameters the prompt teaches')
+  hasNot(PACK, "'the roster holds the live ids'", '§10b4 ★★★ the un-copyable sentence is gone (it named no tool and no parameter)')
+  const HANDLERS = readFileSync(join(ROOT, 'vibe-math-vmu', 'kit', 'handlers.js'), 'utf8')
+  has(HANDLERS, 'vibe_v5_overview {member:"<你的 id>"}', '§10b5 ★★★ the OTHER write site (kit/handlers.js#requireSpeaker) teaches the same step 1')
+  has(HANDLERS, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§10b6 ★★★ ...and the same step 2 (two sites, one sentence)')
+  const PROMPTS = readFileSync(join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-blocks-b.js'), 'utf8')
+  has(PROMPTS, 'vibe_v5_overview {member:"<你的 id>"}', '§10b7 ★★★ the prompt-side (TB-2692 §6) carries the identical step 1 — the two sides cannot drift')
+  has(PROMPTS, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§10b8 ★★★ ...and the identical step 2')
+
+  // RUNTIME: one face per changed site, each refusing an unknown roster id. The receipt is what the model reads.
+  const fire = R(await b.call('vibe_v5_fire', { id: 'ghost-7' }))
+  eq(fire.code, 'VMU_NO_SUCH_OBJECT', '§10b9 ★★ the fire face still refuses an unknown id with the catch-all name', fire.code)
+  has(fire.hint, 'REACHABLE INSTEAD:', '§10b10 ★★★ ...and its hint is labelled REACHABLE INSTEAD')
+  has(fire.hint, 'vibe_v5_overview {member:"<你的 id>"}', '§10b11 ★★★ ...naming the exact step-1 call')
+  has(fire.hint, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§10b12 ★★★ ...and the exact step-2 call')
+  const say = R(await b.call('vibe_v5_say', { member: 'ghost-7', text: 'x' }))
+  eq(say.code, 'VMU_NO_SUCH_OBJECT', '§10b13 ★★ the speaker gate (kit/handlers.js) refuses the same way', say.code)
+  has(say.hint, 'REACHABLE INSTEAD:', '§10b14 ★★★ ...with the same labelled repair')
+  has(say.hint, 'vibe_v5_overview {member:"<你的 id>"}', '§10b15 ★★★ ...the same step 1')
+  has(say.hint, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§10b16 ★★★ ...the same step 2')
+  const bp = R(await b.call('vibe_v5_blueprint', { action: 'propose', member: 'ghost-7', path: 'x/y.md' }))
+  eq(bp.code, 'VMU_NO_SUCH_OBJECT', '§10b17 ★★ the generic requireSeat gate refuses the same way', bp.code)
+  has(bp.hint, 'REACHABLE INSTEAD:', '§10b18 ★★★ ...same label')
+  has(bp.hint, 'vibe_v5_overview {member:"<你的 id>"}', '§10b19 ★★★ ...same step 1')
+  has(bp.hint, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§10b20 ★★★ ...same step 2')
+  eq(say.hint, fire.hint, '§10b21 ★★★ two write sites, ONE sentence — the handler and pack refusals are textually identical')
+  eq(bp.hint, fire.hint, '§10b22 ★★★ ...and the generic seat gate repeats it verbatim')
+
+  // FOLLOW THE HINT LITERALLY: (1) the chair reads the roster with the named call; (2) pick a live id from the answer;
+  // (3) the second named call answers for that id. Each step below is the hint's own text turned into a call.
+  const ov = R(await b.call('vibe_v5_overview', { member: 'acad-01' }))
+  eq(ov.ok, true, '§10b23 ★★★ following step 1 literally succeeds (the chair reads the roster)', { code: ov.code, message: ov.message })
+  ok(Array.isArray(ov.roster) && ov.roster.length > 0, '§10b24 ★★★ ...and the answer carries roster[] (the ids the hint says to copy)', ov.roster)
+  const liveRow = (ov.roster || []).filter((r) => r && r.state === 'live' && r.id !== 'acad-01')[0]
+  ok(!!liveRow && typeof liveRow.id === 'string' && liveRow.id !== '', '§10b25 ★★★ ...so a live id can be picked without inventing one', liveRow)
+  const inbox = R(await b.call('vibe_v5_inbox', { action: 'list', member: liveRow ? liveRow.id : 'r-1' }))
+  eq(inbox.ok, true, '§10b26 ★★★ following step 2 literally succeeds with that picked id', { code: inbox.code, message: inbox.message })
+})
+
+test('§10c TB-2694 / F75-17 follow-up: the three REMAINING roster-id hints name their OWN parameter — and none teaches a call that cannot run', async () => {
+  // Lead-approved follow-up scope. `vibe_v5_assign` and `vibe_v5_nudge` address the member through a parameter named
+  // `to`, and requireSpeaker's VMU_STATE branch used to say "roster() shows who is live" — no tool by that name exists,
+  // so copying that sentence was impossible. The repair is per-face: the SAME four discovery steps, but each face names
+  // the parameter it really declares and the state a retry needs.
+  const HANDLERS = readFileSync(join(ROOT, 'vibe-math-vmu', 'kit', 'handlers.js'), 'utf8')
+  has(PACK, 'const ROSTER_TO_REACHABLE_HINT = (tool) =>', '§10c1 ★★★ the `to`-faces own a named sentence too')
+  has(PACK, '本面要的形参是 `to`', '§10c2 ★★★ ...which names `to` (the parameter assign/nudge really declare)')
+  has(PACK, 'to:"<roster id>"', '§10c3 ★★★ ...and spells the retry with that parameter filled')
+  hasNot(PACK, "the roster holds ' + roster.length", '§10c4 ★★★ the un-copyable "the roster holds N member(s)" sentence is gone from the pack')
+  hasNot(HANDLERS, 'roster() shows who is live', '§10c5 ★★★ ...and the VMU_STATE branch no longer names the non-existent roster()')
+  has(HANDLERS, '本面要的形参是 `member`', '§10c6 ★★★ ...it names the parameter that branch DOES accept (`member`)')
+  has(HANDLERS, 'state:"live"', '§10c7 ★★★ ...and the state a retry needs, instead of a mythical tool')
+
+  // RUNTIME, one face per changed site: the refusal receipt is what a model reads and copies.
+  const assign = R(await b.call('vibe_v5_assign', { to: 'ghost-9', why: 'x', acceptance: 'y' }))
+  eq(assign.code, 'VMU_NO_SUCH_OBJECT', '§10c8 ★★ assign still refuses an unknown `to` by name', assign.code)
+  has(assign.hint, '`to`', '§10c9 ★★★ ...and its hint names the `to` parameter')
+  has(assign.hint, 'vibe_v5_overview {member:"<你的 id>"}', '§10c10 ★★★ ...with the roster step')
+  has(assign.hint, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§10c11 ★★★ ...and the inbox check')
+  has(assign.hint, 'to:"<roster id>"', '§10c12 ★★★ ...and the retry with `to` filled')
+  const nudge = R(await b.call('vibe_v5_nudge', { to: 'ghost-9', why: 'x' }))
+  eq(nudge.code, 'VMU_NO_SUCH_OBJECT', '§10c13 ★★ nudge refuses the same way', nudge.code)
+  has(nudge.hint, '`to`', '§10c14 ★★★ ...naming its own `to` parameter')
+  has(nudge.hint, 'vibe_v5_overview {member:"<你的 id>"}', '§10c15 ★★★ ...same roster step')
+  has(nudge.hint, 'to:"<roster id>"', '§10c16 ★★★ ...same retry parameter')
+  // VMU_STATE: a REAL roster id whose state is not live. `members.end` keeps the row on the roster with state "ended",
+  // so this exercises requireSpeaker's STATE branch (the unknown-id branch is §10c8/§10c13 above).
+  await b.kernel.members.hire({ id: 'r-dead', slot: 'member', institution: 'sim' })
+  await b.kernel.members.end('r-dead', 'test fixture: a seat that is no longer live')
+  const notLive = R(await b.call('vibe_v5_say', { member: 'r-dead', text: 'x' }))
+  eq(notLive.code, 'VMU_STATE', '§10c17 ★★ a non-live member is refused by name (VMU_STATE), not as an unknown id', notLive.code)
+  has(notLive.hint, '`member`', '§10c18 ★★★ ...and its hint names the `member` parameter')
+  has(notLive.hint, 'state:"live"', '§10c19 ★★★ ...and the state a retry needs')
+  hasNot(notLive.hint, 'roster()', '§10c20 ★★★ ...and never names the non-existent roster()')
+
+  // FOLLOW THE HINT LITERALLY: one roster read, one live id, then the retry each face names passes the roster gate.
+  const ov2 = R(await b.call('vibe_v5_overview', { member: 'acad-01' }))
+  eq(ov2.ok, true, '§10c21 ★★★ step 1 of all three sentences runs (the chair reads roster[])', { code: ov2.code, message: ov2.message })
+  const live2 = (ov2.roster || []).filter((r) => r && r.state === 'live' && r.id !== 'acad-01')[0]
+  ok(!!live2 && typeof live2.id === 'string' && live2.id !== '', '§10c22 ★★★ ...and yields a live id to copy', live2)
+  const say2 = R(await b.call('vibe_v5_say', { member: live2 ? live2.id : 'r-1', text: 'retry with the live id' }))
+  eq(say2.ok, true, '§10c23 ★★★ ...so "retry with member:<roster id>" literally succeeds', { code: say2.code, message: say2.message })
+  const assign2 = R(await b.call('vibe_v5_assign', { to: live2 ? live2.id : 'r-1', why: 'x', acceptance: 'y' }))
+  ok(assign2.code !== 'VMU_NO_SUCH_OBJECT', '§10c24 ★★★ ...and "retry with to:<roster id>" passes the roster gate it was refused by', assign2.code)
+  const nudge2 = R(await b.call('vibe_v5_nudge', { to: live2 ? live2.id : 'r-1', why: 'x' }))
+  ok(nudge2.code !== 'VMU_NO_SUCH_OBJECT', '§10c25 ★★★ ...same for nudge (the copied id is accepted)', nudge2.code)
+})
+
 test('§10 cleanup', () => {
   try { rmSync(root, { recursive: true, force: true }) } catch (e) { /* best effort */ }
   ok(n > 0, '§10 assertions ran', n)

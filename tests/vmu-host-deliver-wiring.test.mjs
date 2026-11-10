@@ -68,19 +68,33 @@ console.log('=== 2. AND THE WHOLE CHAIN WORKS: step hands a prompt back, the rep
     { recorded: rec })
 }
 
-console.log('=== 3. THE HOST BRIDGE KEEPS ITS OWN WRAPPER (the fix must not leak into the other route) ===')
+console.log('=== 3. ONE DEPLOYMENT, TWO ROUTES: THE DEFAULT IS THE HOST BRIDGE, A PER-CALL OVERRIDE CAN STILL PARK (TB-2690) ===')
 {
   const bridge = build({})
-  ok(typeof bridge === 'function' && typeof bridge.supply !== 'function',
-    'the subagents bridge is still a plain callable without the caller seam s methods, so the two routes stay distinct',
-    { supply: typeof bridge.supply })
-  // The bridge REFUSES BY THROWING a named error rather than returning a fake reply - that is this framework's shape for
-  // "I cannot do this", and asserting on the code is stronger than asserting on a return value.
+  ok(typeof bridge === 'function', 'it is callable, so the turn loop can await it', { type: typeof bridge })
+  // ★ TASK-173 / TB-2690 (F75-12): THIS PIN USED TO REQUIRE `typeof bridge.supply !== 'function'` — "the two routes stay
+  // distinct by not sharing a surface". That was the right property while the mode was resolved ONCE at construction:
+  // a caller deployment and a subagents deployment were two different seams, so only one of them could park a prompt.
+  // A PER-CALL `deliverMode` falsifies that premise: ONE deployment (subagents by default) must now also host a
+  // caller-override turn, and the caller route is UNREACHABLE if the dispatcher does not carry that seam's
+  // `supply`/`pending`/`awaiting` — the exact ROUND 87 defect this file was written for, one wrapper later. So the
+  // capability travels with the dispatcher; the ROUTING stays distinct, and the two assertions below read the route,
+  // not the surface.
+  ok(typeof bridge.supply === 'function' && typeof bridge.pending === 'function' && typeof bridge.awaiting === 'function',
+    'and the caller seam s `supply`/`pending`/`awaiting` travel with the dispatcher, so a per-call caller turn can be answered')
+  // The DEFAULT route is still the host bridge: a turn with NO `deliverMode` override and no host seam REFUSES BY NAME
+  // rather than parking a prompt nobody asked for. This is what "the two routes stay distinct" means now.
   let refused = null
   try { await bridge({ turn: { id: 't', member: 'm1' }, text: 'x' }) } catch (e) { refused = e }
   ok(refused !== null && refused.code === 'VMU_ENGINE_UNAVAILABLE',
-    'and calling it without a host seam REFUSES BY NAME rather than pretending a member answered',
+    'and with no override the default (host) route still REFUSES BY NAME rather than pretending a member answered',
     { code: refused && refused.code })
+  // ★ AND THE OVERRIDE REALLY ROUTES: the SAME dispatcher hands the prompt back when the turn asks for caller, naming
+  // the mode and its source on the envelope (the receipt fields F75-12 asks for).
+  const parked = await bridge({ turn: { id: 't2', member: 'm2', deliverMode: 'caller' }, text: 'y' })
+  ok(parked && parked.awaiting === true && parked.deliveryPath === 'caller' && parked.deliverMode === 'caller' && parked.deliverModeSource === 'arg',
+    'and the SAME dispatcher routes a caller-override turn to the caller seam (path + mode + source named)',
+    { awaiting: parked && parked.awaiting, deliveryPath: parked && parked.deliveryPath, mode: parked && parked.deliverMode, source: parked && parked.deliverModeSource })
 }
 
 console.log('=== 4. THE ONE-SHOT PARENT IS THE CALLING AGENT (`currentInitiator`), NOT A GUESS FROM A LIST ===')

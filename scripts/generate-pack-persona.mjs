@@ -10,22 +10,21 @@
 // It imports NOTHING from the original: the extraction lives in the dev capture script, exactly as the prompt corpus
 // keeps its extraction outside the shipped generator.
 //
-// USAGE: node scripts/generate-pack-persona.mjs [--check]   (--check makes drift a failure)
+// USAGE: node scripts/generate-pack-persona.mjs [--check | --write]   (no flag = dry run; --check makes drift a failure)
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const SOURCE_REL = 'prompt-corpus-v5/persona-corpus-v5.json'
 const OUT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-persona.js')
-// CHECK BY DEFAULT (round 507): this used to write unless `--check` was passed, the reverse of every other generator in
-// scripts/. A default that overwrites a generated file is the wrong default, so --write is now the opt-in and --check
-// remains an accepted alias so any existing call site keeps working.
-const WRITE = process.argv.includes('--write')
-const CHECK = !WRITE
+// MODE CONTRACT (scripts/_lib/generator-cli.mjs): no flag = dry run (report only, exit 0), --check = drift is a failure,
+// --write rewrites the module. Round 507 already made check the default here; TB-2698 puts the rule in one place.
+const MODE = modeFrom(process.argv, { script: 'generate-pack-persona.mjs' })
 
 const raw = readFileSync(join(REPO, SOURCE_REL))
 const sha = createHash('sha256').update(raw).digest('hex')
@@ -100,10 +99,13 @@ export const PERSONA_BINDINGS = Object.freeze(${JSON.stringify(bindings.map((b) 
 export const PERSONA_HEADINGS = Object.freeze(${JSON.stringify(Object.fromEntries(sections.map((s) => [s.name, s.heading])), null, 2)})
 `
 
-if (CHECK) {
+if (MODE !== 'write') {
   let current = null
   try { current = readFileSync(OUT, 'utf8') } catch { /* missing is drift */ }
-  if (current !== module) { console.error('FAIL - pack persona: ' + OUT + ' is not what ' + SOURCE_REL + ' yields'); process.exit(1) }
+  if (current !== module) {
+    console.error('FAIL - pack persona: ' + OUT + ' is not what ' + SOURCE_REL + ' yields' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+    process.exit(exitCodeFor(MODE, true))
+  }
   console.log('  pack persona: matches the capture (sha ' + sha.slice(0, 12) + ')')
   process.exit(0)
 }

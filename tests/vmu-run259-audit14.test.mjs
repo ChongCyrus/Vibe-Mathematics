@@ -77,6 +77,25 @@ async function boot({ clock = () => 1000 } = {}) {
     },
     read: (rel) => readFileSync(join(tmp, 'VibeMath', rel), 'utf8'),
     countFiles: () => readdirSync(tmp, { recursive: true }).filter((p) => typeof p === 'string').length,
+    // A recursive count taken while the durable store still has a write SCHEDULED measures the scheduler,
+    // not the default path: under a loaded machine (T1 runs this suite at concurrency 3) one bookkeeping
+    // file can land between the two counts and §4f then reports "the workspace gained a file" for a write
+    // that has nothing to do with the draft (RUN 269 observed exactly that: actual 6 / expected 5).
+    // settleFiles() joins the kernel's own flush point and then waits until the count stops moving, so the
+    // before/after pair is read from the same quiescent state. The assertion itself stays byte-strict.
+    settleFiles: async () => {
+      const join1 = handle && handle.kernel && handle.kernel.flushRecordsFold
+      if (typeof join1 === 'function') await join1()
+      let last = -1
+      let stable = 0
+      const deadline = Date.now() + 2000
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 5))
+        const n = b.countFiles()
+        if (n === last) { stable += 1; if (stable >= 3) return n } else { last = n; stable = 0 }
+      }
+      return last
+    },
   }
   boots.push(b)
   return b
@@ -214,9 +233,9 @@ test('RUN 259 / AUDIT-14 P1-2: a measuring clock is not a caller payload', async
 test('RUN 259 / AUDIT-14 P1-9 + TB-2655: the default writes nothing; the seam cannot be forged', async () => {
   // ── §4 P1-9 fs-first default: BEHAVIOUR, not a source literal ──────────────────────────────────────────────
   const b = await boot()
-  const before = b.countFiles()
+  const before = await b.settleFiles()
   const d = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Default.md', member: 'r-1', text: '# 默认\n' })
-  const after = b.countFiles()
+  const after = await b.settleFiles()
   eq(d.ok, true, '§4a the default propose is not an error')
   eq(d.filed, false, '§4b ...but filed===false')
   eq(d.draftMdMissing, true, '§4c ...and it names the missing draft md')

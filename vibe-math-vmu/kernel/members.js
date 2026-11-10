@@ -43,6 +43,18 @@ const SELF_REPORT_FIELDS = Object.freeze(['overall', 'subgoal', 'plan', 'status'
 import { observeIds, idNumber } from './ids.js'
 import { checkSnapshot } from './resume.js'
 
+// ★★★ TB-2704: A SEAT CANNOT CALL `roster()`. This module is the kernel half — `members.roster()` is an internal
+// seam (every caller in `kernel/index.js`, `host.js`, `kernel/bidding.js`, `kernel/delegation.js` holds the member
+// object, not a tool). Run 75 measured the same family of disease in `VMU_NO_SUCH_OBJECT`'s hint (TB-2694 / F75-17):
+// a hint that names a command the seat cannot type is UNCOPYABLE. Both ended-member refusals below used to say
+// 「roster() shows who is live」, which teaches a call that does not exist.
+//
+// This sentence is a CROSS-MODULE DUPLICATE of `packs/v5r/tools.js#ROSTER_ID_REACHABLE_HINT`: the pack imports the
+// kernel, never the other way, so reusing the symbol would invert the dependency. Per TB-2704 §6 the rule degrades
+// from "one copy" to "several copies, provably identical": `tests/vmu-run2704-hints-name-real-commands.test.mjs`
+// asserts the two strings are BYTE-IDENTICAL, and that every `vibe_*` name in it resolves in the computed registry.
+export const ROSTER_ID_REACHABLE_HINT = 'REACHABLE INSTEAD: 先 vibe_v5_overview {member:"<你的 id>"}（主席席读名册：回执 roster[] 带 id/slot/state，挑 state:"live" 的那个），再 vibe_v5_inbox {action:"list", member:"<roster id>"} 确认这个名字收得到消息，然后用这个 id 重试本调用'
+
 /**
  * Create the roster. `slots` are pack-declared role slots; `maxLiveMembers` and per-slot `capacity` are
  * the machine-enforced limits; `deliver` is the wake seam.
@@ -101,7 +113,9 @@ export function createMembers({
 
   const member = (id) => {
     const m = members.get(id)
-    if (!m) throw refuse('VMU_NO_SUCH_OBJECT', 'no member with id ' + String(id), 'call roster() for the current roster')
+    // ★★★ TB-2704: a third site with the same disease — the reader of this hint holds no kernel seam, so
+    // 「call roster()」 was un-copyable here too. Same sentence as the two refusals above.
+    if (!m) throw refuse('VMU_NO_SUCH_OBJECT', 'no member with id ' + String(id), ROSTER_ID_REACHABLE_HINT)
     return m
   }
 
@@ -215,7 +229,7 @@ export function createMembers({
     async wake(id, ask, { role, phase } = {}) {
       const m = member(id)
       if (m.state === 'ended') {
-        throw refuse('VMU_STATE', 'member ' + id + ' has ended', 'roster() shows who is live')
+        throw refuse('VMU_STATE', 'member ' + id + ' has ended', ROSTER_ID_REACHABLE_HINT)
       }
       if (typeof ask !== 'string' || ask.trim().length === 0) {
         throw refuse('VMU_INVALID_ARGUMENT', 'a wake needs a non-empty ask')
@@ -273,8 +287,8 @@ export function createMembers({
     async selfReport(id, fields, { by } = {}) {
       const m = member(id)
       if (m.state === 'ended') {
-        throw refuse('VMU_STATE', 'member ' + id + ' has ended',
-          'roster() shows who is live; a self-report is for a member who is here')
+        throw refuse('VMU_STATE', 'member ' + id + ' has ended (a self-report is for a member who is here)',
+          ROSTER_ID_REACHABLE_HINT)
       }
       const src = fields && typeof fields === 'object' ? fields : {}
       // Unknown fields are REFUSED by name rather than silently dropped: a report that quietly loses half of what

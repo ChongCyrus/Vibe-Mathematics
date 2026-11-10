@@ -1,0 +1,16 @@
+{
+  "id": "A13b",
+  "attack": "the same omission, but every stamp is self-consistent with the SHORT list -- the only tell is the extra dir",
+  "why": "a forger who recomputes the digest over the smaller list must still be caught: membership, not the digest, is the evidence",
+  "wouldBeWrongIf": "READY (the A13b bug: an internally consistent report that omitted one dir), or a refusal that cannot name turns",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_STALE",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "extra dirs=\\[turns\\]",
+    "allowedSecondary": {
+      "AUDIT_FIDELITY_MISMATCH": "a shorter list also makes the recomputed fidelity differ: a real second inconsistency, not the judgement this vector tests"
+    }
+  }
+}

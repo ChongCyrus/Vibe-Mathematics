@@ -6,12 +6,14 @@
 // generated table plus a two-sided test makes the vocabulary a fact instead of a habit - and it is what a
 // translator needs for the multilingual track.
 //
-//   node scripts/generate-glossary-table.mjs --write   # refresh the generated section
-//   node scripts/generate-glossary-table.mjs --check   # fail (exit 1) if it is stale
+//   node scripts/generate-glossary-table.mjs            # dry run: report only, write nothing
+//   node scripts/generate-glossary-table.mjs --write    # refresh the generated section
+//   node scripts/generate-glossary-table.mjs --check    # fail (exit 1) if it is stale
 //   node scripts/generate-glossary-table.mjs --json     # machine view
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const GLOSSARY = process.env.VMU_GLOSSARY ? resolve(process.env.VMU_GLOSSARY) : join(REPO, 'vibe-math-vmu', 'glossary.json')
@@ -63,6 +65,7 @@ export function splitDoc(text) {
 
 const isMain = process.argv[1] && process.argv[1].endsWith('generate-glossary-table.mjs')
 if (isMain) {
+  const MODE = modeFrom(process.argv, { script: 'generate-glossary-table.mjs', allow: ['--json'] })
   const glossary = readGlossary()
   const block = renderTable(glossary)
   if (process.argv.includes('--json')) {
@@ -81,12 +84,12 @@ if (isMain) {
   const next = head.replace(/\s*$/, '\n\n') + block + '\n' + tail.replace(/^\s*/, '\n')
   console.log('glossary terms=' + glossary.terms.length)
   if (next === text) { console.log('glossary table: up to date (' + glossary.terms.length + ' terms)'); process.exit(0) }
-  if (process.argv.includes('--write')) {
+  if (MODE === 'write') {
     writeFileSync(DOC, next, 'utf8')
     console.log('glossary table: REWRITTEN (' + glossary.terms.length + ' terms)')
     process.exit(0)
   }
   console.error('glossary table: STALE — docs/01-§7 is not what the glossary yields')
-  console.error('run: node scripts/generate-glossary-table.mjs --write')
-  process.exit(1)
+  console.error('run: node scripts/generate-glossary-table.mjs --write' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+  process.exit(exitCodeFor(MODE, true))
 }

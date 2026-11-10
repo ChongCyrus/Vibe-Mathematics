@@ -1,3 +1,4 @@
+import { REPO } from './_lib/repo-root.mjs'
 // tests/vmu-run237-ledger-audit.test.mjs — RUN 237: two ledgers disagreed and nothing noticed.
 //
 // `docs/acceptance/rules-ledger.json` certified 93 rules DONE; `docs/acceptance/sim-audit-rules.md` — an OBSERVATION
@@ -16,7 +17,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
+
 const TMP = 'D:/_tmp/run237'
 const LEDGER = join(REPO, 'docs', 'acceptance', 'rules-ledger.json')
 const GATE = join(REPO, 'scripts', 'check-rules-coverage.mjs')

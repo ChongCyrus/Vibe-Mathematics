@@ -2318,14 +2318,38 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       }
       const row = { member, turn: typeof f.id === 'string' ? f.id : null, phase: typeof f.phase === 'string' ? f.phase : null,
         round: Number.isFinite(Number(f.round)) ? Number(f.round) : null, at: typeof f.at === 'string' ? f.at : null }
+      // ★★★ TB-2694 / F75-06 (MEASURED on the 75th live run): a member calling `vibe_vmu_turn{op:"status"}` from ITS OWN
+      // session read `turns:0 / turnReceipts:[]` — that session mounts a SECOND kernel over the same root, so the
+      // parent's in-memory ledger is invisible there. This durable row is the only fact every instance can read, so
+      // the turn loop's SETTLEMENT also writes `status/codes/skipped/emptyReply` here. Fields this call does not carry
+      // keep the OPEN row's value (a settlement patch must not blank `turn/phase/round`), and a NEW turn id resets the
+      // settlement columns instead of inheriting them — still ONE row per member, now answering "how did it end".
+      const patch = { status: typeof f.status === 'string' && f.status !== '' ? f.status : null,
+        codes: Array.isArray(f.codes) ? f.codes.filter((c) => typeof c === 'string') : null,
+        skipped: Number.isFinite(Number(f.skipped)) ? Number(f.skipped) : null,
+        emptyReply: typeof f.emptyReply === 'boolean' ? f.emptyReply : null,
+        closedWith: typeof f.closedWith === 'string' && f.closedWith !== '' ? f.closedWith : null }
+      const foldRow = (prev) => {
+        const sameTurn = typeof prev.turn === 'string' && row.turn !== null && prev.turn === row.turn
+        return { member,
+          turn: row.turn !== null ? row.turn : (typeof prev.turn === 'string' ? prev.turn : null),
+          phase: row.phase !== null ? row.phase : (typeof prev.phase === 'string' ? prev.phase : null),
+          round: row.round !== null ? row.round : (Number.isFinite(Number(prev.round)) ? Number(prev.round) : null),
+          at: row.at !== null ? row.at : (typeof prev.at === 'string' ? prev.at : null),
+          status: patch.status !== null ? patch.status : (sameTurn && typeof prev.status === 'string' ? prev.status : null),
+          codes: patch.codes !== null ? patch.codes : (sameTurn && Array.isArray(prev.codes) ? prev.codes : []),
+          skipped: patch.skipped !== null ? patch.skipped : (sameTurn && Number.isFinite(Number(prev.skipped)) ? Number(prev.skipped) : 0),
+          emptyReply: patch.emptyReply !== null ? patch.emptyReply : (sameTurn && typeof prev.emptyReply === 'boolean' ? prev.emptyReply : null),
+          closedWith: patch.closedWith !== null ? patch.closedWith : (sameTurn && typeof prev.closedWith === 'string' ? prev.closedWith : null) }
+      }
       // MERGE INSIDE THE FOLD (docs/07 §1-1): computing `next` in the exclusive section is what lets two kernels record
       // two different members in the same tick without either overwriting the other - the mailbox precedent, not a new
       // mechanism. A read-modify-write OUTSIDE the fold is the data-loss bug that precedent exists to prevent.
       return store.patch('turns', (rows) => {
         const list = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object' && typeof r.member === 'string') : []
         let replaced = false
-        const next = list.map((r) => { if (r.member === member) { replaced = true; return row } return r })
-        if (!replaced) next.push(row)
+        const next = list.map((r) => { if (r.member === member) { replaced = true; return foldRow(r) } return r })
+        if (!replaced) next.push(foldRow({}))
         return next
       }).then((r) => ({ ok: true, member, turn: row.turn, changed: !!(r && r.changed) }))
     },
@@ -2557,7 +2581,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
             // from a restart with the literal verb `restore` as its AUTHOR — one row read `owner:"restore"` while another
             // read `owner:null` for the same fact, and `verified` rows promoted later in the run inherited the verb.
             // ROUND 68 settled this for adoption (an unknown author is not a name); a hydration is the same sentence.
-            records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true, by: row.by === undefined || row.by === null || row.by === '' ? null : String(row.by) })
+            records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, finalAck: true, finalAckSource: 'rehydrate', by: row.by === undefined || row.by === null || row.by === '' ? null : String(row.by) })
             restored += 1
           } catch (e) { log('vmu records restore: ' + String((e && e.message) || e)) }
         }
@@ -2638,7 +2662,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // The snapshot now carries BOTH facts (`by` = the writer of this revision, `owner` = whose row it is); the
           // adoption path in records.js restores both, and a fold written before this change (one name, under `by`)
           // still adopts truthfully as owner = writer.
+          // ★★★ RUN 2697 / TB-2697: `rev` and `updatedAt` TRAVEL WITH THE FOLD ROW. Without them the records face could not
+          // tell a queued snapshot from a newer rewrite (it compared content only, stamped the adoption with `now()`, and
+          // rolled a row back one revision when it read its own older picture). The reader now requires the fold row to be
+          // STRICTLY newer by (updatedAt, then rev); `rev` is per-kernel (see records.js revMeans), so the instant is the
+          // cross-kernel fact and rev only breaks a same-millisecond tie.
           rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, state: r.status, restoredAt: r.restoredAt === undefined || r.restoredAt === null ? null : Number(r.restoredAt),
+            rev: Number.isInteger(r.rev) ? r.rev : 1,
+            updatedAt: Number.isFinite(Number(r.updatedAt)) ? Number(r.updatedAt) : null,
             by: r.writer !== undefined && r.writer !== null ? r.writer : (r.owner !== undefined && r.owner !== null ? r.owner : r.by),
             owner: r.owner !== undefined && r.owner !== null ? r.owner : (r.writer !== undefined && r.writer !== null ? r.writer : null) })
         }
@@ -2682,11 +2713,26 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         const pending = Promise.resolve(wrote)
         foldWrites.inflight.add(pending)
         pending.then(
-          () => { foldWrites.inflight.delete(pending); foldWrites.ackedAt = clock() },
+          () => {
+            foldWrites.inflight.delete(pending)
+            foldWrites.ackedAt = clock()
+            // ★★★ RUN 269 / TB-2697: THE OTHER HALF OF THE IN-FLIGHT GUARD. `noteLocalWrite` marks every row this
+            // instance just wrote so a read cannot adopt the pre-write snapshot; the intended exit `records.js` documents
+            // ("the kernel deletes the entry when the patch resolves") was never wired, so the ONLY live exit was a fold
+            // row proving to carry exactly our (rev, updatedAt). With a clock that does not advance between the two
+            // writes — every simulator boots a frozen clock, and two kernels writing in the same millisecond is what a
+            // cross-kernel co-design IS — a second kernel rewriting the same row keeps `updatedAt` equal and bumps `rev`,
+            // that proof never arrives, and the row was skipped on EVERY read (measured live in run 129: `pulled:0 /
+            // skipped:22`, the member's authored section never reached the office's adopt). The patch has resolved here,
+            // so the fold already carries this write: a differing fold row from now on is a real rewrite by another
+            // kernel, which the strictly-newer rule judges on its merits instead of being shadowed forever.
+            try { if (typeof records.acknowledgeFoldWrite === 'function') records.acknowledgeFoldWrite() } catch (e) { log('vmu records ack: ' + String((e && e.message) || e)) }
+          },
           (e) => { foldWrites.inflight.delete(pending); foldWrites.failed += 1; log('vmu records persist: ' + String((e && e.message) || e)) },
         )
       } else if (wrote !== undefined) {
         foldWrites.ackedAt = clock()
+        try { if (typeof records.acknowledgeFoldWrite === 'function') records.acknowledgeFoldWrite() } catch (e) { log('vmu records ack: ' + String((e && e.message) || e)) }
       }
     } catch (e) { log('vmu records persistence: ' + String((e && e.message) || e)) }
   }
@@ -2910,7 +2956,21 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     } catch (e) {
       return { ok: false, why: 'the archive write failed: ' + String((e && e.message) || e) }
     }
-    return { ok: true, path: 'Members/' + member + '/Turns/' + turnId + '.md', sha256: replyDigest, bytes: Buffer.byteLength(text, 'utf8') }
+    // ★★★ TB-2694 / F75-16: A RECEIPT MAY ONLY CLAIM A FILE IT CAN PROVE. Run 75: the member's self-test table existed
+    // only in the `t-15` receipt and was never written to disk — the receipt said 「全文落 Members/<你>/Turns/<turn>.md」
+    // while the file did not exist. A write that returns ok is not an archive: read the file back and verify the sha256
+    // over the reply text (the file is `head + text`, and `head` ends with the blank line after `sha256:`, so the text
+    // is its suffix — no stripping guess). If it does not read back byte-identically, the archive is missing BY NAME.
+    const rel = 'Members/' + member + '/Turns/' + turnId + '.md'
+    let back = null
+    try { back = readFileSync(target, 'utf8') } catch (e) {
+      return { ok: false, archiveMissing: true, why: 'archiveMissing: the turn archive was written to ' + rel + ' but could not be read back (' + String((e && e.message) || e) + ') — the receipt must not claim a file it cannot show' }
+    }
+    const backText = typeof back === 'string' && back.endsWith(text) ? back.slice(back.length - text.length) : null
+    if (backText === null || digestText(backText) !== replyDigest) {
+      return { ok: false, archiveMissing: true, why: 'archiveMissing: the turn archive at ' + rel + ' does not read back as the reply that was written (text suffix ' + (backText === null ? 'absent' : 'present but sha256 differs') + ') — the receipt must not claim a file it cannot show' }
+    }
+    return { ok: true, path: rel, sha256: replyDigest, bytes: Buffer.byteLength(text, 'utf8') }
   }
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
@@ -2920,6 +2980,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // corpus block and renders NOTHING when the queue is empty, so zero mechanism is preserved.
     noticeBlock: noticeBlock || kernelNoticeBlock,
     writeTurnArchive,
+    // ★★★ TB-2690 / F75-08: THE SAME TALLY `vibe_vmu_turn {op:"status"}` REPORTS. The prompt board's `[结题]` line and
+    // the status receipt used to answer "how far is the closure vote" on two bases — the board counted this turn's own
+    // roster (temp included) and the kernel's own map (which a per-member-session deployment never fills), measured on
+    // the 75th run as「已投 2/5」vs「4/4」. Lazy on purpose: `closureVoteView` is defined below this call and reads the
+    // MERGED fold (`closure_votes` durable rows + this session's map), so the reading is taken at assembly time.
+    closureVote: () => closureVoteView(),
     extraPhases: extraPhases || null,
     // ★★ ROUND 52: the status board prints whose settings resolution it shows, so the loop needs this kernel's id.
     // ★★★ ROUND 54: handed over as a GETTER, not a string - the loop asks per render, so a kernel whose id only becomes

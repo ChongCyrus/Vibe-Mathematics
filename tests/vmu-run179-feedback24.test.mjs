@@ -93,12 +93,29 @@ try {
       '§0a the loop keeps the closure-vote row it just wrote, with its instant and session')
     ok(kernelSource.includes('closureVoteLocalRows') && kernelSource.includes('const byMember = new Map()'),
       '§0b the kernel MERGES that row over the fold row instead of opening a second ledger')
-    ok(kernelSource.includes("settled: true, by: row.by === undefined || row.by === null || row.by === '' ? null : String(row.by)") &&
-      !/records\.put\(\{[^}]*by: row\.by \|\| 'restore'/.test(kernelSource),
+    // ★ RUN 2697 / TB-2700 pinned this as the contiguous literal `settled: true, by: …`; the hydration put object has
+    // since grown `finalAck/finalAckSource` (durable-ack accounting), so the OLD contiguity is gone while the FACT this
+    // assertion exists for is not: an unknown author must hydrate as null, never as the verb `restore`, and the pre-fix
+    // `by: row.by || 'restore'` shape may not come back. Pin the normalization expression itself, keep the negation of
+    // the old shape (the comment that quotes it is not a call, so the regex is anchored on `records.put({`), and tie it
+    // to the rehydrate seam that performs it — a pass must still come from the write, not from a coincidence.
+    ok(kernelSource.includes("by: row.by === undefined || row.by === null || row.by === '' ? null : String(row.by)") &&
+      /records\.put\(\{[^}]*finalAckSource:\s*'rehydrate'/.test(kernelSource) &&
+      !/records\.put\(\{[^}]*by:\s*row\.by\s*\|\|\s*'restore'/.test(kernelSource),
       '§0c a boot does not become an author (the `restore` verb is gone from hydration)')
     ok(toolsSource.includes('callerFromTurn(kernel, exec)') && toolsSource.includes('function toolVerifiedPromote(args = {}, { kernel, exec } = {})'),
       '§0d a promotion without `member` records its CALLER (or nobody), never a filler')
-    ok(handlersSource.includes('records.list({ track, limit: 0 })') && handlersSource.includes('rowsOmitted:'),
+    // ★ TB-2691 / F75-11 added `withWriter: args.withWriter !== false` to this call, so the contiguous literal
+    // `records.list({ track, limit: 0 })` now only exists on the VERIFIED read — the library read grew a third key.
+    // The fact pinned here is unchanged and is what must stay pinned: the library read WALKS THE WHOLE TRACK (limit 0,
+    // the kernel's whole-set read) before slicing the page, and NAMES the rows the page left behind (`rowsOmitted`).
+    // Negation of the pre-fix shape: EVERY shorthand-track list call must ask for the whole set (`limit: 0`); a
+    // page-sized `limit` here would make `total` a page size again. Scanning the values (instead of one literal) keeps
+    // this true even if the call grows another key.
+    ok(/records\.list\(\{\s*track,\s*limit:\s*0,\s*withWriter:/.test(handlersSource) &&
+      handlersSource.includes('rowsOmitted:') &&
+      [...handlersSource.matchAll(/records\.list\(\{\s*track,\s*limit:\s*([^,}]+)/g)]
+        .map((m) => m[1].trim()).every((v) => v === '0'),
       '§0e the library read walks the whole track and names the rows it did not return')
     ok(qualitySource.includes('requiredLineFull:') && verifiedSource.includes('statement: parsed.verified.statement'),
       '§0f the row\'s full statement travels with the head, so the gate can name the claim instead of a truncated name')

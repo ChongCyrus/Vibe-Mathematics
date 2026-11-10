@@ -1,0 +1,16 @@
+{
+  "id": "A3",
+  "attack": "a genuine block whose tree hash was borrowed from another tree",
+  "why": "the audit is bound to the tree it measured; a foreign tree stamp must be refused by name",
+  "wouldBeWrongIf": "READY, or refusal by AUDIT_STALE (mtime, not content) -- that would measure when the file was written instead of what tree it names",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_TREE_CHANGED",
+    "expectExit": 7,
+    "expectReady": false,
+    "allowedSecondary": {
+      "AUDIT_ID_MISMATCH": "only if the id were derived from a tree other than the one it claims",
+      "AUDIT_UNVERIFIABLE": "only if the tree stamp were missing, which it is not"
+    }
+  }
+}

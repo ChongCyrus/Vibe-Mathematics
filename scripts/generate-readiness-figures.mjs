@@ -7,8 +7,10 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
+const MODE = modeFrom(process.argv, { script: 'generate-readiness-figures.mjs' })
 // The seam takes a RELATIVE path or an ABSOLUTE one: `resolve` handles both, while `join(REPO, x)` silently
 // produced a broken path for an absolute `x` (spotted while a guard tried to point the writer at a temp copy
 // outside the repository). Its sibling `generate-wiring-index.mjs` already resolves its seam this way.
@@ -75,7 +77,6 @@ export function render(f) {
   ].join('\n')
 }
 
-const check = !process.argv.includes('--write')
 const f = await figures()
 const doc = readFileSync(DOC, 'utf8')
 let next = doc
@@ -90,7 +91,11 @@ for (const [B, E, block] of [[BEGIN, END, render(f)], [FACES_BEGIN, FACES_END, r
 }
 if (stale.length === 0) { console.log('readiness figures: current (' + JSON.stringify(f) + ')'); process.exit(0) }
 if (stale.includes('no-block')) { console.log('readiness figures: block not found in the document; nothing to check'); process.exit(0) }
-if (check) { console.log('readiness figures: STALE (' + stale.join(',') + ') - the block is not what the runtime yields (' + JSON.stringify(f) + ')'); process.exit(1) }
+if (MODE !== 'write') {
+  console.log('readiness figures: STALE (' + stale.join(',') + ') - the block is not what the runtime yields (' + JSON.stringify(f) + ')' +
+    (MODE === 'read' ? ' (dry run: nothing written)' : ''))
+  process.exit(exitCodeFor(MODE, true))
+}
 // write mode: rebuild every block in place
 let out = doc
 for (const [B, E, block] of [[BEGIN, END, render(f)], [FACES_BEGIN, FACES_END, renderFaces(f)]]) {

@@ -1,0 +1,17 @@
+{
+  "id": "A14",
+  "attack": "the named layer does not exist",
+  "why": "a report about a directory nobody can open is a report about nothing; the refusal must name the path",
+  "wouldBeWrongIf": "READY, or a message that does not name the missing layer",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_UNMEASURED",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "no-such-layer",
+    "allowedSecondary": {
+      "AUDIT_FIDELITY_RECOMPUTE_UNMEASURED": "the named layer is gone, so fidelity cannot be recomputed from it either",
+      "AUDIT_FIDELITY_MISMATCH": "the claim cannot be reproduced from a layer nobody can open"
+    }
+  }
+}

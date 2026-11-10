@@ -1,0 +1,17 @@
+{
+  "id": "A16b",
+  "attack": "two directories with identical bytes; the report names the copy, the pointer names the other",
+  "why": "only directory IDENTITY can tell two identical corpora apart; 'same digest' is not 'current layer'",
+  "wouldBeWrongIf": "READY, or STALE/UNMEASURED -- the digests are equal and the layer is readable, so those would be false answers",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_NOT_CURRENT",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectCodesAbsent": [
+      "AUDIT_CORPUS_STALE",
+      "AUDIT_CORPUS_UNMEASURED"
+    ],
+    "expectMessagePattern": "current layer"
+  }
+}

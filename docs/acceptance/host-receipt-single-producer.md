@@ -168,3 +168,95 @@ cases named in §5.2.
 
 Phase 1 gate 13/13 ok (`class A 0 / class B 0 / PENDING_SCOPE 51`), Phase 2 gate 6/6 ok, `--self-test` 22/22,
 `tests/vmu-host.test.mjs` 252/0, `tests/audit-receipt-fields.mjs` and `tests/audit-face-actions.mjs` green.
+
+## 8. Phase 3: the plugin layer (TB-2680)
+
+Gate: `tests/audit-plugin-receipt-superset.mjs` (read-only: it boots the real `v5r` entry against a `tmpdir` root and
+never edits product code or `package.json`). This is the third layer after Phase 1 (the seven explicit `host.js`
+faces, §1–§4) and Phase 2 (the 51 factory faces behind the recording Proxy, §5–§7): the **plugin entry** forwards the
+kernel's pack-apply receipt to the host status face, and that forwarding used to drop facts.
+
+What it gates — branches are enumerated **at runtime**, never hand-copied: walk every function property of the plugin
+`handle` and of `handle.adapter`; a branch is any returned object carrying an `appliedPacks` array. The kernel-side
+truth is `handle.appliedPacks()` (the only plugin face that keeps the whole kernel entry, including `declarations`),
+and every branch entry is compared against its key set, one level deep. Measured today: **branches=2, covered=2,
+PENDING_SCOPE=31** (the 31 are handle/adapter functions that do not forward `appliedPacks`; they are counted, not
+silently skipped), `kernelItemKeys=["applied","declarations","id"]`.
+
+The defect this closed: `handle.packReport()` / `handle.packMerge()` and the two `createHostAdapter` seams
+(`packReport`/`mergeReport`) all returned `appliedPacks: appliedPacks.map((a) => a.id)` — an id projection. So the
+same receipt answered "which packs applied" twice from one producer, and the per-entry facts (`declarations`,
+`applied`) vanished between the kernel and the host status. First run, red, before any product change:
+
+```
+plugin faces: branches=2 covered=0 pendingScope=31 kernelItemKeys=["applied","declarations","id"]
+VERDICT: FAIL — 4 missing key(s) across 2 branch(es)
+--- handle.packReport (handle.packReport())
+  missingKey=declarations
+  missingKey=applied
+--- handle.packMerge (handle.packMerge())
+  missingKey=declarations
+  missingKey=applied
+```
+
+The fix follows the Lead ruling of 2026-11-10 and does **not** change the public shape of `appliedPacks` (an id
+string array, frozen — `vibe-math-vmu/docs/29-build-your-own-preset.md:280` is a documented reader). A narrow name
+keeps answering its narrow question; the full entry moves to a new, clearly named field, copied whole and never
+key-picked:
+
+- `vibe-math-vmu/vibe-math-vmu.js:746` — adapter `packReport` seam
+- `vibe-math-vmu/vibe-math-vmu.js:791` — adapter `mergeReport` seam
+- `vibe-math-vmu/vibe-math-vmu.js:1330` — `handle.packReport()`
+- `vibe-math-vmu/vibe-math-vmu.js:1362` — `handle.packMerge()`
+
+each now emits `appliedPacks: appliedPacks.map((a) => a.id)` (unchanged) plus
+`appliedPacksDetail: appliedPacks.map((a) => Object.assign({}, a))` (same source array). `git diff --numstat` for the
+file is `12 0`. The REKEYED table in the gate has exactly one entry — `appliedPacks → appliedPacksDetail`, why:
+"appliedPacks is the public id-projection (unchanged by ruling); the per-entry facts live on appliedPacksDetail, and
+both are produced from the SAME appliedPacks() array". The gate also asserts the shape contract (every `appliedPacks`
+item is a string, `appliedPacksDetail` is an object array), so a future edit cannot satisfy "detail carries the keys"
+by changing the old field's shape.
+
+Four receipts, taken from the same boot (`v5r` via `vmu.packs.active`; all four are byte-identical by construction):
+
+```
+handle.packReport    {"appliedPacks":["v5r-core"],"appliedPacksDetail":[{"id":"v5r-core","applied":85,"declarations":{"folded":[],"unsupported":[]}}]}
+handle.packMerge     {"appliedPacks":["v5r-core"],"appliedPacksDetail":[{"id":"v5r-core","applied":85,"declarations":{"folded":[],"unsupported":[]}}]}
+status.packReport    {"appliedPacks":["v5r-core"],"appliedPacksDetail":[{"id":"v5r-core","applied":85,"declarations":{"folded":[],"unsupported":[]}}]}
+status.settingsMerge {"appliedPacks":["v5r-core"],"appliedPacksDetail":[{"id":"v5r-core","applied":85,"declarations":{"folded":[],"unsupported":[]}}]}
+```
+
+(`status.packReport` / `status.settingsMerge` are the adapter seams as seen through the `vibe_vmu_status` receipt;
+the tool returns a JSON string, so they were read after `JSON.parse`.)
+
+Reverse lamps — run in a full-tree copy **outside the repository** (`D:/_tmp/tb2680-lamps/repo`, `.git` and
+`node_modules` excluded; the repo itself was never mutated), each followed by a byte-for-byte restore:
+
+| lamp (copy only) | observed |
+| --- | --- |
+| L1 delete all four `appliedPacksDetail` lines | exit 1; both branches print `missingKey=(appliedPacksDetail missing)` + `missingKey=declarations` + `missingKey=applied` |
+| L2 add a new key `probeExtra` to the kernel entry **and** make `appliedPacksDetail` pick id/applied/declarations | exit 1; both branches print `missingKey=probeExtra [appliedPacksDetail exists but does not carry this key]` — the REKEYED table does not swallow undeclared keys |
+| L3 make `appliedPacksDetail` keep `{id}` only (whole forwarding becomes key-picking) | exit 1; both branches print `missingKey=declarations` + `missingKey=applied` |
+
+`SUMMARY lamps=3 problems=0 restoredShaEqual=true`. Green run after the fix:
+`branches=2 covered=2 pendingScope=31` … `VERDICT: PASS`.
+
+Stale taskbook note: TB-2680's write domain listed `vibe-math-vmu/middleware/**`, but that directory does not exist
+in this repository. The actual forwarding site is the plugin entry `vibe-math-vmu/vibe-math-vmu.js`; the two adapter
+seams live in the same file (the `createHostAdapter(...)` argument object), not under `middleware/`. Nobody should go
+looking for `middleware/` — this line is the correction.
+
+Old-document inconsistency, recorded but deliberately not changed this round: `vibe-math-vmu/docs/29-build-your-own-preset.md:280`
+says `appliedPacks: ["v5r-core"]` (id array) while `docs/acceptance/04-parity-matrix.md:1634` says
+`appliedPacks 保留 = [{"id":"v5r-core","applied":32}]` (object array). The ruling keeps `appliedPacks` as the id
+array and puts whole entries on `appliedPacksDetail`, so the parity-matrix line is the stale one; it is a historical
+reading, outside this round's write domain, and editing history to match today is exactly what "record, not
+rewrite" forbids.
+
+Regression: `tests/vmu-entry.test.mjs` 159/0, `tests/vmu-run256-pack-declarations.test.mjs` 45/0,
+`tests/vmu-run258-pack-declaration-gate.test.mjs` 43/0, `tests/vmu-packs-active-switch.test.mjs` 24/0,
+`tests/vmu-pack-defaults-named.test.mjs` 39/0, `tests/vmu-packs-add-not-remove.test.mjs` 12/0,
+`tests/vmu-pack-inline-manifest.test.mjs` 42/0, `tests/vmu-pack-plan-rule-validate.test.mjs` 35/0,
+`tests/vmu-pack-prompt-policy-live.test.mjs` 25/0, `tests/audit-host-receipt-superset.mjs` class A 0 / class B 0
+(pendingScope 51 faces / 460 actions). Reproduce the gate with
+`node tests/audit-plugin-receipt-superset.mjs` (exit 0 = no unexplained drop).

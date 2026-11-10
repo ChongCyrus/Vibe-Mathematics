@@ -1,0 +1,16 @@
+{
+  "id": "A10",
+  "attack": "a receipt inside the layer the report names is edited after the report was written",
+  "why": "the layer must be re-read and the changed file NAMED; otherwise 'the digest matches' answers a different question",
+  "wouldBeWrongIf": "READY, or a refusal that only says the digest differs without naming the changed scenario",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_STALE",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "changed after the report was written",
+    "allowedSecondary": {
+      "AUDIT_ID_MISMATCH": "the id is derived from the corpus id, which cannot match a tampered layer"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "A11",
+  "attack": "the pre-file-list stamp (no corpusFiles) replayed onto a layer that has since grown",
+  "why": "a report that cannot say which receipts it hashed has not measured a corpus; UNMEASURED is its own answer and must NOT be reported as STALE",
+  "wouldBeWrongIf": "READY (the 2026-11-01 replay that this vector was discovered by), or STALE -- two answers on one failure",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_UNMEASURED",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectCodesAbsent": [
+      "AUDIT_CORPUS_STALE"
+    ],
+    "expectMessagePattern": "does not name the files it measured",
+    "allowedSecondary": {
+      "AUDIT_FIDELITY_RECOMPUTE_UNMEASURED": "no corpusFiles means the gate cannot recompute fidelity either: the same missing list, read twice",
+      "AUDIT_FIDELITY_MISMATCH": "the claim 67/0 cannot be reproduced from an unnamed list, so the mismatch is a consequence of the same defect"
+    }
+  }
+}

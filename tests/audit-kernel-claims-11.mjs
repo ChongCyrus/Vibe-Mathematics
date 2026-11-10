@@ -15,7 +15,8 @@
 // their own property - the same field that a helper had discarded when it reported a defect against conference.js.
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+import { REPO } from './_lib/repo-root.mjs'
+const K = join(REPO, 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 let pass = 0, fail = 0
 const failures = []

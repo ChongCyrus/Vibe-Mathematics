@@ -455,6 +455,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       founding: [
         '你是本所的一名成员（席位见身份段）；请先独立研判这个问题：它的关键困难在哪？应当拆成哪几块工作？你打算如何组织全所（谁适合做什么、先做什么）？',
         '权限按席位：院士席可 hire/fire 并表决，常驻研究员可表决，临时工席都没有；复核可 propose_verify、协调可 propose_meeting。',
+        '本所题目由 `vibe_v5_start` 的 `problem` 给出；不得自行替换或改写命题卡，异议写 `note` 等所办裁决。',
       ].join('\n'),
     },
   },
@@ -590,16 +591,18 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。',
         '',
         '------------ 合并稿（各成员部分）------------',
+        '（本段由装配器注入；**没有注入就是「未提供」，不是「没有内容」**——用 `vibe_v5_paper {action:"status", target:"<论文 target>"}` 读 `parts`。）',
         '',
         '------------ 互审结论 ------------',
+        '（同上：读 `reviews`；两段都空时按「装配器未注入」处理，不要据此判「无稿/无评审」。）',
         '',
         '★ 用法：这一步【不再】靠回执字段提交（`paper_final` 已不被解析器接受）。请调用工具：',
         '    vibe_v5_paper { action: "final", target: "<论文 target>", member: "{{ member }}",',
         '                    decision: "deliverable", note: "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",',
         '                    conclusion: "（可选）定稿代表对原问题的最终结论（只写有证据的）" }',
-        '★ decision="revise" 会退回继续修订（有轮次上限）。**只有主席席（即院士）可以定稿**；其他席位调用会被具名拒。',
+        '★ decision="revise" 会退回继续修订（有轮次上限）。**只有主席席（即院士）可以定稿**；其他席位调用会被具名拒。\n★ 结题核对**两个数**：磁盘上的 PDF `bytes` 与归档行里的 `pdfSha256`（归档行没有 `pdfSha256` 就是没核对，不要只报字节数）。',
         '★ 所办问询门（`vmu.paper.officeConsult=required` 时）：被拦会具名拒 `VMU_OFFICE_CONSULT_REQUIRED`，拒里给 `requestId` 与 `target`——让所办先答复 `vibe_v5_paper { action:"consult", target:"<论文 target>", member:"<所办 id>", request_id:"<拒里的 requestId>", answer:"<核对结论>" }`，**答完重试 `action:"final"`**；普通成员答复会被具名拒 `VMU_NOT_PERMITTED`（能答复的角色由部署声明）。',
-        '★★ 论文回执的 `ok:true` 只表示「请求被接受」，不代表论文完成：完成看 `complete`、产物看 `renderOk`、缺什么看 `missing`——`ok:true` 且 `complete:false` 是【正常读数】，不是出错（P43/P45 的实测形状）。`compile` 要宿主装了 LaTeX，没装时拒 `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`，那是环境事实：先 `vibe_vmu_env { action:"probe", need:"xelatex" }` 探，缺引擎时 `final` 仍可收口、`pdf` 会记在 `missing` 里；被拦时读 `vibe_v5_paper { action:"consult_state", target }` 取 `awaiting.id`，由所办答复后再 `final`，不要改成 off 绕过。',
+        '★★ `ok:true` 只表示「请求被接受」；完成看 `complete`、产物看 `renderOk`、缺什么看 `missing`（`ok:true`+`complete:false` 是【正常读数】）。`render` **永不编译**：pdf 行与 `pdfBytes` 只由 compile/final 写。`compile` 要宿主装了 LaTeX，没装时拒 `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`，那是环境事实：先 `vibe_vmu_env { action:"probe", need:"xelatex" }` 探，缺引擎时 `final` 仍可收口、`pdf` 会记在 `missing` 里；被拦时读 `vibe_v5_paper { action:"consult_state", target }` 取 `awaiting.id`，由所办答复后再 `final`，不要改成 off 绕过。',
       ].join('\n'),
     },
   },
@@ -937,7 +940,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       academician: [
         '【开会与预约：按事件时机的顺序（你的手册）】会议类型六种：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型；动议 kind 为 topic/procedural/resolution；**可用的命令随类型与身份不同**。辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权；上面这些动词只是常用手段，不是穷举。**会议进行中的一切内容、控制、活动都由你的命令决定**——但每个成员的动作（发言、投票、签到）仍由成员自己在其回合做完，你编排的是顺序与时机。',
-        '  · ① 先定议程：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 读议程条目、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——`agendaitems`/`agendaclose` 这两个动词只认**内核原语会**（`vibe_vmu_meeting { action:"open" }` 开的）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`title` 是**可选**的独立名称（非字符串会被具名拒）。`open` 回执里的 `procedureNote` 是**建议**（`procedure` 同源，`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：`ordinary` 类型**故意不给推荐骨架**，其余五种的步骤只是**建议**，可跳过、可重排，是否遵循由你决定。　★ **正式议程要条目就给数组**：`formal_agenda` 传 `["条目", {title:"条目2", kind:"review"}]` 才逐条落库（`formalAgendaItems` 读得到）；传 `true` 只是**声明**（`formalAgendaDeclared:true`、`formalAgendaItems:null` ＋ `formalAgendaItemsWhy`），读者一条都看不到——真机第 69 次（P-04）正因如此只剩这个布尔。',
+        '  · ① 先定议程：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 读议程条目、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——`agendaitems`/`agendaclose` 这两个动词只认**内核原语会**（`vibe_vmu_meeting { action:"open" }` 开的）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`title` 是**可选**的独立名称（非字符串会被具名拒）。`open` 回执里的 `procedureNote` 是**建议**（`procedure` 同源，`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：`ordinary` 类型**故意不给推荐骨架**，其余五种的步骤只是**建议**，可跳过、可重排，是否遵循由你决定。　★ **正式议程要条目就给数组**：`formal_agenda` 传 `["条目", {title:"条目2", kind:"review"}]` 才逐条落库（`formalAgendaItems` 读得到）；传 `true` 只是**声明**（`formalAgendaDeclared:true`、`formalAgendaItems:null` ＋ `formalAgendaItemsWhy`），读者一条都看不到（真机 P-04 正因如此只剩这个布尔。）',
         '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做）。召集成功会对除主席外每位在册者发出 `meeting-appointment` **耐久邮件**（`channel:"mail"`，每个被邀者一条，含议题/时间/你的席位/可照抄的入席调用）：回执 `invitation.delivered`＝已投递——对方**下个回合提示最上方的 `[新到的消息]` 块**里会出现一行 `【会议预约·<你>】…`，在其 `mailbox ack` 之前每回合都在（也可用 `vibe_v5_inbox` 读），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。预约/召集的回执还直接给内核投递三数组：`notified`（真拿到行的成员）、`notifyRows`（每人 mailId）、`notifyFailed`（逐人具名原因，附 `noticesMeans`）——`notifyFailed` 里的人才是你要补发的，别把「约过」当「通知到」。不必逐个私信催：没投出去的人会具名出现在 `unreachable`／open 回执的 `notifyFailed` 里，只有他们需要补消息；被邀者迟迟不 attend 是他自己回合的事，不是你没通知到。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
         '  · ③ 预约与会前：`vibe_v5_meeting { type, agenda, at: <epoch ms / ISO-8601 / 相对偏移如 "+120s"> }`（可写相对偏移——**你没有自己的钟**，由内核换算）→ 会议进入 `scheduled`；`status`/`summary` 可读，开始前的治理动作都被具名拒；例外：`attend` 可提前签到（不开会）、主席可 `proceed` 提前开（记 `startsEarly`/`earlyByMs`，提前开不是迟到）。**到点不会自己开会**：到点后的下一次 touch 只结算一次考勤——那一刻人已齐才直接开（`startedLate:true`），否则落 `waiting`，并给 `waitingFor`（`"quorum"`＝人没齐；`"chair-proceed"`＝人齐了等你）。`waiting` 期间迟到者 `attend` 让考勤满足时那次 touch 仍会开；等待到期只把 `waitDecisionDue` 置真（提醒，不开会）；其余只有 `proceed` 能开（`lapse` 弃会、`recess` 体会是两个出口）。`requiresChairProceed:true` 的准确含义是「开会不是框架按钟自己决定的」：需要一个动作把它推过去（你 `proceed`，或考勤在等待期间被补齐）。没有定时器：靠 `beat()` 的 sweep 与 touch 结算；回执 `nextActions` 列出此刻能接的动作——出现 `proceed` 就是你开（可提前开，记 `startedLate:true`），出现 `attend`＝还要有人签到，出现 `beat` 说明只差一次 touch。迟到入席看每会 `lateAdmission`（open|chair|refuse，缺省 chair）决定：`open` 直接入座记 `late:true`；`chair` 挡在门口（`pendingLate:true`），只有主席 `vibe_vmu_meeting { action:"admit", id, member, actor }` 放行；`refuse` 具名拒 `VMU_LATE_ADMISSION_REFUSED`；「迟到」由 `lateAfterMs` 对 `openedAt` 判定（缺省 0）。',
         '  · ⑦ 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
@@ -1030,7 +1033,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：留收件箱等对方查；群聊/会议发言带 `urgent` 具名拒。判据：要对方**这一轮就看到**→私信；只留记录→邮箱；全所该知道→群聊。**投递**：私信与群聊全体发言各投一条**耐久邮件行**，出现在**下一回合提示最上方的 `[新到的消息]` 块**（最新在前、≤8行；私信 `【邮件·<from>】<主题>`、群聊 `【群聊·<from>】<摘要>`＋全文指针）。`deliveredTo` 是真投到的名单、`deliveryFailed` 是没投到；`ack` 是**唯一**结算：`open` 只标 `read`，行不会因被读消失；`acked`／`ackRequired`／`settledBy:"ack"` 是具名读数；`unackedRows` 是旧称。无未读则**不出现块头**（＝没消息，不是通知丢了）；装配回执 `notices` 的 `lines`／`rendered`／`blockChars` 是小节读数；`rendered:false` 却以为有人写过信，先 `vibe_v5_inbox {action:"list", member}` 查。**证据比正文活得久**：回复正文超 `vmu.turn.replyLimitChars`（默认 2000 字符）只留摘录——权威键是 `truncated`（被切了）与 `excerptLen`（摘录字符数）；`replyTruncated`/`replyExcerpt` 只是它的旧称，仅存在于回合回执，台账行不复制这两个键。全文落 `Members/<你>/Turns/<turn>.md`（回执 `replyFullPath`／`replyFullSha256`／`replyFullBytes`——**只覆盖正文**；核整文件请自己 `sha256sum <replyFullPath>`，**以实收回执为准**；归档头约 0.3–0.6 KB 不在其中）；`emptyReply` 只说**文本通道**：true＝这一回合的回复文本 0 字符（空白也算），写了一个字就是 false（哪怕只回 `{"solved":false}`、哪怕这段散文没解析出任何字段）——它**不等于**「没做」：工具通道是另一条通道，`source`／`fields`／`executed`／`writes` 才是做没做的证据。要留证据就把结论写进 `progress`／成果卡并把 `rec-<n>` 写进回复。',
+        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：留收件箱等对方查；群聊/会议发言带 `urgent` 具名拒。判据：要对方**这一轮就看到**→私信；只留记录→邮箱；全所该知道→群聊。**投递**：私信与群聊全体发言各投一条**耐久邮件行**，出现在**下一回合提示最上方的 `[新到的消息]` 块**（最新在前、≤8行；私信 `【邮件·<from>】<主题>`、群聊 `【群聊·<from>】<摘要>`＋全文指针）。`deliveredTo` 是真投到的名单、`deliveryFailed` 是没投到；`ack` 是**唯一**结算：`open` 只标 `read`，行不会因被读消失；`acked`／`ackRequired`／`settledBy:"ack"` 是具名读数；`unackedRows` 是旧称。无未读则**不出现块头**（＝没消息，不是通知丢了）；装配回执 `notices` 的 `lines`／`rendered`／`blockChars` 是小节读数；`rendered:false` 却以为有人写过信，先 `vibe_v5_inbox {action:"list", member}` 查。**证据比正文活得久**：回复正文超 `vmu.turn.replyLimitChars`（默认 2000 字符）只留摘录——权威键是 `truncated`（被切了）与 `excerptLen`（摘录字符数）；`replyTruncated`/`replyExcerpt` 只是它的旧称，仅存在于回合回执，台账行不复制这两个键。**仅当 `truncated:true`（正文被切）时**内核才把全文写到 `Members/<你>/Turns/<turn>.md`，写完立即回读并校验 sha256——只有校验通过，回执才给 `replyFullPath`／`replyFullSha256`／`replyFullBytes`（三个一起、**只覆盖正文**；核整文件请自己 `sha256sum <replyFullPath>`）；回执 `archiveMissing:true` 时 `replyArchiveWhy` 会具名说明「写了但读不回」，此时**不许**把不存在的路径当作已归档；正文没被切（`truncated:false`）则回执不给这三个键，也不要去找文件；`emptyReply` 只说**文本通道**：true＝这一回合的回复文本 0 字符（空白也算），写了一个字就是 false（哪怕只回 `{"solved":false}`、哪怕这段散文没解析出任何字段）——它**不等于**「没做」：工具通道是另一条通道，`source`／`fields`／`executed`／`writes` 才是做没做的证据。要留证据就把结论写进 `progress`／成果卡并把 `rec-<n>` 写进回复。',
       ].join('\n'),
     },
   },
@@ -1054,7 +1057,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       shared: [
         "【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（尝试过的路线）｜`obstacles`（阻塞与原因）｜`rejected`（已证伪的路）｜`state`（状态板）。`track:\"state\"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。",
         "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库 `lean_lib`（编译过≠命题真）；论文 = `vibe_v5_paper` 的 part 阶段；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法库卡：`vibe_v5_record_method`。",
-        "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数，不含学术动作）；**不在名册**的 id 具名拒（先 `vibe_v5_hire`）。",
+        "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数）；**不在名册**的 id 具名拒。**归属口径**：`memberWorkShare = memberActs/(memberActs+officeRelayedActs)`（`unknownActs` 不进分母）；**代笔回执**带 `memberActed:false`、`actedForMember`、`ranInOwnTurn:false`，落盘行带 `writtenFrom`（`own-turn`｜`relayed`｜`unknown`，问的是「这次写是怎么到这个席位的」）。`[结题]` 票数读 `closureVote.votesCast`/`votesTotal`（分母=有表决权席，不含 temp），别自己数人头。",
         "  · 读别人的板：`vibe_v5_read_library`（`member`、`track`）；走不通的路写 `rejected`（别把证伪当进展）。",
         "  · **临时工不进成果库**：卡片面对临时工**具名拒**，产出由临时工自己写进回执（指派者只核对、不代写）；过程记录写在回执的 `progress` 字段。",
       ].join('\n'),
@@ -1068,7 +1071,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【工具做事，回执汇报】开会/举手/邀请/投票/改任务/写轨迹的主路都是**工具调用**。每轮末尾的 fenced JSON 是**便捷桥**：只写回执字段目录里的字段，带属主的会**真的派发**到目录写的那个面，`face:null` 的只记账；`executed` 是派发计数，不是你要写的字段；无会议 id，举手/邀请走工具面。工具是主路，围栏不能替代工具。',
-        '  · id 照读面抄，自造 id 拒 `VMU_NO_SUCH_OBJECT`。',
+        '  · id 照读面抄，自造 id 拒 `VMU_NO_SUCH_OBJECT`；hint 里的 REACHABLE INSTEAD：先 `vibe_v5_overview {member:"<你的 id>"}`，再 `vibe_v5_inbox {action:"list", member:"<roster id>"}`。',
       ].join('\n'),
     },
   },
@@ -1089,6 +1092,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '【回合循环卡住了怎么办】读 `vibe_vmu_turn { op:"status" }.turnLoop`：`inFlight` 是本内核的**单轮锁**、不是账本承诺（`turnInFlightMeans`：`human.recover` 读耐久账，可与锁并存）；`inFlightTurn`/`inFlightMember`/`inFlightOpenedBy`/`inFlightForMs`＝哪轮/谁开/锁时，`abandonAfterMs`＝上限，`wakeQueue`/`recentAbandonments`＝排队/最近关的轮。',
         '  · 连续两次 `VMU_TURN_REENTRANT` 就**不要第三次重试**：用 `vibe_vmu_turn` 的 `op:"abandon"`（`turn` 给 inFlightTurn、`why` 必填）按名关掉：该行变 `status:"abandoned"` + `VMU_TURN_ABANDONED`、释放锁、报告**不应用**；给错 id 读 `status:"open"` 的行或 `inFlightTurn`。',
         '  · 只关抱锁那一轮；关完读 status 确认 `inFlight:false`。',
+        '  · 上一回合**未答**（parked）时再派同一席＝具名拒 `VMU_TURN_PARKED_NEEDS_OWNER`；顺序：同席位先答 → 答不了就 `op:"abandon"`（带 turn、why）→ 再派。',
       ].join('\n'),
     },
   },

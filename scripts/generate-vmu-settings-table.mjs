@@ -22,6 +22,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -312,8 +313,12 @@ export function carrierOf(key) {
   return dead || tableIterationCarrier(key)
 }
 
-const MODE_WRITE = process.argv.includes('--write')
-const MODE_CHECK = process.argv.includes('--check') || !MODE_WRITE
+// MODE CONTRACT (scripts/_lib/generator-cli.mjs): no flag = dry run, --check = stale is a failure, --write rewrites.
+// This module is also IMPORTED (the vmu docs audit reads the generated table), and on import argv belongs to the
+// importer — so the mode is parsed only when this file is the entry point; an import keeps the old check semantics.
+const IS_MAIN = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+const MODE = IS_MAIN ? modeFrom(process.argv, { script: 'generate-vmu-settings-table.mjs', allow: ['--json'] }) : 'check'
+const MODE_WRITE = MODE === 'write'
 const JSON_OUT = process.argv.includes('--json')
 
 const { SETTING_DEFS } = await import(new URL('file://' + SCHEMA.replace(/\\/g, '/')).href)
@@ -663,7 +668,9 @@ if (JSON_OUT) {
   writeFileSync(DOC, nextText, 'utf8')
   console.log('vmu settings table: REWRITTEN from the schema (' + SUMMARY + ', ' + generated.split('\n').length + ' lines)')
 } else {
-  console.error('vmu settings table: STALE - docs/04 §11 is not what the schema yields (' + SUMMARY + ')')
+  // The last stderr line is what the wiring-index staleness report forwards verbatim as its `诊断:` line, so a bare
+  // run and a --check run must END on the same bytes. The dry-run note therefore rides on the first line only.
+  console.error('vmu settings table: STALE - docs/04 §11 is not what the schema yields (' + SUMMARY + ')' + (MODE === 'read' ? ' (dry run: nothing written)' : ''))
   console.error('  run: node scripts/generate-vmu-settings-table.mjs --write')
-  process.exit(1)
+  process.exit(exitCodeFor(MODE, true))
 }

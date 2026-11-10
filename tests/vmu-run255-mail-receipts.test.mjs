@@ -228,7 +228,17 @@ try {
   ok(String(a2.message || '').includes('already settled'), '正：message 说已经结算过（不是「找不到」）', a2.message)
   ok(String(a2.message || '').includes('r-1'), '正：message 点名结算者 ackedBy=r-1', a2.message)
   ok(String(a2.message || '').includes('changed nothing'), '正：message 明说重复 ack 不改变状态', a2.message)
-  ok(String(a2.hint || '').includes('not a missing mail'), '正：hint 纠正「不存在」的误读', a2.hint)
+  // The hint moved to a copyable Chinese sentence (TB-2704/2708): pin the FACTS it must carry, not the old wording.
+  ok(String(a2.hint || '').includes('这不是丢件'),
+    '正：hint 纠正「不存在」的误读（旧口径把两者混为一谈）', a2.hint)
+  ok(String(a2.hint || '').includes('notice.acked') && String(a2.hint || '').includes('{action:"status"}'),
+    '正：hint 给的可照抄事实之一 — status 面的 notice.acked 才是「已结算」的读数', a2.hint)
+  ok(String(a2.hint || '').includes('{action:"pending"') && String(a2.hint || '').includes('{action:"list"'),
+    '正：hint 给的可照抄事实之二 — 仍在箱中的行用 pending / list 取 id 再重试', a2.hint)
+  ok(String(a2.hint || '').includes('ids 是一次性的'),
+    '正：hint 明说 ack 的 ids 是一次性的（第二次拿同一个 id 必被拒的原因）', a2.hint)
+  ok(!String(a2.hint || '').includes('not a missing mail'),
+    '反：旧的英文措辞不再出现（新句必须自己承担纠正，而不是靠旧字面量）', a2.hint)
   // KERNEL FACE: the refusal facts must actually be machine-readable (not only prose in the message).
   const kerr = kernelAckError(kernel, 'r-1', [targetId])
   ok(kerr !== null && kerr.code === 'VMU_MAILBOX_ALREADY_ACKED', '正：内核面抛出同名码', kerr && kerr.code)

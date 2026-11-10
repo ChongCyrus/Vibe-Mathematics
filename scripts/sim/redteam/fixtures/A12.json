@@ -1,0 +1,13 @@
+{
+  "id": "A12",
+  "attack": "the report's file list misstates one file's hash while its corpus id is the true one",
+  "why": "a lying file list must be caught per-file, and the message must name the file rather than print a digest against itself",
+  "wouldBeWrongIf": "READY, or a message that prints the same sha256 twice (a tautology that reads as an accusation of the layer)",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_STALE",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectMessagePattern": "mismatched=\\[actions-extra\\]"
+  }
+}

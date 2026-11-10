@@ -1,0 +1,26 @@
+{
+  "id": "A1",
+  "attack": "a hand-typed AUDIT: PASS with no audit-report block at all",
+  "why": "prose cannot prove origin; the gate must refuse a report nobody can attribute, and name the missing provenance",
+  "wouldBeWrongIf": "the gate returned READY, or refused with AUDIT_FAILED/AUDIT_STALE (which would not say the report cannot be attributed to all.mjs)",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_UNVERIFIABLE",
+    "expectExit": 7,
+    "expectReady": false,
+    "allowedSecondary": {
+      "AUDIT_TREE_CHANGED": "no block means no claimed tree; this fires because the claim is missing, not because a foreign tree was detected",
+      "AUDIT_FIDELITY_UNMEASURED": "follows from the missing block",
+      "AUDIT_FIDELITY_MEASURED_NOTHING": "follows from the missing block",
+      "AUDIT_FIDELITY_COUNTS_INCONSISTENT": "follows from the missing block",
+      "AUDIT_FIDELITY_GAPS": "follows from the missing block",
+      "AUDIT_FIDELITY_MISMATCH": "follows from the missing block: there is nothing to compare",
+      "AUDIT_CORPUS_UNMEASURED": "no block, so no corpus.dir and no file list to re-read",
+      "AUDIT_FIDELITY_RECOMPUTE_UNMEASURED": "follows from the missing block",
+      "AUDIT_CHECKS_ABSENT": "the block that would carry checks{} is absent",
+      "AUDIT_ID_MISMATCH": "with no block there is no claimed id to recompute, so the derivation check fails on the absence",
+      "AUDIT_VERDICT_CONTRADICTION": "with no machine block there is no second verdict to agree with, so the contradiction check reads the absence as disagreement",
+      "AUDIT_INCOMPLETE": "depends on which headings the hand-typed text kept"
+    }
+  }
+}

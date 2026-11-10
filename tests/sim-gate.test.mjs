@@ -506,7 +506,6 @@ ok(auditBase > 0 && bigProof.rows[0].allowed === Math.round(auditBase * driftFac
 ok(bigProof.drifted.length === 1 && bigProof.drifted[0].elapsed === auditBase + pastMs, 'self-proof (ii): audit/all at allowance + 1000 ms (' + pastMs + ' ms over the documented baseline) is a drift', { baseline: auditBase, shifted: auditBase + pastMs, allowed: bigProof.rows[0].allowed, measuredThisRun: auditElapsed })
 ok(bigProof.rows[1].elapsed <= bigProof.rows[1].allowed, 'self-proof (ii): audit/all at +16 % (' + insideMs + ' ms, inside the 1.25x cost tolerance) is NOT a drift -- the absolute floor must not turn a cost gate into "no growth at all"', { elapsed: auditBase + insideMs, allowed: bigProof.rows[1].allowed })
 
-console.log('   segments: ' + segments.map((s) => s.name + '=' + s.elapsed + 'ms/' + s.budgetMs + 'ms').join('  '))
 if (!KEEP) {
   rmrf(TMP)
 } else {
@@ -514,6 +513,12 @@ if (!KEEP) {
 }
 
 console.log('=== sim gate: ' + passed + ' passed, ' + failed + ' failed ===')
+// Printed AFTER the summary on purpose: `tests/run-tests.mjs` keeps only the LAST stdout line of a passing
+// suite, so this is the one place where a full-suite run (T1 at concurrency 3) leaves its per-segment
+// timings behind. Without it the only k=3 timing evidence is a red drift line, i.e. we would learn what the
+// segments cost exactly when it is already too late to compare (RUN 269: one 14352 ms meeting-matrix spike
+// under four concurrent lanes, three dedicated k=3 runs green — the number we lacked was the cost, not the verdict).
+console.log('   segments: ' + segments.map((s) => s.name + '=' + s.elapsed + 'ms/' + s.budgetMs + 'ms').join('  '))
 if (failed > 0) {
   for (const f of failures) console.log('  failed: ' + f.label)
   process.exitCode = 1

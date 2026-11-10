@@ -170,7 +170,7 @@ let debateEnded = null
       if (state.value !== 'idle') throw refuse('VMU_STATE', 'this meeting was already convened', 'state=' + state.value)
       // A pause freezes the meeting's start too (docs/08 §5): control flow is not ledger-only.
       if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: this meeting cannot be convened',
-        'resume() first (vibe_vmu_control {action:"resume"})')
+        'REACHABLE INSTEAD: 用 vibe_vmu_control {action:"resume"} 解除内核暂停后重试本调用')
       const useRoster = Array.isArray(override) ? override.slice() : roster.slice()
       const verdict = await canConvene({ roster: useRoster, kind, agenda: agendaText })
       if (!verdict || verdict.ok !== true) {
@@ -236,7 +236,7 @@ let debateEnded = null
       if (typeof text !== 'string' || text.trim().length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'an input needs non-empty text')
       // CONTROL FLOW (docs/08 §5): a pause freezes the meeting too, not only the task ledger.
       if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: ' + String(member) + ' cannot speak',
-        'resume() first (vibe_vmu_control {action:"resume"})')
+        'REACHABLE INSTEAD: 用 vibe_vmu_control {action:"resume"} 解除内核暂停后重试本调用')
       // ROUND TIMEOUT (vmu.meetings.roundTimeoutMs; 0 = unlimited): the round's own openedAt is the datum.
       if (roundTimeoutMs > 0 && currentRound && currentRound.openedAt) {
         const elapsed = toMs(clock()) - toMs(currentRound.openedAt)

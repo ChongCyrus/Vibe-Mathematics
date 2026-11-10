@@ -66,6 +66,15 @@ const ENGINE_NEED = ENGINE_NEEDS.indexOf('xelatex') >= 0 ? 'xelatex' : (ENGINE_N
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
 const { str, has, refuse, refusalReceipt, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
+// ★★★ TB-2694 / F75-17 (MEASURED on the 75th real-machine run): `VMU_NO_SUCH_OBJECT` said "the roster holds the live ids" —
+// no tool name, no parameter name, no REACHABLE INSTEAD — so "copy the hint" was not an action a reader could take. One sentence
+// now, used by every roster-id refusal in this pack AND by kit/handlers.js#requireSpeaker: WHO reads it (the chair seat),
+// HOW to list it (vibe_v5_overview), HOW to pick a usable id (roster[].state === "live"), and what to do with it (inbox + retry).
+const ROSTER_ID_REACHABLE_HINT = 'REACHABLE INSTEAD: 先 vibe_v5_overview {member:"<你的 id>"}（主席席读名册：回执 roster[] 带 id/slot/state，挑 state:"live" 的那个），再 vibe_v5_inbox {action:"list", member:"<roster id>"} 确认这个名字收得到消息，然后用这个 id 重试本调用'
+// ★★★ TB-2694 / F75-17 (Lead-approved follow-up scope): two faces address the member through a parameter named `to`,
+// not `member`/`id`. A sentence that teaches the WRONG parameter is still not copyable, so those two sites name their
+// own parameter — HOW to find a live id is the same four steps, only the retry parameter differs.
+const ROSTER_TO_REACHABLE_HINT = (tool) => 'REACHABLE INSTEAD: 本面要的形参是 `to` — 先 vibe_v5_overview {member:"<你的 id>"}（主席席读名册：回执 roster[] 带 id/slot/state，挑 state:"live" 的那个），再 vibe_v5_inbox {action:"list", member:"<roster id>"} 确认这个名字收得到消息，然后用 to:"<roster id>" 重试 vibe_v5_' + tool
 // ★ RUN 85 / E17 (规则 L36「单次发言版群聊：每人各说一次、不打断」): THE ONE-SPEECH-PER-MEMBER ROUND.
 // The kit's `say` records a speech per call and knows nothing about rounds. The round rule is therefore a PACK
 // convention carried by KERNEL bookkeeping: `round` names a page of the chat ledger, the kernel records who spoke on
@@ -211,8 +220,14 @@ async function toolInbox(args = {}, { kernel } = {}) {
     const r = await list(member, { status })
     const rows = Array.isArray(r) ? r : Array.isArray(r && r.entries) ? r.entries : Array.isArray(r && r.rows) ? r.rows : []
     const urgency = urgencyById(kernel, member)
-    return { ok: true, tool: 'vibe_v5_inbox', action: 'list', member, status, count: rows.length, rows: rows.map((row) => inboxRow(row, urgency)),
-      note: 'rows carry NO body: triage by sender/time/subject/urgent/read/todo, then open ONE message; urgent:null means the face could not tell (not "not urgent")' }
+    // ★ TB-2691 / F75-13 — PASS THE SAME BLOCK THROUGH. The mailbox face answers "how many rows are still
+    // owed an ack" from exactly one producer (`noticeBlockOf` in kernel/mailbox.js, returned as
+    // `status().notice` AND `list().notice`). In run 75 the office had to hop to `vibe_vmu_mailbox status`
+    // to read that number because THIS face dropped it — the fix forwards the block untouched: no second
+    // sum, no perBox copy here (a second ruler is always a second answer).
+    const notice = r && r.notice ? r.notice : null
+    return { ok: true, tool: 'vibe_v5_inbox', action: 'list', member, status, count: rows.length, rows: rows.map((row) => inboxRow(row, urgency)), notice,
+      note: 'rows carry NO body: triage by sender/time/subject/urgent/read/todo, then open ONE message; urgent:null means the face could not tell (not "not urgent"). notice is the mailbox face own ack reading (unackedRowsAllBoxes / perBox / asOf / asOfSource), forwarded untouched' }
   }
   if (action === 'open') {
     if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'inbox open needs the message id', 'take it from the list rows')
@@ -659,7 +674,72 @@ export function foldedProofStateOf(rawState) {
   return raw === '' ? 'draft' : raw.toLowerCase()
 }
 
-export function proofGateOfStoredCard(fields = {}) {
+/**
+ * ★★★ RUN 2699 (F75-04, MEASURED on the 75th real-machine run): the pointer-state word `proofRefState` had TWO producers
+ * with DIFFERENT value ranges — the card-write receipt answered `resolved|missing|absent` from what the write itself had
+ * resolved, the stored-row read face answered `absent|missing|unknown` without resolving anything. One row therefore had
+ * two answers (a complete+locked card read `resolved` on the write receipt and `unknown` on the read face), and the write
+ * face could say `resolved` when NOTHING had been measured (no resolver, an absolute path, or a pointer naming a directory).
+ * There is now ONE producer below: `proofRefReadingOf` MEASURES a pointer (exactly once per face), `proofRefStateOf` JUDGES
+ * the reading into the four words, and every exit (write receipt, stored-row read face, settlement read-back) calls them.
+ * `unknown` is narrowed to mean exactly ONE thing: NOT CHECKED. A checked failure is `missing`.
+ */
+export function proofRefReadingOf(kernel, pointer) {
+  const raw = pointer === undefined || pointer === null ? '' : str(pointer).trim()
+  if (raw === '') {
+    return { checked: false, resolved: null, pointer: '', wellFormed: false, relativePath: null, bytes: null,
+      reason: 'no-pointer',
+      means: 'this call/row declares NO `proof_ref`, so there is no pointer to resolve — nothing was checked and nothing failed' }
+  }
+  const lib = kernel && kernel.library ? kernel.library : null
+  if (!lib || typeof lib.resolvePointer !== 'function') {
+    return { checked: false, resolved: null, pointer: raw, wellFormed: false, relativePath: null, bytes: null,
+      reason: 'no-resolver',
+      means: 'this kernel exposes no `library.resolvePointer`, so THIS face cannot resolve the pointer — the value is NOT CHECKED, not "checked and failed" (a checked failure is `missing`)' }
+  }
+  let out = null
+  try { out = lib.resolvePointer(raw) } catch (e) { out = null }
+  if (out === null || typeof out !== 'object') {
+    return { checked: false, resolved: null, pointer: raw, wellFormed: false, relativePath: null, bytes: null,
+      reason: 'resolver-failed',
+      means: 'the library resolver threw or returned no object, so the pointer was NOT checked — a checked failure would be `missing`' }
+  }
+  const resolved = out.resolved === true
+  return {
+    checked: true,
+    resolved,
+    pointer: raw,
+    wellFormed: out.wellFormed === true || out.ok === true,
+    relativePath: out.relativePath === undefined ? null : out.relativePath,
+    bytes: out.bytes === undefined ? null : out.bytes,
+    reason: resolved ? 'file' : String(out.reason || 'unresolved'),
+    libraryMeans: String(out.means || ''),
+  }
+}
+
+export function proofRefStateOf({ pointer = '', reading = null, source = 'stored-row-read' } = {}) {
+  const word = pointer === undefined || pointer === null ? '' : str(pointer).trim()
+  const sourceOut = source === undefined || source === null || String(source).trim() === '' ? 'stored-row-read' : String(source)
+  if (word === '') {
+    return { proofRefState: 'absent', proofRefStateChecked: false, proofRefStateSource: sourceOut,
+      proofRefStateMeans: '没有 `proof_ref` 可解析：这次调用（或这一行）没有申报指针，所以没有量可做，也没有失败。若本意是锁定这张卡，下一步是重新登记一张新卡：`vibe_v5_record_proposition {statement, value, motive, p, proof_ref:"Members/<成员>/Propos/<id>.md#正式证明", proof_state:"complete"}` —— 本行的指针不可改（records 每写一次新开一行）' }
+  }
+  if (reading === null || reading === undefined || reading.checked !== true) {
+    const why = reading === null || reading === undefined ? 'no-reading' : String(reading.reason || 'unchecked')
+    return { proofRefState: 'unknown', proofRefStateChecked: false, proofRefStateSource: sourceOut,
+      proofRefStateMeans: '未检查（NOT CHECKED）：' + why + ' —— 这个值表示「本面根本没有解析指针」，不是「查了但解析不了」（那是 `missing`）。下一步：用 `vibe_v5_read_library {card:"<id>"}` 读回这张卡（当前部署有库解析器时会给出 `resolved` 或 `missing`）；若读回仍是 `unknown`，说明这个内核没有 `library.resolvePointer`，换有解析器的部署再读写' }
+  }
+  if (reading.resolved === true) {
+    const bytesText = reading.bytes === null || reading.bytes === undefined ? '大小未知' : String(reading.bytes) + ' 字节'
+    return { proofRefState: 'resolved', proofRefStateChecked: true, proofRefStateSource: sourceOut,
+      proofRefStateMeans: '已检查：`proof_ref` 在库根内解析到真实文件（' + String(reading.relativePath || word) + '，' + bytesText + '）。这是 ' + sourceOut + ' 的读数；这张卡是否被规则 L14 锁定，读 `proofGate.locked`，不要读 `ok`' }
+  }
+  const reason = String(reading.reason || 'unresolved')
+  return { proofRefState: 'missing', proofRefStateChecked: true, proofRefStateSource: sourceOut,
+    proofRefStateMeans: '已检查，解析不到（reason=' + reason + '）。下一步：把证明文件写进**库根下的相对路径**（不是会话工作目录），例如 `Members/<成员>/Propos/<id>.md`，然后**登记一张新卡**：`vibe_v5_record_proposition {statement, value, motive, p, proof_ref:"Members/<成员>/Propos/<id>.md#正式证明", proof_state:"complete"}` —— 本行的指针不可改（records 每写一次新开一行）' }
+}
+
+export function proofGateOfStoredCard(fields = {}, opts = {}) {
   const rawState = fields.proofState
   const state = rawState === undefined || rawState === null ? '' : str(rawState).trim().toLowerCase()
   // the EFFECTIVE state: a stored row that declares nothing folds to the DEFAULT draft; a declared state is reported as
@@ -667,40 +747,52 @@ export function proofGateOfStoredCard(fields = {}) {
   const folded = foldedProofStateOf(rawState)
   const rawDeferred = fields.proofLockDeferred
   const deferredWord = rawDeferred === undefined || rawDeferred === null ? '' : str(rawDeferred).trim()
+  // ★★★ RUN 2699 (F75-04): the pointer-state word comes from the ONE judge, fed by a reading this face takes itself (or one
+  // the caller already took, e.g. the write face that just resolved the pointer). `locked`/`reason` keep their meanings.
+  const pointerWord = fields.proofRef === undefined || fields.proofRef === null ? '' : str(fields.proofRef).trim()
+  const readSource = opts.source === undefined || opts.source === null ? 'stored-row-read' : String(opts.source)
+  const reading = opts.reading !== undefined ? opts.reading : proofRefReadingOf(opts.kernel || null, pointerWord)
+  const pointerState = proofRefStateOf({ pointer: pointerWord, reading, source: readSource })
+  const finish = (gate) => Object.assign(gate, {
+    proofRefState: pointerState.proofRefState,
+    proofRefStateChecked: pointerState.proofRefStateChecked,
+    proofRefStateMeans: pointerState.proofRefStateMeans,
+    proofRefStateSource: pointerState.proofRefStateSource,
+  })
   if (state === '') {
-    return {
+    return finish({
       folded,
-      locked: false, reason: 'read-back-default-draft', proofRefState: 'absent',
+      locked: false, reason: 'read-back-default-draft',
       why: 'READ BACK from the stored row: it declares NO `proof_state` at all — a card without one is a DRAFT (the default) — so rule L14 (「登记即定稿」) does not lock it',
       nextMove: null,
       means: 'read proofGate.locked, not `ok`, to answer "is this card locked": the default is a DRAFT (nothing was declared), and this value was READ BACK from a stored row — reading it required no write and no settlement',
-    }
+    })
   }
   if (deferredWord !== '') {
-    return {
+    return finish({
       folded,
-      locked: false, reason: 'read-back-deferred', proofRefState: 'missing',
+      locked: false, reason: 'read-back-deferred',
       why: 'READ BACK from the stored row: it is declared complete but its lock is DEFERRED (' + deferredWord + ')',
       nextMove: 'the card is still writable: write the file the pointer names and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
       means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK from a stored row',
-    }
+    })
   }
   if (state !== PROOF_STATE_COMPLETE) {
-    return {
+    return finish({
       folded,
-      locked: false, reason: 'read-back-not-complete', proofRefState: 'absent',
+      locked: false, reason: 'read-back-not-complete',
       why: 'READ BACK from the stored row: it is declared "' + state + '", NOT a finished registration, so rule L14 does not lock it',
       nextMove: null,
       means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; only a registration declared finished is locked',
-    }
+    })
   }
-  return {
+  return finish({
     folded,
-    locked: true, reason: 'read-back-complete', proofRefState: 'unknown',
+    locked: true, reason: 'read-back-complete',
     why: 'READ BACK from the stored row: it is declared finished and the lock is on',
     nextMove: null,
     means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK from a stored row',
-  }
+  })
 }
 
 /**
@@ -854,6 +946,77 @@ function toolHelp(args = {}, exec = {}) {
       ? 'the MEASURED set: the names a live Agent for this member actually exposes right now (the host\'s visible-tools wire), which is a different question from `declarationSet` — a governed seat may be denied by the meeting type, and a non-live seat has no wire at all'
       : '`count:null` here is NOT "sees nothing": the MEASURED set needs a live Agent and there is none, so it is null on purpose and `refusal` says which of the two session facts it is. The DECLARED set in `declarationSet` is readable with no session and is what the institution says this seat may call',
   }
+  // ★★★ TB-2694 / F75-07 (MEASURED on the 75th real-machine run): a temp seat's `tool_help` printed
+  // `declarationSet` (8 allowed of 48 declared) beside `measuredSet` (40 rows on the wire) and NAMED the difference
+  // nowhere, so the only reading a member could take away was "40 tools are mounted and I hold 8 permissions". The two
+  // numbers are two different questions, and this block makes the difference a readable fact in BOTH directions:
+  //   · `wireOnly`        = measured − declaration: rows the WIRE offers that this seat's declared face does not name;
+  //   · `declarationOnly` = declaration − measured: rows the seat's declared face allows that this wire does not carry.
+  // Neither direction is a permission verdict. A row can be wireOnly because the v5r seat table does not govern it at all
+  // (a framework or host face — the call-time gate decides that row), and it can be declarationOnly because a seat face,
+  // a turn override or a missing host catalogue kept it off this wire. The rows say WHICH of those it is (`why`), so a
+  // reader reconciles 40-vs-8 instead of guessing — "mounted" is not "authorized", and "declared" is not "mounted".
+  const measuredNames = measuredCount === null
+    ? null
+    : view.tools.map((t) => (t && typeof t === 'object' ? t.name : t)).filter((n) => typeof n === 'string' && n !== '')
+  const declaredAllowedNames = declarationSet.tools === null ? null : declarationSet.tools
+  const wireOnlyNames = measuredNames === null || declaredAllowedNames === null
+    ? null
+    : measuredNames.filter((n) => !declaredAllowedNames.includes(n))
+  const declarationOnlyNames = measuredNames === null || declaredAllowedNames === null
+    ? null
+    : declaredAllowedNames.filter((n) => !measuredNames.includes(n))
+  const wireRowOf = (name) => {
+    const declared = declaredToolNames.includes(name)
+    return {
+      name,
+      // `governed` = the v5r seat table has an opinion about this name at all. `false` means the row is a framework or
+      // host face the pack never declares — it is on the wire because the host offers it, not because the pack allowed it.
+      governed: declared,
+      why: declared
+        ? 'declared by the pack but not in this seat\'s DECLARED face — on the wire it must be read as offered, and the call-time face gate decides the call'
+        : 'outside the v5r pack declaration (a framework/host face): the seat table does not govern it, so neither side of this receipt is a permission for it',
+      deniedBy: declared ? { face: 'v5r#seat-faces.js', slot: seatOfMember === '' ? null : seatOfMember } : null,
+    }
+  }
+  const declarationRowOf = (name) => ({
+    name,
+    why: 'the seat\'s DECLARED face allows this name and this wire does not carry it — read `measuredSet.hidden` for the named reason (seat/turn/catalogue); a declaration is a permission, not proof the host offered it on this turn',
+  })
+  const wireOnly = wireOnlyNames === null
+    ? {
+      available: false,
+      count: null,
+      tools: null,
+      rows: null,
+      measuredCount: null,
+      declaredAllowedCount: declarationSet.allowCount,
+      means: 'no live Agent, so there is no wire to compare with the declaration: `count:null` says "not measurable here", it never claims the difference is 0 (the declaration side is still readable in `declarationSet`)',
+    }
+    : {
+      available: true,
+      count: wireOnlyNames.length,
+      tools: wireOnlyNames,
+      rows: wireOnlyNames.map(wireRowOf),
+      measuredCount: measuredNames.length,
+      declaredAllowedCount: declaredAllowedNames.length,
+      means: 'rows this member\'s LIVE wire offers that its DECLARED face does not name. This is the 40-vs-8 reconciliation: for the temp seat on the 75th run the wire carried 40 rows and the declared face named 8, because the other 32 are framework/host faces (`governed:false`) the v5r seat table does not govern. Seeing a row here is NOT permission and not a refusal — the call-time gate decides each row (e.g. `vibe_vmu_vote`/`vibe_vmu_meeting` are refused to a temp seat by their own faces, measured on that same run)',
+    }
+  const declarationOnly = declarationOnlyNames === null
+    ? {
+      available: false,
+      count: null,
+      tools: null,
+      rows: null,
+      means: 'no live Agent, so the declaration cannot be compared with a wire: read `declarationSet` alone, and read this field only when a wire exists',
+    }
+    : {
+      available: true,
+      count: declarationOnlyNames.length,
+      tools: declarationOnlyNames,
+      rows: declarationOnlyNames.map(declarationRowOf),
+      means: 'rows the seat\'s DECLARED face allows that this wire does not carry. A governed seat with a complete wire reports 0 here; a nonzero count points at `measuredSet.hidden` (seat) or at a host catalogue that does not publish the name (catalogue)',
+    }
   // ★★★ TASK-12 SUPPLEMENT (Lead, run 31 follow-up): THE SAME RUN COULD GIVE TWO ANSWERS TO "CAN I SEE MY OWN TOOLS".
   // `vibe_vmu_tools` (tools/member-tools.js) now names the VOICE and the READING SCOPE on every answer — `voice`,
   // `readingScope`, `callerIsThisMember`, `memberSession` + their means — while this forwarder returned the raw
@@ -900,6 +1063,13 @@ function toolHelp(args = {}, exec = {}) {
     declarationSetMeans: declarationSet.means,
     measuredSet,
     measuredSetMeans: measuredSet.means,
+    // ★★★ TB-2694 / F75-07: the named, counted reconciliation between the wire and the declaration (see the block above
+    // `measuredSet`). Always present; `available:false` on a session-less kernel rather than a 0 that would read as "no
+    // difference".
+    wireOnly,
+    wireOnlyMeans: wireOnly.means,
+    declarationOnly,
+    declarationOnlyMeans: declarationOnly.means,
     refusal: sessionRefusal === null ? (view && view.refusal ? view.refusal : null) : sessionRefusal,
     providerRefusal,
     // ★★★ RUN 254 (F-73-02): ALWAYS present (true/false), so "was the provider code translated" is answerable on all three
@@ -925,7 +1095,7 @@ async function toolAssign(args = {}, { kernel } = {}) {
   const to = str(args.to)
   const roster = membersOf(kernel).roster()
   if (!roster.some((m) => m.id === to)) {
-    throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + to + '" on this roster', 'the roster holds ' + roster.length + ' member(s)')
+    throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + to + '" on this roster', ROSTER_TO_REACHABLE_HINT('assign'))
   }
   const tasks = tasksOf(kernel)
   let taskId = has(args.task_id) ? str(args.task_id) : null
@@ -1019,7 +1189,7 @@ async function toolFire(args = {}, { kernel, exec = null } = {}) {
   const id = str(args.id)
   const roster = membersOf(kernel).roster()
   const row = roster.filter((m) => m.id === id)[0]
-  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', 'the roster holds the live ids')
+  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', ROSTER_ID_REACHABLE_HINT)
   const targetSeat = str(row.slot)
   // ── the caller: the turn-tool record, never `args.member` (model-typed text) ─────────────────────────────────
   const caller = resolveTurnMember(kernel, exec)
@@ -1125,7 +1295,7 @@ function toolNudge(args = {}, { kernel } = {}) {
   const to = str(args.to)
   const roster = membersOf(kernel).roster()
   const row = roster.filter((m) => m.id === to)[0]
-  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + to + '" on this roster', 'the roster holds ' + roster.length + ' member(s)')
+  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + to + '" on this roster', ROSTER_TO_REACHABLE_HINT('nudge'))
   if (!kernel.mailbox || typeof kernel.mailbox.send !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no mailbox face is published, so a nudge cannot be delivered', 'assemble a kernel with the mailbox service')
   }
@@ -1174,7 +1344,6 @@ async function toolPrioritize(args = {}, { kernel } = {}) {
   const archived = recordsOf(kernel).put({
     track: 'state', kind: 'decision', title: 'priorities: ' + order.length + ' task(s)',
     body: 'why：' + str(args.why) + '\norder：' + order.map((r, i) => (i + 1) + '. ' + str(r.task_id) + ' (priority ' + str(r.priority) + ')').join('\n'),
-    settled: false, by: str(args.member) || 'vibe_v5_prioritize',
   })
   // ★★★ THE ORDER IS NOW APPLIED, NOT ONLY ARCHIVED. This face used to record the order and say, in its own note, that the
   // kernel had no operation for changing an existing task's priority - so an agent set priorities, read the board back, saw
@@ -1274,16 +1443,18 @@ function toolFeedback(args = {}, { kernel, callerMember } = {}) {
       'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'recommendation：' + bodyAction,
       'assessment：' + str(args.assessment)].filter((l) => !l.endsWith('：')).join('\n')
     const author = authorOf()
-    const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: author })
-    return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: 'open' }
+    const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, by: author })
+    return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: 'open',
+    finalAck: written && written.finalAck === true, finalAckSource: written ? written.finalAckSource : null, finalAckMeans: written ? written.finalAckMeans : null }
   }
   if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'feedback update needs id', 'pass id:"<feedback record id>"')
   const body = ['status：' + (has(args.status) ? str(args.status) : 'closed'), 'outcome：' + str(args.outcome), 'note：' + str(args.note)]
     .filter((l) => !l.endsWith('：')).join('\n')
   const author = authorOf()
   const written = records.put({ id: str(args.id), track: 'feedback', kind: 'feedback', title: str(args.id), body,
-    settled: has(args.status) && str(args.status) === 'closed', by: author })
-  return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: has(args.status) ? str(args.status) : 'closed' }
+    finalAck: has(args.status) && str(args.status) === 'closed', by: author })
+  return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: has(args.status) ? str(args.status) : 'closed',
+    finalAck: written && written.finalAck === true, finalAckSource: written ? written.finalAckSource : null, finalAckMeans: written ? written.finalAckMeans : null }
 }
 
 // ── ★ PHASE 12 / B10: THE SCRIPT ARCHIVE (归档/复算) ───────────────────────────────────────────────────────────────
@@ -1392,13 +1563,14 @@ function toolScript(args = {}, { kernel, exec } = {}) {
       title: archiveName,
       body, // verbatim: read-back must return the same bytes
       tags,
-      settled: true,
+      finalAck: true,
       by: has(args.member) ? str(args.member) : null,
       bySource: has(args.member) ? 'argument' : 'unknown',
     })
     return {
       ok: true, tool: 'vibe_v5_script', op, track: SCRIPTS_TRACK,
       recordId: written && written.id, name: archiveName,
+      finalAck: written && written.finalAck === true, finalAckSource: written ? written.finalAckSource : null,
       // ★ RUN 239-E: where the archived bytes came from — null when the caller carried them with name+text.
       fromRecord,
       source,
@@ -1506,7 +1678,7 @@ function requireSeat(kernel, member, what) {
   const id = str(member).trim()
   if (!id) throw refuse('VMU_INVALID_ARGUMENT', what + ' needs the acting member id', 'pass member:"<roster id>" (a pack handler has no agent→member map)')
   const row = seatOf(kernel, id)
-  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', 'the roster holds the live ids')
+  if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', ROSTER_ID_REACHABLE_HINT)
   return row
 }
 function requireChairSeat(kernel, member, what) {
@@ -1562,7 +1734,7 @@ function requireConsultAnswerer(kernel, member) {
   if (row.onRoster === false) return row
   if (row.state !== undefined && String(row.state) !== 'live') {
     throw refuse('VMU_STATE', 'member "' + String(row.id) + '" is ' + String(row.state) + ', so it cannot answer the office consult',
-      'the roster holds the live ids (roster() reports state); seat a live office member, or answer from one')
+      ROSTER_ID_REACHABLE_HINT)
   }
   const who = [String(row.id), String(row.slot)].filter((x) => x !== '')
   const hit = PAPER_CONSULT_ROLES.filter((r) => who.includes(String(r)))[0]
@@ -2274,13 +2446,16 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
       id, track, kind,
       title: str(row.title) || fallbackTitle || id,
       body: nextBody,
-      settled: value === 1 || value === 0,
+      finalAck: value === 1 || value === 0,
       by: writer, bySource: writerSource,
     })
   }
   return {
     ok: true, track, kind, recordId: (wrote && wrote.id) || id, rev: (wrote && wrote.rev) || null, id,
     settled: true, p: value, ruling: rulingRow, rulingReplaced: droppedEarlierRuling,
+    // TB-2700: the settlement receipt names the write admission and WHO made it - the card receipt merges only this block,
+    // so a source that lived only in the put receipt would disappear from what the caller actually reads.
+    finalAck: wrote ? wrote.finalAck === true : null, finalAckSource: wrote ? wrote.finalAckSource : null,
     // ★★★ RUN 249 (F-05): WHO this settlement attributed the row to, and WHERE that name came from. A source word is
     // never reported as an author: `writer:null` + `writerSource:"unknown"` is the honest answer when nobody was nameable.
     writer, writerSource, writerSourceMeans,
@@ -2298,6 +2473,7 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
         ? 'the card LINES: only the p row is rewritten and one debateRuling row is replaced' + (p1Evidence !== null ? ' (plus the p1Evidence row, which names the evidence form that admitted p=1)' : '') + '; every other line (title, statement/value/motive, proofRef, proofState, leanJob, leanConformance) is byte-identical, and the record keeps its id/slug/createdAt while gaining one version entry — so the rule-L14 lock still bites'
         : 'the card LINES are preserved (only the p row is rewritten and one debateRuling row added/replaced), but this records face has no supersede(): the row was re-put, so its rev/createdAt/slug are rebuilt by the records face — read the card by id, not by slug or createdAt',
       record: { id: (wrote && wrote.id) || id, rev: (wrote && wrote.rev) || null, mode },
+      finalAck: wrote ? wrote.finalAck === true : null, finalAckSource: wrote ? wrote.finalAckSource : null,
       // ★★ RUN 201 (run 40 / FEEDBACK39 2.4): a FIRST write of a card read settlement.record:{rev:2, mode:"supersede"} and
       // looked like an overwrite of something that was never there. rev is the record version counter; the count of writes
       // this CALL made is a separate fact and is printed as such.
@@ -2424,6 +2600,9 @@ function gatedCardHandler(toolName) {
     // ★ PHASE 12 / B6 声明层：卡上的 `proofRef`/`proofState` 是**作者自述**（"我的证明写在哪、写完了没有"）。
     // ★★★ RUN 210 (run 47 / FEEDBACK46 1.3, MEASURED): what this write had to DOWNGRADE, if anything.
     let proofStateDowngraded = null
+    // ★★★ RUN 2699 (F75-04): the ONE measurement of this write's pointer — taken here, reused by the gate and by every
+    // pointer-state exit below, so "did this write check the file" has one answer.
+    let proofRefReading = null
     if (has(args.proof_ref) || has(args.proof_state)) {
       // ★ WAVE 2 (audit C6a): the value is CASE-FOLDED to the two words the face publishes — "COMPLETE" was rejected
       // by the old string comparison while "complete" was accepted, so the same state read as an unknown word.
@@ -2452,14 +2631,20 @@ function gatedCardHandler(toolName) {
       // finished proof, shape-checked), and that is not this fix's business. What must not happen is the LOCK: a complete
       // card is locked by L14, and locking it on a pointer that resolves to NOTHING makes the pointer uncorrectable.
       // So the write records `proofLockDeferred` (the reason) and the lock check below skips a card that carries it.
-      if (payload.proofState === PROOF_STATE_COMPLETE && payload.proofRef !== undefined && kernel && kernel.library && typeof kernel.library.resolvePointer === 'function') {
-        const pwResolution = kernel.library.resolvePointer(str(payload.proofRef))
-        if (pwResolution && pwResolution.ok === true && pwResolution.exists !== true) {
+      if (payload.proofState === PROOF_STATE_COMPLETE && payload.proofRef !== undefined) {
+        // ★★★ RUN 2699 (F75-04): ONE reader for the pointer. Before, only `ok===true && exists!==true` downgraded, so an
+        // absolute path, an escape, or a pointer naming a DIRECTORY was recorded as `resolved` although nothing resolved;
+        // and a kernel without `resolvePointer` did not measure at all yet still printed `resolved`. Now the measurement is
+        // always taken (the reading records "not checked" honestly) and ANY checked and unresolved pointer defers the lock.
+        const pointerWord = str(payload.proofRef).trim()
+        proofRefReading = proofRefReadingOf(kernel, pointerWord)
+        if (proofRefReading.checked === true && proofRefReading.resolved !== true) {
+          const reasonWord = String(proofRefReading.reason || 'missing')
           proofStateDowngraded = {
-            kind: 'lock-deferred', reason: String(pwResolution.reason || 'missing'),
-            pointer: String(pwResolution.relativePath === undefined ? str(payload.proofRef) : pwResolution.relativePath),
+            kind: 'lock-deferred', reason: reasonWord,
+            pointer: String(proofRefReading.relativePath === null || proofRefReading.relativePath === undefined ? pointerWord : proofRefReading.relativePath),
           }
-          payload.proofLockDeferred = 'pointer:' + String(pwResolution.reason || 'missing')
+          payload.proofLockDeferred = 'pointer:' + reasonWord
         }
       }
       args = Object.assign({}, args, { payload })
@@ -2757,9 +2942,9 @@ function gatedCardHandler(toolName) {
         proofLockDeferred: deferredWord !== '',
         proofLockDeferredReason: deferredWord === '' ? null : deferredWord,
         rev: row.rev === undefined || row.rev === null ? null : row.rev,
-        // ★★★ RUN 252 (F72-8): the settlement read-back no longer re-implements the gate — it calls the ONE reader of a
-        // stored row (`proofGateOfStoredCard`), which the ordinary read face also calls. One fact, one implementation.
-        gate: proofGateOfStoredCard(fields),
+        // ★★★ RUN 252 (F72-8) + RUN 2699 (F75-04): the settlement read-back calls the ONE stored-row reader, and it feeds
+        // it a measurement of the stored pointer so the pointer-state word there is a checked reading, not a guess.
+        gate: proofGateOfStoredCard(fields, { reading: proofRefReadingOf(kernel, fields.proofRef), source: 'settlement-read-back' }),
       }
     })() : null
     const proofStateOut = settlementReadback !== null ? settlementReadback.proofState
@@ -2791,13 +2976,12 @@ function gatedCardHandler(toolName) {
       const p = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload) ? args.payload : null
       return p && p.proofRef !== undefined && p.proofRef !== null ? str(p.proofRef).trim() : ''
     })()
-    const proofRefStateOut = settlementReadback !== null
-      // ★★★ RUN 252 (F72-8): also from the one stored-row reader, so "was there a pointer to lock it against" cannot
-      // drift between a read-back receipt and a plain read of the same row.
-      ? settlementReadback.gate.proofRefState
-      : (declaredProofStateFolded !== PROOF_STATE_COMPLETE
-        ? 'absent'
-        : (proofStateDowngraded !== null ? 'missing' : (declaredProofRefWord !== '' ? 'resolved' : 'absent')))
+    // ★★★ RUN 2699 (F75-04): the pointer-state word is JUDGED once, from the ONE measurement taken above (or, for a
+    // settlement, from the stored-row reader). The four words keep their names; `unknown` now means exactly "not checked".
+    const writeProofReading = declaredProofRefWord !== ''
+      ? (proofRefReading !== null ? proofRefReading : proofRefReadingOf(kernel, declaredProofRefWord))
+      : proofRefReadingOf(null, '')
+    const writeProofStateOut = proofRefStateOf({ pointer: declaredProofRefWord, reading: writeProofReading, source: 'write-resolution' })
     // ★★★ RUN 251 (F71-3, MEASURED on the 71st real-machine run): the DEFAULT card (no `proof_state`, no proof fields at
     // all) came back `proofGate:null`, so the one receipt a reader has for "may I still change this card?" answered
     // nothing — measured on run 71's C3: a default draft was filed and the gate was a null. The invariant is now stated
@@ -2809,26 +2993,24 @@ function gatedCardHandler(toolName) {
       // read-back after a settlement must never be able to disagree about the same row.
       ? settlementReadback.gate
       : (declaredProofState === ''
-        ? { locked: false, reason: 'default-draft', proofRefState: 'absent',
+        ? { locked: false, reason: 'default-draft',
             why: 'this write declares NO `proof_state` — a card filed without one is a DRAFT (the default), and rule L14 (「登记即定稿」) locks only a finished registration, so this card is NOT locked and stays writable',
             nextMove: null,
             means: 'read proofGate.locked, not `ok`, to answer "is this card locked": the default is a DRAFT, and a receipt that prints proofGate:null leaves that question unanswered (RUN 251 / F71-3)' }
         : (declaredProofStateFolded !== PROOF_STATE_COMPLETE
           ? { locked: false,
               reason: declaredProofStateFolded === 'draft' ? 'declared-draft' : 'declared-not-complete',
-              proofRefState: 'absent',
               why: 'this write declares the proof as "' + declaredProofState + '", NOT complete: rule L14 (「登记即定稿」) locks only a COMPLETE registration, so this card stays writable',
               nextMove: null,
               means: 'read proofGate.locked, not `ok`, to answer "is this card locked": a draft (or any non-complete state) is NOT locked — a receipt that says locked:true beside proof_state:"draft" would report a registration that never happened' }
           : (proofStateDowngraded === null
             ? { locked: true, reason: 'complete-and-resolved',
-                proofRefState: declaredProofRefWord !== '' ? 'resolved' : 'absent',
                 why: declaredProofRefWord !== ''
                   ? 'the declared proof is complete and its own `proof_ref` resolves inside the library'
                   : 'the declared proof is complete and NO `proof_ref` was declared — the registration itself (with the Lean/conformance evidence this write carried) is what rule L14 locks',
                 nextMove: null,
                 means: 'locked:true means the LOCK is on this row; a later write cannot re-point it - file a new card to change the proof' }
-            : { locked: false, reason: 'complete-but-pointer-unresolved', proofRefState: 'missing',
+            : { locked: false, reason: 'complete-but-pointer-unresolved',
                 why: 'the card is filed AS DECLARED (complete), but its own `proof_ref` does not resolve inside the library (' + String(proofStateDowngraded.reason) + '): rule L14 will not lock a pointer that could never be corrected',
                 nextMove: 'write the file into the library (or point at a record id) and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
                 means: 'read proofGate.locked, not `ok`, to answer "is this card locked": `ok:true` only says the card was filed' })))
@@ -2838,7 +3020,16 @@ function gatedCardHandler(toolName) {
     // still carried `proofLockDeferred:pointer:missing` - so "settled at p=1" and "the proof was never there" sat in one
     // receipt with nothing naming their coexistence. A reader concluded the conclusion was verified. These two fields put the
     // card's OWN gate next to the settlement, in one place, and name the unresolved pointer instead of leaving it in prose.
-    const p1ProofGateOut = p1Form === null ? null : proofGateOut
+    // ★★★ RUN 2699 (F75-04): ONE pointer-state word on this receipt. The gate branches above describe the LOCK; the
+    // pointer state is the measurement, and a write face that measured the pointer must not defer to a constant it wrote
+    // in the branch (that was the second producer). For a settlement the stored-row reader already judged it.
+    const proofGateFinal = Object.assign({}, proofGateOut, {
+      proofRefState: settlementReadback !== null ? proofGateOut.proofRefState : writeProofStateOut.proofRefState,
+      proofRefStateChecked: settlementReadback !== null ? proofGateOut.proofRefStateChecked : writeProofStateOut.proofRefStateChecked,
+      proofRefStateMeans: settlementReadback !== null ? proofGateOut.proofRefStateMeans : writeProofStateOut.proofRefStateMeans,
+      proofRefStateSource: settlementReadback !== null ? proofGateOut.proofRefStateSource : writeProofStateOut.proofRefStateSource,
+    })
+    const p1ProofGateOut = p1Form === null ? null : proofGateFinal
     const p1ProofUnresolved = p1Form === null
       ? null
       : (p1ProofGateOut === null ? null : p1ProofGateOut.locked !== true)
@@ -2877,13 +3068,18 @@ function gatedCardHandler(toolName) {
       // pointer that does not resolve came back `ok:true` + `proofState:"complete"` + `proofLockDeferred:true`. Every field was
       // true, and the receipt still read like "rule L14's lock is on". `ok` answers "was the card filed"; nothing answered
       // "is it locked". This block answers exactly that, in one value, and names the one move that can lock it.
-      proofGate: proofGateOut,
+      proofGate: proofGateFinal,
       // ★★★ RUN 252 (F72-2): the gate answers "locked?", this note answers "why, in a sentence that travels with the
       // receipt" — including the DEFAULT draft, where the receipt used to carry no note at all.
-      lockNote: proofLockNoteOf({ gate: proofGateOut, declaredState: proofStateOut }),
-      // ★★★ RUN 249 (F-06/D): the state of the pointer the gate actually read, next to the gate — so "is it locked"
-      // and "was there a pointer to lock it against" are both readable from one receipt (resolved|missing|absent|unknown).
-      proofRefState: proofRefStateOut,
+      lockNote: proofLockNoteOf({ gate: proofGateFinal, declaredState: proofStateOut }),
+      // ★★★ RUN 249 (F-06/D) + RUN 2699 (F75-04): the state of the pointer this call actually MEASURED, next to the gate,
+      // so "is it locked" and "was the pointer checked, and what did it name" are both readable from one receipt. The word
+      // is one of resolved|missing|absent|unknown, and `unknown` now means exactly "NOT CHECKED" (with the next move in
+      // `proofRefStateMeans` and the read-out path in `proofRefStateSource`).
+      proofRefState: proofGateFinal.proofRefState,
+      proofRefStateChecked: proofGateFinal.proofRefStateChecked,
+      proofRefStateMeans: proofGateFinal.proofRefStateMeans,
+      proofRefStateSource: proofGateFinal.proofRefStateSource,
       proofStateEvidence: settlementReadback === null ? proofStateEvidence : null,
       proofStateEvidenceMeans: settlementReadback === null ? undefined
         : 'null ON PURPOSE: a settlement verifies nothing, so there is no evidence block for THIS call to report - the card\'s own proof lines are unchanged (see settlement.preserved) and were read back into proofState/proofGate',
@@ -4628,12 +4824,12 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   const lateAdmissionRaw = has(args.lateAdmission) ? args.lateAdmission : null
   if (lateAdmissionRaw !== null && typeof lateAdmissionRaw !== 'string') {
     throw refuse('VMU_INVALID_ARGUMENT', 'lateAdmission must be a string; got ' + typeof lateAdmissionRaw,
-      'pass lateAdmission:"open"|"chair"|"refuse" - open seats a late arrival (late:true), chair holds it at the door until the chair calls admit() (this is the DEFAULT), refuse refuses it by name with the two repairs')
+      'REACHABLE INSTEAD: 调 vibe_vmu_meeting {action:"attend"} 时把 lateAdmission 写成 "open"|"chair"|"refuse" — "open" 直接放行（late:true），"chair" 是默认（把人挡在门口，等主席调 vibe_vmu_meeting {action:"admit", id:"<会议 id>", member:"<迟到成员 id>"} 放行），"refuse" 具名拒绝并给两条修法')
   }
   const lateAdmission = lateAdmissionRaw === null ? null : lateAdmissionRaw.trim()
   if (lateAdmission === '') {
     throw refuse('VMU_INVALID_ARGUMENT', 'lateAdmission was given but names no policy',
-      'pass lateAdmission:"open"|"chair"|"refuse" - or omit lateAdmission entirely (the kernel default is "chair": a late arrival is held at the door until the chair calls admit())')
+      'REACHABLE INSTEAD: 把 lateAdmission 写成 "open"|"chair"|"refuse" 三者之一，或整项省略（内核默认 "chair"：迟到的席位被挡在门口，等主席调 vibe_vmu_meeting {action:"admit", id:"<会议 id>", member:"<迟到成员 id>"} 放行）')
   }
   // ★★ ROUND 33 / P2-③: 「允许一次性连排多会议」was a MECHANISM THE RULE NAMES AND NO FACE COULD REACH. The kernel
   // side has been there since D6 — `kernel/meetings.js:2100 openSeq({ sequence })` takes the list of meetings that
@@ -6294,7 +6490,7 @@ function projectPdfBlock(pdf, target) {
  * capability was added here: a finalisation without a PDF is an honest outcome on a machine with no LaTeX — what
  * the corpus measured missing was the READING, not the ability.
  */
-const PAPER_OK_MEANS = 'ok:true means the REQUEST was accepted and executed; it does NOT mean the paper is done. Read `complete` (final/render), `renderOk` (render), `missing` (what this request needed and did not get) and `toolchainAbsent` (what the MACHINE lacks). `ok:true` with `complete:false` is a normal reading — e.g. a finalisation on a machine with no LaTeX.'
+const PAPER_OK_MEANS = 'ok:true means the REQUEST was accepted and executed; it does NOT mean the paper is done. ★ `complete` is NOT ONE QUESTION across these doors: on `status` and `render` it asks whether the four ARCHIVE ROWS (md/tex/meta/pdf) are NAMED (on render it is the same value as `renderOk`); on `final` it asks whether the finalisation RAN and the pdf FILE exists. Read `completeMeans` on the receipt you hold instead of carrying the word between doors, and read `renderOk` (render), `missing` (what this request needed and did not get), `archiveArtifacts` (the row set under its own name) and `toolchainAbsent` (what the MACHINE lacks). `ok:true` with `complete:false` is a normal reading — e.g. a finalisation on a machine with no LaTeX.'
 
 async function toolPaper(args = {}, { kernel } = {}) {
   const action = str(args.action || 'status')
@@ -6423,6 +6619,16 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // read, so the receipt cannot disagree with itself about which row wrote the file.
       const compiledRow = (() => { try { return got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null } catch (e) { return null } })()
       const compiledProduced = compiledRow !== null
+      // ★★★ RUN 2691 (TB-2691 / F75-15): IS THE FILE ON DISK STILL THE FILE THE ROW RECORDED? The row carries the sha256
+      // the compile counted (same buffer as `pdfBytes`); this read hashes the disk file once. Either side `null` is named
+      // absence — never "matches". A mismatch is the tamper/permission case: the row says which bytes, the disk says other.
+      const pdfDisk = (compiledRow && compiledRow.pdfPath && kernel && kernel.latex && typeof kernel.latex.pdfReading === 'function')
+        ? await kernel.latex.pdfReading(compiledRow.pdfPath)
+        : { ok: false, exists: false, pdfBytes: null, pdfSha256: null, why: 'this kernel has no latex.pdfReading face, so the disk file could not be read' }
+      const pdfRowSha = compiledRow && compiledRow.pdfSha256 !== undefined && compiledRow.pdfSha256 !== null ? String(compiledRow.pdfSha256) : null
+      const pdfDiskSha = pdfDisk && pdfDisk.pdfSha256 !== undefined && pdfDisk.pdfSha256 !== null ? String(pdfDisk.pdfSha256) : null
+      const pdfSha256MatchesDisk = pdfRowSha === null || pdfDiskSha === null ? null : pdfRowSha === pdfDiskSha
+      const pdfSha256Mismatch = pdfSha256MatchesDisk === false
       return { ok: true, tool, action, target, exists,
         // ★★★ RUN 256 (TB-2624 item 1): the same four environment keys, same names, at the TOP level of this door too.
         ...envRead,
@@ -6502,10 +6708,17 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // compiled pdf answers `missing: []` (the compile needed no archive row), and the artifact ROWS travel as
         // `archiveArtifacts`. A paper with no compile on file still names the rows it lacks (RUN 183: a write-stage paper
         // must name them), and `missingMeans` says which of the two readings the caller is holding.
-        missing: compiledProduced ? [] : (artifacts ? artifacts.missing.slice() : []),
+        // ★★★ TB-2691 correction (MEASURED on run 252): `pdfSha256` is EVIDENCE about the ledger row, not an INPUT the
+        // compile lacked. RUN 2691 put it in this list, which re-opened the very contradiction F72-7 closed — a receipt
+        // reading `produced:true` beside `missing:["pdfSha256"]`. The absence is named where it belongs: `pdfCompiled.
+        // pdfSha256:null` plus `pdfSha256Means` ("treat the byte count as a claim"). This list stays ACTION-scoped, which
+        // is the one thing its readers (compile/final/status) may compare.
+        missing: compiledProduced
+          ? []
+          : (artifacts ? artifacts.missing.slice() : []),
         complete: artifacts ? artifacts.complete === true : false,
         missingMeans: compiledProduced
-          ? 'empty because a compile IS on file for this paper: nothing this read needed is missing. The artifact ROWS are `archiveArtifacts` (e.g. `tex` is absent there for an md-format paper even after a successful compile) — two different questions (RUN 252 / F72-7)'
+          ? 'empty because a compile IS on file for this paper: nothing this read needed is missing. The artifact ROWS are `archiveArtifacts` (e.g. `tex` is absent there for an md-format paper even after a successful compile) — two different questions (RUN 252 / F72-7). The LEDGER-EVIDENCE question (does the row carry `pdfSha256`, does it still match the disk) is answered by `pdfCompiled.pdfSha256`/`pdfSha256MatchesDisk`/`pdfSha256Means`, never by this list (TB-2691 correction)'
           : 'no compile is on file for this paper, so this list names the artifact ROWS that are absent (a write-stage paper reports md, tex, pdf, meta until render writes them). `archiveArtifacts` carries the same rows under their own name; `pdfCompiled.produced` is the file question, not this one',
         archiveArtifacts: archiveArtifactsReading(artifacts),
         // ★★★ RUN 255 / TB-2613: the OWNERSHIP question, under the same name on every read face. A paper artifact is a
@@ -6560,10 +6773,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
           // `compiledPdfRow`, which OPENS each candidate row, so the error cannot be repeated one call deeper.
           let ledger = compiledRow
           if (!ledger) {
-            return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, engine: null,
+            return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, pdfSha256: null, engine: null,
               // ★★★ RUN 249 (F-08): no ledger row ⇒ NO record can name the file on disk. Stated as a field (not silence)
               // so a reader never has to infer "recordId:null" means "the file exists but no row wrote it".
               diskFileFromRecord: null, diskFileBytes: null,
+              diskPdfSha256: null, diskPdfBytes: null, pdfSha256MatchesDisk: null, pdfSha256Mismatch: false,
+              pdfSha256Means: 'there is no compile row, so no file hash can be compared: `produced:false` and a null hash are the honest answer (RUN 2691 / F75-15)',
               diskFileFromRecordMeans: 'there is NO compile ledger row, so no record can name the file on disk: `produced:false` is the honest answer, and a paper whose `final` reported a PDF while this row is missing is a named gap, not an empty one',
               means: 'no compile is on file for this paper (the `paper` track holds no `paper-pdf` row named after this paper id or target); `final` compiles, `compile` re-typesets an already-finalized paper — and a paper whose `final` reported a PDF but whose ledger row is missing is a named gap, not an empty one' } }
           }
@@ -6584,6 +6799,22 @@ async function toolPaper(args = {}, { kernel } = {}) {
             pdfPath: ledger.pdfPath === undefined ? null : ledger.pdfPath,
             pdfBytes: ledger.pdfBytes === undefined ? null : ledger.pdfBytes,
             engine: ledger.engine === undefined ? null : ledger.engine,
+            // ★★★ RUN 2691 (TB-2691 / F75-15): the file's sha256, as the compile recorded it from the SAME buffer it
+            // counted. Run 75's archive row had only a body fingerprint, so the verifier's "sha256(disk) == row sha"
+            // leg was ARITHMETIC-BLOCKED. `null` means "this row predates the hash" — named, not silently equal.
+            pdfSha256: ledger.pdfSha256 === undefined ? null : ledger.pdfSha256,
+            finalPdfSha256: stateBody && stateBody.finalPdfSha256 !== undefined ? stateBody.finalPdfSha256 : null,
+            diskPdfSha256: pdfDiskSha,
+            diskPdfBytes: pdfDisk && pdfDisk.pdfBytes !== undefined ? pdfDisk.pdfBytes : null,
+            pdfSha256MatchesDisk,
+            pdfSha256Mismatch,
+            pdfSha256Means: pdfRowSha === null
+              ? 'the ledger row records no pdfSha256, so the file on disk cannot be proved to be this compile: treat the byte count as a claim, not a proof (RUN 2691 / F75-15). This is EVIDENCE about the row, not an input the compile lacked — status `missing` stays empty (TB-2691 correction, RUN 252)'
+              : pdfDiskSha === null
+                ? 'the row records pdfSha256 ' + pdfRowSha + ', but the file at pdfPath could not be read (' + String((pdfDisk && pdfDisk.why) || 'no reading') + '), so disk agreement is unknown — not true by default'
+                : pdfSha256Mismatch
+                  ? 'TAMPERED OR REPLACED: the row records pdfSha256 ' + pdfRowSha + ' but the file on disk is ' + pdfDiskSha + ' (' + String(pdfDisk.pdfBytes) + ' bytes vs recorded ' + String(ledger.pdfBytes) + ') — the file is no longer the bytes this compile produced. This named mismatch is the reading; `missing` stays empty because the action lacked nothing (TB-2691 correction)'
+                  : 'the file on disk IS the file this compile produced: sha256(' + String(ledger.pdfPath || '') + ') = ' + pdfRowSha + ', equal to the row, and both are ' + String(pdfDisk.pdfBytes) + ' bytes',
             // ★★★ RUN 249 (F-08, MEASURED on the 69th real-machine run): `final` recorded 69,726 B (rec-31) while the
             // newest `compile` recorded 69,725 B (rec-32) and `compiledAfterFinal:true` — two numbers, and NO field said
             // which RECORD the file now on disk came from. `recordId` was the newest compile row, but a reader holding
@@ -7199,7 +7430,9 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
     // a settlement — and the settlements that produce `read-back-default-draft` are refused before they reach it. The
     // gate and its note are therefore answered HERE, by the same `proofGateOfStoredCard` the settlement read-back uses.
     const storedProofState = text(fields.proofState)
-    const storedGate = proofGateOfStoredCard(fields)
+    // ★★★ RUN 2699 (F75-04): the read face now MEASURES the stored pointer once and feeds that reading to the ONE gate, so
+    // this face and the write receipt cannot answer the same row differently; `unknown` here means "not checked" only.
+    const storedGate = proofGateOfStoredCard(fields, { reading: proofRefReadingOf(kernel, fields.proofRef), source: 'stored-row-read' })
     const cardOwner = cardMdOwnerOf(records, body)
     const next = Object.assign({}, row, {
       // ★★★ RUN 252 (F72-2): the stored row's proof line, NAMED, with the sentence that says what `null` means — a
@@ -7215,7 +7448,12 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
         ? 'the EFFECTIVE state is "' + storedGate.folded + '" — folded from a card body that states NO `proof_state`, i.e. the DEFAULT "draft". This is NOT a declared value: `proofState` is null because nothing was declared (RUN 254 / F-73-01)'
         : 'the EFFECTIVE state is "' + storedGate.folded + '", folded from the `proof_state` the card body declares; folding only normalises case/whitespace when a state was declared, so here `proofState` and `proofStateFolded` agree',
       proofGate: storedGate,
+      // ★★★ RUN 2699 (F75-04): the pointer-state word on the READ face comes from the same measurement + judge as the
+      // write receipt. `proofRefStateChecked:false` means NOT CHECKED (never "checked and failed" — that is `missing`).
       proofRefState: storedGate.proofRefState,
+      proofRefStateChecked: storedGate.proofRefStateChecked,
+      proofRefStateMeans: storedGate.proofRefStateMeans,
+      proofRefStateSource: storedGate.proofRefStateSource,
       lockNote: proofLockNoteOf({ gate: storedGate, declaredState: storedProofState }),
       cardFields: {
         p: parsed && parsed.card ? parsed.card.p : null,
@@ -7391,7 +7629,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: 'Read anyone\'s library (read-only): id reads one card; the list form reads EVERY declared track (vmu.records.tracks — so a member\'s state panel, obstacles, rejected routes and feedback are all readable) and filters by kind, by the card\'s author, and by `track`/`tracks`. '
       + '★ An undeclared track name is refused by name with the declared set in `declared`; a declared track the records face itself refuses is reported in `skippedTracks`, never silently dropped. '
       + '★ TWO NOUNS, TWO SHAPES (round 42): a RECORD id is minted as `rec-<n>` and a MEMBER id as `r-<n>` — `id` reads a RECORD, `member` reads a PERSON’s library. Passing a member id as `id` is refused by name and the hint tells you to pass `member:"<id>"`; legacy `r-<n>` records still read (ids are names, nothing was migrated).',
-    parameters: { member: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, list: { type: 'boolean' }, limit: { type: 'integer' }, track: { type: 'string' }, tracks: { type: 'array' } },
+    parameters: { member: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, list: { type: 'boolean' }, limit: { type: 'integer' }, track: { type: 'string' }, tracks: { type: 'array' }, withWriter: { type: 'boolean' } },
     handler: toolReadLibraryWithCardFields,
   },
   {

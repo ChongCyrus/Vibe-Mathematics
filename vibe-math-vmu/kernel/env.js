@@ -139,7 +139,7 @@ export function createEnvFace({ settings = {}, spawn = null, records = null, log
       const body = JSON.stringify({ need: id, why: why === null ? null : String(why), detail: detail === null ? null : detail,
         hint: 'probe with vibe_vmu_env; installCommand is data only — ask the main agent/user for authorization before installing' })
       const rec = records.put({ track: ENV_REPORT_TRACK, kind: 'finding', title: 'environment missing: ' + id,
-        body, tags: ['env', id, ENV_REPORT_TAG], settled: false, by: 'vibe_vmu_env' })
+        body, tags: ['env', id, ENV_REPORT_TAG], finalAck: false, by: 'vibe_vmu_env' })
       log('vmu.env: reported missing ' + id + ' as ' + String(rec && rec.id))
       return { ok: true, need: id, track: ENV_REPORT_TRACK, kind: 'finding', record: rec && rec.id ? String(rec.id) : null,
         title: rec && rec.title ? String(rec.title) : null, tags: ['env', id, ENV_REPORT_TAG],

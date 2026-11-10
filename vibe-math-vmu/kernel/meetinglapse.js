@@ -115,7 +115,7 @@ export function extensionPlan({ requestedMs = null, declaredStepMs = 0, defaultS
   if (!(step > 0)) {
     return { ok: false, code: 'VMU_INVALID_ARGUMENT', keys,
       message: 'no extension step is declared: set vmu.meetings.speechExtendMs (or pass { ms })',
-      hint: 'extend() needs a positive duration — it will not invent one' }
+      hint: 'REACHABLE INSTEAD: 用 vibe_vmu_meeting {action:"extend", id:"<会议 id>", ms:"<正毫秒数>"} 显式给出延长时长（本面不会替你编一个）' }
   }
   if (maxMs > 0) {
     keys.push('vmu.meetings.speechMaxMs')

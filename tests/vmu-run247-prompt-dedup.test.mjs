@@ -146,6 +146,29 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   const RUN249_TEACHING = { chair: 452, member: 452, temp: 452, sum: 1356 }
   const RUN251_TEACHING = { chair: 198, member: 198, temp: 198, sum: 594 }
   const RUN252_TEACHING = { chair: 473, member: 151, temp: 151, sum: 775 }
+  //   ★ RUN 257 / TB-2692（RUN 75 的 12 条提示词批评）**逐条记账、只记净差**：新增教学 ≈1.7K（F75-03 题目钉住、
+  //        归属口径/代笔键名、[结题] 票数读回执、render 永不编译、REACHABLE INSTEAD、四个形状码、parked 三步、
+  //        结题两个数、consistency 括注），同轮从 charter-org 杂事段、truth-note 重复句、report-duty 合并句、
+  //        会议手册旁注、表决 m 句、角色段邮箱/探环境措辞里腾出 ≈1.6K，三份 normal 合计净增 **+52**（chair 28543 /
+  //        member 25329 / temp 21985 ＝ 75466；chair 仍在 §1a 的 28615 内）。所以只加 sum 52 这一项，chair/member/temp 不加额。
+  const RUN2692_TEACHING = { sum: 52 }
+  //   ★ RUN 2692 字段名更正（Lead 改，同一轮内）：TB-2692 教代笔键名时把**行上的**行为来源字段写成了
+  //        `writerSource`——那是 RUN 2691 命名裁定之前的旧名。行上现在是 `writtenFrom`（`own-turn`／`relayed`／
+  //        `unknown`），而 `writerSource` 在库头上仍是另一问「哪个字段作答 by/writer/owner」。教错名字等于让席位去
+  //        找一个行上不存在的键，所以这是**正确性修复，不是涨预算**；那句话在 shared 块里，三个席位各 +49、
+  //        合计 +147，逐席记账。chair 28 592 仍在 §1a 的 28 615 内（余量 23），因此 §1a 上限不动，只把 147 加进 §1b。
+  const RUN2692_FIELD_FIX = { sum: 147 }
+  //   ★ TB-2707（2026-11-10）— F75-16 归档句：shared `v5r-turn-channels` 块原来无条件说「全文落
+  //        `Members/<你>/Turns/<turn>.md`」，真机上 r-temp 的 t-15 文件从未存在，读者去 `cat` 一个不存在的
+  //        路径。改成「**仅当 `truncated:true`（正文被切）时**…写完立即回读并校验 sha256…回执
+  //        `archiveMissing:true` 时 `replyArchiveWhy` 会具名说明…正文没被切（`truncated:false`）则回执不给
+  //        这三个键，也不要去找文件」。实测 169→324 字符（+155/席；shared 段三席各一份 ⇒ sum +465），
+  //        逐席记账：这是教学（修真机缺陷），**没有为它删任何教学**。
+  const RUN2707_ARCHIVE_SENTENCE = { chair: 155, member: 155, temp: 155, sum: 465 }
+  //   ★ RUN 260 / TB-2699（2026-11-10）— 所办问询门（`VMU_OFFICE_CONSULT_REQUIRED`）的出口教学：只进 chair 论文行
+  //        （「被拦时先让所办 `vibe_v5_paper { action:"consult", … }` 答复，再重试 `final`」）。实测 +94 字符，单席，
+  //        所以 §1a 与 §1b 各 +94；cap 不动。
+  const RUN260_CONSULT_TEACHING = { chair: 94, sum: 94 }
   const SIGNATURE = /\{ *[a-z_][a-z_0-9.?]* *, *[a-z_]/
   const signatureRows = (slot) => {
     let lines = 0
@@ -156,13 +179,13 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
     return { lines, chars }
   }
   const chairNormal = charsOf('chair', 'normal')
-  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair + RUN252_TEACHING.chair
+  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair + RUN252_TEACHING.chair + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair
   ok(chairNormal <= chairCeiling,
-    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair} ＋ RUN 252 教学 ${RUN252_TEACHING.chair}，逐条记账、无余量）`, chairNormal)
+    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair} ＋ RUN 252 教学 ${RUN252_TEACHING.chair} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.chair} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.chair}，逐条记账、无余量）`, chairNormal)
   const sum = charsOf('chair', 'normal') + charsOf('member', 'normal') + charsOf('temp', 'normal')
-  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum + RUN252_TEACHING.sum
+  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum + RUN252_TEACHING.sum + RUN2692_TEACHING.sum + RUN2692_FIELD_FIX.sum + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum
   ok(sum <= sumCeiling,
-    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum} ＋ RUN 252 机制教学 ${RUN252_TEACHING.sum}）`, sum)
+    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum} ＋ RUN 252 机制教学 ${RUN252_TEACHING.sum} ＋ RUN 2692 净增 ${RUN2692_TEACHING.sum} ＋ RUN 2692 字段名更正 ${RUN2692_FIELD_FIX.sum} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.sum} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.sum}）`, sum)
   for (const seat of ['chair', 'member', 'temp']) {
     const s = signatureRows(seat)
     ok(s.lines <= 8 && s.chars <= 1738,

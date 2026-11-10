@@ -9,14 +9,17 @@
 // default policies, so every row can be derived. Ownership is respected: a surface's index lives in its own volume, not in a
 // new one.
 //
-//   node scripts/generate-surface-index.mjs --check   (default: report)
+//   node scripts/generate-surface-index.mjs           (no flag: dry run, report only)
+//   node scripts/generate-surface-index.mjs --check   (same report, exit 1 when stale)
 //   node scripts/generate-surface-index.mjs --write
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { exitCodeFor, modeFrom } from './_lib/generator-cli.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const VMU = join(REPO, 'vibe-math-vmu')
+const MODE = modeFrom(process.argv, { script: 'generate-surface-index.mjs' })
 const R = (p) => readFileSync(join(REPO, p), 'utf8')
 // D-12: the hook vocabulary and its default policies come from the runtime EXPORTS of bus.js, which now DERIVES
 // both from `HOOK_REGISTRY`. Parsing them out of the source would bind this generator to the derivation's shape;
@@ -204,7 +207,6 @@ const capsOf = () => {
   ].join('\n') })
 }
 
-const check = !process.argv.includes('--write')
 let bad = 0
 for (const b of blocks) {
   const p = join(REPO, b.file)
@@ -214,13 +216,13 @@ for (const b of blocks) {
   const next = a >= 0 && e > a
     ? doc.slice(0, a) + b.text + doc.slice(e + b.m.e.length)
     : doc.replace(/\n*$/, '\n') + '\n' + b.text + '\n'
-  if (check) {
-    if (a < 0) { console.error(b.file + ': generated block MISSING'); bad += 1; continue }
-    if (doc !== next) { console.error(b.file + ': generated block STALE'); bad += 1; continue }
-    console.log(b.file + ': current')
-  } else {
+  if (MODE === 'write') {
     writeFileSync(p, next)
     console.log(b.file + ': written')
+    continue
   }
+  if (a < 0) { console.error(b.file + ': generated block MISSING'); bad += 1; continue }
+  if (doc !== next) { console.error(b.file + ': generated block STALE' + (MODE === 'read' ? ' (dry run: nothing written)' : '')); bad += 1; continue }
+  console.log(b.file + ': current')
 }
-if (check && bad) process.exit(1)
+process.exit(exitCodeFor(MODE, bad > 0))

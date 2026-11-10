@@ -316,7 +316,7 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
   const reportNamed = (name) => {
     const d = declarations()
     const it = d.items.find((x) => x.name === str(name)) || null
-    if (!it) throw refuse(CODE.unknownName, 'no report is declared under the name: ' + String(name), 'declarations() lists every declared name and every problem')
+    if (!it) throw refuse(CODE.unknownName, 'no report is declared under the name: ' + String(name), 'REACHABLE INSTEAD: 用 vibe_vmu_report {action:"declarations"} 看每个已声明报告的名字与它的问题')
     if (it.problems.length > 0) {
       throw refuse(it.problems[0].code, 'report ' + it.name + ' cannot run: ' + it.problems[0].message, it.problems[0].hint || null, { problems: it.problems.slice() })
     }
@@ -483,7 +483,7 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
     // switched itself off) refuses by name instead of quietly sending - "off" that still sends is not an off switch.
     if (!c.enabled) {
       throw refuse(CODE.notEnabled, 'vmu.report.enabled=false: report ' + it.name + ' is declared but reporting is switched off',
-        'set vmu.report.enabled=true to arm it; declarations() reports the off state rather than hiding it')
+        'REACHABLE INSTEAD: 先用 vibe_vmu_report {action:"set", key:"enabled", value:true} 打开报告开关再重试；vibe_vmu_report {action:"declarations"} 会如实报告 off 状态')
     }
     if (it.enabled === false) {
       throw refuse(CODE.notEnabled, 'report ' + it.name + ' is switched off in its own declaration (enabled:false)',

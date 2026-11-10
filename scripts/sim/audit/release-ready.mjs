@@ -249,6 +249,93 @@ export function gapRefusalMessage(gapList) {
 const PROOF_CMD = /^node\s+(tests|scripts)\/[A-Za-z0-9._/-]+\.mjs$/
 
 /**
+ * TB-2684: proof COUNTS belong to the gate, not to a note. A note that says "154 passed" is a COPY of a number the
+ * gate itself can measure, so it rots silently (two of twelve rows that restated a count were already stale when this
+ * was written, and nothing went red because notes never participate in a verdict). The parser is deliberately narrow:
+ * BOTH `N passed` and `M failed` must sit on the SAME line (every suite prints its tally on one summary line) and
+ * their sum must be > 0. Anything else is `counts:'unparsed'` -- never 0, never a guess.
+ */
+export function suiteCountsOf(text) {
+  const NL = String.fromCharCode(10)
+  const CR = String.fromCharCode(13)
+  const lines = String(text == null ? '' : text).split(NL).map((l) => l.split(CR).join(''))
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i]
+    const p = /([0-9]+)[ ]+passed/.exec(line)
+    const f = /([0-9]+)[ ]+failed/.exec(line)
+    if (!p || !f) continue
+    const passed = Number(p[1])
+    const failed = Number(f[1])
+    if (passed + failed > 0) return { counts: 'ok', passed, failed, line: line.trim() }
+  }
+  return { counts: 'unparsed', passed: null, failed: null, line: null }
+}
+
+/**
+ * TB-2684 static criterion: a row's `proof.note` says what the evidence PROVES (which mechanism, which refusal, which
+ * reverse interlock). It must NOT restate a count: the gate measures counts every run, so a number in a note is a
+ * copy that can only go stale. Returns offenders so a test can name them one by one instead of printing a bare count.
+ */
+export function noteCountClaims(items) {
+  const offenders = []
+  for (const it of items || []) {
+    const note = it && it.proof && typeof it.proof.note === 'string' ? it.proof.note : '' 
+    const m = /([0-9]+)[ ]+(passed|failed)/.exec(note)
+    if (m) offenders.push({ id: String((it && it.id) || '(no id)'), token: m[1] + ' ' + m[2], note: note })
+  }
+  return offenders
+}
+
+// TB-2684 follow-up (class-level criterion): NOT READY must always name an owner and what would make it green, and
+// the `REMEDY[code] || {}` default means a code with no entry degrades SILENTLY to "unassigned". The set of codes must
+// therefore be computed from the add(CODE, ...) sites in THIS source, never hand-listed: a hand list of 27 codes goes
+// stale the day the 28th is added, which is exactly how AUDIT_CORPUS_NOT_CURRENT went unowned.
+export function remedyGaps(sourceText) {
+  const NL = String.fromCharCode(10)
+  const CR = String.fromCharCode(13)
+  const lines = String(sourceText || "").split(NL).map((l) => (l.endsWith(CR) ? l.slice(0, -1) : l))
+  const codes = []
+  for (const line of lines) {
+    const at = line.indexOf("add('")
+    if (at < 0) continue
+    const rest = line.slice(at + 5)
+    const end = rest.indexOf("'")
+    if (end <= 0) continue
+    const code = rest.slice(0, end)
+    if (!codes.includes(code)) codes.push(code)
+  }
+  const entries = {}
+  let inTable = false
+  for (const line of lines) {
+    if (line.startsWith("export const REMEDY = {") || line.startsWith("const REMEDY = {")) { inTable = true; continue }
+    if (!inTable) continue
+    if (line === "}") break
+    const t = line.trim()
+    const head = ": { owner: "
+    const colon = t.indexOf(head)
+    if (colon <= 0) continue
+    const code = t.slice(0, colon)
+    const afterOwner = t.slice(colon + head.length)
+    const ownerEnd = afterOwner.indexOf("', readyIf: '")
+    if (ownerEnd < 0) continue
+    const owner = afterOwner.slice(0, ownerEnd)
+    const afterReady = afterOwner.slice(ownerEnd + "', readyIf: '".length)
+    const readyEnd = afterReady.lastIndexOf("' }")
+    if (readyEnd < 0) continue
+    entries[code] = { owner: owner, readyIf: afterReady.slice(0, readyEnd) }
+  }
+  const gaps = []
+  for (const code of codes) {
+    const e = entries[code]
+    if (!e) gaps.push({ code: code, why: "no REMEDY entry" })
+    else if (String(e.owner).trim() === "") gaps.push({ code: code, why: "empty owner" })
+    else if (String(e.readyIf).trim() === "") gaps.push({ code: code, why: "empty readyIf" })
+  }
+  const unused = Object.keys(entries).filter((code) => !codes.includes(code)).sort()
+  return { codes: codes.sort(), entries: Object.keys(entries).sort(), gaps: gaps, unused: unused }
+}
+
+/**
  * R2: the ledger's `fixed` P0/P1 rows carry `proof:{cmd,expect}`. Shape alone is not proof — the red team's A5 attack
  * (a fixed P0 whose evidence is the sentence "see last round") stayed READY when only the shape was checked. So the
  * gate RUNS the command: `node <path under tests/ or scripts/>`, no shell, exit code must equal `expect`.
@@ -262,7 +349,9 @@ const PROOF_CMD = /^node\s+(tests|scripts)\/[A-Za-z0-9._/-]+\.mjs$/
  *    result (exit code, ms) is cached per `cmd@timeoutMs` for THIS gate run only — the rows still judge their own
  *    `expect`, so two rows sharing a command with different `expect` values cannot contaminate each other. The cache
  *    never survives the process: yesterday's evidence is not evidence.
- * Returns { ok, ran:[], missing:[], failed:[], defaultTimeoutMs, maxTimeoutMs, runs, reused }.
+ * Returns { ok, ran:[], missing:[], failed:[], defaultTimeoutMs, maxTimeoutMs, runs, reused }. Each `ran` row also
+ * carries what the suite REPORTED about itself -- `counts:'ok'|'unparsed'`, `passed`, `failed`, `ms`, `measuredAt` --
+ * because counts are measurements (TB-2684), not sentences copied into a note.
  */
 export function runLedgerProofs(items, opts = {}) {
   const defaultTimeoutMs = Number(opts.timeoutMs || 300000)
@@ -273,7 +362,7 @@ export function runLedgerProofs(items, opts = {}) {
   const missing = []
   const failed = []
   const ran = []
-  const cache = new Map() // cmd + '@' + timeoutMs -> { code, ms } -- this run only
+  const cache = new Map() // cmd + '@' + timeoutMs -> { code, ms, counts, passed, failed, measuredAt } -- this run only
   let runs = 0
   let reused = 0
   for (const it of items || []) {
@@ -307,22 +396,33 @@ export function runLedgerProofs(items, opts = {}) {
     const cacheKey = cmd + '@' + timeoutMs
     let code = null
     let cached = false
+    let tally = null
     if (cache.has(cacheKey)) {
-      code = cache.get(cacheKey).code
+      const hit = cache.get(cacheKey)
+      code = hit.code
+      tally = hit
       cached = true
       reused += 1
     } else {
       runs += 1
+      // stdout+stderr are captured because the suite's own tally line is the MEASUREMENT (TB-2684). Only the exit code
+      // decides pass/fail; the counts are recorded next to it so a reader never has to trust a note again.
+      const started = Date.now()
+      let stdout = ''
+      let stderr = ''
       try {
-        execFileSync(process.execPath, [abs], { cwd: root, timeout: timeoutMs, stdio: 'ignore', env })
+        stdout = String(execFileSync(process.execPath, [abs], { cwd: root, timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', env }) || '')
         code = 0
       } catch (e) {
+        stdout = e && e.stdout != null ? String(e.stdout) : ''
+        stderr = e && e.stderr != null ? String(e.stderr) : ''
         code = typeof e.status === 'number' ? e.status : null
         if (e.killed || e.signal) code = 'timeout/signal'
       }
-      cache.set(cacheKey, { code })
+      tally = { code, ms: Date.now() - started, ...suiteCountsOf(stdout + String.fromCharCode(10) + stderr), measuredAt: new Date().toISOString() }
+      cache.set(cacheKey, tally)
     }
-    ran.push({ id, cmd, expect, actual: code, timeoutMs, defaultTimeoutMs, cached, cachedFrom: cached ? cmd : null })
+    ran.push({ id, cmd, expect, actual: code, timeoutMs, defaultTimeoutMs, cached, cachedFrom: cached ? cmd : null, counts: tally.counts, passed: tally.passed, failed: tally.failed, ms: tally.ms, measuredAt: tally.measuredAt })
     if (code !== expect) failed.push({ id, cmd, expect, actual: code, timeoutMs, cached })
   }
   return { ok: missing.length === 0 && failed.length === 0, ran, missing, failed, defaultTimeoutMs, maxTimeoutMs: MAX_PROOF_TIMEOUT_MS, runs, reused }
@@ -391,7 +491,7 @@ export function runSimGate(script = GATE_SCRIPT, timeoutMs = 180000) {
  * without that line the gate reads as a machine that hates everyone equally. The pair is output contract, not
  * decoration: it does not widen any check, it only makes "who owes this" readable.
  */
-const REMEDY = {
+export const REMEDY = {
   SIM_GATE_NOT_RUN: { owner: 'sim-lane (gate owner), or whoever passed --no-gate', readyIf: 'run `node tests/sim-gate.test.mjs` to green: a remembered green is not a gate' },
   SIM_GATE_FAILED: { owner: 'sim-lane (tests/sim-gate.test.mjs) unless the failing segment names another lane', readyIf: 'the failing segment exits 0 with advisory 0 and mechanism 0; if the drift check fired, find what got slower before touching a cap' },
   AUDIT_UNVERIFIABLE: { owner: 'sim-lane (scripts/sim/audit/all.mjs must stamp the report)', readyIf: 'AUDIT.md carries a parseable ```json audit-report block naming tool=scripts/sim/audit/all.mjs, an audit id and the tree hash: a report nobody can attribute is not evidence' },
@@ -413,6 +513,7 @@ const REMEDY = {
   OPEN_NO_OWNER: { owner: 'sim-lane (the ledger)', readyIf: 'every open item names an owner' },
   AUDIT_CORPUS_UNMEASURED: { owner: 'sim-lane (the audit run that wrote the corpus)', readyIf: 'the corpus-*/receipts.jsonl files the report names still exist under the sim root, so the gate can re-hash them' },
   AUDIT_CORPUS_STALE: { owner: 'whoever re-ran the simulator after the audit', readyIf: 'the report and the receipts on disk agree: same corpus id, and a generatedAt no earlier than the newest receipt' },
+  AUDIT_CORPUS_NOT_CURRENT: { owner: 'the lane that ran the release on an older report, or sim-lane if the pointer itself is wrong', readyIf: 'the report names the layer current-layer.json points at: re-run node scripts/sim/audit/all.mjs on this tree, or walk the current layer instead of an older report' },
   AUDIT_ID_MISMATCH: { owner: 'sim-lane (scripts/sim/audit/all.mjs must derive the id, not mint one)', readyIf: 'auditId === sha256(corpusId|treeHash) recomputed by the gate, so the stamp is a binding and not a label' },
   AUDIT_CHECKS_ABSENT: { owner: 'sim-lane (the audit-report block)', readyIf: 'the block carries checks{verdict,failures} that the gate can compare with the prose' },
   AUDIT_VERDICT_CONTRADICTION: { owner: 'sim-lane (the report writer)', readyIf: 'prose verdict and machine verdict say the same thing; a report that argues with itself is unread, not clean' },
@@ -663,7 +764,33 @@ function collectFacts() {
       writeFileSync(join(root, 'release-ready-last-override.json'), JSON.stringify({ reason: override.reason, at: override.at, by: override.by }, null, 2))
     } catch { /* recording the bypass is best-effort; refusing it is not */ }
   }
-  return { root, audit, head, gate, openItems, drift, treeHash, corpus: { ...corpus, corpusId }, currentLayer, fidelityRecomputed, ledgerProofs, override, overrideCheck, overrideRejected: overrideReason !== null && !(overrideCheck && overrideCheck.ok) }
+  // Reported, never failing (TB-2684 follow-up): a REMEDY row no refusal site can emit may be deliberate explanation,
+  // while a refusal site with no row is a real gap already named by remedyGaps().gaps. Reading our own source is
+  // cheap and makes the table auditable from the outside.
+  const remedyAudit = (() => {
+    try { return remedyGaps(readFileSync(fileURLToPath(import.meta.url), 'utf8')) } catch (e) { return { codes: [], entries: [], gaps: [], unused: [], why: String((e && e.message) || e) } }
+  })()
+  return { root, audit, head, gate, openItems, drift, treeHash, corpus: { ...corpus, corpusId }, currentLayer, fidelityRecomputed, ledgerProofs, remedyAudit, override, overrideCheck, overrideRejected: overrideReason !== null && !(overrideCheck && overrideCheck.ok) }
+}
+
+// TB-2684: the counts are printed as MEASUREMENTS next to the verdict. A note may say what a proof proves; the number
+// of passing assertions is a fact about this run, so the gate prints what it measured instead of what someone typed.
+const printRemedyAudit = (facts) => {
+  const unused = ((facts && facts.remedyAudit && facts.remedyAudit.unused) || [])
+  if (unused.length === 0) return
+  console.log('')
+  console.log('remedy entries no refusal site can emit (reported, not failed: an explanatory row is allowed to exist, a missing row is not): ' + unused.join(', '))
+}
+
+const printProofMeasurements = (proofs) => {
+  const rows = (proofs && proofs.ran) || []
+  if (rows.length === 0) return
+  console.log('')
+  console.log('proof measurements (' + rows.length + ' row(s); counts measured by this gate run, not copied from a note):')
+  for (const p of rows) {
+    const tally = p.counts === 'ok' ? p.passed + ' passed / ' + p.failed + ' failed' : 'counts unparsed' 
+    console.log('- ' + p.id + ': `' + p.cmd + '` exit ' + String(p.actual) + ' (expect ' + String(p.expect) + '), ' + tally + ', ' + p.ms + ' ms' + (p.cached ? ' (cached result)' : ''))
+  }
 }
 
 // Only run when executed directly; importing this file (tests import assess/parseAuditReport) must have no side effects.
@@ -671,9 +798,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const facts = collectFacts()
   const verdict = assess(facts)
   if (hasFlag('--json')) {
-    console.log(JSON.stringify({ ...verdict, facts: { root: facts.root, audit: facts.audit && { path: facts.audit.path, mtimeMs: facts.audit.mtimeMs, report: facts.audit.report }, head: facts.head, gate: facts.gate, drift: facts.drift && { ok: facts.drift.ok, changed: (facts.drift.changed || []).length, newestMs: facts.drift.newestMs, newestPath: facts.drift.newestPath, why: facts.drift.why || null }, tree: facts.treeHash && { ok: facts.treeHash.ok, head: facts.treeHash.head, hash: facts.treeHash.hash, changed: facts.treeHash.changed, why: facts.treeHash.why || null }, corpus: facts.corpus && { ok: facts.corpus.ok, dir: facts.corpus.dir, files: (facts.corpus.files || []).length, corpusId: facts.corpus.corpusId, newestMs: facts.corpus.newestMs, missing: (facts.corpus.missing || []).length, mismatched: (facts.corpus.mismatched || []).length, extras: (facts.corpus.extras || []).length, why: facts.corpus.why || null }, currentLayer: facts.currentLayer && { ok: facts.currentLayer.ok, path: facts.currentLayer.path, dir: facts.currentLayer.dir, generatedAt: facts.currentLayer.generatedAt, why: facts.currentLayer.why || null }, fidelityRecomputed: facts.fidelityRecomputed && { ok: facts.fidelityRecomputed.ok, liveToolsWithFieldList: facts.fidelityRecomputed.liveToolsWithFieldList, compared: facts.fidelityRecomputed.compared, gaps: facts.fidelityRecomputed.gaps, why: facts.fidelityRecomputed.why || null }, ledgerProofs: facts.ledgerProofs && { ok: facts.ledgerProofs.ok, ran: (facts.ledgerProofs.ran || []).length, missing: facts.ledgerProofs.missing || [], failed: facts.ledgerProofs.failed || [] }, override: facts.override, overrideRejected: facts.overrideRejected || false, overrideCheck: facts.overrideCheck || null, openItems: { ok: facts.openItems.ok, why: facts.openItems.why || null, bad: facts.openItems.bad || [], count: (facts.openItems.items || []).length } } }, null, 2))
+    console.log(JSON.stringify({ ...verdict, facts: { root: facts.root, remedyAudit: facts.remedyAudit, audit: facts.audit && { path: facts.audit.path, mtimeMs: facts.audit.mtimeMs, report: facts.audit.report }, head: facts.head, gate: facts.gate, drift: facts.drift && { ok: facts.drift.ok, changed: (facts.drift.changed || []).length, newestMs: facts.drift.newestMs, newestPath: facts.drift.newestPath, why: facts.drift.why || null }, tree: facts.treeHash && { ok: facts.treeHash.ok, head: facts.treeHash.head, hash: facts.treeHash.hash, changed: facts.treeHash.changed, why: facts.treeHash.why || null }, corpus: facts.corpus && { ok: facts.corpus.ok, dir: facts.corpus.dir, files: (facts.corpus.files || []).length, corpusId: facts.corpus.corpusId, newestMs: facts.corpus.newestMs, missing: (facts.corpus.missing || []).length, mismatched: (facts.corpus.mismatched || []).length, extras: (facts.corpus.extras || []).length, why: facts.corpus.why || null }, currentLayer: facts.currentLayer && { ok: facts.currentLayer.ok, path: facts.currentLayer.path, dir: facts.currentLayer.dir, generatedAt: facts.currentLayer.generatedAt, why: facts.currentLayer.why || null }, fidelityRecomputed: facts.fidelityRecomputed && { ok: facts.fidelityRecomputed.ok, liveToolsWithFieldList: facts.fidelityRecomputed.liveToolsWithFieldList, compared: facts.fidelityRecomputed.compared, gaps: facts.fidelityRecomputed.gaps, why: facts.fidelityRecomputed.why || null }, ledgerProofs: facts.ledgerProofs && { ok: facts.ledgerProofs.ok, ran: (facts.ledgerProofs.ran || []).map((p) => ({ id: p.id, cmd: p.cmd, expect: p.expect, actual: p.actual, counts: p.counts, passed: p.passed, failed: p.failed, ms: p.ms, cached: p.cached })), missing: facts.ledgerProofs.missing || [], failed: facts.ledgerProofs.failed || [] }, override: facts.override, overrideRejected: facts.overrideRejected || false, overrideCheck: facts.overrideCheck || null, openItems: { ok: facts.openItems.ok, why: facts.openItems.why || null, bad: facts.openItems.bad || [], count: (facts.openItems.items || []).length } } }, null, 2))
   } else if (verdict.ready) {
     console.log('READY: sim gate green, audit fresh and clean, no open P0 — a real run may start')
+    printProofMeasurements(facts.ledgerProofs)
+    printRemedyAudit(facts)
   } else {
     console.log('NOT READY: ' + verdict.reasons.length + ' reason(s)')
     for (const r of verdict.reasons) {
@@ -682,6 +811,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log('    would be ready if: ' + r.wouldBeReadyIf)
     }
     console.log('')
+    printProofMeasurements(facts.ledgerProofs)
+    printRemedyAudit(facts)
     if (verdict.overrideRejected) console.log('OVERRIDE REFUSED: ' + String(verdict.overrideCheck && verdict.overrideCheck.why) + ' — the bypass was not allowed (the reasons above still stand)')
     if (verdict.override) console.log('OVERRIDDEN at ' + verdict.override.at + ' by ' + verdict.override.by + ': ' + verdict.override.reason + ' — the reasons above were known and bypassed, not cleared')
     console.log('A real run spends tokens; fix the reasons above, or (last resort) pass -OverrideReleaseGate "<reason>"')

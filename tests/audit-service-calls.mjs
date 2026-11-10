@@ -24,12 +24,18 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, "..")
 const VMU = join(REPO, "vibe-math-vmu")
 
-/** The method sets of every service a kernel exposes. Built three ways: a minimal kernel does NOT construct them all. */
+/** The method sets of every service a kernel exposes. Built four ways: a minimal kernel does NOT construct them all.
+ *  ★ RUN 269 (lead, after sim-lane measured it): the fourth variant passes a `spawn` seam because `latex` is a GETTER
+ *  over the spawn handle — with no seam `kernel.latex === null`, so a real call site (`packs/v5r/tools.js`, the
+ *  `pdfReading` guard) looked like a call to a service this scan had never constructed. The finding was a scanner
+ *  calibration gap, not a product defect: the site guards `kernel.latex && typeof …pdfReading === "function"`.
+ */
 export function servicesOf(createKernel) {
   const variants = [
     { clock: () => 0, settings: {} },
     { clock: () => 0, settings: {}, slots: [{ id: "member", capacity: 0, permissions: ["speak", "vote"] }, { id: "chair", capacity: 1, permissions: ["convene"] }] },
     { clock: () => 0, settings: {}, root: VMU, host: null, slots: [{ id: "member", capacity: 0, permissions: ["speak", "vote"] }] },
+    { clock: () => 0, settings: {}, spawn: () => ({}) },
   ]
   const out = new Map()
   for (const opts of variants) {

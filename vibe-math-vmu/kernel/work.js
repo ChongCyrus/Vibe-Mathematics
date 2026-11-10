@@ -67,7 +67,7 @@ export function createWorkLedger({ store, clock = () => new Date().toISOString()
     async start({ owner, kind = 'work', objective = null, id = null } = {}) {
       if (isPaused()) {
         throw refuse('VMU_STATE', 'the kernel is paused: no new in-flight work is registered',
-          'resume() first (vibe_vmu_control {action:"resume"})')
+          'REACHABLE INSTEAD: 用 vibe_vmu_control {action:"resume"} 解除内核暂停后重试本调用')
       }
       if (typeof owner !== 'string' || owner.trim().length === 0) {
         throw refuse('VMU_INVALID_ARGUMENT', 'in-flight work needs a non-empty owner (docs/07 §3)',

@@ -24,8 +24,8 @@
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { REPO } from './_lib/repo-root.mjs'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const TMP = 'D:/_tmp/vmu-run236'
 
 let passed = 0

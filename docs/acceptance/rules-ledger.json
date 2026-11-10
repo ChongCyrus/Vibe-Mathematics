@@ -1654,7 +1654,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::发言序"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"registry\":\"service\",\"source\":\"self\",\"mode\":\"fifo\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"registry\":\"service\",\"source\":\"self\",\"mode\":\"fifo\"",
+        "tests/vmu-meeting-types.test.mjs::★ E26: the receipt step ② names all three ways to OPEN the debate \\(轮流发言 / 举手后发言 / 主席邀请发言\\)"
       ],
       "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。"
     },
@@ -2118,7 +2119,9 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::count\":6",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::typeCatalogSource"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::typeCatalogSource",
+        "tests/vmu-meeting-types.test.mjs::★ E33 runtime: the swapped pack adds its OWN type to the catalog — the read face follows the pack, not a framework constant",
+        "tests/vmu-meeting-types.test.mjs::★★ anti-lamp-off: the unpatched repository still declares six and NOT the sentinel — the swap is the only source of the seventh"
       ],
       "text": "会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。",
       "next": "",

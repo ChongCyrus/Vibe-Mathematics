@@ -2718,6 +2718,31 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
               : 'NOT JUDGED: vmu.meetings.lateAfterMs=0 here, so NOBODY is ever counted late on this deployment — late:false does not mean "on time", it means this meeting does not measure lateness'))
         return { startReads, lateReads, lateMeans }
       }
+      // ★★★ TB-2694 / F75-05 (live run 75, MEASURED: ONE attend answer was 16 163 B on the wire and 16 588 B with
+      // `receiptMeta`, against the 12 000 B tool-result contract). The defect was DUPLICATION, not content: `quorum`
+      // travelled twice (`quorum` + `receipt.quorum`), the start window twice (top-level fields + `receipt.lateReads`),
+      // `arrival` twice (top level + inside that copy), and `arrival.means` was the same sentence as its sibling
+      // `arrivalMeans`. This thin layer is the DEDUPE ONLY — the arithmetic, the RECORDED receipt and every reading
+      // stay exactly as they were; the wire carries each reading ONCE:
+      //   · the TOP LEVEL of the answer is the readings (quorum / arrival / start window / lateness);
+      //   · `receipt` on the answer is a POINTER to that top level and to the RECORDED receipt
+      //     (`meetings.receiptsView`, also visible in the minutes), so nothing is lost — it is not shipped twice;
+      //   · `arrival.means` (same sentence as `arrivalMeans`) and `arrival.opensOnMeans` (the same rule as
+      //     `requiresChairProceedMeans`, which rides on this same result WITH the missing-member names) are not repeated.
+      // `receiptMeta.originalBytes` still measures the real assembly, so the saving is measured, never asserted.
+      const WIRE_RECEIPT_SEE = 'readings are on the TOP LEVEL of this same result; the full recorded receipt is meetings.receiptsView'
+      const wireReads = (reads) => {
+        const out = Object.assign({}, reads)
+        if (out.arrival && typeof out.arrival === 'object' && !Array.isArray(out.arrival)) {
+          const trimmed = Object.assign({}, out.arrival)
+          delete trimmed.means
+          delete trimmed.opensOnMeans
+          out.arrival = trimmed
+        }
+        return out
+      }
+      const wireReceipt = (recorded) => ({ see: WIRE_RECEIPT_SEE,
+        at: recorded.at, action: recorded.action, meeting: recorded.meeting, member: recorded.member })
       let { startReads, lateReads, lateMeans } = windowReadsOf()
       if (late && !m.present.has(String(member))) {
         if (latePolicy === 'refuse') {
@@ -2736,10 +2761,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           pushReceipt(receipt)
           say({ type: 'meetings/latePending', at: ms, meeting: m.id, member, state: m.state, enforced, enforcedScope: ENFORCED_SCOPE })
           return { ok: true, late: true, lateAdmission: latePolicy, pendingLate: true, alreadyPending: already,
-            ...lateReads, lateMeans,
+            ...wireReads(lateReads), lateMeans,
             pendingLateMembers: held, pendingLateCount: held.length,
             alreadyPresent: false, alreadyPresentMeans: 'this member is NOT seated: lateAdmission is "chair", so the arrival waits at the door until the chair calls admit()',
-            quorum: q0, state: m.state, settled: null, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+            quorum: q0, state: m.state, settled: null, receipt: wireReceipt(receipt), enforced, enforcedScope: ENFORCED_SCOPE }
         }
       }
       // ★★★ RUN 215 (run 52 / FEEDBACK51 1.3, MEASURED): the chair attends a second time and gets `ok:true` while
@@ -2767,10 +2792,17 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         : 'this call is what put the member in the present set'
       const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, lateReads, lateMeans, lateAdmission: latePolicy, pendingLate: false,
         alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(settleReceipt(m, "attend", ms, receipt))
+      // ★ TB-2694 / F75-05: the RECORD keeps every reading (minutes/receiptsView read it in full); only the WIRE copy
+      // of this answer is deduped — see the `wireReads`/`wireReceipt` comment above `windowReadsOf`'s call site.
+      const recorded = settleReceipt(m, "attend", ms, receipt)
+      pushReceipt(recorded)
       say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, lateAdmission: latePolicy, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, late, lateAdmission: latePolicy, pendingLate: false, ...lateReads, lateMeans, alreadyPresent: wasPresent, alreadyPresentMeans,
-        quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, late, lateAdmission: latePolicy, pendingLate: false, ...wireReads(lateReads), lateMeans, alreadyPresent: wasPresent, alreadyPresentMeans,
+        quorum: q, state: m.state, settled,
+        // The waiter facts stay at the TOP level: host.liftFiredWaiters() only lifts from `out.receipt` when the top
+        // level has nothing, so a pointer receipt would otherwise make "this attendance fired a waiter" disappear.
+        firedWaiters: recorded.firedWaiters, firedWaitersMeans: recorded.firedWaitersMeans,
+        receipt: wireReceipt(recorded), enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** ★★★ RUN 225-B — the CHAIR decision that seats a member held at the door by `lateAdmission:"chair"` (and the

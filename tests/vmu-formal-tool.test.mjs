@@ -84,8 +84,13 @@ console.log('=== 4. THE SERVICE S HONESTY IS VISIBLE THROUGH THE TOOL ===')
   ok(c.ok === false && c.code === 'VMU_MATH_INVALID_INPUT',
     'and a check with no request is refused, by name, rather than pretended', { c })
   const sr = await s.run({ action: 'sorryReport' })
-  ok(sr.ok === false && sr.code === 'VMU_FORMAL_NOT_FOUND' && /check\(\)/.test(String(sr.hint)),
-    'and a sorry report on nothing says how to produce one, which is what makes the refusal actionable', { sr })
+  // ★ RUN 269 (TB-2708): the old pin required the literal `check()` — the prose form. The hint is now the copyable
+  // call shape `vibe_vmu_formal {action:"check", request:{…}}` (the same rewrite that replaced `roster()` in
+  // kernel/members.js), so the pin follows the FACT the sentence promises ("this is how you produce one") instead of
+  // one spelling of it: the named tool AND the action it tells you to run, in the same hint.
+  ok(sr.ok === false && sr.code === 'VMU_FORMAL_NOT_FOUND'
+    && /vibe_vmu_formal/.test(String(sr.hint)) && /action:\s*"check"/.test(String(sr.hint)),
+    'and a sorry report on nothing says how to produce one (naming the tool AND the action to run), which is what makes the refusal actionable', { sr })
 
   const sync = specOf({ formal: { check: async () => ({}), axioms: async () => ({}), sorryReport: () => { throw Object.assign(new Error('sync no'), { code: 'VMU_SYNC_NO', hint: 'h' }) }, artifacts: async () => ({}), reproduce: async () => ({}), list: async () => ({}), status: async () => ({}), keysUsed: async () => [], config: async () => ({}), trail: async () => [] } }, { formalTool: true })
   const a = await sync.run({ action: 'sorryReport' })

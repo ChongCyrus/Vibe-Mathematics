@@ -170,6 +170,21 @@
       "hintKinds": [
         "读取 D:\\_tmp 下的本地语料/工作目录，发布包里不存在"
       ]
+    },
+    {
+      "path": "scripts/sim/redteam/run.mjs",
+      "why": "red-team harness: rebuilds the audit gate fixtures and replays 23 attack vectors; it is a development instrument, never shipped (same standing as scripts/sim/audit/**)",
+      "owner": "audit-r14 (TB-2689)"
+    },
+    {
+      "path": "scripts/sim/redteam/data/stub-gate.mjs",
+      "why": "frozen stub of the release gate used by the red-team vectors; it exists only to attack the gate from the outside",
+      "owner": "audit-r14 (TB-2689)"
+    },
+    {
+      "path": "scripts/sim/redteam/data/rich-fields.jsonl",
+      "why": "frozen field corpus (67 tools) captured from real-run receipts; a measurement input, not product code",
+      "owner": "audit-r14 (TB-2689)"
     }
   ]
 }

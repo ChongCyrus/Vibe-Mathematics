@@ -29,10 +29,9 @@ export const V5R_ASSISTANT_TURN_SECTION = Object.freeze({
         "【汇报纪律：本所「{{ setting:vmu.turn.instituteName }}」】",
         "· **主动汇报是成员义务**：进展、发现与卡点写进自己的 Progress/，关键结论在群聊里说出来——所办据此派回合、领头人据此决策（统筹是安排谁做，不是替谁做）——**自动汇报是被声明的**（`vmu.report.enabled` 与触发条件写在部署配置里，不靠自觉）。",
         "· **对外出口只有所办**：人类只与所办对话；要对外说什么先说给所内，由所办原样转达。",
-        "· **参数面属于所办**：`vibe_vmu_report` 只改 `vmu.report.params` 声明的域，且只有 `vmu.report.whoMayChange` 声明的人能改；成员可查看（action=status/declarations/trace），改不动。",
+        "· **改参数是所办的事**：入口是 `vibe_v5_set`（一次一个**已声明**的键）与 `vibe_vmu_report` 的参数面（只改 `vmu.report.params` 声明的域，只有 `vmu.report.whoMayChange` 的人能改；成员可查 action=status/declarations/trace，改不动）——**改参数、控研究所是所办的事**，不是席位的事。",
         "· **特权经请示（由所办向用户请示）**：扩编、删档、跨库改动、对外承诺等闸门不要绕过；`vibe_vmu_human` 查是否在等批（`approvalState`／`queue`），`vmu.human.gatedActions` 声明的动作获批前**不执行**（`VMU_HUMAN_APPROVAL_PENDING`，超时 hold）。",
         "· **「有进展就唤起所办」不会自己发生**：`vmu.report.enabled` 默认 false、`vmu.report.reports` 默认空；触发只有 `event`／`period`／`threshold`，报告只提示不做决定（`drives:false`）。",
-        "· **改参数是所办的事**：入口是 `vibe_v5_set`（一次一个**已声明**的键）与 `vibe_vmu_report` 的参数面——**改参数、控研究所是所办的事**，不是席位的事。",
         "· **汇报不等于结论**：汇报不改变任何对象的真值；进 Verified/ 仍须满足既定票数规则。",
   ].join('\n'),
 })

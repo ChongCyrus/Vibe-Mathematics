@@ -1,0 +1,16 @@
+{
+  "id": "A9",
+  "attack": "prose PASS with a machine block that says FAIL",
+  "why": "a report that argues with itself is unread; the contradiction must be its own named refusal",
+  "wouldBeWrongIf": "READY, or refusal as AUDIT_FAILED (which would mean the prose was read as FAIL)",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_VERDICT_CONTRADICTION",
+    "expectExit": 7,
+    "expectReady": false,
+    "allowedSecondary": {
+      "AUDIT_FAILED": "only if the PROSE said FAIL; here it says PASS",
+      "AUDIT_CHECKS_ABSENT": "only if the block carried no checks at all"
+    }
+  }
+}

@@ -16,11 +16,12 @@
 // `D:/wd/...` path appears in a test any more.
 
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname, parse, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { parse, resolve } from 'node:path'
+// The checkout root has ONE derivation (tests/_lib/repo-root.mjs, TB-2709): two copies of the same `../..` would
+// drift, and a drifted copy is exactly how a suite ends up measuring a different tree than the one it lives in.
+import { REPO } from './repo-root.mjs'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-export const REPO = resolve(HERE, '..', '..')
+export { REPO }
 
 export function corpusRoot() {
   const declared = process.env.VMU_CORPUS_ROOT || process.env.VMU_CORPUS_DIR

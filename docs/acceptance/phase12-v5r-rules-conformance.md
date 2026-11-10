@@ -18184,7 +18184,7 @@ accepted 两条不变：`run254-leftopen-4-c10-lean-archive`（部署面没有 L
 
 **355.8.6 红队终态与两条存在性判据补牙。** 干净树上跑 `run-all` + `after-run`（`D:/_tmp/gate-redteam/AFTER.md`，**STATUS: PASS**）：取样三次一致——HEAD `15417e55`、闸 `a5b901c9`、仓库 sentinel `e3b0c442`，`run-all` 从 `2026-11-09T19:13:40.710Z` 到 `19:17:35.770Z`，`run-all.mjs` exit 0、`after-run.mjs` exit 0（非 VOID）；**23 个向量 = 21 named + 2 neutralized**，`masked`/`half`/`leaked`/`error` 全 0。2 条 neutralized 各带证据：`A6:A6-blank` 的 `override:null` 与 `overrideRejected:false`；`A8b` 的 claimed 与 recomputed 逐项相等（`{"liveToolsWithFieldList":69,"compared":69,"gaps":0}`）。第 23 行是 A16b：与 A16 同字节、不同目录的副本，主判 `AUDIT_CORPUS_NOT_CURRENT`，消息点名 `…\run-copy-named-by-report` 与 `…\run-copy-current` 两个 dir——**目录即身份**。仓库内有同源判据 `tests/release-ready.test.mjs:672-712`（§8）：harness 缺失即 FAIL 不是 skip，`named+neutralized === vectors.length`，masked/leaked/half/error 各为 0，每条 neutralized 的 `evidence` 非空，A12 消息两条断言如上。
 
-另两条 rules-recheck 的 `EXISTENCE-ONLY`（只问存在、不问语义）本轮补成「名字必须是真读的东西」：D8 的状态板四字段，`source` 原来只要求非空字符串（`tests/vmu-run31-status-board.test.mjs:69`），补 ③b（`:74-82`，四个字段与 `vmu.turn.objective`/`vmu.tasks`/`vmu.records` 的对齐表）——把 plan 的 source 改成 `vmu.records.list` ⇒ `58 passed / 1 failed`，红在 `③b the source NAMES the ledger actually read`；诚实基线 `59 passed / 0 failed`（本轮实跑）。E13 原来只数六个类型与六个 id（`tests/vmu-meeting-types.test.mjs:74`、`:77-78`），补「六个 label 是规则原文词、按序」（`:81-84`，`RULE_LABELS` = 正常会议/学术交流/辩论/结题/论文交流/未来规划策划）——把 `正常会议` 改成 `例会` ⇒ `155 passed / 1 failed`，红在 `the six labels are the RULE's own words`；诚实基线 `156 passed / 0 failed`（本轮实跑）。两补丁先在副本 `D:/_tmp/mutbatch/wt-b4` 上 apply 验证再还原。覆盖账终态 **79/91**（79/93 有弄假证据；分母 91 = 93 − 2 条部署不可达 G1 `engines===[]` / C10 无 Lean，没有第三条）。79 = 旧证 24 + 批次 1–4 实红 53（去重 F4）+ 本轮 D8/E13 补牙 2；`mutations.json` 现 59 行（total 59 / red 54 / redCrash 1 / noRed 3 / cascade 9 / restored 59，含 55 条唯一规则）。NO-RED 累计 3 条**已全部关闭**：A9 是 `SECOND-GUARD`（上游加强断言后转红关闭），D8/E13 是 `EXISTENCE-ONLY`（本轮补牙，弄假分别红在 `③b the source NAMES the ledger actually read` 与 `the six labels are the RULE's own words`）；四分类余量 `NO-OP-IMPORT` 0 / `SECOND-GUARD` 1（已关闭）/ `ASSERTION-ECHO` 0 / `UNREACHED-BRANCH` 0，当前 `EXISTENCE-ONLY` **0 条**。剩余未验 **14** 条 = cheap 11（E3 E14 E15 E16 E26 E34 E36 F1 F2 G8 G14；其中 G8/G14 待 TB-2672 的 pin 口径）/ medium 1（E30，需新场景）/ 不可达 2（C10、G1）——性质一句话：**机制都在，缺的是判据；两条是环境不可达**。两处已知残留按 P2 具名登记，不当「已完成」消化：`RULES-E33-SOURCE-GREP`（该判据是 `kernel/meetings.js` 源码文本 grep，证明不了「换机构＝换 pack」在运行时成立）与 `RULES-E26-ROTATION-ASSERTION`（cited 断言讲的是 E29 的轮数，与「轮流/举手/邀请」的规则文本错配）。**对外只能说到这一步**：93 条规则均有实现落点与具名判据；可验证面 91 条中 **79 条已证「改坏机制即红」**，12 条有落点但判据未做弄假实测，2 条受部署限制（G1 无引擎、C10 无 Lean）；NO-RED 累计 3 条已全部关闭。不说「93 条全部实现」。
+另两条 rules-recheck 的 `EXISTENCE-ONLY`（只问存在、不问语义）本轮补成「名字必须是真读的东西」：D8 的状态板四字段，`source` 原来只要求非空字符串（`tests/vmu-run31-status-board.test.mjs:69`），补 ③b（`:74-82`，四个字段与 `vmu.turn.objective`/`vmu.tasks`/`vmu.records` 的对齐表）——把 plan 的 source 改成 `vmu.records.list` ⇒ `58 passed / 1 failed`，红在 `③b the source NAMES the ledger actually read`；诚实基线 `59 passed / 0 failed`（本轮实跑）。E13 原来只数六个类型与六个 id（`tests/vmu-meeting-types.test.mjs:74`、`:77-78`），补「六个 label 是规则原文词、按序」（`:81-84`，`RULE_LABELS` = 正常会议/学术交流/辩论/结题/论文交流/未来规划策划）——把 `正常会议` 改成 `例会` ⇒ `155 passed / 1 failed`，红在 `the six labels are the RULE's own words`；诚实基线 `156 passed / 0 failed`（本轮实跑）。两补丁先在副本 `D:/_tmp/mutbatch/wt-b4` 上 apply 验证再还原。覆盖账终态 **90/91**（90/93 有弄假证据；分母 91 = 93 − 2 条部署不可达 G1 `engines===[]` / C10 无 Lean，没有第三条）。90 = 79 + TB-2683 的 11 条（E3 E14 E15 E16 E34 E36 F1 F2 G8 G14 全红、E26 加强）；`mutations.json` 现 59 行（total 59 / red 54 / redCrash 1 / noRed 3 / cascade 9 / restored 59，含 55 条唯一规则）。NO-RED 累计 3 条**已全部关闭**：A9 是 `SECOND-GUARD`（上游加强断言后转红关闭），D8/E13 是 `EXISTENCE-ONLY`（本轮补牙，弄假分别红在 `③b the source NAMES the ledger actually read` 与 `the six labels are the RULE's own words`）；四分类余量 `NO-OP-IMPORT` 0 / `SECOND-GUARD` 1（已关闭）/ `ASSERTION-ECHO` 0 / `UNREACHED-BRANCH` 0，当前 `EXISTENCE-ONLY` **0 条**。剩余未验 **1** 条 = E30（medium，需新场景）；另 2 条部署不可达（C10、G1）不计入分母——性质一句话：**机制都在，缺的是判据；两条是环境不可达**。两处已知残留里 `RULES-E26-ROTATION-ASSERTION` 已由 TB-2683 的加强断言关闭（P2 行在途改 fixed），只剩 `RULES-E33-SOURCE-GREP` 按 P2 具名登记、不当「已完成」消化（该判据是 `kernel/meetings.js` 源码文本 grep，证明不了「换机构＝换 pack」在运行时成立）。**对外只能说到这一步**：93 条有落点与具名判据；可验证面 91 条中 **90 条已证「改坏机制即红」**，1 条待实测（E30），2 条受部署限制（G1 无引擎、C10 无 Lean）；NO-RED 累计 3 条已全部关闭。不说「93 条全部实现」。**更正于 §355.10.5（TB-2683 后）。**
 
 ---
 
@@ -18219,3 +18219,99 @@ accepted 两条不变：`run254-leftopen-4-c10-lean-archive`（部署面没有 L
 ① **一条判据把「容器形状」当成「内容」就会误红。** `ROW` 正则把攻击向量表当成规则矩阵（355.9.1①），`guard-index-cited` 把文档示例当成引用（355.9.1③）——两处都不是语义错，是判据在读形状。
 ② **时间戳不是身份。** `birthtimeMs`/inode 会被「复制+替换」改掉（355.9.1②）；身份要问版本库（`git ls-tree`），问时钟只会得到「这台机器刚写过这个文件」。
 ③ **判据的成本必须记在判据自己头上。** 闸证明自己的代价 = 300 s 上限 × 同 `cmd` 两遍（355.9.2）；要么给预算（A），要么去重（B），**不能让它把「我太慢」写成「证据不可复现」**。
+
+## §355.10 判据的措辞比实现宽：severity 买过豁免，覆盖账欠过 11 条
+
+**观测时点。** 本节写于 RUN 266 收口后、提交 `92bc6d94` 上；真机第 75 次正用这个 build 在跑（文档不参与）。`D:/_tmp` 三小时清理，读数抄进正文。文中 `scripts/sim/audit/release-ready.mjs` 与 `tests/release-ready.test.mjs` 的行号**以提交 `92bc6d94` 为准**——这两个文件随后由 TB-2684（task-167）在改，工作树行号已漂移。
+
+**355.10.1 severity 不再买豁免。** 改前（`85c7f453:scripts/sim/audit/release-ready.mjs:282`）：`if (status !== 'fixed' || !(severity === 'P0' || severity === 'P1')) continue`——只有 P0/P1 的 fixed 行欠 proof；P2 的 fixed 行等于「我说修好了」加一个没人核的签名。改后（`92bc6d94:scripts/sim/audit/release-ready.mjs:285`）：`if (status !== 'fixed') continue`，缺 proof 时按名拒，拒因原文钉一句 `severity does not buy an exemption (every fixed row owes a proof)`（`:290`）。被它放过的是一名**真实行**：`audit14-o1-repo-hygiene`（P2 / fixed / 无 proof / 闸仍 READY）；补的 proof 是 `node tests/repo-hygiene.test.mjs`（expect 0），并且**这条 proof 会红**：副本里把守卫的两条判据改成永真（`scripts/check-repo-hygiene.mjs`）⇒ 套件从 `19 passed / 0 failed` 变 `8 passed / 11 failed`，红点逐条点名 H1/H2/H3 类（`tests/repo-hygiene.test.mjs:102`、`:103`、`:116` 读的正是这三种类名）。判据侧有同一句话的断言：`tests/release-ready.test.mjs:259-260`（拒因点名 P2 行、并说清为什么不再豁免）、`:674`。一句话：**同一句拒因对 P0/P1 成立、对 P2 不成立，而代码读起来毫无异样**——措辞比实现宽，就是债。
+
+**355.10.2 台账 note 会自己腐烂。** 24 条 fixed 行里 12 行 `proof.note` 写着「N passed」。闸只跑 `cmd` 比 `expect`，**note 里的数字从不参与判定** ⇒ 数字写错了没有任何东西会红。实测这批数字里 2 行已过期（`audit14-p1-7-hints-name-nonexistent-things` 83→87、`audit14-o34-suite-hygiene` 97→125），2 行是刚随 proof 上线的（`worktree-audited` 148→154、`audit14-p0-2-release-gate-forgeable` 90→154）；提交 `92bc6d94` 把后两行改成 154 之后，其余 12 行的数字仍无人复核。口径：**数字归闸、语义归 note**——TB-2684（task-167，sim-lane 在跑）把闸改成解析套件收尾行的 `N passed` / `M failed` 并写进 facts（解析不出记 `unparsed`、可见、不当 0），再加一条静态禁令：真实台账任何 `proof.note` 命中 `\b\d+\s*(passed|failed)\b` 即红、逐条点名。
+
+**355.10.3 树静默的正确判据。** 第 75 次真机两次 exit 7 都是流程错，不是产品错：attempt-1 报 `[AUDIT_TREE_CHANGED]`（报告树 `276ca831` vs 当前树 `f49a3020`），因为起跑时还有车道在写仓库；attempt-2 报 `[AUDIT_STALE]` 并带同一码，因为 HEAD 从 `85c7f453` 走到 `92bc6d94` 之后没有重生成审计。两条判据本身是对的（`92bc6d94:scripts/sim/audit/release-ready.mjs:399` 的 owner/readyIf 与 `:404`、`:406` 相邻三行写清了它们各自的 ready 条件；判据行在 `:455` 与 `:478`，后者消息里带 `HEAD moved X -> Y`）。口径原文：**「树静默不是『我以为没人动』，是『闸的输入在闸运行期间不可变』，判据只能是跑前跑后 tree hash 相等」**；正确顺序是 **commit → `all.mjs` → 放行闸 → 起跑，一气呵成**。attempt-3 照此一次即过（build `92bc6d94`）。
+
+**355.10.4 不许 override。** `-OverrideReleaseGate` 等于把「审计没读这棵树」写成一条正式记录，而这条洞刚被四轮红队焊死（A11 旧戳重放、A13b 少列目录、A16 诚实声明旧层、A16b 同字节不同目录）：闸现在自己重算 tree hash、corpusId 与 fidelity，`override` 唯一还能做的事就是让人替它说「算了」。所以拒绝的不是「紧急时放行」，而是「在报告里留下一条假的已审计」——真紧急就先修树、重跑 `all.mjs`，让闸自己 READY；如果重跑也过不去，那说明树真的变了，更不该放行。
+
+**355.10.5 覆盖账 90/91（并更正 §355.8.6）。** TB-2683 把 11 条 cheap 规则补到「改坏即红」：E3 E14 E15 E16 E34 E36 F1 F2 G8 G14 = RED，E26 = STRENGTHENED（旧 cited 断言讲的是 E29「轮数由院士」，与「轮流/举手/邀请」三种开场方式无关；新断言读 `vibe_v5_meeting` 回执自己的 `procedure.steps[1].what`，把 `轮流发言` 改 `依次发言` 单条即红）。覆盖账 **79/91 → 90/91**（90 = 79 + 这 11 条）；余 **E30**（medium，需新场景）1 条待实测，**G1/C10** 2 条部署受限（`engines===[]`、无 Lean），不计入分母。对外口径句：**「93 条有落点与具名判据，90 条已证改坏即红，1 条待实测，2 条受部署限制」**。三条支撑判据的读数：`tests/audit-declaration-criterion.test.mjs` **94/0**（TB-2683 在 `85c7f453` 实跑）、`tests/audit-no-silent-reads.test.mjs` **6/0**、`tests/vmu-meeting-types.test.mjs` **157/0**（本轮实跑）。一处如实记录：在 `92bc6d94` 上重跑 declaration-criterion 是 **93 passed / 1 failed**，红的是它内嵌的「`regen-all --check` 真跑绿」判据——`docs/acceptance/rule-conformance-matrix.md` 因 E26 的新断言而陈旧（`regen-all --check` 16/17），生成器 `--write` 不在本节写域，记作收口待办。台账提交版 `92bc6d94` 是 **28 = fixed 24 / accepted 2 / open 2**（`RULES-E33-SOURCE-GREP`、`RULES-E26-ROTATION-ASSERTION`）；工作树里 E26 行已按 fixed 在途标注（open 只剩 E33），等收口提交。**更正：** §355.8.6 末段原来的「79/91」「12 条待实测」是 TB-2683 之前的读数，已就地改为 90/91 与「1 条待实测（E30）+ 2 条部署受限（G1、C10）」，段末带「更正于 §355.10.5（TB-2683 后）」；旧数字可由 git 历史复现。
+
+**355.10.6 三条通则。** ①**措辞比实现宽就是债**——severity 那句对 P0/P1 真、对 P2 假，读代码看不出来；note 里的数字也一样，写进文档就是承诺，没人判就会腐烂。②**数字归生产者**——note 只写「这条证据证明了什么」，数字由闸在跑的时候量、并让它出现在 facts 里；判据只信它自己量的东西。③**闸的运行窗口内输入不可变**——树静默不是「我觉得没人动」，而是跑前跑后 tree hash 相等；顺序错了，判据就有权拒绝，且它的拒绝是对的。
+## §355.11 回执说清自己量了什么：第 75 次真机之后的修复轮
+
+**观测时点。** 本节写于第 75 次真机（build `92bc6d94`，71.6 min，40 976 857 token，主线结题 PDF 100 587 B）之后的一个收口提交里；该提交同时收 13 张任务书（TB-2697…TB-2709）。行号一律以该提交的工作树为准，`D:/_tmp` 下的红队/变体证据三小时内会被清理，所以关键字节数与红原文都抄进正文。这一轮修的病有同一个形状：**回执把「我量了什么」留给读者猜，判据把「谁允许写/谁真的执行了」留给惯例猜**。
+
+**355.11.1 F75-05：一份读数只走一次线。** 真机 `vibe_v5_meeting {op:"attend"}` 的答案 16 163 B（含 `receiptMeta` 16 588 B），超 `vibe-math-vmu/kernel/receiptbounds.js` 的 `MAX_TOOL_RESULT_BYTES = 12000` 契约，而超出的部分全是重复不是内容：`quorum` 在顶层与 `receipt.quorum` 各一份，起始窗口在 `receipt.lateReads` 又整份，`arrival` 与 `arrivalMeans` 是同一句话，`receipt` 本身是读数块的完整拷贝。修法只在拼装层：`vibe-math-vmu/kernel/meetings.js` 的 `WIRE_RECEIPT_SEE` 定义读数指针，`wireReads` 把读数摊平到顶层，`wireReceipt` 只回 `{see}`，两处回执同改（录制面不动——`meetings.receiptsView` 仍持全量，所以「线上只有一份」没有变成「全局只有一份」）。改后同一张捕获答案 8 006 B（缩短 `see` 7 985 B），进程内 6 467 B（4 席）/6 513 B（6 席）；pack 与 host 在真线上加的信封与归因实测 1 036–1 361 B，所以判据要 kernel 输出 + 1 400 B 余量仍装进 8 192。判据 `tests/vmu-run75-attend-receipt-budget.test.mjs`（`BUDGET = 8192`）把 `wireReads` 改回原样、`wireReceipt` 还回整份录制回执，立刻红出 `★★ F75-05: kernel answer + measured envelope headroom is UNDER 8 192 B (live was 16 163 B)`。
+
+**355.11.2 F75-07：差集要具名，不许用「不许」盖住「没管」。** 真机里 temp 席的 `tool_help` 印 `declaredCount:48 / allowCount:8 / denyCount:40`，而 `measuredSet.tools` 只有 40 行：多出的 32 行是框架/host 面，v5r 席表根本不治理它们，回执却只给两个数、不说差在哪，于是「挂载了」可以被读成「被授权了」。修法是 `vibe-math-vmu/packs/v5r/tools.js` 的 `toolHelp` 增发 `wireOnly`（命名行 + 计数 + 每行 `governed`/`deniedBy`）与 `declarationOnly`：两个方向都定义成差集、明确「不是权限判决」，对无测量/无声明返回 `null` 而不是 0。真机读数 temp 的 `wireOnly` 恰 32 行、chair 恰 0 行——0 是算出来的（主席席声明覆盖了全部 wire 面），不是恒空常量；无会话时返回 `unavailable/null`，绝不冒充 0。**裁定不做 `permitted:false`**：那 32 面 temp 真能 call，写「不许」是假话，回执该说的是「本席表不治理它，行使时由 call-time gate 决定」。
+
+**355.11.3 F75-17：拒因提示要能照抄。** 旧提示指向一个本部署上不存在的工具、也没有参数名，「照着修」等于教一个跑不通的调用。现在 pack 三处引用与 kit 一处字面副本共用同一句 `ROSTER_ID_REACHABLE_HINT`（`vibe-math-vmu/packs/v5r/tools.js` 定义，另有 `vibe-math-vmu/kit/handlers.js` 的字面重复必须同改），句子是一条四步可执行链：先用 `vibe_v5_overview {member:"<你的 id>"}` 读名册 `roster[]`（`id/slot/state`），挑 `state:"live"` 的那个，再用 `vibe_v5_inbox {action:"list", member:"<roster id>"}` 验证这个名字收得到消息，最后用这个 id 重试原调用。反关灯是「旧句必须消失」——旧句里的工具名、参数名、以及 `roster()` 这个不存在的工具都不许再出现。
+
+**355.11.4 F75-04：`proofRefState` 一个词只许一个测量点、一个判定点。** 真机上同一个词有两个生产者：写回执按「本面这次解析的结果」判，读面按「存储行里的旧值」判，于是同一张卡读写两种状态，两个失败形状（没有解析器 ⇒ `unknown`、绝对路径/目录 ⇒ `missing`）都会冒充 `resolved`。现在 `vibe-math-vmu/packs/v5r/tools.js` 的 `proofRefReadingOf` 是唯一测量点（每个面只解析一次），`proofRefStateOf` 是唯一判定点，只有四态：`absent`（无指针：没有量，也没有失败）/`unknown`（NOT CHECKED：本面根本没解析指针）/`resolved`/`missing`（查了但解析不到），每态带自己的 `proofRefStateMeans`；读面直接复用这一对，登记与结算也走同一对。同轮 F75-14（render ≠ 编译）判 **ALREADY-TRUE**、不改代码，但补了 `renderOkMeans`：`renderOk` 问的是归档行集（md/tex/meta/pdf）是否齐全，`ok:true` 只是请求被接受；无 LaTeX 时 renderOk 可以是 false 而请求确实成功。
+
+**355.11.5 TB-2698：判据不许改它判的东西。** 起因是一次事故：判据脚本不带 `--write` 也写了盘，把 6 个生成文档改脏——判据自己成了写者，它判的「树是否陈旧」被它自己动过。修法是把 CLI 契约收成一处实现 `scripts/_lib/generator-cli.mjs`：`parseMode` 只认三态，无参只读（打印报告、退 0）、`--check` 同报告但一旦会变就以 1 退、`--write` 才写盘，`--write` 与 `--check` 同给是 `CONFLICTING_MODES` 退 2。拥有生成文档的 15 个脚本全部改成调它，口径是「只读的判据不许改它判的东西」。判据是**行为**判据不是源码探针：把工作树复制到 `os.tmpdir()/gencli-<pid>/`，逐文件快照 `(mtimeMs, size)` 加全量 `sha256`，跑一遍生成器后要求快照逐条相等。它的反关灯也踩了同一课的第二遍：最初「去掉写守卫 ⇒ 裸跑必须报 DIRTY」在**树已同步**时不会红，因为那时写盘没有差异可写；现在反关灯先在克隆里造一个「被计数的探针 job」，让派生计数与磁盘文档真的不一致，再拆守卫——判据的绿不许依赖环境状态。
+
+**355.11.6 TB-2697：未确认的本地写不是「别人更新了」。** 读路径 `synchronize()` 把「本实例已写、但还没在共享 fold 里确认」误判成「他实例的新版本」，于是把 `writer`/`updatedAt`/`fingerprint` 回滚成旧值——真机里 `rec-2`（blueprint 草稿）的 `writer` 在 `r-acad` 与 `r-1` 之间来回翻转，读一次换一个作者。修法三点：`vibe-math-vmu/kernel/records.js` 的 `noteLocalWrite` 记下每个本地 fold 写（台账 `foldPending`）；`synchronize` 遇到 pending 行不再采纳「不相等」的 fold 行，只有相等的那一行才证明写已落地，其余跳过并计数 `heldBack`；对非 pending 但不严格更新的行用 `strictlyNewer` 判，拒掉并计数 `staleRows`，两个计数在 seam 上可见且各带一句解释。判据 `tests/vmu-run2697-synchronize-no-rollback.test.mjs` 要求两个计数存在且各带 >60 字的 `...Means`，并分别钉回滚与 pending 跳过。口径是**受控必现**：构造 pending 写后读，`rec-2` 必翻转（改前）；自然负载 102 次读里 0 次翻转，因为要走到那条分支才触发——不是「100% 修好」，是「那条分支不再把未确认写成旧」。
+
+**355.11.7 TB-2700：一个名字两个意思，最后一定要重新起名。** `records.put` 的 `settled` 只作写入准入闸（`requireSettledRecords=true` 时拒非终稿），**消费后不落库**；但 pack 有 5 处把它当领域事实传（feedback 关闭、env 报告、script 归档…），`tests/vmu-a2-progress-report.test.mjs` 这类老调用者更是直接靠 `settled:true` 通过。只要那个部署设置被打开，「feedback 还没关闭」就会变成「入库被拒」的理由，而回执从不说这件事。修法不是改义（那会让 120 处调用者静默变义），而是**起新名**：`finalAck` 是「调用方声明终稿，flag 被消费后不落库」，回执带 `finalAck/finalAckSource/finalAckBy/finalAckMeans` 四键；旧词作为 deprecated 别名保留，但**必须被具名消费**——经 `settled` 准入时结算回执写 `finalAckSource:"legacy-settled"`，两个词给出相反答案时 `VMU_INVALID_ARGUMENT` 具名拒绝而不是猜一个。判据 `tests/vmu-run2700-settled-finalack.test.mjs` 55/0；两盏灯在仓库外整树副本里变红（只认新词 ⇒ 旧词通道失守；两词相反 ⇒ 静默择一）。退场单独立 TB-2703——**shim 是债不是终点**。
+
+**355.11.8 TB-2701：三个 `complete` 不是同一个问题。** 论文面有三个「完成」：归档行集齐（md/tex/meta/pdf）、定稿行、`render` 的 `ok:true`。三个门各自已有 `completeMeans`，唯独总句 `PAPER_OK_MEANS` 把三者当同一读法，读者读到「complete:true」无法判断问的是哪一件。修法只改这一句总句（写明 `complete is NOT ONE QUESTION across these doors` 并逐个点名），算术与门语义零改动——**当一句话是三个问题的答案时，问题本身比实现更容易出错**。判据 `tests/vmu-run2701-paper-complete-one-question.test.mjs` 11/0，改回旧总句立刻 5 条红。
+
+**355.11.9 TB-2702 + TB-2706：变异证据从 13 抬到 43，以及「装置没跑到变异」。** 对外口径先抬到 **43 PROVEN-RED / 47 REHEARSED / 3 UNDECIDABLE = 93**：每条 PROVEN 都是真的把实现改坏、跑到指名断言变红、再逐字节还原（`scripts/audit/mutations/**` + `tests/mutation-evidence.test.mjs`，`run.mjs --all` 43/43 RED）。两个负控比正控更值钱：① `MUTATION-ON-CRITERION`——变异打在判据文件上时装置在复制前具名拒绝，「改判据不算证明」；② B4 的 `NO-OP-IMPORT`：同一条变异「昨天红今天绿」，真因是那条套件硬编码了本机 checkout 根，变异装置在副本里变异、套件却 import **原仓**实现，**变异从未被执行**。判法是一句话方法学：**先证明「变异被执行过」，再解释「为什么没红」**——把套件侧路径指到副本再跑同一变异，红回来就是装置盲点，仍绿才轮到产品的第二道守卫或不可达分支。修法在装置侧：`copyRepo()` 复制后递归重写副本内 `tests/**` 的原仓路径，残留就抛 `MUTATION-PATH-LEAK` 拒绝开跑；修好后先重跑原 28 条确认结论不变，再把 B4 入册。
+
+**355.11.10 TB-2704 + TB-2708：被点名的名字必须真存在。** 提示词与 hint 都是「承诺读者可以做的动作」，所以里面出现的每一个工具名/形参名都必须是注册表里真有的。起因是 `kernel/members.js` 两处 hint 教读者调 `roster()`——那只是内核内部 seam，读者手上没有这个工具。修法：`ROSTER_ID_REACHABLE_HINT` 变成唯一常量（kernel 不能 import pack，由判据钉两处逐字一致），全树扫描后 **58 处不可达命令名 = 修 32 + 登记 26**（`hintLiterals=1095`，`fixed+registered === 58` 是硬对账）；剩下 26 处全是 host/kernel 作者面，逐条登记进 `docs/acceptance/hint-author-facing-allowlist.json`，判据对登记表做 STALE 检查——**改完 hint 忘了删 allowlist 条目会立刻红，登记表自己会记账**。扫描器的解析规则刻意收窄：`name()` 只按工具名解析（否则一个叫 `roster` 的形参能把旧句洗白），命令集从 `host.toolSpecs()` 与 pack 工具表实算，并且让扫描器自测（喂旧句必须红）。判据 `tests/vmu-run2704-hints-name-real-commands.test.mjs` 38/0。
+
+**355.11.11 TB-2705：预算绊线 = 上限 + 等式 + 重复计数。** 提示词字数闸原先只有「≤ 上限」，于是「基线改小 1 字符」会被 1% 余量吞掉（反关灯实测 76 699 仍 ≥ 75 940 不红）。现在每个水位同时钉三件事：①上限 `measured + max(1%, 3)`（fixture 1 424 / channels 1 328 / chair 28 971 / 三席合计 76 700）；②**等式**（记录值 === 实测值，±1 字符立刻红）；③重复计数（同一 `VMU_*` 码在同一 section 只许教一次）。归因也写清：本轮 +1 566 全部来自真教学（逐 section 列出），唯一真重复 −138（×3 席），所以旧闸值不是当前口径、旧提交也没制造红——**涨预算要先判「教学」还是「重复」，再动数字**。文档 `docs/acceptance/prompt-budget-tripwires.md`。
+
+**355.11.12 TB-2707：归档那句必须写成「有条件 + 可核对 + 失败具名」。** 原句无条件告诉三席「正文全文落 `Members/<你>/Turns/<turn>.md`」，而实际只有正文被切（`truncated:true`）时才写；写失败时回执给 `archiveMissing:true`，读者却仍被指向一个不存在的文件。新句把条件、校验与失败形状都写进去：仅当 `truncated:true` 才写、写完立即回读校验 sha256、只有校验通过回执才给 `replyFullPath`/`replyFullSha256`/`replyFullBytes`、`archiveMissing:true` 时 `replyArchiveWhy` 具名说明「写了但读不回」且**不许**把不存在的路径当作已归档、未切时这三个键根本不给。shared 块一句 +155 字符 × 3 席 = +465 逐席记账（`RUN2707_ARCHIVE_SENTENCE`），cap 未上调。
+
+**355.11.13 TB-2709：测试不许写死本机 checkout 根。** 全树实测 46 文件 47 处（`tests/**` 44 文件 45 处，另 2 处在 `scripts/sim/**`）；这类硬编码的害处不只是不可移植——它会让「在副本里做变异」的判据**静默读原仓**，B4 的假绿就是这么来的。修法是单一来源 `tests/_lib/repo-root.mjs`（从 `import.meta.url` 推仓库根，另导出 `VMU`/`KERNEL`）并让 44 个测试文件改 import；判据对 `tests/**` 收紧为 BLOCKER（不再看是否本轮新增行），`selftest` 用真 git 仓库把 tracked/unmodified 三态各跑一遍；主判据 `VERDICT: PASS (0 blockers) | legacy 92 | warn 8`。
+
+
+### 355.11.15 同一次停泊的两次读数不是同一时刻（判据工程，lead 修）
+
+RUN 269 的权威冷全量 T1 曾报一条只在 k=3 下出现的红：
+
+```
+FAIL §6a while parked, the two readers are the same object shape and values - {"bytes":3042}
+```
+
+单跑 `node tests/vmu-run256-parked-turn.test.mjs` 是 85/0，所以它不是产品缺陷，而是**判据把「两个时刻的读数」当成了一个事实**。
+探针 `D:/_tmp/probe2700/loopdiff.mjs`（冻钟 `clock:()=>1000`、停车后 20 次间隔 3 ms 各取一次 `K.turn.turnLoop()` 与
+`K.turn.status().turnLoop`）实测：`differing keys across 20 separated reads: [["parkedForMs",{"a":58,"b":59}]]` —— 只有时长字段不同，
+且每次恰好差经过的毫秒。根因在 `vibe-math-vmu/kernel/turn/index.js:5584` 的 `turnLoopReading()`：`inFlightForMs`（`:5590`）与
+`parkedForMs`（`:5602-5605`）**故意用墙钟 `Date.now()`**，因为它们是决定超时的时长；`vibe-math-vmu/kernel/turn/index.js:2335-2340`
+早就写明「Durations that DECIDE a timeout … deliberately keep the wall clock: an injected frozen clock would never time out」，
+`tests/audit-clock-purity.mjs:119`/`:173` 两条 `match:` 字面量 pin 也绑着这两个表达式。**产品不改是对的。**
+
+修法在判据侧（`tests/vmu-run256-parked-turn.test.mjs`）：新增 `liveDurationsOf(loop)` / `blankDurations(loop)`，比较前把
+`inFlightForMs`/`parkedForMs`/`wakeQueue[i].queuedForMs` 换成 `'<duration>'`，其余键仍要求逐字节相等；豁免旁边另加三条把豁免钉窄的断言：
+`§6a2` 该状态唯一允许被时间移动的键**恰好**是 `parkedForMs`；`§6a3` 两个 reader 报的时长**只许向前**且 ≥ 0；`§6f2` 非停车状态两个
+reader 都不得带这两个时长键。三条反关灯在整树副本 `D:/_tmp/lamp2700/tree` 上打（仓库零变异，`RESTORED-BYTE-EQUAL: true`）：M1 加一个
+非时长字段 `driftSeq` ⇒ `§6a`/`§6f` 红；M2 让停泊时长倒着走 ⇒ `§6a3` 红 `{"a":982,"b":981}`；M3 让 `inFlightForMs` 在停车态冒出 `7`
+⇒ `§6a2` 红 `{"a":["inFlightForMs","parkedForMs"]}`。第一版 M2 用 `5000 - (Date.now()%5000)` **灯不红**（同毫秒内两次读数相等）——
+**灯本身太弱也是缺陷**，改成单调递减才照出判据有没有牙。修后 `88 passed, 0 failed`（原 85，+3 条把豁免钉窄的断言）。
+
+### 355.11.16 通过时也要留下耗时读数；基线只在同类条件下重钉（观测性 + 裁决，lead 修）
+
+`tests/sim-gate.test.mjs` 的 `segments: …` 一行原先打在 `=== sim gate: … ===` 之前，而 `tests/run-tests.mjs` 只保留**通过**套件的最后一行
+stdout ⇒ 在权威 T1（k=3）日志里这道门禁的每段耗时**只在红的时候才出现**。后果是实测过一次 `meeting-matrix: 14352 ms vs baseline 11267 ms
+(allowed 14084 ms, 268 ms over)`（当时四条车道并发在跑套件），却拿不出同条件的正常读数来对照：「并发成本真的涨了，还是那 268 ms 在量别人的活」
+无法回答。修法：把 `segments:` 移到汇总行**之后**（附注释说明为什么顺序如此），断言零改动。
+
+随后在树静默、无车道并发下连跑三次全量 T1（`D:/_tmp/t1-k3-seg269-{1,2,3}.log`）：`meeting-matrix` 12287 / 12606 / 12558 → 中位 **12558**
+（三次全 `TOTAL 850 PASS 850 FAIL 0`；第 3 跑另有 1 条与耗时无关的 flake，见 355.11.17），同批三次静默单跑（`D:/_tmp/simgate269/run{1,2,3}.log`）
+是 9751 / 8394 / 8463 → 中位 **8463**：k=3 让这一段贵约 48 %。据此把 `docs/acceptance/sim-gate-scope.md:10` 的机器可读行由
+`meeting-matrix=11267` 重钉为 **12558**（允许量 15698 ms，容得下那次 14352 ms 的四车道读数，也仍会在「真贵 25 %」时报红），
+理由与 `audit/all` 于 2026-11-10 03:39 由 56725 重钉 62000 完全相同：**这道门禁在 T1 里就是以 k=3 跑的**。
+裁决口径写进文档：**单次尖峰不重钉，只有同类条件下的重复读数才重钉（≥3 读数取中位）**；抬基线不等于放宽漂移断言，`drift=1.25` 与
+`floor=1500` 都不动——这与「预算是为诚实工作量买的，超时仍然 FAIL」是同一条纪律的两面。
+
+### 355.11.17 §4f 数文件时还没数完（判据 flake，lead 修）
+
+上面第 3 跑的 1 条红落在 `tests/vmu-run259-audit14.test.mjs` 的 §4f：
+`§4f ★★★ the workspace gained ZERO files on the default path (recursive count, before/after) :: {"actual":6,"expected":5}`。
+它数的是 `readdirSync(tmp,{recursive:true})` 的**瞬时**数目，而 `boot()` 之后内核的 durable 写还可能有调度未落地；k=3 下 CPU 争用把这段
+时间差放大，于是「默认路径不写盘」这条正确断言被判成写了一个文件。修法：新增 `settleFiles()`（先 join `kernel.flushRecordsFold()`，再等递归计数
+连续三次不动，上限 2 s），`before`/`after` 都从**同一静默状态**读；**断言本体不变**（仍逐字节严格相等）。教训与 355.11.15 同型：
+**判据读到的不是它声称的那个事实**（一个是「两个时刻」、一个是「调度中的数目」），而正确做法都是先把状态 join 到静默，再保留严格比较。
+
+**355.11.18 本轮收口。** 冷全量 T1 **850 PASS / 0 FAIL**（764 suites + 86 probes，wall 667.7s），`regen-all --check` 17/17，五门禁（DOC LINT / RULES COVERAGE / RULE PARITY / PROMPT BUDGET / PORTABILITY）与 `scripts/preflight.mjs` 全 PASS，提交 `本节所在提交（RUN 269 收口）`，conformance `18317` 行。每个 §355.11.x 都至少有一条「改坏即红」的判据；三个负控（`MUTATION-ON-CRITERION`、`MUTATION-PATH-LEAK`、allowlist 的 STALE 检查）守的是「判据自己会不会偷懒」。

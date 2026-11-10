@@ -213,7 +213,12 @@ const schedAt = (svc, roster) => svc.open({ chair: 'acad', actor: 'acad', roster
   const svc = mk(() => now.t, {})
   const sched = schedAt(svc, ['acad', 'r-1', 'r-2', 'r-3'])
   const att = svc.attend({ meeting: sched.meeting, member: 'r-1' })
-  const lateReads = (att.receipt && att.receipt.lateReads) || att.lateReads || null
+  // TB-2694 / F75-05: `lateReads` is spread FLAT on the answer now (no nested duplicate), so the window is read from
+  // the top level plus the RECORDED receipt — two places, one source (the recorded one keeps the nested shape).
+  const rec4 = ((svc.receiptsView({ limit: 10 }).receipts) || []).filter((r) => r && r.action === 'attend').slice(-1)[0] || null
+  const lateReads = (rec4 && rec4.lateReads) || null
+  ok(att.started === false && att.openedAt === null && att.startsInMs !== null,
+    '§4a0. the flat top-level window says the same thing (started:false, openedAt:null, startsInMs non-null)', { started: att.started, openedAt: att.openedAt, startsInMs: att.startsInMs })
   ok(lateReads !== null && typeof lateReads === 'object',
     '§4a. the scheduled attend receipt carries the lateness window (non-vacuous precondition)', lateReads && Object.keys(lateReads))
   ok(lateReads && lateReads.started === false,
@@ -239,7 +244,9 @@ const schedAt = (svc, roster) => svc.open({ chair: 'acad', actor: 'acad', roster
   ok(Number.isFinite(view2.startedAt), '§4h. the open meeting has a real startedAt', view2.startedAt)
   ok(Number.isFinite(late2.openedAt) && late2.openedAt === view2.startedAt,
     '§4i. ★★★ after it opened, `openedAt` is the REAL opening instant (startedAt), not the scheduled time', { openedAt: late2.openedAt, startedAt: view2.startedAt })
-  const late2Reads = (late2.receipt && late2.receipt.lateReads) || null
+  // TB-2694 / F75-05: the readings are on the TOP LEVEL of the answer now (`late2.lateReads` would be undefined because
+  // they are spread flat); `late2.elapsedSinceMs` / `late2.openedAt` ARE that window. The recorded copy keeps the nested form.
+  const late2Reads = late2.openedAt === undefined ? null : { openedAt: late2.openedAt, elapsedSinceMs: late2.elapsedSinceMs, started: late2.started }
   ok(late2Reads && late2Reads.elapsedSinceMs === 5000 && late2Reads.openedAt === view2.startedAt,
     '§4j. ★★★ and the lateness window is measured FROM that instant (elapsedSinceMs = 5000 = NOW+5000 minus startedAt), never from scheduledFor', late2Reads && { elapsedSinceMs: late2Reads.elapsedSinceMs, openedAt: late2Reads.openedAt })
 }
@@ -261,7 +268,12 @@ const schedAt = (svc, roster) => svc.open({ chair: 'acad', actor: 'acad', roster
   const waiterId = armed.waiter && armed.waiter.id
 
   const half = svc.attend({ meeting: opened.meeting, member: 'r-1' })
-  const halfFired = Array.isArray(half.receipt && half.receipt.firedWaiters) ? half.receipt.firedWaiters : null
+  // TB-2694 / F75-05: the answer no longer ships the readings twice, so the waiter facts now ride at the TOP level
+  // (kernel/meetings.js attend return `firedWaiters`) instead of inside the full-copy `receipt`; the recorded receipt
+  // still carries them. Both are accepted here so the assertion stays about the FACT, not about the envelope depth.
+  const firedOf = (res) => (Array.isArray(res && res.firedWaiters) ? res.firedWaiters
+    : (Array.isArray(res && res.receipt && res.receipt.firedWaiters) ? res.receipt.firedWaiters : null))
+  const halfFired = firedOf(half)
   ok(halfFired !== null,
     '§5c. the attend receipt carries the waiter settlement (non-vacuous precondition for §5d)', halfFired)
   ok(halfFired && halfFired.length === 0,
@@ -273,7 +285,7 @@ const schedAt = (svc, roster) => svc.open({ chair: 'acad', actor: 'acad', roster
     '§5g. ★★★ the excluded seat is named in `arrival.attendDenied`, never in `missing`', { missing: missingHalf, attendDenied: half.arrival && half.arrival.attendDenied })
 
   const all = svc.attend({ meeting: opened.meeting, member: 'r-2' })
-  const fired = Array.isArray(all.receipt && all.receipt.firedWaiters) ? all.receipt.firedWaiters : null
+  const fired = firedOf(all)
   ok(fired !== null, '§5h. RULE E guard: the settling receipt carries a list', fired)
   ok(fired && fired.length === 1,
     '§5i. ★★★ DEFECT GATE: the last ELIGIBLE member attending FIRES the waiter — the old roster-based predicate could never fire on this roster (r-temp can never be present)', fired && fired.length)
@@ -291,12 +303,12 @@ const schedAt = (svc, roster) => svc.open({ chair: 'acad', actor: 'acad', roster
   const floorShort = svcF.attend({ meeting: openF.meeting, member: 'r-1' })
   ok(floorShort.quorum && floorShort.quorum.met === false,
     '§5l. control: with waitForAll off and quorumMin 3, acad+r-1 leaves the floor one short (non-vacuous precondition)', floorShort.quorum && { met: floorShort.quorum.met, present: floorShort.quorum.present, required: floorShort.quorum.required })
-  ok(Array.isArray(floorShort.receipt.firedWaiters) && floorShort.receipt.firedWaiters.length === 0,
-    '§5m. ★★ and the waiter does NOT fire while the floor is short', floorShort.receipt.firedWaiters && floorShort.receipt.firedWaiters.length)
+  ok(Array.isArray(firedOf(floorShort)) && firedOf(floorShort).length === 0,
+    '§5m. ★★ and the waiter does NOT fire while the floor is short', firedOf(floorShort) && firedOf(floorShort).length)
   const floorMet = svcF.attend({ meeting: openF.meeting, member: 'r-2' })
   ok(floorMet.quorum && floorMet.quorum.met === true,
     '§5n. control: the next eligible attendance meets the floor', floorMet.quorum && { met: floorMet.quorum.met, present: floorMet.quorum.present })
-  const floorFired = Array.isArray(floorMet.receipt.firedWaiters) ? floorMet.receipt.firedWaiters : null
+  const floorFired = firedOf(floorMet)
   ok(floorFired !== null && floorFired.length === 1 && floorFired[0].until === 'attend-all',
     '§5o. ★★★ so the waiter fires at EXACTLY the instant the quorum floor is met — the same predicate the opening door uses (`arrived()`), one truth for both deployments', floorFired && floorFired.map((f) => f.until))
 }

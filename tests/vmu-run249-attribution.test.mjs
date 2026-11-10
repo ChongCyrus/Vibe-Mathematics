@@ -66,7 +66,10 @@ test('§0 every repair is on the source that owns it (source pins, so §1-§5 ca
   has(PACK, 'writerSourceMeans', '§0e ★ F-05: the receipt says WHERE the writer came from')
   has(PACK, "reason: declaredProofStateFolded === 'draft' ? 'declared-draft' : 'declared-not-complete'", '§0f ★★★ D: a non-complete declaration can never report locked')
   has(PACK, "reason: 'complete-but-pointer-unresolved'", '§0g ★★ D: complete + unresolvable pointer is its own named shape')
-  has(PACK, 'proofRefState: proofRefStateOut', '§0h ★★ D: every receipt carries the pointer state it read')
+  // ★ RUN 2699 (F75-04): the pointer state now comes from the ONE judge (`proofGateFinal`) and carries whether it was
+  // actually CHECKED, so the pin moves to the receipt key plus the checked flag instead of the retired local variable.
+  has(PACK, 'proofRefState: proofGateFinal.proofRefState', '§0h ★★ D: every receipt carries the pointer state it read')
+  has(PACK, 'proofRefStateChecked: proofGateFinal.proofRefStateChecked', '§0h2 ★★★ F75-04: and whether it was measured at all')
   hasNot(PACK, "kind: 'unverified'", '§0i ★★★ A: the `unverified` answer is gone from the face (its own description promised a refusal)')
   has(PACK, 'diskFileFromRecord: ledger.id === undefined ? null : ledger.id', '§0j ★★ F-08: the compile ledger row that wrote the disk file is a field')
   has(PACK, 'diskFileFromRecordMeans', '§0k ★ F-08: and the receipt says how to read it against `compiledAfterFinal`')

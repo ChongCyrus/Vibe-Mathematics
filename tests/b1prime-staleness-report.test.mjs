@@ -61,8 +61,12 @@ try {
   const diag = stale.err.split('\n').filter((l) => /诊断:/.test(l))
   ok(stale.code === 2 && diag.length >= 1, '★ precondition: the fixture goes HARD STALE (exit 2 + a 诊断: line)', 'exit=' + stale.code + ' diag=' + diag.length)
 
-  // (2) the parent's `detail` is the CHILD's OWN last stderr line, verbatim
-  const child = run([SETTINGS_GEN], broken)
+  // (2) the parent's `detail` is the CHILD's OWN last stderr line, verbatim.
+  // TB-2698: the probe must call the child the way the parent now calls it — with --check. A bare child is a DRY RUN
+  // there (report on stderr, exit 0), and execFileSync only hands back stderr on a non-zero exit, so a bare probe
+  // would read "" instead of the line and test nothing.
+  // The old probe relied on a bare run exiting non-zero; after the TB-2698 contract that premise no longer holds.
+  const child = run([SETTINGS_GEN, '--check'], broken)
   // ★ the label is `    诊断: ` (one space after the colon). Stripping `\s*` after the colon would EAT the child's own
   // leading spaces and turn an identical line into a false mismatch (my first version did exactly that).
   const parentDetail = (diag[0] || '').replace(/^\s*诊断: ?/, '')

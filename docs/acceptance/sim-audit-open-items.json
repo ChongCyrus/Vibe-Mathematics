@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-10",
+  "updatedAt": "2026-11-10T06:35:00+08:00",
   "purpose": "The one ledger the release gate reads (scripts/sim/audit/release-ready.mjs). An item is here because a named audit finding is not closed: either it is open (it must name the condition that closes it), it was handed to a taskbook lane, or it is accepted for a deployment reason. Fixed items stay as evidence with the code/test that closed them. Nothing is written here without a file:line or a command that reproduces it.",
   "rules": [
     "P0 open => NOT READY. P1 open is allowed only with an owner and a named condition; P2 is bookkeeping.",
@@ -18,7 +18,7 @@
       "proof": {
         "cmd": "node tests/vmu-run248-notice-delivery.test.mjs",
         "expect": 0,
-        "note": "117 passed, 0 failed: the notice lines are non-destructive and only mailbox.ack settles them."
+        "note": "the notice lines are non-destructive: reading is not settling, only mailbox.ack settles them."
       }
     },
     {
@@ -32,7 +32,7 @@
       "proof": {
         "cmd": "node tests/vmu-run256-delivery-code-passthrough.test.mjs",
         "expect": 0,
-        "note": "43 passed, 0 failed: the delivery code reaches the reader unchanged."
+        "note": "the delivery code reaches the reader unchanged."
       }
     },
     {
@@ -49,7 +49,7 @@
       "proof": {
         "cmd": "node tests/vmu-run260-skipped-totals.test.mjs",
         "expect": 0,
-        "note": "44 passed, 0 failed - vibe_vmu_turn{op:\"status\"}.skippedTotals answers the session total in one read; evictedTurns>0 forces evictedSkippedUnknown:true + means saying the evicted turns are not recoverable"
+        "note": "vibe_vmu_turn{op:\"status\"}.skippedTotals answers the session total in one read; evictedTurns>0 forces evictedSkippedUnknown:true and says the evicted turns are not recoverable."
       },
       "resolution": "vibe_vmu_turn{op:\"status\"}.skippedTotals carries fields/fieldsDispatchThrown/turnsWithSkips/scope/retainedTurns/evictedTurns/evictedSkippedUnknown/means, derived at ONE point (skippedTotalsReading in kernel/turn/index.js) from the same turnReceipts array, and externally recomputable from those rows"
     },
@@ -74,7 +74,7 @@
       "proof": {
         "cmd": "node tests/vmu-run256-parked-turn.test.mjs",
         "expect": 0,
-        "note": "85 passed, 0 failed."
+        "note": "a parked turn is answerable, overridable and closable, and its status is one reading."
       }
     },
     {
@@ -88,7 +88,7 @@
       "proof": {
         "cmd": "node tests/vmu-run256-records-one-face.test.mjs",
         "expect": 0,
-        "note": "56 passed, 0 failed."
+        "note": "the records list answers total/excluded with one face, not two."
       }
     },
     {
@@ -102,7 +102,7 @@
       "proof": {
         "cmd": "node tests/vmu-run257-deterministic-ids.test.mjs",
         "expect": 0,
-        "note": "62 passed, 0 failed."
+        "note": "consult ids are minted deterministically, so two identical runs are byte-identical."
       }
     },
     {
@@ -127,7 +127,7 @@
         "cmd": "node tests/release-ready.test.mjs",
         "expect": 0,
         "timeoutMs": 900000,
-        "note": "154 passed / 0 failed on tree 85c7f453: the gate refuses a report that predates a worktree edit."
+        "note": "the gate refuses a report that predates a worktree edit."
       }
     },
     {
@@ -155,7 +155,7 @@
       "proof": {
         "cmd": "node tests/vmu-run258-pack-declaration-gate.test.mjs",
         "expect": 0,
-        "note": "43 passed, 0 failed: a zero-effect declaration is refused by name (VMU_PACK_DECLARATION_UNCONSUMED) and the folded set only records keys that really folded."
+        "note": "a zero-effect declaration is refused by name (VMU_PACK_DECLARATION_UNCONSUMED) and the folded set only records keys that really folded."
       }
     },
     {
@@ -172,7 +172,7 @@
         "cmd": "node tests/release-ready.test.mjs",
         "expect": 0,
         "timeoutMs": 900000,
-        "note": "permanent fixtures for A11/A12/A13/A13b/A14/A15/A16/A16b plus the duplicateDigestIn(messages) half-vector assertion; measured 154 passed / 0 failed on tree 85c7f453 (317 s quiet, 384.2 s under T1 k=3)"
+        "note": "permanent fixtures for A11/A12/A13/A13b/A14/A15/A16/A16b plus the duplicateDigestIn(messages) half-vector assertion."
       },
       "fixedAt": "2026-11-10T03:18:00+08:00",
       "resolution": "TB-2653 / task-128 closed in three passes: legacy-stamp compat branch deleted (824bcaba), corpus layer ownership + single-writer pointer + AUDIT_CORPUS_NOT_CURRENT (141c5cc4), message layer no longer prints the same digest twice (15417e55). Two residual boundaries are recorded on purpose and are NOT holes to fix: --head-iso is a test hook that only relaxes \"report older than HEAD\", and the trust boundary is the file system itself (whoever can rewrite current-layer.json can rewrite the gate source).",
@@ -203,7 +203,7 @@
       "proof": {
         "cmd": "node tests/vmu-run256-delivery-code-passthrough.test.mjs",
         "expect": 0,
-        "note": "43 passed, 0 failed: only VMU_ENGINE_UNAVAILABLE may be started again; a timeout keeps its own code with starts===1."
+        "note": "only VMU_ENGINE_UNAVAILABLE may be started again; a timeout keeps its own code with starts===1."
       }
     },
     {
@@ -231,7 +231,7 @@
       "proof": {
         "cmd": "node tests/vmu-run259-records-identity-order.test.mjs",
         "expect": 0,
-        "note": "78 passed, 0 failed: identityHoldsOf answers false for a page of 1 against a universe of 2."
+        "note": "identityHoldsOf answers false for a page of 1 against a universe of 2."
       }
     },
     {
@@ -259,7 +259,7 @@
       "proof": {
         "cmd": "node tests/vmu-run257-abandon-orphan.test.mjs",
         "expect": 0,
-        "note": "76 passed, 0 failed: a named open row is settled while another turn is in flight."
+        "note": "a named open row is settled while another turn is in flight."
       }
     },
     {
@@ -287,7 +287,7 @@
       "proof": {
         "cmd": "node tests/vmu-run257-refusal-hints.test.mjs",
         "expect": 0,
-        "note": "87 passed, 0 failed: every hint value is generated from the registry and checked against it."
+        "note": "every hint value is generated from the registry and checked against it."
       }
     },
     {
@@ -343,7 +343,7 @@
       "proof": {
         "cmd": "node tests/vmu-run257-prompt-receipt-parity.test.mjs",
         "expect": 0,
-        "note": "125 passed, 0 failed; a missing corpus now fails by name instead of reading as green."
+        "note": "a missing corpus now fails by name instead of reading as green."
       }
     },
     {
@@ -386,26 +386,66 @@
       "id": "RULES-E33-SOURCE-GREP",
       "title": "E33 is proved by grepping kernel source, so it cannot show that swapping institutions swaps the pack at runtime",
       "severity": "P2",
-      "status": "open",
+      "status": "fixed",
       "owner": "rules-recheck",
       "source": "TB-2679 batch 4 (rules mutation account, final close-out 2026-11-10)",
-      "evidence": "tests/vmu-meeting-types.test.mjs::★ zero mechanism: none of the five institutional type ids is hardcoded in kernel/meetings.js",
+      "evidence": "rehearsed-red: the two falsifications above were measured on copies under D:/_tmp, not yet replayed by an in-repo mutation harness (see TB-2687)",
       "condition": "The cited assertion is a source-text grep of kernel/meetings.js: it can prove the mechanism is not hardcoded, but not that a different pack actually changes the catalog at runtime. Close when a runtime assertion exists: load a second pack (or an empty one) and show the catalog follows the pack or falls back by name.",
       "proof": {
         "cmd": "node tests/vmu-meeting-types.test.mjs",
         "expect": 0,
-        "note": "measured 156 passed / 0 failed on tree 15417e55: the grep assertion stays green even if the pack is replaced or emptied, which is exactly the debt"
+        "note": "TB-2686: the swap fixture copies vibe-math-vmu to a temp tree, adds a sentinel meeting type to the copied pack, boots the copy and reads the catalog back through the read face; the unpatched tree still declares six and not the sentinel"
+      },
+      "fixedAt": "2026-11-10T06:35:00+08:00",
+      "resolution": {
+        "what": "the \"zero mechanism\" row was a source grep that could not show a pack swap taking effect at runtime",
+        "how": "tests/vmu-meeting-types.test.mjs now boots a COPIED pack with an extra meeting type and asserts the catalog follows the pack, plus an anti-lamp-off boot of the unpatched tree and a refusal-by-name for a catalog declared after the kernel exists",
+        "evidence": [
+          "pack copy patch: sentinel type review-x7/评审会X7 appears in the catalog of the copied tree only",
+          "falsified: hard-coding meetingTypeCatalog to six types in the copy -> 169 passed / 2 failed",
+          "falsified: deleting meetingTypeCatalog from PACK_DECLARATION_TOO_LATE_KEYS in the copy -> 170 passed / 1 failed",
+          "measured: node tests/vmu-meeting-types.test.mjs -> 171 passed / 0 failed"
+        ],
+        "commits": []
       }
     },
     {
       "id": "RULES-E26-ROTATION-ASSERTION",
       "title": "E26's cited assertion talks about rotation/hand-raising/invitation but pins a turn-count sentence from E29",
       "severity": "P2",
-      "status": "open",
+      "status": "fixed",
       "owner": "rules-recheck",
       "source": "TB-2679 batch 4 (cited-assertion/semantics mismatch), confirmed by Lead",
       "evidence": "The rule text is about how turns rotate and how a member may raise a hand or invite another seat; the assertion the matrix cites for it counts turns (E29's sentence), so the rule has a mechanism but no assertion of its own.",
-      "condition": "Close when an assertion exists that pins the rotation/hand-raising/invitation wording in the assembled prompt (or the mechanism receipt), and when mutating that wording turns it red; then re-point the matrix row at that assertion."
+      "condition": "Close when an assertion exists that pins the rotation/hand-raising/invitation wording in the assembled prompt (or the mechanism receipt), and when mutating that wording turns it red; then re-point the matrix row at that assertion.",
+      "fixedAt": "2026-11-10T05:30:00+08:00",
+      "resolution": "TB-2683 closed it: tests/vmu-meeting-types.test.mjs now reads the RECEIPT's own skeleton (vibe_v5_meeting -> procedure.steps[1].what, not the module constant) and requires 轮流 + 举手 + 邀请; mutating 轮流发言 -> 依次发言 turns exactly that assertion red. The ledger row E26 now cites it in `live`, so the matrix row points at an assertion that is about rotation/hand-raising/invitation instead of E29's turn count.",
+      "proof": {
+        "cmd": "node tests/vmu-meeting-types.test.mjs",
+        "expect": 0,
+        "note": "the E26 assertion reads the receipt's skeleton and requires all three ways to open the debate; changing 轮流发言 to 依次发言 makes exactly that line red"
+      }
+    },
+    {
+      "id": "audit13-p0-1-proofs-need-out-of-repo-evidence",
+      "severity": "P0",
+      "status": "fixed",
+      "title": "three fixed rows owe proofs that cannot pass on a clean machine: the evidence lives in D:/_tmp",
+      "foundAt": "2026-11-10T06:20:00+08:00",
+      "source": "REPORT13 (D:/_tmp/audit17/REPORT13.md, hash 0966b10a), finding F1; measured, not inferred",
+      "what": "with every VMU_* variable unset and no D:/_tmp corpus on disk, three fixed rows fail their own proof, so the release gate can never be READY on a machine that has not already been used to build the evidence: worktree-audited and audit14-p0-2-release-gate-forgeable (proof node tests/release-ready.test.mjs defaults its red-team root, its real-audit path and its newest-audit lookup to D:/_tmp; measured exit 1 / 162 passed / 3 failed) and audit14-o34-suite-hygiene (proof tests/vmu-run257-prompt-receipt-parity.test.mjs needs the 47-pair corpus at D:/_tmp/sim/e2e and refuses to skip without it -- the refusal is correct, using it as a portable proof is not)",
+      "why": "a proof is a promise that a stranger can re-run it. A proof that only passes on the machine that produced it is a receipt for work, not evidence of it. The gate that asks for reproducibility was itself the one breaking it.",
+      "plan": "TB-2695 (board task-178): the test builds its own fixtures under os.tmpdir() and generates its own corpus deterministically from scripts/sim",
+      "proof": {
+        "cmd": "node tests/release-ready.test.mjs",
+        "expect": 0,
+        "note": "the suite builds its own fixture tree, its own two corpus layers and its own audit report in a temp directory, and runs the in-repo red-team entry; with the four VMU_* corpus variables unset it exits 0"
+      },
+      "severityNote": "P0 because it makes READY unreachable off this machine, i.e. it blocks the only door to a real run",
+      "owner": "sim-lane (TB-2695 / task-178): the proof suites build their own fixtures and corpus",
+      "condition": "node tests/release-ready.test.mjs and node tests/vmu-run257-prompt-receipt-parity.test.mjs both exit 0 with VMU_SIM_ROOT / VMU_REAL_WS_ROOT / VMU_REAL_OUT / VMU_SESSIONS_ROOT unset and no D:/_tmp/sim corpus on disk; the red team must run from the in-repo runner (or record MEASURED-ELSEWHERE in facts, never green)",
+      "fixedAt": "2026-11-10T09:10:00+08:00",
+      "resolution": "TB-2695 (board task-178) closed it by moving the fixtures INTO the suite instead of the filesystem next to it: tests/release-ready.test.mjs now builds its own audit report, its own two corpus layers and its own newest-audit tree under os.tmpdir(), runs the in-repo red-team entry (scripts/sim/redteam/run.mjs) and records MEASURED-ELSEWHERE in facts -- loudly, never as a pass -- when that entry is unavailable; tests/vmu-run257-prompt-receipt-parity.test.mjs generates its own 47-pair corpus deterministically into os.tmpdir() keyed by the HEAD tree, and keeps a permanent anti-lamp-off (S0b) that deletes one pair and requires the suite itself to go red; the two D:/_tmp mkdtemp roots became VMU_TEST_TMP_ROOT || (existsSync(D:/_tmp) ? D:/_tmp : tmpdir()) and were re-run from a non-D root; docs/acceptance/proof-portability.md lists all 26 proofs with OUT-OF-REPO 0 (REPO-SELF-CONTAINED 22 / NEEDS-CORPUS-GENERATED-IN-REPO 4). Measured: with VMU_SIM_ROOT / VMU_REAL_WS_ROOT / VMU_REAL_OUT / VMU_SESSIONS_ROOT all unset the suite exits 0 with 180 passed / 0 failed. The rule this leaves behind: a proof that only passes on the machine that produced it is a receipt for work, not evidence of it."
     }
   ]
 }

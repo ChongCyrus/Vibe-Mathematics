@@ -13,8 +13,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
+import { REPO } from './_lib/repo-root.mjs'
 
 // `scripts/sim/harness.mjs` is DEV tooling (a simulator that boots the real kernel in-process), not a shipped
 // runtime module, so it is imported by PATH the way every other sim-backed suite here does it

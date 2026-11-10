@@ -24,6 +24,14 @@
 // LEGACY and printed with counts only. The 31 were all added lines; a judge that reds forever on the pre-existing
 // backlog would be switched off within a week, which is the same as not having one.
 //
+// EXCEPTION, and it is not negotiable (TB-2709): inside tests/** the two machine-path shapes — `<drive>:\Users\`
+// (p1-drive-users) and an absolute vibemath checkout (p1-absolute-checkout) — are BLOCKERs WHETHER OR NOT the line
+// is new. A tracked, unmodified hard-coded checkout is exactly what made `tests/vmu-b4-stale-window-setting.test.mjs`
+// green for a mutation it never ran: the suite imported the ORIGINAL repo while the mutation device rewrote a tmp
+// copy. "It was already there" is not a reason for a criterion to stay blind, so the backlog in tests/** is red
+// until it is derived (or carries a real PORTABLE-ALLOW). scripts/sim/** keeps the added-line rule: it belongs to
+// another lane, and a judge does not widen its own scope into a neighbour's write set.
+//
 // USAGE: node tests/audit-portability.mjs [--json] [--all]
 //   default  exit 0 iff no BLOCKER this round (LEGACY is reported, never silently dropped)
 //   --all    every hit is a BLOCKER (whole-tree reading, for one-off audits)
@@ -37,8 +45,10 @@ import { spawnSync } from 'node:child_process'
 import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-export const REPO = resolve(HERE, '..')
+// Single source for the checkout root (TB-2709); a second `../..` here would drift from the one suites use.
+import { REPO } from './_lib/repo-root.mjs'
+
+export { REPO }
 
 const SCAN_ROOTS = ['tests', join('scripts', 'sim')]
 const SKIP_DIRS = new Set(['node_modules', '.git', 'fixtures'])
@@ -55,6 +65,9 @@ const P1_PATTERNS = [
   { id: 'p1-session-workspace', re: /\bslvp\d+-ws\b/, what: 'session workspace name from this machine' },
 ]
 const ALLOW_RE = /\/\/\s*PORTABLE-ALLOW:\s*(.*)$/
+// TB-2709: these two shapes are BLOCKERs in tests/** even on untouched tracked lines (see the EXCEPTION note at
+// the top): a hard-coded checkout there makes a mutation run green against the wrong tree, which is a lying green.
+const STRICT_P1_IDS = new Set(['p1-drive-users', 'p1-absolute-checkout'])
 const CORPUS_REF_RE = /(real-fields|pairs|receipts)\.jsonl|[A-Za-z]:[\\/]_tmp/
 
 // Comment-aware view of a whole file: strings and comments do not leak into each other. Returns one code string
@@ -171,7 +184,8 @@ export function scanTree({ root = REPO, all = false, useGit = true } = {}) {
           snippet: raw.trim().slice(0, 160),
           why: allow ? 'PORTABLE-ALLOW needs a reason of at least ' + MIN_WHY + ' characters' : p.what,
         }
-        ;(lineAdded(i + 1) ? blockers : legacy).push(hit)
+        const strict = rel.startsWith('tests/') && STRICT_P1_IDS.has(p.id)
+        ;(strict || lineAdded(i + 1) ? blockers : legacy).push(hit)
       }
     }
 

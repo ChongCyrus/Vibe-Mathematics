@@ -75,12 +75,17 @@ const nonEmptyString = (v) => typeof v === 'string' && v.length > 0
     '§A4. ★★ the two window fields switched roles with the state: startsInMs null, elapsedSinceMs 0, elapsedMs 0 — no negative, no leftover countdown', { startsInMs: att.startsInMs, elapsedSinceMs: att.elapsedSinceMs, elapsedMs: att.elapsedMs })
   ok(att.waitingFor === null && att.requiresChairProceed === false,
     '§A5. ★★ and nothing still claims the meeting is waiting for a quorum or for the chair', { waitingFor: att.waitingFor, requiresChairProceed: att.requiresChairProceed })
-  ok(att.receipt && att.receipt.state === att.state && att.receipt.settled === att.settled,
-    '§A6. the receipt envelope describes the same state as the return value (one instant, two views)', att.receipt && { state: att.receipt.state, settled: att.receipt.settled })
-  ok(att.receipt && att.receipt.lateReads && att.receipt.lateReads.started === true && att.receipt.lateReads.elapsedSinceMs === 0,
-    '§A7. ★★★ the envelope\'s window readings are the SAME source as the top level (lateReads.started:true, elapsedSinceMs:0)', att.receipt && att.receipt.lateReads)
-  ok(att.receipt && att.receipt.lateReads && att.receipt.lateReads.startedAt === att.startedAt && att.receipt.lateReads.startsInMs === att.startsInMs,
-    '§A8. ★ and every window field matches field by field (startedAt / startsInMs), so a reader cannot get two answers from one call', att.receipt && att.receipt.lateReads)
+  // TB-2694 / F75-05: the answer no longer ships the readings TWICE. The return value's `receipt` is a POINTER
+  // (`see` names where to read them) and the readings are the top-level fields of this same answer; the RECORDED
+  // receipt still holds them in full. "One instant, two views" is therefore checked BETWEEN those two places, which
+  // is the stronger claim — a copy could have drifted, a pointer cannot.
+  const recA = ((svc.receiptsView({ limit: 10 }).receipts) || []).filter((r) => r && r.action === 'attend').slice(-1)[0] || null
+  ok(att.receipt && typeof att.receipt.see === 'string' && att.receipt.see.includes('receiptsView') && recA && recA.state === att.state && recA.settled === att.settled,
+    '§A6. the answer points at the readings, and the RECORDED receipt describes the same state as the return value (one instant, two views)', att.receipt && { see: att.receipt.see, recState: recA && recA.state, recSettled: recA && recA.settled })
+  ok(att.started === true && att.elapsedSinceMs === 0 && recA && recA.lateReads && recA.lateReads.started === true && recA.lateReads.elapsedSinceMs === 0,
+    '§A7. ★★★ the recorded receipt\'s window readings are the SAME source as the top level (lateReads.started:true, elapsedSinceMs:0)', recA && recA.lateReads)
+  ok(recA && recA.lateReads && recA.lateReads.startedAt === att.startedAt && recA.lateReads.startsInMs === att.startsInMs,
+    '§A8. ★ and every window field matches field by field (startedAt / startsInMs), so a reader cannot get two answers from one call', recA && recA.lateReads)
   ok(nonEmptyString(att.lateMeans) && !att.lateMeans.includes('NOT JUDGED YET'),
     '§A9. ★★★ the lateness sentence no longer says "NOT JUDGED YET" about a meeting that just opened', String(att.lateMeans).slice(0, 140))
 

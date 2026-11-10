@@ -399,7 +399,7 @@ export function createLeanFace(opts) {
     if (!j) return refuse('VMU_LEAN_NOT_FOUND', '找不到 Lean 作业 ' + String(id), '先用 list() 取 id；作业镜像在 Formal/Jobs/<id>.json')
     if (j.promise) { try { await j.promise } catch (e) { /* state 已记录 */ } }
     if (LEAN_TERMINAL_STATES.indexOf(j.state) === -1) {
-      return refuse('VMU_LEAN_NOT_SETTLED', '作业 ' + j.id + ' 尚未结算（state=' + j.state + '）', '等待 running/queued 结束后再 settle()')
+      return refuse('VMU_LEAN_NOT_SETTLED', '作业 ' + j.id + ' 尚未结算（state=' + j.state + '）', 'REACHABLE INSTEAD: 用 vibe_v5_lean_job {jobId:"<作业 id>"} 看 state，等它到终止态后再重试本调用')
     }
     return {
       ok: true, passed: j.passed === true, exitCode: j.exitCode,
@@ -1201,11 +1201,11 @@ export function createLeanFace(opts) {
     const e = archived.get(name)
     if (!e) return refuse('VMU_LEAN_ARCHIVE_NOT_FOUND', '归档里没有 ' + name, '先用 lib() 列出条目')
     const now = await readHash(e.file)
-    if (now === undefined) return refuse('VMU_LEAN_FILE_UNREADABLE', '归档引用的文件读不到：' + e.file, '文件被删或移走了：重建它，或重新 archive()')
+    if (now === undefined) return refuse('VMU_LEAN_FILE_UNREADABLE', '归档引用的文件读不到：' + e.file, 'REACHABLE INSTEAD: 重建该 .lean 文件后，用 vibe_v5_lean_archive {kind:"<def|lemma|proof|blocked>", name:"<归档名>", file:"<重建后的路径>", statement:"<命题原文>"} 重新登记；先看归档用 vibe_v5_lean_lib {}，按名字读回用 vibe_v5_lean_read {name:"<归档名>"}')
     if (now !== e.hash) {
       return refuse('VMU_LEAN_ARCHIVE_DRIFT',
         '归档内容已变：' + name + '（登记 ' + e.hash.slice(0, 12) + '…，现在 ' + now.slice(0, 12) + '…）',
-        '重新 archive() 登记新内容，或恢复原文件（只引不复制 ⇒ **不返回旧内容** ✗）')
+        'REACHABLE INSTEAD: 恢复原文件后用 vibe_v5_lean_read {name:"<归档名>"} 重试；或 vibe_v5_lean_archive {kind, name, file, statement} 登记新内容（只引不复制 ⇒ 旧内容不会回来）')
     }
     let content
     try { content = String(await readFile(resolveFile(e.file), 'utf8')) } catch (err) {

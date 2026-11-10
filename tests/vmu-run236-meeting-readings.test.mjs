@@ -62,8 +62,14 @@ console.log('=== 1. M7: a NON-late attend explains itself (and 0 means "nobody i
   ok(at.lateAfterMs === 0, 'premise: the default vmu.meetings.lateAfterMs is 0 on this deployment', at.lateAfterMs)
   has(at.lateMeans, 'NOT JUDGED', '★★ M7: with a 0 threshold the sentence says the question was NEVER JUDGED (not "on time")')
   has(at.lateMeans, 'NOBODY is ever counted late', '★★ M7: the sentence says what a 0 threshold means for every member')
-  ok(at.receipt && at.receipt.lateReads && Number(at.receipt.lateReads.elapsedMs) === 0 && at.receipt.lateMeans === at.lateMeans,
-    '★ M7: the recorded receipt carries the same three readings and the same sentence', at.receipt && at.receipt.lateReads)
+  // ★ TB-2694 / F75-05: the RETURN VALUE no longer carries a second FULL copy of the readings inside `receipt`
+  // (that copy is what made one attend answer 16 163 B — see kernel/meetings.js `wireReads`/`wireReceipt`). The
+  // assertion below therefore reads the RECORDED receipt, which still holds every reading in full; the top level of
+  // the same answer carries them too, so "one reading, one wire copy" stays checkable.
+  const recordedAt = (svc) => { const v = svc.receiptsView({ limit: 10 }); return (v.receipts || []).filter((r) => r && r.action === 'attend').slice(-1)[0] || null }
+  const rec = recordedAt(t)
+  ok(rec && rec.lateReads && Number(rec.lateReads.elapsedMs) === 0 && rec.lateMeans === at.lateMeans,
+    '★ M7: the recorded receipt carries the same three readings and the same sentence', rec && rec.lateReads)
 
   NOW = 6000
   const at2 = t.attend({ meeting: o.meeting, member: 'r-2' })
@@ -94,8 +100,10 @@ console.log('=== 1. M7: a NON-late attend explains itself (and 0 means "nobody i
   ok(typeof door.lateMeans === 'string' && door.lateMeans.includes('LATE') && typeof door.elapsedMs === 'number' && door.elapsedMs === 10000,
     '★★ M7: the CHAIR-held path carries the same readings + sentence (it used to say only late/pendingLate)',
     { elapsedMs: door.elapsedMs, sentence: door.lateMeans && door.lateMeans.slice(0, 80) })
-  ok(door.receipt && door.receipt.lateReads && Number(door.receipt.lateReads.lateAfterMs) === 3000,
-    '★ M7: the door receipt records the threshold it was judged against', door.receipt && door.receipt.lateReads)
+  // TB-2694 / F75-05: read the RECORDED door receipt (the return value's `receipt` is now a pointer, not a copy).
+  const recDoor = recordedAt(c)
+  ok(recDoor && recDoor.lateReads && Number(recDoor.lateReads.lateAfterMs) === 3000,
+    '★ M7: the door receipt records the threshold it was judged against', recDoor && recDoor.lateReads)
 }
 
 console.log('\n=== 2. M1: `extend` with a declared step of 0 grants NOTHING and must not read like a raise ===')

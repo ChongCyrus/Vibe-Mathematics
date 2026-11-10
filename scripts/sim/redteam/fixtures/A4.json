@@ -1,0 +1,16 @@
+{
+  "id": "A4",
+  "attack": "an older corpus id left in an otherwise current block (with a past generatedAt)",
+  "why": "the receipt corpus is the thing measured; a claimed digest that does not match the layer must be refused as stale",
+  "wouldBeWrongIf": "READY, or refusal by AUDIT_CORPUS_UNMEASURED (the layer IS readable; calling it unmeasured would be a different, false answer)",
+  "expects": {
+    "judge": "code",
+    "primaryReason": "AUDIT_CORPUS_STALE",
+    "expectExit": 7,
+    "expectReady": false,
+    "allowedSecondary": {
+      "AUDIT_ID_MISMATCH": "only if the derived id did not follow the claimed corpus id, which this fixture makes it do",
+      "AUDIT_FIDELITY_MISMATCH": "only if the recomputed counts differed, which they do not (the numbers are current)"
+    }
+  }
+}

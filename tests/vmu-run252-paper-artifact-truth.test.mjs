@@ -101,8 +101,13 @@ has(TOOLS_SRC, "if (code === 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING' || faceC
   '★★ 正：an absent engine is named `latex` — an environment fact, not an input')
 ok(!TOOLS_SRC.includes('`missing` names the artifact rows that are absent (a write-stage paper reports md, tex, pdf, meta as missing until `render` writes them)'),
   '★★★ 反：the old sentence that taught `missing` as the artifact-row list is GONE from completeMeans')
-has(TOOLS_SRC, "missing: compiledProduced ? [] : (artifacts ? artifacts.missing.slice() : []),",
+has(TOOLS_SRC, "missing: compiledProduced\n          ? []\n          : (artifacts ? artifacts.missing.slice() : []),",
   '★★ 正：`status` derives `missing` from the compiled-pdf reading, not from the rows')
+// ★★★ TB-2691 correction (MEASURED on run 252): RUN 2691 had folded the row EVIDENCE key `pdfSha256` into this
+// ACTION-scoped list, so a receipt could read `produced:true` beside `missing:["pdfSha256"]` — the exact contradiction
+// F72-7 closed. The absence now lives in `pdfCompiled.pdfSha256:null` + `pdfSha256Means`; this pin keeps it out.
+ok(!TOOLS_SRC.includes("? (pdfRowSha === null ? ['pdfSha256'] : [])"),
+  '★★★ 反(TB-2691 correction)：`pdfSha256` 是行证据，不再折进 `missing`')
 has(TOOLS_SRC, 'archiveArtifacts: archiveArtifactsReading(artifacts),',
   '★★ 正：`status` still prints the artifact ROWS under their own name')
 has(TOOLS_SRC, 'const finProduced = !!(finalized.pdf && finalized.pdf.ok === true && (finalized.pdf.produced === true || Boolean(finalized.pdf.pdfPath)))',

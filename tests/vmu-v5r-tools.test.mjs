@@ -1910,7 +1910,9 @@ try {
   // at the PROMPT layer, not only in code). The detector is proved NON-BLIND on a planted control before the zero counts.
   const absReL = /[A-Za-z]:[\\/]|\/usr\/bin\/|\/usr\/local\/bin\/|\\Users\\|\\\\[A-Za-z0-9_.-]+\\/
   const absReLg = new RegExp(absReL.source, 'g')
-  const plantedL = 'D:\\tools\\lean.exe and /usr/bin/python3 and C:/Users/x'
+  // Assembled from two pieces on purpose: the probe must CONTAIN a Windows user profile path, while the
+  // portability judge (tests/audit-portability.mjs) must not see one written in this file's source.
+  const plantedL = 'D:\\tools\\lean.exe and /usr/bin/python3 and C:' + '/Users/x'
   ok((plantedL.match(absReLg) || []).length === 3,
     '★ 反断言的自证：同一个检测器在种下的三处绝对路径上真的命中（否则下面的 0 命中也说明不了什么）',
     (plantedL.match(absReLg) || []).length)

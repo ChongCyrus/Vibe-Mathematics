@@ -28,8 +28,8 @@
 import { mkdtempSync, readFileSync,mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { REPO } from './_lib/repo-root.mjs'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const VMU = join(REPO, 'vibe-math-vmu')
 // The scratch parent is created here, not assumed: a per-round directory in D:\_tmp can be
 // reclaimed by any tmp cleanup between runs, and mkdtempSync needs its parent to exist.

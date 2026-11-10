@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "vectors": 23,
+  "fixtures": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6",
+    "A7",
+    "A8a",
+    "A8b",
+    "A9",
+    "A10",
+    "A10extra",
+    "A11",
+    "A12",
+    "A13",
+    "A13b",
+    "A14",
+    "A15",
+    "A16",
+    "A16b"
+  ],
+  "note": "The roster is a LIST on purpose: a deleted fixture must be a named failure (MISSING FIXTURE), not a smaller suite that still reports all-green. vectors = fixtures (20) + variants (A5: 2, A6: 1)."
+}

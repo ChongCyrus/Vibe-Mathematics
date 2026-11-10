@@ -1,0 +1,479 @@
+{
+  "schemaVersion": 2,
+  "note": "Each entry breaks a MECHANISM in a throwaway copy of the repo; the named assertion must fail. anchor/replaceWith are literal strings (grep -F), never regexes or line numbers. expectRed.titleIncludes must appear in the failure output verbatim.",
+  "entries": [
+    {
+      "ruleId": "E3",
+      "file": "vibe-math-vmu/tools/meeting.js",
+      "anchor": "return { setting, on: true, caller: who, callerSource, seat, enforced: true, refuse: true, why: seat === null ? 'the roster holds no seat row for this id, so it is not the chair' : 'slot \"' + seat + '\" is not the chair seat' }",
+      "replaceWith": "return { setting, on: true, caller: who, callerSource, seat, enforced: true, why: seat === null ? 'the roster holds no seat row for this id, so it is not the chair' : 'slot \"' + seat + '\" is not the chair seat' }",
+      "expectRed": {
+        "suite": "vmu-run125-primitive-seat-gate.test.mjs",
+        "titleIncludes": "member open refused by name"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E14",
+      "file": "vibe-math-vmu/kernel/meetings.js",
+      "anchor": "if (eff.queueOpen && !m.queue.includes(String(member))) m.queue.push(String(member))",
+      "replaceWith": "if (false && eff.queueOpen && !m.queue.includes(String(member))) m.queue.push(String(member))",
+      "expectRed": {
+        "suite": "vmu-meeting-invite.test.mjs",
+        "titleIncludes": "★★ and the hand is REAL: the raised member now appears in the floor order"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E15",
+      "file": "vibe-math-vmu/tools/meeting.js",
+      "anchor": "if (actor !== chair) {",
+      "replaceWith": "if (false) {",
+      "expectRed": {
+        "suite": "vmu-meeting-invite.test.mjs",
+        "titleIncludes": "★★ invite: 反 — a MEMBER may not put somebody else on the floor"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E16",
+      "file": "vibe-math-vmu/tools/meeting.js",
+      "anchor": "list = batch.map((x) => String(x === undefined || x === null ? '' : x).trim())",
+      "replaceWith": "list = batch.map((x) => String(x === undefined || x === null ? '' : x).trim()).reverse()",
+      "expectRed": {
+        "suite": "vmu-meeting-invite.test.mjs",
+        "titleIncludes": "★★★ 批量按序 is REAL: the FLOOR ORDER equals [r-2, r-1]"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E26",
+      "file": "vibe-math-vmu/packs/v5r/meeting-procedures.js",
+      "anchor": "轮流发言 / 举手后发言 / 主席邀请发言",
+      "replaceWith": "依次发言 / 举手后发言 / 主席邀请发言",
+      "expectRed": {
+        "suite": "vmu-meeting-types.test.mjs",
+        "titleIncludes": "★ E26: the receipt step ② names all three ways to OPEN the debate"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E34",
+      "file": "vibe-math-vmu/kernel/chat.js",
+      "anchor": "if (earlier) {",
+      "replaceWith": "if (false) {",
+      "expectRed": {
+        "suite": "vmu-run85-say-round.test.mjs",
+        "titleIncludes": "§2 the second speech is refused BY NAME"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E36",
+      "file": "vibe-math-vmu/packs/v5r/meeting-procedures.js",
+      "anchor": "title: '辩论会议 · 推荐流程骨架',\n  binding: 'recommendation',",
+      "replaceWith": "title: '辩论会议 · 推荐流程骨架',\n  binding: 'gate',",
+      "expectRed": {
+        "suite": "vmu-meeting-types.test.mjs",
+        "titleIncludes": "★ the binding is machine-readably a RECOMMENDATION"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "F1",
+      "file": "vibe-math-vmu/packs/v5r/paper-quality.js",
+      "anchor": "raw = kernel.settingsSnapshot ? kernel.settingsSnapshot()['vmu.turn.objective'] : null",
+      "replaceWith": "raw = null",
+      "expectRed": {
+        "suite": "vmu-paper-quality.test.mjs",
+        "titleIncludes": "E1 §1: 引言与问题背景 carries the DECLARED objective read from the settings snapshot"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "F2",
+      "file": "vibe-math-vmu/kit/paper.js",
+      "anchor": "if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant",
+      "replaceWith": "if (false) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant",
+      "expectRed": {
+        "suite": "vmu-v5r-tools.test.mjs",
+        "titleIncludes": "recordPart: 反 — a non-participant is refused by name"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "G8",
+      "file": "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js",
+      "anchor": "不是零散任务清单",
+      "replaceWith": "不是零散任务列表",
+      "expectRed": {
+        "suite": "vmu-turn-mainline.test.mjs",
+        "titleIncludes": "§1c2 academician: G8 — the whole sentence is in the assembled prompt"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "G14",
+      "file": "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js",
+      "anchor": "先查蓝图与归档",
+      "replaceWith": "先查蓝图与档案",
+      "expectRed": {
+        "suite": "vmu-turn-mainline.test.mjs",
+        "titleIncludes": "§1b2 academician: G14 — the whole sentence is in the assembled prompt"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "D8",
+      "file": "vibe-math-vmu/kernel/turn/index.js",
+      "anchor": "source: 'vmu.tasks.list（未完成任务：可开工／被前置卡住）'",
+      "replaceWith": "source: 'vmu.records.list（其实不是任务板）'",
+      "expectRed": {
+        "suite": "vmu-run31-status-board.test.mjs",
+        "titleIncludes": "③b the source NAMES the ledger actually read"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E13",
+      "file": "vibe-math-vmu/packs/v5r/meeting-procedures.js",
+      "anchor": "label: '正常会议'",
+      "replaceWith": "label: '例会'",
+      "expectRed": {
+        "suite": "vmu-meeting-types.test.mjs",
+        "titleIncludes": "the six labels are the RULE's own words"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "A1",
+      "file": "vibe-math-vmu/tools/mailbox.js",
+      "anchor": "if (caller && String(sender) !== caller) {",
+      "replaceWith": "if (false) {",
+      "expectRed": {
+        "suite": "vmu-run128-proxy-doors.test.mjs",
+        "titleIncludes": "a member signing as office is REFUSED"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "A4",
+      "file": "vibe-math-vmu/packs/v5r/tools.js",
+      "anchor": "  const row = membersOf(kernel).roster().filter((m) => m.id === member)[0]\n  if (String(row.slot) !== 'chair') {",
+      "replaceWith": "  const row = membersOf(kernel).roster().filter((m) => m.id === member)[0]\n  if (false) {",
+      "expectRed": {
+        "suite": "vmu-a2a3-seats-and-bounds.test.mjs",
+        "titleIncludes": "★ 非 chair 成员 ⇒ 具名拒 VMU_NOT_PERMITTED"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "A5",
+      "file": "vibe-math-vmu/tools/control.js",
+      "anchor": "await kernel.members.hire({ id: String(member_id), slot: String(slot) })",
+      "replaceWith": "({})",
+      "expectRed": {
+        "suite": "vmu-control.test.mjs",
+        "titleIncludes": "★★★ CRITERION 1: after hire the KERNEL roster is NON-EMPTY (the bug was ok:true with an empty roster)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "B1",
+      "file": "vibe-math-vmu/packs/v5r/tools.js",
+      "anchor": "if (!unanimousZero || !subjectOk || expectedForm !== 'debate-unanimous') {",
+      "replaceWith": "if (false) {",
+      "expectRed": {
+        "suite": "vmu-run97-verified-gate.test.mjs",
+        "titleIncludes": "① a disproof without its ruling is refused"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "C6",
+      "file": "vibe-math-vmu/packs/v5r/tools.js",
+      "anchor": "if (!leanPassed && conformanceWord === '' && !alreadyVerified && declaredProofRef === '') {",
+      "replaceWith": "if (false) {",
+      "expectRed": {
+        "suite": "vmu-c5-c8-card-integrity.test.mjs",
+        "titleIncludes": "声明 complete 但没有任何登记凭据 ⇒ VMU_INVALID_ARGUMENT"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "D2",
+      "file": "vibe-math-vmu/kernel/mailbox.js",
+      "anchor": "      const ackedIds = []\n      if (allRows.length) mailbox.markInjected(id, allRows.map((e) => e.id))",
+      "replaceWith": "      const ackedIds = allRows.map((e) => e.id)\n      if (allRows.length) mailbox.markInjected(id, allRows.map((e) => e.id))",
+      "expectRed": {
+        "suite": "vmu-mailbox.test.mjs",
+        "titleIncludes": "an urgent flush DELIVERS the body but does NOT ack it (the inbox must still show the message)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "D5",
+      "file": "vibe-math-vmu/kernel/panel.js",
+      "anchor": "next.planAt = clock()",
+      "replaceWith": "next.planAt = 0",
+      "expectRed": {
+        "suite": "vmu-panel.test.mjs",
+        "titleIncludes": "the framework wrote every ...At"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E2",
+      "file": "vibe-math-vmu/kernel/meetings.js",
+      "anchor": "return scope.electorate.every((id) => m.present instanceof Set && m.present.has(id))",
+      "replaceWith": "return true",
+      "expectRed": {
+        "suite": "vmu-meeting-quorum-floor.test.mjs",
+        "titleIncludes": "R3-2. ★★★ at the due moment with a roster member absent the meeting WAITS"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "G3",
+      "file": "vibe-math-vmu/kernel/human.js",
+      "anchor": "if (c.gatedActions.indexOf(act) === -1) {",
+      "replaceWith": "if (true) {",
+      "expectRed": {
+        "suite": "vmu-human-gate.test.mjs",
+        "titleIncludes": "a gated action is refused by name while pending"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "C12",
+      "file": "vibe-math-vmu/packs/v5r/tools.js",
+      "anchor": "if (formalPolicy && formalPolicy.requireFormal === true) {",
+      "replaceWith": "if (true) {",
+      "expectRed": {
+        "suite": "vmu-run135-formal-required.test.mjs",
+        "titleIncludes": "★★★ 反：off 下同一次裁定成功（zero-policy 的默认不能被闸悄悄改掉）"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "C15",
+      "file": "vibe-math-vmu/packs/v5r/tools.js",
+      "anchor": "'recommendation：' + bodyAction",
+      "replaceWith": "'action：' + bodyAction",
+      "expectRed": {
+        "suite": "vmu-run61-feedback-body.test.mjs",
+        "titleIncludes": "the stored body carries the RECOMMENDATION under its own label"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "G6",
+      "file": "vibe-math-vmu/kernel/turn/index.js",
+      "anchor": "sawJsonish ? 'VMU_TURN_BAD_JSON' : 'VMU_TURN_NO_FENCE'",
+      "replaceWith": "sawJsonish ? 'VMU_TURN_BAD_JSON' : 'VMU_TURN_BAD_JSON'",
+      "expectRed": {
+        "suite": "vmu-turn.test.mjs",
+        "titleIncludes": "T6. ★★ a reply with no fence is refused as such"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E28",
+      "file": "vibe-math-vmu/kernel/meetingverdict.js",
+      "anchor": "    estimate: !decided,",
+      "replaceWith": "    estimate: false,",
+      "expectRed": {
+        "suite": "vmu-meeting-verdict.test.mjs",
+        "titleIncludes": "① 不一致 ⇒ 算术平均，并明确标成「估计」而不是「裁定」"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "G10",
+      "file": "vibe-math-vmu/kernel/directions.js",
+      "anchor": "  'reuse',",
+      "replaceWith": "",
+      "expectRed": {
+        "suite": "vmu-run236-direction-card.test.mjs",
+        "titleIncludes": "exactly nine fields (G10 names nine)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "G5",
+      "file": "vibe-math-vmu/kernel/human.js",
+      "anchor": "return Object.assign({ ok: false, code: CODE.approvalPending, queued: true, state: 'pending', waitsForever: true,",
+      "replaceWith": "return Object.assign({ ok: false, code: CODE.approvalPending, queued: false, state: 'pending', waitsForever: true,",
+      "expectRed": {
+        "suite": "vmu-human-gate.test.mjs",
+        "titleIncludes": "the refusal carries queued=true and a requestId"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "A6",
+      "file": "vibe-math-vmu/kernel/meetings.js",
+      "anchor": "if (!K.eligibleSeats.includes(seat)) {",
+      "replaceWith": "if (false) {",
+      "expectRed": {
+        "suite": "vmu-meetings.test.mjs",
+        "titleIncludes": "★ A1③ 反: a TEMP seat is refused by the DECLARED seats, and the refusal names the slot and the seats"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "B2",
+      "file": "vibe-math-vmu/packs/v5r/verification-gates.js",
+      "anchor": "if (ev.literature && typeof ev.literature.reference === 'string' && ev.literature.reference.trim() !== '') {",
+      "replaceWith": "if (false) {",
+      "expectRed": {
+        "suite": "vmu-run236-b2-literature.test.mjs",
+        "titleIncludes": "a p=1 proposition WITH a literature reference is accepted"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "C5",
+      "file": "vibe-math-vmu/kit/handlers.js",
+      "anchor": "    const body = cardBody(args, required, extra)\n      + (progressArg === null ? '' : '\\n- 进度：' + progressArg)",
+      "replaceWith": "    const body = cardBody(args, required, extra)\n      + (progressArg === null ? '' : '\\n- 进度 ' + progressArg)",
+      "expectRed": {
+        "suite": "vmu-c5-c8-card-integrity.test.mjs",
+        "titleIncludes": "★ 从读面读回来，卡体里真的有 `- 进度：…` 那一行"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "D3",
+      "file": "vibe-math-vmu/kernel/mailbox.js",
+      "anchor": "          (subjects.length ? '标题：' + subjects.join('；') + '。' : '') +\n          '不需要立即阅读，有空再看；用 vibe_vmu_mailbox 的 list 查看、open 打开。')",
+      "replaceWith": "          (subjects.length ? '标题：' + subjects.join('；') + '。' : '') + '正文：' + String(allRows[0].text) + '。' +\n          '不需要立即阅读，有空再看；用 vibe_vmu_mailbox 的 list 查看、open 打开。')",
+      "expectRed": {
+        "suite": "vmu-mailbox.test.mjs",
+        "titleIncludes": "★ 反（唯一真证据）：非紧急投递物【任何字段/JSON 文本】都不含正文标记串"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "C9",
+      "file": "vibe-math-vmu/kit/tools.js",
+      "anchor": "track: 'methods', kind: 'method'",
+      "replaceWith": "track: 'progress', kind: 'method'",
+      "expectRed": {
+        "suite": "vmu-v5r-tools.test.mjs",
+        "titleIncludes": "record_method writes onto the methods track (p=0 ⇒ settled, which is what the pack stance demands)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "D6",
+      "file": "vibe-math-vmu/kernel/panel.js",
+      "anchor": "viewAudit.push({ at, by: viewer === null || viewer === undefined ? null : String(viewer), saw: wanted.slice() })",
+      "replaceWith": "void 0",
+      "expectRed": {
+        "suite": "vmu-panel.test.mjs",
+        "titleIncludes": "the view writes an audit row naming who saw whom"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E10",
+      "file": "vibe-math-vmu/kernel/meetings.js",
+      "anchor": "wallLimitMs: wallLimitRequested === null ? K.hardLimitMs : wallLimitRequested,",
+      "replaceWith": "wallLimitMs: K.hardLimitMs,",
+      "expectRed": {
+        "suite": "vmu-run101-meeting-bound.test.mjs",
+        "titleIncludes": "the receipt reports the CHAIR-SET bound (900000), not the deployment default"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E11",
+      "file": "vibe-math-vmu/kernel/meetings.js",
+      "anchor": "remaining: Math.max(0, seq.length - idx),",
+      "replaceWith": "remaining: 0,",
+      "expectRed": {
+        "suite": "vmu-meeting-types.test.mjs",
+        "titleIncludes": "★★ the pending count READS BACK from the kernel (a declared-only sequence would be invisible here)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "F4",
+      "file": "vibe-math-vmu/kit/paper.js",
+      "anchor": "    return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,\n      error: refuse(CODES.OFFICE_CONSULT_REQUIRED,",
+      "replaceWith": "    return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,\n      error: refuse(CODES.OFFICE_CONSULT_TIMEOUT,",
+      "expectRed": {
+        "suite": "vmu-paper-office-consult.test.mjs",
+        "titleIncludes": "★ 正：未问所办 ⇒ 具名拒 VMU_OFFICE_CONSULT_REQUIRED"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "A8",
+      "file": "vibe-math-vmu/packs/v5r/seat-faces.js",
+      "anchor": "      + '故 temp 不给；方法卡与子问题卡同样不给临时工',\n    allow: Object.freeze({ chair: true, member: true, temp: false }),",
+      "replaceWith": "      + '故 temp 不给；方法卡与子问题卡同样不给临时工',\n    allow: Object.freeze({ chair: true, member: true, temp: true }),",
+      "expectRed": {
+        "suite": "vmu-a7-a8-seat-rights.test.mjs",
+        "titleIncludes": "★★ temp ⇒ all eight (proposition / progress / five lean_* / paper) are DENIED and in the derived deny list"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E7",
+      "file": "vibe-math-vmu/packs/v5r/tools.js",
+      "anchor": "const typeInfo = meetingTypeOf(has(args.type) ? str(args.type) : 'ordinary')",
+      "replaceWith": "const typeInfo = meetingTypeOf('ordinary')",
+      "expectRed": {
+        "suite": "vmu-meeting-procedures-catalog.test.mjs",
+        "titleIncludes": "the planning receipt reports its own four-step skeleton (per-type, not one shared blob)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E18",
+      "file": "vibe-math-vmu/kernel/ballot.js",
+      "anchor": "    if (choiceCap !== null && choices > choiceCap) {",
+      "replaceWith": "    if (false) {",
+      "expectRed": {
+        "suite": "vmu-wave2-e18-ballot-max-choices.test.mjs",
+        "titleIncludes": "code is VMU_BALLOT_CHOICE_COUNT"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E22",
+      "file": "vibe-math-vmu/packs/v5r/meeting-procedures.js",
+      "anchor": "Object.freeze({ id: 'debate', label: '辩论', purpose: '围绕一个命题（含已写完证明的命题卡 / 文件引用）辩论，以最终裁决给出布尔概率。', subjectRequired: true }),",
+      "replaceWith": "Object.freeze({ id: 'debate', label: '辩论', purpose: '围绕一个命题（含已写完证明的命题卡 / 文件引用）辩论，以最终裁决给出布尔概率。', subjectRequired: false }),",
+      "expectRed": {
+        "suite": "vmu-meeting-types.test.mjs",
+        "titleIncludes": "ONLY the debate type requires the object field (the rule names only debate)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "E31",
+      "file": "vibe-math-vmu/packs/v5r/meeting-procedures.js",
+      "anchor": "  title: '辩论会议 · 推荐流程骨架',\n  binding: 'recommendation',",
+      "replaceWith": "  title: '辩论会议 · 推荐流程骨架',\n  binding: 'gate',",
+      "expectRed": {
+        "suite": "vmu-meeting-types.test.mjs",
+        "titleIncludes": "★ the binding is machine-readably a RECOMMENDATION (the rule: 是否遵循完全由院士自己决定)"
+      },
+      "cascade": false
+    },
+    {
+      "ruleId": "B4",
+      "file": "vibe-math-vmu/packs/v5r/blueprint.js",
+      "anchor": "  if (Number.isFinite(n) && n >= 0) return { ms: Math.floor(n), source: 'setting' }",
+      "replaceWith": "  if (false) return { ms: Math.floor(n), source: 'setting' }",
+      "expectRed": {
+        "suite": "vmu-b4-stale-window-setting.test.mjs",
+        "titleIncludes": "★ 0 is a LEGAL window (any age is overdue): the resolver accepts the boundary instead of treating 0 as absent"
+      },
+      "cascade": false
+    }
+  ]
+}

@@ -401,6 +401,12 @@ export function mdRowBodyOf(doc, fingerprint) {
  * them, 07): this module owns the KNOBS and the accounting, never the durable layer.
  */
 export function createRecords({ clock = () => 0, log = null, settings = {}, bus = null, exists = null, onProgress = null } = {}) {
+  // ★★★ RUN 2697 / TB-2697 — the ids THIS instance has written whose durable fold write is not acknowledged yet. The
+  // acknowledgement is never PASSED IN: the durable snapshot is queued asynchronously, so a records face cannot be told
+  // when it landed. Instead a fold row that matches the pending (rev, updatedAt) proves the write is in the fold, and a
+  // fold row that is STRICTLY NEWER than the pending write proves a later writer already moved past it — either way the
+  // entry is retired. Until that proof arrives, a differing fold row for a pending id is not adopted (see synchronize).
+
   // ★ AUDIT A2 — 「有进展时自动唤起所办汇报」. The institute's own rule says a PROGRESS ROW rings the office's bell; the
   // reporting face (`kernel/report.js`) has always understood `event:'progress'`, but NOTHING emitted that event — the
   // only automatic trigger measured in the tree was `turn-end`. The hook is injected (this module must not import the
@@ -526,6 +532,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     // read. These counters keep the adoption visible instead of silent.
     trashAdopted: 0, trashRestored: 0, tombstonesSeen: 0, tombstonesAdopted: 0, staleTombstones: 0, staleLiveRows: 0,
     lastWhy: null, lastDetail: null, lastPullAt: null, lastSyncAt: null,
+    // ★★★ RUN 2697 / TB-2697 (the read path rolled a row back): `foldPending` maps id → { rev, updatedAt } for rows
+    // THIS instance wrote whose fold write is still in flight. Until the kernel acknowledges the patch, the durable
+    // fold can be OLDER than our memory — so a differing fold row must never be adopted for a pending id. The two
+    // counters make the decision visible: `heldBack` = rows skipped because we still hold an unconfirmed write,
+    // `staleRows` = differing fold rows refused because they are NOT strictly newer (the shape of the defect).
+    foldPending: new Map(),
+    heldBack: 0, staleRows: 0,
   }
 
   /**
@@ -629,6 +642,29 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     }
     return { writer: null, writerSource: null }
   }
+  // ★★★ TB-2691 / F75-11 (MEASURED in run 75): two rows that look identical in the ledger can be VERY different acts.
+  // The office writing a card NAMING member r-1 (`rec-7`) and r-1 writing its own card in its own turn (`rec-5`) stored
+  // the same `by/owner/writer = r-1`, so neither read face could tell a relayed write from an own-turn write. The
+  // provenance of the ACT is not a property of the row text — it is known only at dispatch time, so it is recorded when
+  // the row is written (`writtenFrom`) and every read face DEFAULT carries it. A caller can ask for it to be omitted
+  // with `withWriter:false`, and then the receipt answers `writtenFromOmitted:true` instead of simply dropping a fact.
+  // This key is DELIBERATELY not named `writerSource`: `writerSource` on a library head already answers a different
+  // question (which FIELD answered the writer question — `by`/`writer`/`owner`), and one name answering two questions
+  // is the disease this round exists to kill (Lead ruling 2026-11-10; see docs/03 §3.1g).
+  const WRITTEN_FROM_VALUES = Object.freeze(['own-turn', 'relayed', 'unknown'])
+  const WRITTEN_FROM_MEANS = 'writtenFrom = HOW THE WRITE THAT MADE THIS REVISION GOT HERE. own-turn = the named seat ran it in its own delivered turn; relayed = the office (or another seat) named this seat, but the seat did not run the write; unknown = the call carried no caller and named no seat, or the row was written before this reading existed. This is provenance of the ACT; the different question "which field answered the writer" is `writerSource` on the library head and is unchanged.'
+  const writtenFromOf = (row) => {
+    const v = row && typeof row === 'object' ? row.writtenFrom : null
+    return WRITTEN_FROM_VALUES.indexOf(v) === -1 ? 'unknown' : v
+  }
+  /**
+   * The provenance a WRITE cannot know from its arguments alone: the dispatch layer knows who is running (the seat of
+   * this very call), the row text does not. `host-pack-tools.js#makePackToolSpec.run` opens this for the duration of one
+   * pack-tool dispatch (try/finally) — the SAME criterion the seat-face gate and the disclosure use — so `put` records
+   * a fact the caller already possesses instead of inventing one at read time.
+   */
+  let ambientTurnCaller = null
+
   /**
    * One time resolver for EVERY field, not just `updatedAt`. RUN 259 / P1-4: the sort comparator did
    * `a.createdAt - b.createdAt` on ISO STRINGS, which is `NaN`, so a `headSort:"createdAt"` page was ordered by the
@@ -671,6 +707,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // the snapshot could not tell a genuine restore from the stale live copy the fold still carries right after a prune
       // (both are `status:'live'`), so the prune was undone one read later and the receipt's liveAfter was never true.
       restoredAt: rec.restoredAt === undefined ? null : rec.restoredAt,
+      // ★ TB-2691 / F75-11: `writtenFrom` on a ROW is the PROVENANCE of the act that wrote it (own-turn / relayed /
+      // unknown), recorded at write time. It is NOT `writerSource`: that name already means "which field answered the
+      // writer question" (`by`/`writer`/`owner`) on the library head, and is deliberately left with that one meaning.
+      // Both read faces offer `writtenFrom` by default; `list({withWriter:false})` omits it and says so.
+      writtenFrom: writtenFromOf(rec),
+      writtenFromMeans: WRITTEN_FROM_MEANS,
     }
     if (!withBody) return base
     const cap = truncateTo(rec.body, { count })
@@ -729,6 +771,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
   const api = {
     /**
+     * RUN 269 / TB-2697: the write is durable, so it is no longer in flight (see `acknowledgeFoldWrite` above). The
+     * kernel calls this the moment its snapshot patch RESOLVES; the pending mark exists only to cover the window
+     * between the mutation and that resolution. Returns how many marks this call cleared, so a receipt can say it.
+     */
+    acknowledgeFoldWrite,
+    /**
      * RUN 256 / TB-2618: a pack's POST-CONSTRUCTION `recordTracks` declaration. It extends the live whitelist for
      * THIS handle (put/list read `liveTracks()`), so "declared after boot" is effective, not a no-op. The
      * construction-time settings snapshot (`vmu.records.tracks`) is NOT rewritten: the fold in kernel/pack.js owns
@@ -751,6 +799,18 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         tracks: liveTracks(),
         declared: wanted.map(String),
       }
+    },
+    /**
+     * TB-2691 / F75-11: open the dispatch caller for the duration of ONE tool call and return the release. The kernel
+     * face (host-pack-tools `makePackToolSpec.run`) already resolves `callerMember`; kit handlers ignore it, so the
+     * resolved caller travels through this seam into `put`, which records `writtenFrom` on the row. Without the seam
+     * the row can only say "somebody wrote it", which is exactly the defect: a relayed write looked like an own turn.
+     */
+    beginTurnCaller(member) {
+      const prev = ambientTurnCaller
+      const text = member === null || member === undefined ? '' : String(member).trim()
+      ambientTurnCaller = text === '' ? null : text
+      return () => { ambientTurnCaller = prev }
     },
     apiVersion,
 
@@ -775,7 +835,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
      * ROUND 261 (volume 16 §L9/L10): register a DATASET - a record with kind `dataset`, carrying path, fingerprint and parent, and
      * referenceable by version. The two declarations are honoured here and nowhere else, so there is exactly one dataset path.
      */
-    datasetRegister({ track, title, path = null, fingerprint = null, parent = null, version = null, body = '', tags = [], settled = false, by = null } = {}) {
+    datasetRegister({ track, title, path = null, fingerprint = null, parent = null, version = null, body = '', tags = [], finalAck = undefined, settled = undefined, by = null } = {}) {
       const enforced = []
       mark(enforced, K.dataRequireParent)
       const needParent = sget(K.dataRequireParent) === true
@@ -802,7 +862,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       }
       const meta = ['dataset', 'path=' + String(path), 'fingerprint=' + String(fingerprint), 'parent=' + (parent === null ? '-' : String(parent)),
         'version=' + (v === null ? '-' : v), 'scheme=' + scheme].join(' ')
-      const rec = this.put({ track, kind: 'dataset', title, body: body || meta, tags, settled, by })
+      const rec = this.put({ track, kind: 'dataset', title, body: body || meta, tags, finalAck, settled, by })
       return Object.assign({}, rec, { dataset: { path, fingerprint, parent: parent === null ? null : String(parent), version: v, scheme },
         enforced: [...enforced, K.allowedKinds], enforcedScope: 'evaluated-so-far' })
     },
@@ -811,7 +871,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
      * ROUND 278 (volume 16 §L166-168): file a rebuttal - one entry per review comment, pairing the comment with the response and the
      * change it caused. `vmu.review.rebuttalRequired` (default true) refuses an entry that files a comment without a response.
      */
-    rebuttal({ track, title, comment = null, response = null, changeRef = null, body = '', tags = [], settled = false, by = null } = {}) {
+    rebuttal({ track, title, comment = null, response = null, changeRef = null, body = '', tags = [], finalAck = undefined, settled = undefined, by = null } = {}) {
       const enforced = []
       mark(enforced, K.rebuttalRequired)
       // ROUND 280: read by LITERAL - the shape generate-wired-schema.mjs recognises (see the file header's four accessor
@@ -828,14 +888,14 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           'pass response:<what changed, or why not>, or set vmu.review.rebuttalRequired=false', [K.rebuttalRequired], 'rebuttal')
       }
       const meta = ['rebuttal', 'changeRef=' + (changeRef === null ? '-' : String(changeRef)), 'response=' + (hasResponse ? 'yes' : 'no')].join(' ')
-      const rec = this.put({ track, kind: 'rebuttal', title, body: body || (String(comment) + '\n=> ' + String(response || '-') + '\n' + meta), tags, settled, by })
+      const rec = this.put({ track, kind: 'rebuttal', title, body: body || (String(comment) + '\n=> ' + String(response || '-') + '\n' + meta), tags, finalAck, settled, by })
       return Object.assign({}, rec, { rebuttal: { comment: String(comment), response: hasResponse ? String(response) : null,
         changeRef: changeRef === null ? null : String(changeRef), responseRequired: required },
         enforced: [...enforced, K.allowedKinds], enforcedScope: 'evaluated-so-far' })
     },
 
     /** Create a record. Every cap is a NAMED refusal with 现值/上限; duplicates are COUNTED, never re-added. */
-    put({ id: requestedId = null, track, kind, title, body = undefined, tags = undefined, settled = false, permanent = undefined, by = null, owner = undefined, bodyMode = null, confirmDestructive = false } = {}) {
+    put({ id: requestedId = null, track, kind, title, body = undefined, tags = undefined, finalAck = undefined, finalAckSource = null, settled = undefined, permanent = undefined, by = null, owner = undefined, bodyMode = null, confirmDestructive = false, writtenFrom = null } = {}) {
       // ★ ROUND 36: fold the fold BEFORE writing, because the write-through snapshot (kernel/index.js) replaces the
       // WHOLE `records` array with THIS instance's view. Without this, instance A's put would overwrite instance B's
       // rows - a lost update that no read-path fix could repair (the rows would be gone from the durable file).
@@ -893,17 +953,39 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const mergedOwner = updating
         ? (ownerGiven ? String(owner) : (updating.owner !== undefined && updating.owner !== null ? String(updating.owner) : (updating.by === undefined ? null : updating.by)))
         : (ownerGiven ? String(owner) : mergedBy)
+      // ★★★ TB-2691 / F75-11: the provenance of THIS write lands on the row (see WRITTEN_FROM_MEANS). A named, valid
+      // value wins; otherwise it is derived from the dispatch caller (ambientTurnCaller) and the writer this write names:
+      // no caller + a named writer = relayed (the office named a seat but did not run as it), caller + same/absent name =
+      // own-turn, no caller + no name = unknown. Never guessed from the row text.
+      const writtenFromGiven = writtenFrom !== undefined && writtenFrom !== null && String(writtenFrom).trim() !== ''
+      if (writtenFromGiven && WRITTEN_FROM_VALUES.indexOf(String(writtenFrom).trim()) === -1) {
+        throw deny('VMU_INVALID_ARGUMENT', 'writtenFrom is not a provenance this kernel records: ' + JSON.stringify(writtenFrom),
+          'allowed: ' + WRITTEN_FROM_VALUES.join(' / ') + ' (own-turn = the seat ran it in its own turn; relayed = named but not run by the seat; unknown = neither could be established)', [], 'put')
+      }
+      const namedWriter = mergedBy === null || mergedBy === undefined || String(mergedBy).trim() === '' ? null : String(mergedBy)
+      const derivedWrittenFrom = ambientTurnCaller === null
+        ? (namedWriter === null ? 'unknown' : 'relayed')
+        : (namedWriter === null || namedWriter === ambientTurnCaller ? 'own-turn' : 'relayed')
+      const mergedWrittenFrom = writtenFromGiven ? String(writtenFrom).trim()
+        : (updating && WRITTEN_FROM_VALUES.indexOf(updating.writtenFrom) !== -1 && ambientTurnCaller === null ? updating.writtenFrom : derivedWrittenFrom)
+
       const bodyNew = body === undefined || body === null ? '' : String(body)
       const bodyModeUsed = !updating ? 'replace' : (!bodyGiven ? 'kept' : bodyModeRaw)
       const oldText = updating ? String(updating.body === undefined || updating.body === null ? '' : updating.body) : ''
       const mergedBody = !updating ? bodyNew
         : (!bodyGiven ? oldText
           : (bodyModeRaw === 'append' ? (bodyNew === '' ? oldText : (oldText === '' ? bodyNew : oldText + '\n' + bodyNew)) : (bodyModeRaw === 'merge' ? mergeCardText(oldText, bodyNew) : bodyNew)))
+      if (finalAck !== undefined && settled !== undefined && finalAck !== settled) {
+        throw deny('VMU_INVALID_ARGUMENT', 'finalAck and settled name DIFFERENT answers for the same write (finalAck=' + String(finalAck) + ', settled=' + String(settled) + '); the old word is a deprecated alias, so naming both with different values is refused instead of guessed',
+          'send finalAck:true (or nothing) for a final write; do NOT pass settled in new code - it is accepted only as the legacy alias for callers that have not migrated', [K.requireSettled], 'put')
+      }
+      const admitted = finalAck === true || settled === true
+      const admissionSource = finalAck === true ? (settled === true ? 'final-ack' : String(finalAckSource || 'caller')) : (settled === true ? 'legacy-settled' : null)
       mark(enforced, K.requireSettled)
-      if (requireSettled && settled !== true) {
+      if (requireSettled && !admitted) {
         mark(fired, K.requireSettled)
-        throw deny('VMU_STATE', 'track "' + track + '" only accepts SETTLED records (vmu.records.requireSettledRecords=true)',
-          'pass settled: true once the record is final, or set vmu.records.requireSettledRecords=false (vmu.records.requireSettledRecords)', [K.tracks, K.requireSettled], 'put')
+        throw deny('VMU_STATE', 'track "' + track + '" admits only writes whose caller ACKNOWLEDGES the record is final (vmu.records.requireSettledRecords=true): pass finalAck:true - this is a WRITE ADMISSION, not a stored state',
+          'pass finalAck:true once this write is final, or set vmu.records.requireSettledRecords=false (vmu.records.requireSettledRecords) - the flag is consumed at the gate and never persisted: no row carries it', [K.tracks, K.requireSettled], 'put')
       }
       mark(enforced, K.allowedKinds)
       if (!allowedKinds.includes(mergedKind)) {
@@ -1065,6 +1147,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         updating.updatedAt = at
         updating.by = mergedBy
         updating.owner = mergedOwner
+        updating.writtenFrom = mergedWrittenFrom
         updating.state = 'live'
         rec = updating
         fieldsReplaced = Object.keys(changed)
@@ -1073,6 +1156,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           id, track, kind: String(mergedKind), title: mergedTitle, slug, body: bodyText, tags: mergedTags, bytes,
           fingerprint: fp, permanent: mergedPermanent, state: 'live', rev: 1, createdAt: at, updatedAt: at,
           by: mergedBy, owner: mergedOwner, versions: [], trashedAt: null, purgeAt: null,
+          writtenFrom: mergedWrittenFrom,
         }
       }
       // ★★ RUN 174 (run 19 F3/F10 — AN ID LIVES IN EXACTLY ONE TRACK): a put that names an EXISTING id while naming a
@@ -1096,6 +1180,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         counters.retracked += 1
       }
       records.set(id, rec)
+      noteLocalWrite(rec)
       // ★ Defense in depth: an explicit re-put under the SAME id is LEGITIMATE (the paper tamper test relies on it), so the map is
       // overwritten on purpose - but the INDEX arrays must never gain a second row for one id, because a duplicate there carries no
       // information and only makes a later read count the record twice.
@@ -1162,7 +1247,18 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         bodyOwnIdLineMeans: bodyOwnIdLineDropped
           ? 'this write NAMED a body line `- id：<this row\'s own id>`; the id is the ROW itself, not a field of its body, so the line was dropped before the body was stored (it carried no information the row does not already have, and counting it as an added body line would have said the caller added something)'
           : 'no body line named this row\'s own id, so that rule dropped nothing here - reported as false rather than omitted, so "the rule did not fire" and "the rule was not implemented" do not look the same (RUN 242 / FEEDBACK65 1.6)',
-        ...identityEcho(mergedOwner, mergedBy) }
+        ...identityEcho(mergedOwner, mergedBy),
+        // ★ TB-2691 / F75-11: the write receipt names WHICH KIND OF ACT this was, so the same fact is readable at the
+        // moment of writing and not only afterwards on the row.
+        writtenFrom: mergedWrittenFrom,
+        writtenFromMeans: WRITTEN_FROM_MEANS,
+        // ★ TB-2700: the write-admission declaration and WHO made it travel on the receipt; the flag is consumed by the
+        // gate and never stored, so a reader asks the receipt, never the row.
+        finalAck: admitted,
+        finalAckSource: admissionSource,
+        finalAckBy: mergedBy,
+        finalAckMeans: 'finalAck:true means the CALLER declared this write final at the gate (a write admission, not a stored state); finalAckSource names where the declaration came from (caller / rehydrate / reindex-adopt / final-ack when both words were named / legacy-settled = the deprecated alias for the old settled:true word, accepted for compatibility, to be removed after callers migrate), finalAckBy names who declared it',
+      }
       if (!updating) return Object.assign(receipt, { updated: false })
       const out = Object.assign(receipt, {
         updated: true, rev: rec.rev, versionsCount: rec.versions.length,
@@ -1212,7 +1308,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     },
 
     /** READ a track's HEAD LIST — the default information channel (07 §4.4; `pointerPropagation` can mute it). */
-    list({ track = null, limit = null, fields = null, by = null, since = null, until = null, external = null, externalSource = null, kind = null, includeUntracked = false } = {}) {
+    list({ track = null, limit = null, fields = null, by = null, since = null, until = null, external = null, externalSource = null, kind = null, includeUntracked = false, withWriter = true } = {}) {
       // RUN 243 (FEEDBACK65 1.8, MEASURED): a receipt told the reader to "read the records written by `by` between
       // `from` and `to`" - and this list had no such filter, so the hint pointed at a wall that did not exist (the
       // same defect class as RUN 165's quota refusal (which named two repair verbs no face had) and RUN 176's prune
@@ -1223,6 +1319,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const enforced = [K.tracks, K.headSort, K.headListAt, K.pointerPropagation, K.headFields]
       const fired = []
       const at = now()
+      // ★ TB-2691 / F75-11: provenance is on by default on BOTH read faces (`writtenFrom` per row); `withWriter:false`
+      // omits it and the receipt carries `writtenFromOmitted:true`, so the omission is itself answered.
+      const withWriterOn = withWriter !== false
       if (track !== null && !liveTracks().includes(track)) {
         mark(fired, K.tracks)
         throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track), 'vmu.records.tracks declares the tracks: ' + tracks.join(', '), [K.tracks], 'list')
@@ -1376,7 +1475,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         }
         // An external row is another store's projection (a pack library head): it has no `tags`/`rev`/`state`
         // fields. Normalise the SHAPE here once, so `view()` does not have to know which store a row came from.
-        externalKept.push(Object.assign({ tags: [] }, r, { writer: w.writer, writerSource: w.writerSource }))
+        const normExternal = Object.assign({ tags: [] }, r, { writer: w.writer })
+        // A library head's `writerSource` is the OLD published meaning ("which field answered": by/writer/owner) and is
+        // kept verbatim here — TB-2691 does NOT redefine it. The row-level `writtenFrom` (provenance of the act) is
+        // supplied by the decoration below, so the two facts never share one name.
+        externalKept.push(normExternal)
       }
       let merged = live.concat(externalKept)
       if (kindArg !== null) {
@@ -1479,17 +1582,35 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         // mute holds back every row. `totalUniverse` is the DENOMINATOR of the question and is never muted.
         const mutedDropped = live.length
         const mutedUniverse = live.length + excluded.shapeMismatch + excluded.untracked
-        return { ok: true, items: [], heads: [], count: 0, available: live.length, total: live.length, totalUniverse: mutedUniverse, mutedDropped,
+        return { ok: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at,
+          items: [], heads: [], count: 0, available: live.length, total: live.length, totalUniverse: mutedUniverse, mutedDropped,
           identity: identityOf(0, 0, mutedDropped, mutedUniverse),
           orderUnknown, orderUnknownMeans: 'rows this page could not place in time order because their stamp is missing or unreadable; they are named here and placed LAST, never silently treated as the epoch',
-          dropped: live.length, truncated: live.length > 0, suppressed: true, excluded, excludedMeans: excludedMeansOf(excluded), limitUsed, limitSource, limitMeans: 'this page is MUTED (vmu.records.pointerPropagation=false): no rows are returned, so the page size did not apply; `available` counts the set the filter covers', enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)',
+          dropped: live.length, truncated: live.length > 0, suppressed: true, excluded, excludedMeans: excludedMeansOf(excluded), limitUsed, limitSource,
+          withWriter: withWriterOn,
+          writtenFromOmitted: !withWriterOn,
+          withWriterMeans: withWriterOn
+            ? 'no rows are returned on this muted road, so `writtenFrom` has nothing to decorate; the fact is on by default (withWriter:true) as on the normal road'
+            : 'the caller asked withWriter:false and the head list is muted: no rows and no writtenFrom; `writtenFromOmitted:true` says why the field is absent',
+          limitMeans: 'this page is MUTED (vmu.records.pointerPropagation=false): no rows are returned, so the page size did not apply; `available` counts the set the filter covers', note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)',
           ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames }
       }
       const cap = capWanted === 0 ? live.length : capWanted
       const kept = live.slice(0, cap)
       const dropped = live.length - kept.length
       if (dropped > 0) mark(fired, K.headListAt)
-      const items = kept.map((r) => projectView(r, chosen, at))
+      // ★ TB-2691 / F75-11: provenance is decorated AFTER the projection — `projectView` keeps only the configured
+      // head fields, so injecting it earlier would be silently dropped (the very defect class: a fact measured and
+      // then not said). Every row says which KIND of act wrote it; `withWriter:false` says nothing per row and names
+      // the omission on the receipt instead.
+      const items = kept.map((r) => {
+        const projected = projectView(r, chosen, at)
+        if (!withWriterOn) return projected
+        return Object.assign(projected, {
+          writtenFrom: writtenFromOf(r),
+          writtenFromMeans: WRITTEN_FROM_MEANS,
+        })
+      })
       // ★★ RUN 240: the head row names BOTH facts now — `owner` (whose row) and `writer` (who wrote this revision) —
       // and the list result carries the same three-name glossary the write receipt does, so `list` and `expand` teach
       // the same vocabulary.
@@ -1511,6 +1632,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         // rows a filter dropped for a shape reason (never a silent zero), and `limitUsed`/`limitSource` say which page
         // size actually applied (a caller can no longer pass a limit and be handed the default without being told).
         excluded, excludedMeans: excludedMeansOf(excluded),
+        // ★ TB-2691 / F75-11: the by-default fact is stated on the receipt too, and an omission is ANSWERED rather
+        // than silent (the same rule as `limitUsed`/`excluded`).
+        withWriter: withWriterOn,
+        withWriterMeans: withWriterOn
+          ? 'every row carries `writtenFrom`: own-turn = the seat named on the row ran this write in its own turn; relayed = the row names a seat but the call ran from the office or another seat; unknown = neither could be established. It is deliberately NOT called writerSource, which keeps its old meaning on the library head (which FIELD answered: by/writer/owner)'
+          : 'the caller asked withWriter:false, so `writtenFrom` is omitted from every row on purpose — this receipt carries `writtenFromOmitted:true` instead of leaving a reader to guess that the rows are old or that the field was dropped',
+        writtenFromOmitted: !withWriterOn,
         limitUsed, limitSource,
         limitMeans: limitSource === 'caller'
           ? 'the page size is the one this call asked for (' + limitUsed + '); `dropped` counts the rows the page cap held back'
@@ -1577,6 +1705,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       fpIndex.delete(rec.fingerprint)
       rec.fingerprint = fingerprintOf(rec)
       fpIndex.set(rec.fingerprint, rec.id)
+      noteLocalWrite(rec)
       record_({ type: 'records/superseded', id: rec.id, rev: rec.rev, why: reason, mode: historyStoreMode })
       fire('records/superseded', { id: rec.id, rev: rec.rev, mode: historyStoreMode })
       return { ok: true, id: rec.id, rev: rec.rev, mode: historyStoreMode, changedKeys: Object.keys(changed), fingerprint: rec.fingerprint, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired),
@@ -2182,7 +2311,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           try {
             const wrote = api.put({
               track: doc.track, kind: doc.kind || doc.track, title: mdStr(doc.title) === '' ? key : doc.title,
-              body: mdRowBodyOf(doc, fp), settled: doc.fields.status === 'current', by: caller,
+              body: mdRowBodyOf(doc, fp), finalAck: doc.fields.status === 'current', finalAckSource: 'reindex-adopt', by: caller,
             })
             let wroteId = wrote.id
             // ★★ RUN 225-A (MEASURED): after the index rows are WIPED (trashed), the md still describes the same bytes as
@@ -2401,15 +2530,51 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     return true
   }
   /**
-   * Fold the durable fold into this instance, INCREMENTALLY, before a read answers. Three rules make it safe to call
-   * on every read:
-   *   · it NEVER overwrites or deletes a row this instance already has (`records.has(id) ⇒ skip`): a local write that
-   *     has not been snapshotted yet must not be lost to somebody else's older snapshot;
-   *   · it NEVER writes: the durable snapshot stays the mutating instance's job;
-   *   · it is CHEAP when nothing changed: the fold's row-id signature is compared first, so an unchanged fold costs one
-   *     read of an already-open fold and ZERO `put` calls (the freshness check of docs/07 §1-(5)).
-   * A store that is not open is a DEGRADED instance (it opens asynchronously and kernel/index.js retries hydration), so
-   * the failure is COUNTED and ATTRIBUTED, never thrown and never silent.
+   * ★★★ RUN 2697 / TB-2697: REMEMBER A LOCAL WRITE UNTIL ITS FOLD WRITE IS ACKNOWLEDGED. The durable snapshot is queued
+   * AFTER the mutation (kernel/index.js snapshotRecords), so between the two the fold can still be the `before` picture.
+   * While an id is pending, synchronize() must not adopt a differing fold row for it: that row may be our own older
+   * snapshot, and adopting it would silently roll the row back (the defect measured in TB-2697). The kernel deletes the
+   * entry when the patch resolves; this face deletes it when a fold row proves to carry exactly our (rev, updatedAt).
+   */
+  function noteLocalWrite(rec) {
+    if (!shared.foldPending || !rec || rec.id === undefined || rec.id === null) return
+    shared.foldPending.set(String(rec.id), { rev: rec.rev, updatedAt: rec.updatedAt })
+  }
+  /**
+   * ★★★ RUN 269 / TB-2697 (the missing half of the same fix): THE WRITE IS DURABLE, SO IT IS NO LONGER IN FLIGHT.
+   * `noteLocalWrite` marks a row pending so a read cannot adopt the pre-write snapshot; the intended exit was always
+   * "the kernel deletes the entry when the patch resolves", but only the second exit (a fold row proving to carry our
+   * exact (rev, updatedAt)) was wired. With a clock that does not advance between the two writes — every simulator run
+   * uses a frozen clock, and two kernels writing in the same millisecond is exactly what a cross-kernel co-design does —
+   * that proof never arrives: another kernel rewriting the SAME row keeps `updatedAt` equal and bumps `rev`, so `landed`
+   * stays false forever and the row is skipped on every read (measured live in run 129: `pulled:0 / skipped:22`, the
+   * member's co-design author never reached the office's adopt). Clearing here is not a relaxation of the ordering rule:
+   * the patch has RESOLVED, so the fold already carries our write, and a fold row that differs afterwards is a real
+   * rewrite by another kernel, which the strictly-newer rule then judges on its merits.
+   */
+  function acknowledgeFoldWrite() {
+    if (!shared.foldPending) return 0
+    const n = shared.foldPending.size
+    shared.foldPending.clear()
+    return n
+  }
+  /**
+   * Fold the durable fold into this instance, INCREMENTALLY, before a read answers. Three rules make it safe to call on
+   * every read:
+   *   · A ROW THIS INSTANCE ALREADY HOLDS IS ONLY REPLACED BY A STRICTLY NEWER FOLD ROW — never by an older snapshot.
+   *     The fold write is queued AFTER the mutation it describes, so between the two the durable copy can be OLDER than
+   *     local memory; adopting it as if it were news is what rolled a row back in TB-2697 (writer r-1 / fingerprint
+   *     dd599433… / updatedAt +61s on a row r-acad had already rewritten, from a read that wrote nothing). "Newer" is
+   *     (updatedAt, then rev): `rev` counts the writes THIS kernel folded (see revMeans), so across kernels the instant
+   *     is the comparable fact and rev only breaks a same-millisecond tie.
+   *   · AN ID WHOSE LOCAL FOLD WRITE IS NOT ACKNOWLEDGED YET (`shared.foldPending`) IS SKIPPED ENTIRELY: our own write may
+   *     not be in the fold yet, so a differing row may be the picture from BEFORE it. Skipped and COUNTED (`heldBack`).
+   *   · it NEVER writes: the durable snapshot stays the mutating instance's job; and it is CHEAP when nothing changed (the
+   *     fold's row signature is compared first, so an unchanged fold costs one read of an already-open fold and ZERO
+   *     `put` calls — the freshness check of docs/07 §1-(5)).
+   * Every refused row is COUNTED (`staleRows`), never silent and never written back. A store that is not open is a
+   * DEGRADED instance (it opens asynchronously and kernel/index.js retries hydration), so the failure is COUNTED and
+   * ATTRIBUTED, never thrown and never silent.
    */
   function synchronize(why) {
     if (!shared.store) return { synced: false, why: 'no-store', op: why }
@@ -2511,13 +2676,41 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           shared.trashRestored += 1
           continue
         }
-        // ★ LIVE RUN 129 (F-129a): A BODY REWRITE IS A CHANGE. The signature used to be the SET of row ids, so a row
-        // another kernel REWROTE (supersede keeps the id) never reached this loop: the office's adopt read the draft as
-        // it stood when this instance first saw it, so the co-design author the member kernel had just added was absent
-        // from `authors` and adopt refused the very draft the run had just built together. The stored rows are HEADS with
-        // no stamp, so the comparison is on CONTENT: a differing row is a rewrite this instance has not seen, and the
-        // fold is the shared copy every instance pushes into.
+        // ★★★ RUN 2697 / TB-2697: ONE COMPARISON, TWO REFUSALS. A held row changes only when the fold row is STRICTLY
+        // NEWER by (updatedAt, then rev for the same millisecond): rev alone cannot order two kernels (it counts only the
+        // writes THIS instance folded — see revMeans), so updatedAt is the primary key. Everything that is not strictly
+        // newer is the OLD picture, and refusing it is the whole fix: adopting it is what moved rec-2 back one revision
+        // on a read that wrote nothing (TB-2697). Refusals are COUNTED so "nothing changed" and "an old row was refused"
+        // are different readings (staleRows below, heldBack when the row is also pending).
+        const foldAt = timeMsOf(row.updatedAt)
+        const foldRev = Number.isInteger(row.rev) ? row.rev : null
+        const heldAt = timeMsOf(held.updatedAt)
+        const heldRev = Number.isInteger(held.rev) ? held.rev : 0
+        const strictlyNewer = foldAt !== null
+          && (heldAt === null || foldAt > heldAt || (foldAt === heldAt && foldRev !== null && foldRev > heldRev))
+        // ★★★ RUN 2697 / TB-2697: AN UNACKNOWLEDGED LOCAL WRITE OUTRANKS THE FOLD. `noteLocalWrite` recorded every row
+        // this instance just wrote; until the kernel acknowledges the snapshot patch, the fold may still hold the version
+        // from BEFORE that write — or another kernel may have rewritten the row in between, which we cannot tell apart
+        // from our own stale snapshot. A fold row that EQUALS our pending (updatedAt, rev) proves the write landed, so the
+        // id stops being pending; anything else is skipped outright while the write is in flight (COUNTED as heldBack).
+        // Adopting it here was the defect: a read with no write of its own moved the row back one revision.
+        const pending = shared.foldPending.get(id)
+        if (pending) {
+          const pendingAt = timeMsOf(pending.updatedAt)
+          const landed = foldAt !== null && pendingAt !== null && foldAt === pendingAt
+            && foldRev !== null && foldRev === pending.rev
+          if (!landed) { shared.heldBack += 1; continue }
+          shared.foldPending.delete(id)
+        }
+        // ★ LIVE RUN 129 (F-129a): A BODY REWRITE IS A CHANGE — and it still is, for a row this instance is NOT pending
+        // on. The co-design author the member kernel added must reach the office's adopt. What changed in TB-2697 is the
+        // BAR: differing content is a rewrite only when the fold row is STRICTLY NEWER than the row this instance holds;
+        // an older snapshot is refused and counted, never applied.
         if (rowContentStamp(row) !== rowContentStamp(held)) {
+          if (!strictlyNewer) {
+            shared.staleRows += 1
+            continue
+          }
           const prevFp = held.fingerprint
           const fpIndex = byFingerprint.get(held.track)
           if (fpIndex && prevFp) fpIndex.delete(prevFp)
@@ -2526,11 +2719,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           held.bytes = bytesOf(held.body)
           if (Array.isArray(row.tags)) held.tags = listOf(row.tags, held.tags)
           if (Number.isInteger(row.rev) && row.rev > held.rev) held.rev = row.rev
-          // The stored row is a HEAD (id/track/kind/title/body/tags/by): it carries no stamp, so the fold cannot tell us
-          // WHEN it was rewritten — only THAT its content differs. The fold is the shared copy every instance pushes
-          // into, so a differing content is a rewrite this instance has not seen; the local copy is updated now and the
-          // local stamp moves with it (a reader asking "when did I last see this change" must not read the old time).
-          held.updatedAt = now()
+          // ★★★ RUN 2697 / TB-2697: THE ROW KEEPS THE FOLD'S OWN STAMP, NOT `now()`. The old code stamped an adopted
+          // rewrite with the READ's clock, so a stale snapshot became "a change observed at this instant": updatedAt
+          // moved forward by +61s in the measured flip and re-reading could not tell an old row from a new one. An
+          // adopted row now carries the instant it was WRITTEN, which is exactly the fact the next comparison needs.
+          held.updatedAt = foldAt
           const writer = row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : null)
           if (writer !== null) held.by = String(writer)
           // ★★ RUN 240: ownership and authorship are TWO facts, so a rewritten fold row restores BOTH. The fold used to
@@ -2571,7 +2764,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         // keeps the two apart. A fold written before this change carries only one name under `by`; it is adopted as
         // both, which is the only shaper that row's history allows (and `owner` then equals `writer`, truthfully).
         const ownerOfRow = row.owner !== undefined && row.owner !== null ? row.owner : writer
-        putInternal.call(api, { id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true,
+        putInternal.call(api, { id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, finalAck: true, finalAckSource: 'rehydrate',
           // the writer is carried by `by` on the row; `owner` is accepted as well because that is the name the VIEW
           // exposes it under (a snapshot that copies the view - kernel/index.js does - can only carry `owner`).
           by: writer === null ? null : String(writer),
@@ -2589,9 +2782,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   }
 
   /**
-   * The fold's visible change signature: the SET of row ids. The writer replaces the whole array, so the id set changes
-   * exactly when the rows do; a body-only rewrite of a row that this instance ALREADY has is deliberately not adopted
-   * (rule 1 above: this instance's copy wins for ids it already holds).
+   * The fold's cheap change signature: row IDs AND what each row says. The writer replaces the whole array, so an
+   * unchanged fold skips the loop entirely; when a row's body is rewritten (supersede keeps the id) the signature still
+   * changes, which is how RUN 129's cross-kernel authors reach a reader. Signature equality is only a fast path — adoption
+   * is still decided row by row against the strict-newer rule above.
    */
   /** What a stored row SAYS (a supersede keeps id AND rev: only the content tells a rewrite from the row it replaced). */
   function rowContentStamp(row) {
@@ -2614,7 +2808,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     return {
       attached: shared.attached, key: SHARED_STORE_KEY, stamp: shared.stamp,
       pulls: shared.pulls, pulled: shared.pulled, refreshed: shared.refreshed, refused: shared.refused, skipped: shared.skipped,
-      refreshedMeans: 'rows THIS instance already held whose stored copy was rewritten by another kernel and was newer: the local copy is replaced by the newer body (a supersede keeps the id, so an id-set signature could never see it). Read a decision that depends on the CURRENT body (blueprint adopt, card gates) after this count moves, instead of trusting the row this instance first loaded',
+      refreshedMeans: 'rows THIS instance already held whose stored copy was rewritten by another kernel AND was STRICTLY newer (updatedAt, then rev): the local copy is replaced by the newer body (a supersede keeps the id, so an id-set signature could never see it). An older stored copy is REFUSED and counted under staleRows instead — a read never rolls a row back (RUN 2697 / TB-2697). Read a decision that depends on the CURRENT body (blueprint adopt, card gates) after this count moves, instead of trusting the row this instance first loaded',
+      staleRows: shared.staleRows,
+      staleRowsMeans: 'differing rows in the durable fold REFUSED because they were NOT strictly newer than the row this instance holds: this is the shape of the TB-2697 defect (a queued snapshot from before a local write was read back as if it were news and rolled the row one revision back). Counted here, never written over the local row',
+      heldBack: shared.heldBack,
+      heldBackMeans: 'fold rows skipped because this instance STILL HOLDS AN UNACKNOWLEDGED WRITE for that id (its snapshot patch has not resolved): the differing row may be our own older picture, so it is neither adopted nor counted as stale. The kernel removes the pending entry when the patch resolves; this face removes it when a fold row proves to carry exactly our (rev, updatedAt)',
       scope: 'this-kernel-instance',
       scopeMeans: 'these counters belong to THIS kernel: they count the folds THIS process has performed. Another kernel over the same store folds its own copy, so two kernels may legitimately report different `pulls`/`adoptedWithoutAuthor` for the same durable ledger — the shared fact is the store key, not this number',
       adoptedWithoutAuthor: shared.adoptedNoAuthor,

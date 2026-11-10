@@ -89,8 +89,20 @@ const call = async (specs, name, args) => {
 }
 
 // ── §0 the three filters exist where the hint points ────────────────────────────────────────────────────────────
-has(RECORDS_SRC, 'list({ track = null, limit = null, fields = null, by = null, since = null, until = null, external = null, externalSource = null, kind = null, includeUntracked = false } = {}) {',
-  '§0a ★★★ the kernel head list accepts a WRITER and a TIME WINDOW (run 65\'s hint named a query no face could make)')
+// ★ RUN 2691 / task-177 added one more defaulted parameter to the same signature (`withWriter = true`, the read face
+// that answers "who wrote this row" without a second query). The pin below used to be the WHOLE parameter list, so an
+// unrelated lane adding a parameter turned this into a red that said nothing about `by`/`since`/`until`. The pin is now
+// SPLIT: (1) the three filters this suite exists for must still be in the signature, (2) the signature must still be a
+// single `list({…} = {})` object pattern with a body, and (3) every defaulted parameter named here must still be present.
+// This keeps the assertion about THE SAME QUESTION while letting the list grow.
+{
+  const sig = RECORDS_SRC.slice(RECORDS_SRC.indexOf('list({ track = null'))
+  const head = sig.slice(0, sig.indexOf('} = {}) {'))
+  const required = ['by = null', 'since = null', 'until = null']
+  ok(required.every((p) => head.includes(p)) && head.includes('withWriter = true'),
+    '§0a ★★★ the kernel head list accepts a WRITER and a TIME WINDOW (run 65\'s hint named a query no face could make)',
+    { filters: required.filter((p) => head.includes(p)), params: head.slice(0, 200) })
+}
 // §0b/§0c/§0d (RUN 254): each filter must (1) read the row through the ONE reader (`writerOf`/`updatedMsOf`), (2) make
 // the boundary comparison the question needs (`=== byArg`, `>=`, `<=`), and (3) NAME every row it drops for a shape
 // reason (`excluded.noWriter`/`excluded.timeUnknown`) instead of returning a silent zero. A single-string pin could not

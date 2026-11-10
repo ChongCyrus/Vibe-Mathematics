@@ -1,0 +1,56 @@
+{
+  "id": "A6",
+  "attack": "a red report plus a placeholder override reason",
+  "why": "a bypass must be recorded as chosen-and-rejected; a two-character reason is a rubber stamp, not a decision",
+  "wouldBeWrongIf": "the JSON records override != null (a bypass on a placeholder), or overrideRejected missing/false",
+  "expects": {
+    "judge": "field",
+    "primaryReason": "AUDIT_FIDELITY_MEASURED_NOTHING",
+    "expectExit": 7,
+    "expectReady": false,
+    "expectFields": [
+      {
+        "path": "override",
+        "equals": null
+      },
+      {
+        "path": "overrideRejected",
+        "equals": true
+      }
+    ],
+    "allowedSecondary": {
+      "OVERRIDE_REASON_INVALID": "R6 rejects the reason BEFORE it counts as a bypass, so this code cannot fire when the rejection works; if it does fire, treat the judgement as working",
+      "AUDIT_FIDELITY_MISMATCH": "the base report is red, so the mismatch fires too"
+    }
+  },
+  "cliArgs": [
+    "--override-reason=同上"
+  ],
+  "variants": [
+    {
+      "id": "A6-blank",
+      "why": "an EMPTY reason: silence must not be a bypass either",
+      "cliArgs": [
+        "--override-reason="
+      ],
+      "expects": {
+        "judge": "neutralized",
+        "expectFields": [
+          {
+            "path": "override",
+            "equals": null
+          },
+          {
+            "path": "overrideRejected",
+            "equals": false
+          }
+        ],
+        "forgeryDetectionCodes": [
+          "AUDIT_OVERRIDE_ACCEPTED",
+          "OVERRIDE_REASON_INVALID"
+        ],
+        "neutralizedWhy": "an empty reason parses as no reason at all: the bypass was never recorded and never applied, so there is nothing to refuse — the attack dissolves instead of passing"
+      }
+    }
+  ]
+}

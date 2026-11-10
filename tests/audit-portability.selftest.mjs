@@ -6,11 +6,15 @@
 //   2. a whole-file CRLF file                            -> P2 red, naming the file
 //   3. a suite that prints SKIP and returns (corpus gone) -> P3 red, and the reason names requireCorpusDir
 //   4. a PORTABLE-ALLOW whose reason is too short        -> P1 red (the exemption is not a sticker)
+//   5-8 (TB-2709) the same shapes in a real git repo, i.e. on TRACKED, unmodified lines: a hard-coded checkout and a
+//       Windows profile path are BLOCKERs even then (tests/** has no grandfathered blind spot), a real allow is still
+//       honoured, and a short allow is still red.
 // The clean probe pins the other side: a long-enough PORTABLE-ALLOW must be honoured, otherwise the "fix" would be
 // just deleting the line the judge dislikes.
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 
 import { scanTree } from './audit-portability.mjs'
 
@@ -67,6 +71,43 @@ try {
   ok(result.blockers.length === 4, 'the planted tree yields exactly the four planted blockers', String(result.blockers.length))
 } finally {
   await rm(root, { recursive: true, force: true })
+}
+
+// TB-2709: the added-line rule is NOT the whole story. A tracked, UNMODIFIED tests/** file used to be LEGACY for
+// every rule; a hard-coded checkout there is exactly what let a mutation run stay green while the suite imported this
+// checkout. So the judge must red it anyway ("it was already there" is not an exemption), while a tracked line with a
+// real PORTABLE-ALLOW must stay green. These probes need a real git repo: `lineAdded()` decides by `git diff HEAD`.
+const gitRoot = await mkdtemp(join(tmpdir(), 'portability-tracked-'))
+try {
+  await mkdir(join(gitRoot, 'tests'), { recursive: true })
+  const tracked = {
+    'tests/zzz-tracked-checkout.mjs': 'export const REPO = ' + Q + DRIVE + '/wd/vibemath/Vibe-Mathematics' + Q + '\n',
+    'tests/zzz-tracked-profile.mjs': 'export const HOME = ' + Q + DRIVE + '/Users/someone' + Q + '\n',
+    'tests/zzz-tracked-allow.mjs': 'export const scratch = ' + Q + DRIVE + '/Users/someone' + Q + ' // PORTABLE-ALLOW: this tracked line keeps a real reason, so the exemption is honoured\n',
+    'tests/zzz-tracked-allow-short.mjs': 'export const scratch = ' + Q + DRIVE + '/Users/someone' + Q + ' // PORTABLE-ALLOW: too short\n',
+  }
+  for (const [rel, text] of Object.entries(tracked)) await writeFile(join(gitRoot, rel), text, 'utf8')
+  const git = (...args) => spawnSync('git', args, { cwd: gitRoot, encoding: 'utf8' })
+  const gitOk = git('init', '-q').status === 0
+    && git('add', '-A').status === 0
+    && git('-c', 'user.email=selftest@example.invalid', '-c', 'user.name=selftest', 'commit', '-q', '-m', 'probes').status === 0
+  ok(gitOk, 'tracked probes: the throw-away repo was created and committed')
+
+  const trackedResult = gitOk ? scanTree({ root: gitRoot }) : { blockers: [], legacy: [] }
+  const trackedHits = (file) => trackedResult.blockers.filter((h) => h.file === file)
+  ok(trackedHits('tests/zzz-tracked-checkout.mjs').some((h) => h.id === 'p1-absolute-checkout'),
+    'probe 5: a TRACKED, unmodified hard-coded checkout in tests/** is a BLOCKER (not LEGACY)',
+    JSON.stringify(trackedResult.legacy.filter((h) => h.file === 'tests/zzz-tracked-checkout.mjs')))
+  ok(trackedHits('tests/zzz-tracked-profile.mjs').some((h) => h.id === 'p1-drive-users'),
+    'probe 6: a TRACKED, unmodified Windows profile path in tests/** is a BLOCKER (not LEGACY)')
+  ok(trackedHits('tests/zzz-tracked-allow.mjs').length === 0
+    && !trackedResult.legacy.some((h) => h.file === 'tests/zzz-tracked-allow.mjs'),
+    'probe 7: a tracked line with a real PORTABLE-ALLOW stays green (the rule is not "red every path")')
+  ok(trackedHits('tests/zzz-tracked-allow-short.mjs').some((h) => h.id === 'p1-allow-why-too-short'),
+    'probe 8: a tracked line with a too-short PORTABLE-ALLOW is still red (the exemption is not a sticker)')
+  ok(trackedResult.blockers.length === 3, 'the tracked tree yields exactly three blockers', String(trackedResult.blockers.length))
+} finally {
+  await rm(gitRoot, { recursive: true, force: true })
 }
 
 console.log('')

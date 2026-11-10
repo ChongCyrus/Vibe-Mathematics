@@ -318,7 +318,7 @@ export function createTasks({
       }
       // CONTROL FLOW IS A GATE (docs/08 §5): a paused kernel does not accept new work, and says so by name.
       if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: no new task is accepted',
-        'resume() first (vibe_vmu_control {action:"resume"}); a pause that does not block work is a label, not control')
+        'REACHABLE INSTEAD: 用 vibe_vmu_control {action:"resume"} 解除内核暂停后重试本调用；不挡活的暂停只是个标签，不是控制')
       if (maxOpenTasks > 0 && openCount() >= maxOpenTasks) {
         throw refuse('VMU_RESOURCE_BUDGET', 'open tasks at the ceiling: ' + openCount() + '/' + maxOpenTasks,
           'vmu.tasks.maxOpenTasks is machine-enforced (docs/04 §11)')
@@ -492,7 +492,7 @@ export function createTasks({
       // A pause also freezes transitions (finishing work is work); `settle/before` stays reachable because it
       // is a STAGE move, and a pause must not be a way to bypass the stage gate either way (docs/08 §5).
       if (isPaused()) throw refuse('VMU_STATE', 'the kernel is paused: task ' + id + ' cannot move to ' + String(to),
-        'resume() first (vibe_vmu_control {action:"resume"})')
+        'REACHABLE INSTEAD: 用 vibe_vmu_control {action:"resume"} 解除内核暂停后重试本调用')
       const from = t.state
       if (!TRANSITIONS[from].includes(to)) {
         throw refuse('VMU_STATE', 'illegal transition ' + from + ' -> ' + to, 'allowed from ' + from + ': ' + (TRANSITIONS[from].join(', ') || '(none)'))
@@ -571,7 +571,7 @@ export function createTasks({
       }
       if (target <= stageIndex) {
         throw refuse('VMU_STATE', 'stage ' + stages[target] + ' is not ahead of ' + stages[stageIndex],
-          'use rollback() to go back explicitly')
+          'REACHABLE INSTEAD: 用 vibe_vmu_task {action:"stage", id:"<任务 id>", to:"<前一阶段>"} 显式回退（本面不提供 rollback 动作）')
       }
       const from = stageIndex < 0 ? null : stages[stageIndex]
       if (bus) {

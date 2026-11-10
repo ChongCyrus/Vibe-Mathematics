@@ -10,14 +10,19 @@
 //   L0 UNTOUCHED       DERIVED   structurally always empty, and printed as a row so it cannot quietly stop being checked
 //
 // `--check` fails when the file on disk differs, so `regen-all --check` covers it like any other derived face.
+// THE MODE CONTRACT IS SHARED (scripts/_lib/generator-cli.mjs): no flag = dry run (report only, exit 0), --check = the
+// same report as a RED, --write = rewrite. This script used to have ONLY a --check branch, so every other invocation
+// - including a bare "just look at it" run - fell through to an unconditional write.
 import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { exitCodeFor, modeFrom } from "./_lib/generator-cli.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, "..")
 const KERNEL = join(ROOT, "vibe-math-vmu", "kernel")
 const OUT = join(ROOT, "docs", "acceptance", "audit-coverage-debt.md")
+const MODE = modeFrom(process.argv, { script: "generate-coverage-debt.mjs" })
 
 /** ★ L2 IS DECLARED, NOT DERIVED: "somebody read this" is a fact about a person, and only the person knows it. */
 const READ_MODULES = {
@@ -129,13 +134,20 @@ const doc = [
   "",
 ].join("\n")
 
-if (process.argv.includes("--check")) {
-  const have = existsSync(OUT) ? readFileSync(OUT, "utf8") : ""
-  if (have !== doc) { console.error("COVERAGE DEBT: OUT OF DATE — run `node scripts/generate-coverage-debt.mjs --write`"); process.exit(1) }
-  console.log("COVERAGE DEBT: in sync (" + files.length + " files · L3 " + by("L3").length + " · L2 " + by("L2").length + " · L1 " + by("L1").length + " · L0 0)")
-  process.exit(0)
+const SUMMARY = "COVERAGE DEBT: in sync (" + files.length + " files · L3 " + by("L3").length + " · L2 " + by("L2").length + " · L1 " + by("L1").length + " · L0 0)"
+const have = existsSync(OUT) ? readFileSync(OUT, "utf8") : ""
+const stale = have !== doc
+if (MODE === "write") {
+  writeFileSync(OUT, doc, "utf8")
+  console.log("COVERAGE DEBT written: " + files.length + " files · L3 " + by("L3").length + " · L2 " + by("L2").length + " · L1 " + by("L1").length + " · L0 0")
+} else {
+  if (stale) {
+    console.error("COVERAGE DEBT: OUT OF DATE — run `node scripts/generate-coverage-debt.mjs --write`" +
+      (MODE === "read" ? " (dry run: nothing written)" : ""))
+  } else {
+    console.log(SUMMARY)
+  }
+  process.exit(exitCodeFor(MODE, stale))
 }
-writeFileSync(OUT, doc, "utf8")
-console.log("COVERAGE DEBT written: " + files.length + " files · L3 " + by("L3").length + " · L2 " + by("L2").length + " · L1 " + by("L1").length + " · L0 0")
 
 

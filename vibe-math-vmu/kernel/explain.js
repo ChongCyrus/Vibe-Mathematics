@@ -131,7 +131,7 @@ export function createExplain({ clock = () => 0, log = null, settings = {}, bus 
     const c = cfg()
     const fmt = format === 'json' || format === 'md' ? format : c.reportFormat
     const r = report || reports[reports.length - 1]
-    if (!r) throw refuse('VMU_INVALID_ARGUMENT', 'render needs a report', 'build() one first, or pass { report }')
+    if (!r) throw refuse('VMU_INVALID_ARGUMENT', 'render needs a report', 'REACHABLE INSTEAD: 先用 vibe_vmu_explain {action:"build"} 生成一份报告，或把 { report } 传进来')
     const enforced = ['vmu.explain.reportFormat']
     if (fmt === 'json') return { ok: true, format: 'json', text: JSON.stringify(r), enforced, fired: format === null ? [] : ['vmu.explain.reportFormat'] }
     const lines = ['## ' + (r.action || 'explanation'), '', '- id: ' + r.id, '- reason: ' + (r.reason === null ? '(none)' : r.reason),
