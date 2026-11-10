@@ -18305,13 +18305,30 @@ stdout ⇒ 在权威 T1（k=3）日志里这道门禁的每段耗时**只在红�
 裁决口径写进文档：**单次尖峰不重钉，只有同类条件下的重复读数才重钉（≥3 读数取中位）**；抬基线不等于放宽漂移断言，`drift=1.25` 与
 `floor=1500` 都不动——这与「预算是为诚实工作量买的，超时仍然 FAIL」是同一条纪律的两面。
 
-### 355.11.17 §4f 数文件时还没数完（判据 flake，lead 修）
+### 355.11.17 §4f 数到了别的进程的临时文件（判据 flake，lead 修两轮）
 
 上面第 3 跑的 1 条红落在 `tests/vmu-run259-audit14.test.mjs` 的 §4f：
 `§4f ★★★ the workspace gained ZERO files on the default path (recursive count, before/after) :: {"actual":6,"expected":5}`。
-它数的是 `readdirSync(tmp,{recursive:true})` 的**瞬时**数目，而 `boot()` 之后内核的 durable 写还可能有调度未落地；k=3 下 CPU 争用把这段
-时间差放大，于是「默认路径不写盘」这条正确断言被判成写了一个文件。修法：新增 `settleFiles()`（先 join `kernel.flushRecordsFold()`，再等递归计数
-连续三次不动，上限 2 s），`before`/`after` 都从**同一静默状态**读；**断言本体不变**（仍逐字节严格相等）。教训与 355.11.15 同型：
-**判据读到的不是它声称的那个事实**（一个是「两个时刻」、一个是「调度中的数目」），而正确做法都是先把状态 join 到静默，再保留严格比较。
 
-**355.11.18 本轮收口。** 冷全量 T1 **850 PASS / 0 FAIL**（764 suites + 86 probes，wall 667.7s），`regen-all --check` 17/17，五门禁（DOC LINT / RULES COVERAGE / RULE PARITY / PROMPT BUDGET / PORTABILITY）与 `scripts/preflight.mjs` 全 PASS，提交 `本节所在提交（RUN 269 收口）`，conformance `18317` 行。每个 §355.11.x 都至少有一条「改坏即红」的判据；三个负控（`MUTATION-ON-CRITERION`、`MUTATION-PATH-LEAK`、allowlist 的 STALE 检查）守的是「判据自己会不会偷懒」。
+**第一轮修错了方向。** 当时的判断是「数文件时 durable 写还没落地」，于是加了 `settleFiles()`（先 join `kernel.flushRecordsFold()`，
+再等递归计数连续三次不动）。但把它装回门禁后**放行闸立刻又报同一个 proof 红**（`[AUDIT_EVIDENCE_FAILED] … node
+tests/vmu-run259-audit14.test.mjs expected 0 got 1`），而且在人工加压下 5 次里复现 1 次，payload 变成 `{"actual":4,"expected":5}`——
+**计数会变小**。稳定一段时间再数并不解决问题：这不是「写还没落地」，是**数到了别人的临时文件**。
+
+真根因在 `vibe-math-vmu/kernel/store.js`：持久化写走 `<state>.json.<pid>.<ms>.<rand>.tmp` + rename（`:178`），写期间还持有
+`<state>.json.lock`（`:179`、`:255`、`:270`）。这两个是**内核自己的记账临时物**，存在于任何一次写的中途；机器一忙，其中某一个
+可能落在 `before` 那一刻而在 `after` 时已消失（或反之）。把它们算进「工作区文件数」，量的就是调度，不是默认路径。
+
+**第二轮修法是「窄豁免 + 自证豁免是窄的」**：`TRANSIENT()` 只认两种形状（`/\.json\.\d+\.\d+\.[a-z0-9]{6}\.tmp$/` 与
+`/\.json\.lock$/`），`countFiles()` 与 `transientFiles()` 都从同一份 `rawFiles()` 派生；§4f 的严格相等**不变**，另加 §4f1：
+`transients.length + countFiles() === rawFiles().length`（计数守恒 ⇒ 不可能有未解释的排除）且被排除的路径不得含 `Drafts|Shared|VibeMath`。
+
+随后在**同一个加压条件**下（并发跑 `scripts/sim/audit/all.mjs`）连跑 6 次全 `pass 4 / fail 0`（修前 5 次里 1 次红）。
+
+**第三处是这条豁免自己引入的新病，被另一条判据抓到。** 第一版的「被排除路径不得含 `Drafts|Shared|VibeMath`」写成了
+`transients.every(...)`，而 `every` over `[]` 恒真——那正是 RULE E 找的**空洞通过**形状，所以
+`audit-declaration-criterion.test.mjs` 立刻报 `NEW vacuous pass (not in the baseline list): vmu-run259-audit14.test.mjs:A:transients`（92/2）。
+改成「显式主体计数 + 过滤计数」：`rawAll.length > 0 && contentLike.length === 0`——没数到任何东西就红，判据回到 94/0。
+一句话：**豁免要窄，钉住豁免的断言不许自己空洞**；加了豁免就等于加了一条新判据，新判据同样要过 RULE E 那一关。
+教训与 355.11.15 同型、但多一层：**判据读到的不是它声称的那个事实**（一个是「两个时刻」、一个是「别人的临时文件」），
+而且**第一版修法用「等一等」掩盖了症状**——如果一条 flake 的 payload 显示计数**变小**，那就不是竞态窗口，而是主体选错了。

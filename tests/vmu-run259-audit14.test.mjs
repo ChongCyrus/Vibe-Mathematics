@@ -76,7 +76,19 @@ async function boot({ clock = () => 1000 } = {}) {
       return abs
     },
     read: (rel) => readFileSync(join(tmp, 'VibeMath', rel), 'utf8'),
-    countFiles: () => readdirSync(tmp, { recursive: true }).filter((p) => typeof p === 'string').length,
+    // A recursive count that includes the DURABLE STORE's own transients measures the scheduler, not the default
+    // path: `kernel/store.js` writes through `<state>.json.<pid>.<ms>.<rand>.tmp` + rename and takes
+    // `<state>.json.lock` for the duration of a write, so under a loaded machine (T1 runs this suite at
+    // concurrency 3) one of those can be present at `before` and gone at `after` — RUN 269 observed both
+    // directions ("actual 6 / expected 5" and "actual 4 / expected 5"). They are bookkeeping, not content.
+    // The exclusion is deliberately NARROW and self-checked below (§4f1): only these two shapes are dropped, and
+    // the sum of counted + transient must equal the raw count, so an unexplained exclusion is impossible.
+    TRANSIENT: () => [(/\.json\.\d+\.\d+\.[a-z0-9]{6}\.tmp$/), (/\.json\.lock$/)],
+    rawFiles: () => readdirSync(tmp, { recursive: true }).filter((p) => typeof p === 'string'),
+    transientFiles: () => readdirSync(tmp, { recursive: true }).filter((p) => typeof p === 'string')
+      .filter((p) => b.TRANSIENT().some((re) => re.test(p))),
+    countFiles: () => readdirSync(tmp, { recursive: true }).filter((p) => typeof p === 'string')
+      .filter((p) => !b.TRANSIENT().some((re) => re.test(p))).length,
     // A recursive count taken while the durable store still has a write SCHEDULED measures the scheduler,
     // not the default path: under a loaded machine (T1 runs this suite at concurrency 3) one bookkeeping
     // file can land between the two counts and §4f then reports "the workspace gained a file" for a write
@@ -242,6 +254,14 @@ test('RUN 259 / AUDIT-14 P1-9 + TB-2655: the default writes nothing; the seam ca
   eq(d.id, null, '§4d ...with id===null: no row for a document that does not exist')
   eq(d.mdOwner, null, '§4e ...and mdOwner===null (nothing was written, so nobody owns a file)')
   eq(after, before, '§4f ★★★ the workspace gained ZERO files on the default path (recursive count, before/after)', { before, after })
+  const rawAll = b.rawFiles()
+  const transients = b.transientFiles()
+  eq(transients.length + b.countFiles(), rawAll.length, '§4f1 the excluded set is ONLY the store transients (tmp + lock): counted + transient === raw', { raw: rawAll.length, transient: transients.length, counted: b.countFiles() })
+  // NOT `.every(...)` on a possibly-empty list: an `every` over `[]` is true for free, which is exactly the
+  // vacuous-pass shape RULE E hunts (it flagged the first version). An explicit subject count + a filter count
+  // cannot pass when nothing was counted.
+  const contentLike = transients.filter((t) => /Drafts|Shared|VibeMath/.test(t))
+  ok(rawAll.length > 0 && contentLike.length === 0, '§4f1 the excluded paths are store bookkeeping, never a draft or a workspace file', { raw: rawAll.length, transient: transients.length, contentLike })
   ok(!existsSync(join(b.tmp, 'VibeMath', 'Drafts', 'Default-r1.md')), '§4g ★ ...and the derived draft md is not on disk')
   const m = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Default2.md', member: 'r-1', text: '# 显式物化\n', materialize: true })
   eq(m.ok, true, '§4h materialize:true is the explicit legacy path')
