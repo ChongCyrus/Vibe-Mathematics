@@ -34,6 +34,56 @@ export const MEETING_TYPES = Object.freeze([
 export const MEETING_TYPE_IDS = Object.freeze(MEETING_TYPES.map((t) => t.id))
 const BY_ID = new Map(MEETING_TYPES.map((t) => [t.id, t]))
 
+/**
+ * ★ TB-2715 (RUN 76 / FEEDBACK63 C18): 中文别名与英文 id **等价**。
+ *
+ * 规则文档与任务书用的是中文词（结题 / 辩论 / 论文交流 / 规划），而 cataLog 只收英文 id；run76 里主席照任务书写
+ * `type:"结题"` 被 `VMU_INVALID_ARGUMENT` 拒掉，被迫改 `closure`。这是**合法中文输入被拒**，不是用户的错。
+ *
+ * 为什么别名表是**独立常量**而不是 `MEETING_TYPES` 每行的新字段：`tests/vmu-meeting-types.test.mjs` 的真实装测试
+ * 用 planning 行的**字面文本**做字符串锚点去复制目录（证明"换机构＝换文件"），往行里塞字段会让那条锚点失配。
+ * 而且两件事本来就不同：`label` 是**显示的标签**（那条测试逐字钉住规则原文），`aliases` 是**接受的输入**。
+ *
+ * 归一规则（与那条测试的 `normLabel` 同口径）：去首尾空白，去掉中间所有空白 / `/` / `／`，拉丁字母大小写不敏感；
+ * 解析时**先 id 后别名**。命中后 `type` 永远是 id，`typeInput` 是用户原文，`typeMatchedBy` 说明走的是哪扇门。
+ */
+export const MEETING_TYPE_ALIASES = Object.freeze({
+  ordinary: Object.freeze(['例会', '普通会议', '正常会议']),
+  academic: Object.freeze(['学术交流', '学术']),
+  debate: Object.freeze(['辩论']),
+  closure: Object.freeze(['结题', '决议']),
+  paper: Object.freeze(['论文交流', '论文']),
+  planning: Object.freeze(['未来规划策划', '未来规划/策划', '未来规划', '规划', '规划会']),
+})
+
+const normalizeTypeWord = (x) => String(x === null || x === undefined ? '' : x)
+  .trim()
+  .replace(/[\s\u3000\/／]/g, '')
+  .toLowerCase()
+
+const ALIAS_TO_ID = new Map()
+for (const [id, aliases] of Object.entries(MEETING_TYPE_ALIASES)) {
+  for (const a of aliases) ALIAS_TO_ID.set(normalizeTypeWord(a), id)
+}
+
+/** 目录行 + 它的别名（机器可读）。拒绝语、types 列表与文档都从这一处派生，避免三处手写漂移。 */
+export const MEETING_TYPE_ALIAS_PAIRS = Object.freeze(MEETING_TYPE_IDS.map((id) => Object.freeze({
+  id,
+  label: BY_ID.get(id).label,
+  aliases: MEETING_TYPE_ALIASES[id] || Object.freeze([]),
+})))
+
+/** 「id（中文标签；别名 a、b）」成对清单 —— 未命中时的 hint 用它，读者不必再去背英文闭集。 */
+export function meetingTypePairs() {
+  return MEETING_TYPE_ALIAS_PAIRS
+    .map((p) => {
+      // 标签本身常常也是别名（正常会议 / 结题）——成对清单里不重复说两遍。
+      const extras = p.aliases.filter((a) => normalizeTypeWord(a) !== normalizeTypeWord(p.label))
+      return p.id + '\uff08' + p.label + (extras.length ? '\uff1b' + extras.join('\u3001') : '') + '\uff09'
+    })
+    .join('\u3001')
+}
+
 /** 一步骨架。`tool` 是**唯一主工具名**（机器可核对的字段），`tools` 是给人读的完整调用示例。 */
 function step(n, phase, tool, what, tools) {
   return Object.freeze({ n, phase, tool, what, tools: Object.freeze(tools), status: 'supported' })
@@ -223,16 +273,22 @@ export const MEETING_PROCEDURE_GAPS = Object.freeze([
 
 /** 一个类型的完整描述（未知类型返回 known:false 与合法取值，绝不返回一个静默的空对象）。 */
 export function meetingTypeOf(type) {
-  const id = String(type === null || type === undefined ? '' : type).trim()
-  const row = BY_ID.get(id) || null
+  const input = String(type === null || type === undefined ? '' : type).trim()
+  const key = normalizeTypeWord(input)
+  const byId = BY_ID.get(input) || BY_ID.get(input.toLowerCase()) || null
+  const aliasId = byId ? null : (ALIAS_TO_ID.get(key) || null)
+  const row = byId || (aliasId ? BY_ID.get(aliasId) : null)
   return {
-    type: id || null,
+    input: input || null,
+    type: row ? row.id : (input || null),
     known: !!row,
+    matchedBy: row ? (byId ? 'id' : 'alias') : null,
     label: row ? row.label : null,
     purpose: row ? row.purpose : null,
     subjectRequired: row ? row.subjectRequired : false,
     legal: MEETING_TYPE_IDS,
-    note: row ? null : 'not a declared meeting type; legal: ' + MEETING_TYPE_IDS.join(', '),
+    legalPairs: meetingTypePairs(),
+    note: row ? null : 'not a declared meeting type; legal: ' + meetingTypePairs(),
   }
 }
 

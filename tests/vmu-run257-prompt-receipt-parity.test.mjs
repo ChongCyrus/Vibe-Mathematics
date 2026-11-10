@@ -152,7 +152,13 @@ const tools = [...new Set(pairs.map((p) => p.tool))];
 
 // ---- S4. documented tool/action gaps ---------------------------------------
 const genericToolGap = tools.filter((t) => !allPrompts.includes(t)).sort();
-eq(genericToolGap.join(','), 'vibe_vmu_records,vibe_vmu_vote', 'S4a exactly records+vote are absent from all 12 prompts');
+// 旧世界为何不再成立（T1 冷全量 2026-11-11）：RUN 255 的 A1 缺口登记写的是「records 与 vote 都缺席」。TB-2717 在
+// 会议结题段有意教了 `vibe_vmu_vote`（三个名字收敛成真存在的那一个：动作 `vibe_vmu_vote` / 回执字段 `vote_solved`
+// / 旧任务书写法 `set_solved` 只作否定），所以它现在确实出现在 12 份提示词里，是**教学**而不是缺口。剩下的缺口只有
+// `vibe_vmu_records`（4 次 bridge 读，caller:"office"，没有任何席位做这个调用）。断言因此改钉新真相，并保留一条
+// 正向断言把「vote 被教了」本身钉住（反关灯：删掉那句结题教学，S4a2 立刻红）。
+eq(genericToolGap.join(','), 'vibe_vmu_records', 'S4a exactly records is absent from all 12 prompts (TB-2717 taught vote in the closure section)');
+ok(allPrompts.includes('vibe_vmu_vote'), 'S4a2 the vote tool is now TAUGHT (TB-2717 closure three-name table), so its old 0-hit gap is closed');
 // RUN 268 / lead m08391: RUN 258 taught the consult path and the compile path into the chair prompt, so the
 // RUN 255 shape "0 hits in every prompt" is no longer true. Falsifiable shape instead of a blanket negative:
 // every pair that ACTUALLY called consult / compile must find that action taught in ITS OWN prompt.
@@ -246,7 +252,9 @@ ok(noCaller.every((x) => x.why === 'bridge-read'), 'S4e5 every noCaller entry sa
 // the two known seat mismatches §14.4 judged NOT-FOR-THIS-SEAT. Recomputed by callerSeatOf(p) !== nextPrompt.seat.
 eq(seatMismatch.map((x) => x.pair).join(','), '22,23', 'S4e6 the known-caller seat mismatches are the two verdict_ask pairs');
 ok(seatMismatch.length > 0 && seatMismatch.every((x) => x.callerSeat === 'chair' && x.promptSeat === 'member'), 'S4e6b both mismatches are a chair caller reading a member prompt');
-eq(toolLevelGaps.slice().sort().join(','), 'vibe_vmu_records,vibe_vmu_vote', 'S4e7 toolLevelGaps is deduped to one entry per tool');
+// 同上（T1 冷全量 2026-11-11）：vote 已由 TB-2717 结题段教进提示词，工具级缺口只剩 records；这里保持「一工具一条」
+// 的去重性质，并把内容钉成实测的唯一缺口（不是放宽成 >=0）。
+eq(toolLevelGaps.slice().sort().join(','), 'vibe_vmu_records', 'S4e7 toolLevelGaps is deduped to one entry per tool (vote closed by TB-2717)');
 eq(counted.length, actionGapPairs.length, 'S4e8 CONSERVATION: a2 + toolGapPairs + noCaller + seatMismatch = every wouldBeGap pair');
 eq(counted.slice().sort((a, b) => a - b).join(','), actionGapPairs.join(','), 'S4e9 CONSERVATION: the four buckets are a partition of S4d, no pair vanishes and none is double-counted');
 eq(a2.length + toolGapPairs.length, actionGapPairs.length - noCaller.length - seatMismatch.length, 'S4e10 CONSERVATION (m07103 two-term form, remainder named): the snapshot remainder is exactly noCaller+seatMismatch');

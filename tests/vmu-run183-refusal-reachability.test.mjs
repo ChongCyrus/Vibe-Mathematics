@@ -84,9 +84,17 @@ try {
       '§0b a non-attending seat is told the channel that exists and what it does not get')
     // RUN 213: the batch also carries WHERE a member's work is readable, so the pin checks the three readings
     // (executedMeans / memberActsMeans / scope) by name instead of one exact line — the sentence is the contract.
-    ok(turnSource.includes('const driveScope = (rs) => {') && turnSource.includes('executedMeans: EXECUTED_MEANS') &&
-      turnSource.includes('memberActsMeans: MEMBER_ACTS_MEANS') && turnSource.includes('scope: driveScope(r.receipts || []) }'),
-      '§0c a batch states its own coverage (RUN 195: AND what `executed` counts — the sentence, not the literal, is the contract)')
+    // 旧世界为何不再成立（T1 冷全量 2026-11-11）：RUN 195 的批次回执把 `scope: driveScope(r.receipts || [])` 直接内联在
+    // 每个 return 路径上；TB-2710（RUN 76 / F76-10）让同一个批次回执还要从「已结算的回合」里报 `turnDelivered`，
+    // 于是聚合改成一次性由 `withScope(r)` 组装：先取 `rows`（`Array.isArray(r.receipts) ? r.receipts : []`），
+    // `scope` 与 `turnDelivered` 都从这同一组 rows 派生。契约没变——批次仍自述「请求了谁/推进了谁/为什么没唤醒」，
+    // 只是字面量从「内联 r.receipts」变成「withScope 里的 rows」。这里按新真相钉结构，不删断言、不放宽。
+    ok(turnSource.includes('const driveScope = (rs) => {') &&
+      turnSource.includes('const rows = Array.isArray(r.receipts) ? r.receipts : []') &&
+      turnSource.includes('executedMeans: EXECUTED_MEANS') &&
+      turnSource.includes('memberActsMeans: MEMBER_ACTS_MEANS') &&
+      turnSource.includes('scope: driveScope(rows),'),
+      '§0c a batch states its own coverage (RUN 195: AND what `executed` counts — the sentence, not the literal, is the contract; TB-2710 moved the aggregate into withScope(rows))')
     ok(turnSource.includes('notAdvanced names each requested member that was NOT woken by THIS call'),
       '§0d the coverage says why a requested member was not woken')
     ok(gatesSource.includes('REACHABLE INSTEAD (the actor matters)') && gatesSource.includes('reachable: { op: \'drive\', tool: \'vibe_vmu_turn\''),

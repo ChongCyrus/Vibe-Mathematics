@@ -423,7 +423,7 @@
     {
       "ruleId": "E7",
       "file": "vibe-math-vmu/packs/v5r/tools.js",
-      "anchor": "const typeInfo = meetingTypeOf(has(args.type) ? str(args.type) : 'ordinary')",
+      "anchor": "const typeInfo = meetingTypeOf(typeGiven ? str(args.type) : 'ordinary')",
       "replaceWith": "const typeInfo = meetingTypeOf('ordinary')",
       "expectRed": {
         "suite": "vmu-meeting-procedures-catalog.test.mjs",

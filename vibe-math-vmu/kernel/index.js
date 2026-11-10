@@ -2907,6 +2907,24 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // `议程：（类型：，主席：）。` — a prompt shorter than the one a real seat reads, i.e. headroom that does not exist (the
   // same class of defect RUN 226 fixed for `bindings`/`settings`). Hoisting it is what lets a ruler use the SAME map.
   const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs })
+  // ★★★★★★★ RUN 76 / TB-2712 (F76-11): THE MD PARSER IS A DECLARED READ LEG, NOT A HOST CONVENIENCE.
+  // The status block's blueprint reading parses a `blueprint` row's BODY with records.mdParse/mdDigest (RUN 258's
+  // design: one reader, the kernel's own md door). But `facesFrom` binds ONLY the operations the catalogue declares,
+  // and STATUS_BOARD_READ_OPS declared `['list', 'get']` for `vmu.records` -- so the production orchestrator was
+  // handed a face WITHOUT mdParse and answered every turn with the named gap "records.mdParse 没有注入" while the
+  // real records service (and every test that passed `K.records` straight in) had the parser all along. That is the
+  // "ruler measured the wrong object" shape again: the seam existed, its only production binding did not.
+  // The parser belongs on the SAME face as list/get, bound to the same real instance, so the turn layer needs no
+  // external injection and cannot drift from the adopt gate (both read through records.js). `mdRead` comes along for
+  // the same reason: it is the records face's documented md door (docs/03 §7).
+  if (turnFaces['vmu.records'] && records && typeof records === 'object') {
+    const mdOps = ['mdParse', 'mdDigest', 'mdRead']
+    for (const op of mdOps) {
+      if (typeof records[op] === 'function' && typeof turnFaces['vmu.records'][op] !== 'function') {
+        turnFaces['vmu.records'][op] = records[op].bind(records)
+      }
+    }
+  }
   // ═══════════ RUN 249 (task-69 / F-02): A CUT REPLY IS KEPT IN THE MEMBER'S OWN FILE ═══════════
   // The 69th live run answered with 7,328 characters; the receipt kept 2,000 and the rest existed only in the child
   // session. The loop cannot write files (kernel/turn/index.js has no imports by design), so the write is wired HERE,

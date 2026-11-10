@@ -1021,6 +1021,66 @@ export function createPaperFlow({
         : 'NOT empty: these authors wrote a part that NO assigned reviewer will read this round (' + uncovered.join(', ') + ') — their section was not cross-read, and no verdict about it was owed' }
   }
 
+  /**
+   * ★★★ TB-2713 (RUN 76 / A5, MEASURED): A ROUND THAT INVALIDATED LAST ROUND'S VERDICTS MUST SAY SO.
+   * Run 76 filed `deliverable:true` reviews in round 2, the paper bounced to round 3, and the same rows were then read
+   * as `stale:["r-acad"]` with nothing on the receipt naming the members whose verdict a round boundary had invalidated.
+   * The mechanism is DELIBERATE and stays: a review judges the prose of ITS round, so a row from round N−1 is durable
+   * history, not a vote on round N (see `readReview`'s `durable-other-round` branch and `requireCrossReview`, which both
+   * count `body.round === state.round` only). What was missing was the READING, so this function computes it ONCE and
+   * both doors (`advance`, `status`) print the same object — the two faces must not each own a copy of this arithmetic.
+   *
+   * `covered` needs all three facts to be true of the member's NEWEST durable review row: its `round` is the paper's
+   * round, its verdict is `deliverable:true`, and its `of` names ANOTHER member (self-review is never coverage).
+   * A member whose newest row belongs to an earlier round is named in `invalidatedByRound` (with the row and its round)
+   * instead of being silently dropped; a member with no row at all is simply `missing`.
+   */
+  function perRoundReviewCoverageOfState(state) {
+    const round = Number(state.round)
+    const participants = (Array.isArray(state.participants) ? state.participants : []).map(String)
+    const reviewOf = state.reviewOf || {}
+    const assignedOther = participants.filter((id) => {
+      const a = reviewOf[id]
+      return a !== undefined && a !== null && str(a) !== '' && str(a) !== id
+    })
+    const authored = participants.filter((id) => !!(state.parts && state.parts[id]))
+    // THE SAME TIER RULE `requireCrossReview` applies, not a second opinion: an assignment on the record decides who
+    // owes a verdict; without one (scripted suites, a paper still in writing) the members who wrote a part owe it; with
+    // no parts at all every participant does. The last two tiers are stated on the receipt so a reader knows which rule
+    // produced `expected`.
+    const expected = assignedOther.length > 0 ? assignedOther : (authored.length > 0 ? authored : participants)
+    const rule = assignedOther.length > 0 ? 'assignment' : (authored.length > 0 ? 'authored-parts' : 'all-participants')
+    const exempt = participants.filter((id) => !expected.includes(id))
+    const covered = []
+    const missing = []
+    const invalidatedByRound = []
+    for (const member of expected) {
+      let found = null
+      try { found = reviewRowOf(state, member) } catch (e) { found = null }
+      const body = found && found.body ? found.body : null
+      const rowRound = body && body.round !== undefined && body.round !== null && Number.isFinite(Number(body.round)) ? Number(body.round) : null
+      const countsForThisRound = !!(body && rowRound === round && body.deliverable === true && str(body.of === undefined || body.of === null ? '' : body.of) !== member)
+      if (countsForThisRound) { covered.push({ member, recordId: found.recordId || null, round }); continue }
+      missing.push(member)
+      if (body && rowRound !== null && rowRound !== round) {
+        invalidatedByRound.push({ member, recordId: found.recordId || null, round: rowRound, why: 'previous-round',
+          whyMeans: 'why:"previous-round" means the newest durable review row for this member belongs to round ' + String(rowRound) + ', not the paper\'s current round (' + String(round) + '): that row is durable HISTORY — a review judges the prose of its own round — so it is NOT counted for round ' + String(round) + ' and the member must file a verdict again after reading the current text' })
+      }
+    }
+    return { round, expected, covered, missing, invalidatedByRound,
+      expectedMeans: 'the members who OWE a counted cross-review verdict for round ' + String(round) + ' (rule: ' + rule + ' — '
+        + (rule === 'assignment' ? 'the paper\'s own `reviewOf` rotation assigns each of them another member\'s part'
+          : rule === 'authored-parts' ? 'no `reviewOf` assignment is on the record, so the members who wrote a part owe the review of each other\'s prose'
+            : 'this paper has no parts and no assignment yet, so every participant owes one')
+        + (exempt.length > 0 ? '); EXEMPT this round (' + exempt.join(', ') + '): no other member\'s part exists for them to review. A member is never expected to review their own part' : ')'),
+      coveredMeans: 'these members hold a COUNTED deliverable cross-review verdict for round ' + String(round) + ': each entry names the member, the durable review recordId whose body carries the verdict, and the round that row was written in — `round` here always equals the paper\'s round (a row from another round appears in `invalidatedByRound`, never here)',
+      missingMeans: 'these EXPECTED members hold NO counted deliverable verdict for round ' + String(round) + ': the row may not exist yet, may vote deliverable:false, or may belong to an earlier round (that last case is named line by line in `invalidatedByRound`). While this list is non-empty the paper cannot reach unanimity — `advance` will keep it in reviewing or send it back to writing, and this reading says who it is waiting for',
+      invalidatedByRoundMeans: invalidatedByRound.length === 0
+        ? 'empty ON PURPOSE: no expected member holds a review row from an earlier round, so no verdict was invalidated by a round boundary'
+        : 'NOT empty: these members DID file a review, but on an EARLIER round — the round advanced (the paper bounced back to writing or the editor sent it back for revision) and the body the old vote judged may no longer be the current text, so that row is NOT counted for round ' + String(round) + '. Each entry names the member, the old recordId, the round the row belongs to, and `whyMeans` says why it does not count; re-file a verdict for the current round to cover them',
+      means: 'perRoundReviewCoverage answers ONE question — which expected member holds a COUNTED deliverable cross-review verdict for round ' + String(round) + ' right now — and it is computed by ONE function (`perRoundReviewCoverageOfState`) that both the advance and status doors print, so the two receipts cannot disagree about the covered set. The mechanism that invalidates a round-N−1 vote is deliberate and unchanged: a review judges the prose of its own round. This field is the READING of that rule, not a change to it' }
+  }
+
   function requireCrossReview(state, where) {
     const participants = state.participants.slice()
     // ★★ RUN 167 (FEEDBACK14 F6): THE COUNT WAS THE WRONG QUESTION. This gate used to require TWO cross reviewers; with
@@ -1118,7 +1178,7 @@ export function createPaperFlow({
   }
 
   /** ④ advance: the state machine. Returns what happened, or `moved:false` with the reason (never a silent no-op). */
-  function advance({ target } = {}) {
+  function advanceMove({ target } = {}) {
     const { state } = requireState(target)
     // ★★ RUN 203 (run 41 / FEEDBACK40 1.2, MEASURED): only the disagreement branch said WHICH round moved (roundFrom /
     // roundTo / roundMeans) and the other three moving branches said nothing, so run 41's editor read a paper that had
@@ -1320,6 +1380,22 @@ export function createPaperFlow({
       // too (a reader who only reads moving receipts would otherwise have to start a second paper to see it).
       ...consultPrediction(state),
       stageMovedMeans: 'moved/stageMoved answer ONE question, the STAGE: false means the paper did not change stage at all. A move that changes the stage but not the round carries stageMoved:true with roundMoved:false' }
+  }
+
+  /**
+   * ★★★ TB-2713: the move receipt carries the round-coverage READING too, computed AFTER the transition (so a bounce
+   * that raised the round answers with the round it landed in: every old verdict is named as invalidated and `missing`
+   * names the members the new round is waiting for). The arithmetic lives in `perRoundReviewCoverageOfState` — this
+   * wrapper only calls it, so `advance` and `status` cannot drift apart. A paper whose state cannot be re-read after the
+   * move keeps the move receipt unchanged: the coverage is a reading, never a precondition of the move itself.
+   */
+  function advance(args = {}) {
+    const out = advanceMove(args)
+    try {
+      const found = readState(args && args.target)
+      if (found && found.state && out && typeof out === 'object') out.perRoundReviewCoverage = perRoundReviewCoverageOfState(found.state)
+    } catch (e) { /* the move already happened; a failed coverage read must not un-report it */ }
+    return out
   }
 
   /** ⑤ the driver: advance until nothing moves (the original's paperPass, bounded so it cannot loop forever). */
@@ -1963,6 +2039,12 @@ export function createPaperFlow({
     compiledPdfRow: (state) => compiledPdfRow(state),
     // ★★ RUN 172 (FEEDBACK17 P3-16): the status face must be able to say "this name is not gone, it is in the TRASH" — the
     // same lookup `start` uses to refuse a reused name, so the two doors cannot disagree about one fact.
+    // ★★★ TB-2713: the status door must print the SAME object the advance door prints. It asks this reader (which owns
+    // the one arithmetic) instead of recomputing anything, so "advance covered == status covered" is true by construction.
+    perRoundReviewCoverage: (target) => {
+      const found = readState(target)
+      return found && found.state ? perRoundReviewCoverageOfState(found.state) : null
+    },
     trashLookup }
   return api
 }

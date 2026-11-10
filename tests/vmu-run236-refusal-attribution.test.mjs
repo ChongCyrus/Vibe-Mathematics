@@ -139,8 +139,14 @@ console.log('=== 3. SUCCESS KEEPS ITS OWN WORDING (the refusal half did not chan
   const byOffice = await h.call('vibe_v5_record_progress', { member: 'r-1', content: 'attribution probe', track: 'progress' })
   ok(byOffice.ok === true && byOffice.memberActed === false && byOffice.actedForMember === 'r-1' && byOffice.callerMember === null,
     '★ office writing in a seat\'s name still says memberActed:false', trio(byOffice))
-  ok(/did not act in its own turn/.test(String(byOffice.memberActedMeans)),
-    '★ with the original success sentence (unchanged by this task)', byOffice.memberActedMeans)
+  // ★ RUN 76 / TB-2710: THE OLD PIN DESCRIBED A WORLD THAT NO LONGER HOLDS. `memberActed:false` used to be explained
+  // as "the seat did not act in its own turn" — but that sentence became FALSE for a DELIVERED turn (the office calls
+  // the tool, a child session of the seat runs the member turn), which is exactly the run-76 defect. The claim this
+  // probe pins is unchanged (an office write in a seat name is NOT the seat acting: this write-face call reported no
+  // delivered turn), and only the sentence became precise about the two facts it used to conflate.
+  ok(/NO delivered turn for that seat was reported/.test(String(byOffice.memberActedMeans))
+    && /memberActed:false/.test(String(byOffice.memberActedMeans)),
+    '★ the success sentence separates written-in-the-seat-name from a delivered turn (this probe has none)', byOffice.memberActedMeans)
   const bySeat = await h.call('vibe_v5_record_progress', { member: 'r-1', content: 'own probe', track: 'progress' }, { id: 'r-1' })
   ok(bySeat.ok === true && bySeat.memberActed === true && bySeat.callerMember === 'r-1',
     '★ the seat acting in its own turn still says memberActed:true', trio(bySeat))

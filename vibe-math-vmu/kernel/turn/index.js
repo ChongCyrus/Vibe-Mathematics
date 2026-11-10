@@ -20,6 +20,13 @@
 // declaration table instead of being repeated here. The one-shot seam (host-deliver.js) already reads the same
 // declaration; two literals meant the status face and the seam disagreed by 10x about the same deadline.
 import { readDeliveryBudget } from '../../settings/schema.js'
+// ★★★★★★★ RUN 76 / TB-2712 (F76-11): THE FALLBACK MD PARSER IS THE FRAMEWORK'S OWN, NOT A SECOND ONE.
+// The blueprint status reading parses a row's md BODY; until this change it required `records.mdParse` to be present
+// on the face the orchestrator was handed, and the production face (STATUS_BOARD_READ_OPS: list/get) never carried
+// it - so every real turn reported "mdParse 没有注入" while the parser existed one module away. Importing the same
+// records.js mdParseText (a pure text function, no host, no fs) makes the reading independent of that injection;
+// a face parser, when present, still takes precedence (see liveStatusReadings).
+import { mdParseText } from '../records.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -1927,31 +1934,52 @@ export function liveStatusReadings({ records = null, rosterIds = [], votes = nul
   }
 
   // ② 蓝图 — the `blueprint` row's BODY is the md; its fields are read with the kernel's own md parser (no second one).
+  // ★★★★★★★ RUN 76 / TB-2712 (F76-11): A NAMED ABSENCE MUST NAME WHICH ABSENCE. Before this change every blueprint
+  // gap - no row yet, an unreadable body, a face without mdParse - answered ONE sentence, and the production
+  // orchestrator got that sentence on EVERY turn because its face bound only list/get. Two different questions
+  // ("nobody proposed a blueprint yet" / "the md parser could not be reached") were one answer, so a reader could not
+  // tell an empty institute from a broken seam. `why` is now the machine-readable name, `whyText` keeps the human
+  // sentence (status().liveReadings carries both; renderLiveStatus renders VALUES, so prompt bytes do not change).
   const blueprintSource = 'records 的 blueprint 轨（md 正文 + 索引行 sha256）'
-  if (readList === null) out.blueprint = liveGap('蓝图读数不可得：本内核没有把 records.list 交给回合层', blueprintSource)
-  else if (parseMd === null) out.blueprint = liveGap('蓝图读数不可得：records.mdParse 没有注入（蓝图行的正文是 md，必须用内核自己的解析器）', blueprintSource)
+  const blueprintGap = (code, whyText) => Object.assign(liveGap(whyText, blueprintSource), { why: code, whyText })
+  // The kernel's own md door: a face parser when the face carries one, else the framework's OWN mdParseText. External
+  // injection still WINS; the fallback exists so a restricted face cannot blank the reading (the production defect).
+  const blueprintParser = parseMd === null
+    ? (typeof mdParseText === 'function'
+      ? { source: 'kernel-own-md-parse', parse: (body) => { try { return mdParseText(String(body)) } catch (e) { return null } } }
+      : null)
+    : { source: 'records.mdParse', parse: (body) => { try { return parseMd(body) } catch (e) { return null } } }
+  if (readList === null) out.blueprint = blueprintGap('records-face-unavailable', '蓝图读数不可得：本内核没有把 records.list 交给回合层')
+  else if (blueprintParser === null) out.blueprint = blueprintGap('md-parser-unavailable', '蓝图读数不可得：records.mdParse 没有注入，内核兜底解析器也不可得（蓝图行的正文是 md，必须用内核自己的解析器）')
   else {
     let listed = null
-    try { listed = readList({ track: 'blueprint', limit: 0 }) } catch (e) { out.blueprint = liveGap('蓝图轨读取失败：' + String((e && e.message) || e), blueprintSource) }
+    try { listed = readList({ track: 'blueprint', limit: 0 }) } catch (e) { out.blueprint = blueprintGap('records-face-unavailable', '蓝图轨读取失败：' + String((e && e.message) || e)) }
     if (out.blueprint === null) {
       const view = rowsOfSync(listed)
-      if (view === null) out.blueprint = liveGap('蓝图轨不可读：records.list({track:"blueprint"}) 的返回里没有 items 数组', blueprintSource)
+      if (view === null) out.blueprint = blueprintGap('records-face-unavailable', '蓝图轨不可读：records.list({track:"blueprint"}) 的返回里没有 items 数组')
       else {
         const rows = view.rows.filter((r) => r && String(r.kind) === 'blueprint')
-        if (rows.length === 0) out.blueprint = liveGap('蓝图轨上还没有蓝图行：研究所还没有提蓝图草案', blueprintSource)
+        if (rows.length === 0) out.blueprint = blueprintGap('no-current-blueprint', '蓝图轨上还没有蓝图行：研究所还没有提蓝图草案')
         else {
           const row = newestLedgerRow(rows)
           const read = ledgerBodyOf(readGet, row.id)
           let parsed = null
-          if (read !== null) { try { parsed = parseMd(read.body) } catch (e) { parsed = null } }
+          if (read !== null) parsed = blueprintParser.parse(read.body)
           // The ROW's body is the md body alone: the index row already carries track/kind/owner, so the blueprint writer
           // stores the field block + prose WITHOUT the `vmuMd` header a standalone file has. mdParse therefore answers
           // `ok:false` for a row body (no marker) while still parsing the fields - we read those fields, and record
           // `mdHasMarker` so nobody mistakes a row body for a standalone md. A body with NO fields is still a named gap.
           const parsedFields = parsed && parsed.fields && typeof parsed.fields === 'object' ? parsed.fields : null
           const fields = parsedFields !== null && Object.keys(parsedFields).length > 0 ? parsedFields : null
-          if (fields === null) out.blueprint = liveGap('蓝图行存在但 md 正文解析不了（行 ' + String(row.id) + '）：不能假装读到了状态', blueprintSource)
-          else {
+          if (fields === null) {
+            // ★ TB-2712: the two failures are DIFFERENT questions and now have DIFFERENT names. No body at all means
+            // the ledger never recorded a blueprint text (empty institute, `no-current-blueprint`); a body that the
+            // kernel's parser cannot turn into fields means the parser could not read what IS there
+            // (`md-parser-unavailable`). One sentence for both is what made the run-76 gap unreadable.
+            out.blueprint = read === null
+              ? blueprintGap('no-current-blueprint', '蓝图行存在但读不到 md 正文（行 ' + String(row.id) + '）：账本没有给出可读的蓝图，等于还没有草案')
+              : blueprintGap('md-parser-unavailable', '蓝图行存在但 md 正文解析不出字段（行 ' + String(row.id) + '，经 ' + blueprintParser.source + '）：不能假装读到了状态')
+          } else {
             const mdPath = fields.mdPath === undefined || fields.mdPath === null ? null : String(fields.mdPath)
             const indexFingerprint = fields.mdFingerprint === undefined ? (row.fingerprint === undefined ? null : row.fingerprint) : fields.mdFingerprint
             // The md-vs-index comparison comes from the records face itself (records.js mdDigest), so "the draft file is
@@ -1973,6 +2001,7 @@ export function liveStatusReadings({ records = null, rosterIds = [], votes = nul
                 mdChangedSinceIndex: md === null ? null : md.mdChangedSinceIndex === true,
                 mdFingerprint: md === null ? null : (md.mdFingerprint === undefined ? null : md.mdFingerprint),
                 mdHasMarker: parsed !== null && parsed.ok === true,
+                mdParserSource: blueprintParser.source,
                 adoptedBy: fields.adoptedBy === undefined ? null : fields.adoptedBy,
               },
               stamp, 'records 的 updatedAt',
@@ -2476,7 +2505,17 @@ export function createTurnOrchestrator({
     return id
   }
 
-  const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
+  // ★ RUN 76 / TB-2710 (F76-10): a refusal may carry a MACHINE-READABLE next step (`facts`) on the Error itself —
+  // e.g. the two reply channels a NO_FENCE turn can use. Both funnels already copy an Error own keys to the receipt
+  // (`host.js` refusalFacts) and `stepFailure` forwards the named ones, so this is one vocabulary, not a second one.
+  const fail = (code, message, hint, facts) => {
+    counts.refused += 1
+    lastRefusal.code = code
+    lastRefusal.message = message
+    const e = refuse(code, message, hint)
+    if (facts && typeof facts === 'object') Object.assign(e, facts)
+    throw e
+  }
 
   /**
    * ★★★★★★★ RUN 256 / TB-2616 (task-97) — THE PARKED PROMPT GETS ONE READER, ONE GATE AND ONE RESUME.
@@ -2529,19 +2568,38 @@ export function createTurnOrchestrator({
       parkedSince: at,
       parkedForMs: at === null ? null : Math.max(0, Date.now() - at),
       releaseBy: 'op:"step" carrying the reply (continues that turn), or op:"abandon" (closes it)',
+      // ★ RUN 76 / TB-2710: WHY this gate fired, in the same block as the facts — a reader that only opens
+      // `parkedFacts` must learn which of the two parked codes applies and who has to act first (refusals set it).
+      parkedReason: null,
     }
   }
+  // ★★ RUN 76 / TB-2710 (F76-10): ONE SITUATION, TWO CODES, TWO DIFFERENT TRIGGERS — the hints must say WHICH.
+  // VMU_TURN_ALREADY_PARKED: the caller asks for ANOTHER turn while one member prompt is parked (the caller must
+  // answer or abandon that one first). VMU_TURN_PARKED_NEEDS_OWNER: a reply is supplied but NO parked prompt exists
+  // for it (the caller must first obtain a prompt). They used to share one sentence, and the prompt taught the
+  // second-dispatch door as NEEDS_OWNER, so a caller holding a real parked turn was sent looking for a turn that
+  // did not exist. The reason sentence is a fact, not prose: it says who must act and why the turn cannot continue.
+  const PARKED_ALREADY_REASON = 'the caller still holds THIS turn prompt: it must answer it (op:"step" with the reply) or abandon it before asking for another turn, because one parked slot cannot hold two unanswered turns'
+  const PARKED_NEEDS_OWNER_MEANS = 'VMU_TURN_PARKED_NEEDS_OWNER applies when a REPLY is offered and there is no parked member prompt for it to answer: obtain a prompt first (op:"drive" or a step returning awaiting:true), then answer THAT prompt with the same member; the supplied reply is discarded, never re-homed to the next turn'
   const parkedGateMeans = 'a parked prompt is the ONE prompt this caller is still holding: overwriting it would lose an unanswered member turn, so the second door is refused by name instead'
   const refuseParkedOverwrite = (door, parked) => {
     const f = parkedFactsOf(parked)
+    f.parkedReason = PARKED_ALREADY_REASON
     const msg = 'a member turn is already parked for ' + String(f.member)
       + (f.turnId ? ' (turn ' + f.turnId + (f.promptId ? ', prompt ' + f.promptId : '') + ')' : '')
       + ': ' + door + ' now would silently replace the prompt this caller is still holding'
-    const hint = 'answer the parked prompt first: op:"step" with member:"' + String(f.member) + '" and the reply (or op:"reply" with report {...}), which completes that turn; then dispatch again. This kernel keeps ONE parked prompt (deliverByReturning parks the assembled prompt on the caller), so a second dispatch cannot be queued - the prompt to answer is the memberPrompt the dispatch returned with awaiting:true'
+    // ★ RUN 76 / TB-2710: the FIRST sentence states when this code applies (a second dispatch while a turn is
+    // parked), so a caller is never left confusing it with VMU_TURN_PARKED_NEEDS_OWNER (a reply with no parked turn).
+    const hint = 'VMU_TURN_ALREADY_PARKED applies when you ask for ANOTHER turn while one member turn is still parked in your hands: answer the parked prompt first: op:"step" with member:"' + String(f.member) + '" and the reply (or op:"reply" with report {...}), which completes that turn; then dispatch again. This kernel keeps ONE parked prompt (deliverByReturning parks the assembled prompt on the caller), so a second dispatch cannot be queued - the prompt to answer is the memberPrompt the dispatch returned with awaiting:true'
       // ★ RUN 257 / D-2: the sentence after the ASCII marker must let a reader DO the act, not merely point at it.
       + ' REACHABLE INSTEAD: answer THAT prompt with vibe_vmu_turn { op:"step", member:"' + String(f.member) + '", reply:"<the member\'s fenced json>" } - the receipt then carries resumed:true and resumedTurnId naming this very turn; to drop it instead call vibe_vmu_turn { op:"abandon", turn:"' + (f.turnId || '<the parked turn id>') + '" }, which closes it, and then dispatch again'
     const e = refuse('VMU_TURN_ALREADY_PARKED', msg, hint)
     e.parkedFacts = f
+    // ★★★ RUN 76 / TB-2710 (F76-10): the reason travels at the TOP level too, not only inside `parkedFacts`: the two
+    // parked codes must be distinguishable on the receipt an operator actually reads, and the sibling refusal
+    // (VMU_TURN_PARKED_NEEDS_OWNER) has always set `e.parkedReason`. Leaving it inside the nested block made the two
+    // codes differ in shape as well as in meaning, which is a second difference nobody asked for.
+    e.parkedReason = PARKED_ALREADY_REASON
     e.parkedMeans = parkedGateMeans
     counts.refused += 1
     lastRefusal.code = 'VMU_TURN_ALREADY_PARKED'
@@ -2550,15 +2608,20 @@ export function createTurnOrchestrator({
   }
   const refuseParkedNeedsOwner = (parked, reason) => {
     const f = parkedFactsOf(parked)
+    f.parkedReason = reason
     const msg = reason === 'no-parked-prompt'
       ? 'a reply was staged for the member reply slot, but NO member turn is parked: there is nothing for it to answer, and handing it to the next turn would attribute it to a turn nobody asked about'
       : 'the parked member turn cannot be continued from this call: ' + (reason === 'no-turn-id' ? 'the parked prompt carries no turn id' : 'the turn it names (' + String(f.turnId) + ') is no longer open in this kernel')
-    const hint = reason === 'no-parked-prompt'
-      ? 'the caller-played route parks a prompt and returns it as memberPrompt (awaiting:true); answer THAT prompt with op:"step" and the reply, or start a real turn with op:"drive"/op:"step" without the reply. REACHABLE INSTEAD: op:"status" turnLoop names the parked prompt (parked/parkedTurn/parkedMember/parkedPromptId)'
-      : 'answer the prompt the call ACTUALLY returned: read op:"status" turnLoop.parkedTurn/parkedMember, or call op:"step" with no reply to get a fresh prompt. A reply that names no parked prompt is never applied to a different turn'
+    // ★ RUN 76 / TB-2710: the FIRST sentence states when THIS code applies (a reply, no parked turn), so the two
+    // parked refusals are distinguishable by trigger and not merely by code name.
+    const hint = PARKED_NEEDS_OWNER_MEANS + '. '
+      + (reason === 'no-parked-prompt'
+          ? 'the caller-played route parks a prompt and returns it as memberPrompt (awaiting:true); answer THAT prompt with op:"step" and the reply, or start a real turn with op:"drive"/op:"step" without the reply. REACHABLE INSTEAD: op:"status" turnLoop names the parked prompt (parked/parkedTurn/parkedMember/parkedPromptId)'
+          : 'answer the prompt the call ACTUALLY returned: read op:"status" turnLoop.parkedTurn/parkedMember, or call op:"step" with no reply to get a fresh prompt. A reply that names no parked prompt is never applied to a different turn')
     const e = refuse('VMU_TURN_PARKED_NEEDS_OWNER', msg, hint)
     e.parkedFacts = f
     e.parkedReason = reason
+    e.parkedMeans = PARKED_NEEDS_OWNER_MEANS
     // ★ RUN 256 / TB-2616: a reply with nothing to answer is DISCARDED, not left staged: left in the slot it would answer
     // the NEXT turn opened here - a silent wrong-turn attribution that is the very defect this round repairs (the seam's
     // own `supply(null)` contract is "no reply is staged"), and a caller who retries without a reply would be refused by
@@ -3724,6 +3787,16 @@ export function createTurnOrchestrator({
    * returning `{}` when all three fail. Here the third tier is adopted but the total failure stays a NAMED refusal
    * rather than a silent empty object, since this repository refuses rather than guesses.
    */
+  // ★★ RUN 76 / TB-2710 (F76-10): NO_FENCE named the two reply channels in a SENTENCE and nowhere else, so the
+  // receipt carried no `starts` and a machine could not act on the refusal without parsing English. The two calls are
+  // now a structure beside the same sentence — one source, read by a human or executed as `starts[].call`.
+  const REPLY_STARTS = [
+    { tool: 'vibe_vmu_turn', op: 'reply', why: 'preferred: report through the tool channel; the reply catalogue names the fields this turn accepts',
+      call: 'vibe_vmu_turn { op:"reply", report:{ say:"…", input:{ … }, … } }' },
+    { tool: 'vibe_vmu_turn', op: 'step', why: 'compatibility: resend the same turn with a fenced json object; a bare fence, a bare object and a prose-wrapped object are all accepted (docs/26 §3)',
+      call: 'vibe_vmu_turn { op:"step", member:"<the member>", reply:"```json { … }```" }' },
+  ]
+  const REPLY_STARTS_MEANS = 'the two calls that answer this refusal, in the order the kernel tries the channels; `op:"reply"` is the preferred tool channel and `op:"step"` with a fenced json is the compatibility path. Executing either is the whole fix — this list is the machine-readable twin of the hint sentence, not a second vocabulary'
   const parse = (text) => {
     const raw = String(text === undefined || text === null ? '' : text)
     const asObject = (s) => {
@@ -3764,7 +3837,10 @@ export function createTurnOrchestrator({
         sawJsonish
           ? '回执里带了花括号但没有可用的工具汇报、也不是合法 JSON：本回合没有可用的回执对象（the reply carries braces that do not hold valid JSON, and no tool report backs it either）。成员在自己会话里做过什么在这里看不到——下结论说“什么都没发生”之前，去读记录轨（check the record tracks）'
           : '本回合既没有工具汇报、也没有可解析的围栏 JSON（neither a tool report nor a usable fenced json object）：本回合没有可用的回执对象。成员在自己会话里做过什么在这里看不到——下结论说“什么都没发生”之前，去读记录轨（check the record tracks）',
-        'report through the tool: vibe_vmu_turn { op:"reply", report:{ say:"…", input:{…}, … } } (the fields the reply catalogue declares); the fenced json object stays supported as the COMPATIBILITY path: vibe_vmu_turn { op:"step", reply:"```json { … }```" } — a bare fence, a bare object and a prose-wrapped object are all still accepted (docs/26 §3). THIS CODE IS ABOUT THE MEMBER REPLY ENVELOPE: free prose with no fence and no tool report is CORRECTLY refused here (the reply catalogue requires one of the two channels), so a NO_FENCE refusal means "the reply carried no readable object", never "the adapter broke". The ADAPTER boundary has its own code, VMU_TURN_DELIVERY_SHAPE (docs/26 §3.22): if the seam returned something this kernel could not read, the refusal names that instead')
+        'report through the tool: vibe_vmu_turn { op:"reply", report:{ say:"…", input:{…}, … } } (the fields the reply catalogue declares); the fenced json object stays supported as the COMPATIBILITY path: vibe_vmu_turn { op:"step", reply:"```json { … }```" } — a bare fence, a bare object and a prose-wrapped object are all still accepted (docs/26 §3). THIS CODE IS ABOUT THE MEMBER REPLY ENVELOPE: free prose with no fence and no tool report is CORRECTLY refused here (the reply catalogue requires one of the two channels), so a NO_FENCE refusal means "the reply carried no readable object", never "the adapter broke". The ADAPTER boundary has its own code, VMU_TURN_DELIVERY_SHAPE (docs/26 §3.22): if the seam returned something this kernel could not read, the refusal names that instead',
+        // ★ RUN 76 / TB-2710 (F76-10): the STRUCTURE travels with the sentence. `starts[].call` is executable as-is,
+        // and `host.js` refusalFacts copies this own key onto a refusal that passes through the host funnel.
+        { starts: REPLY_STARTS, startsMeans: REPLY_STARTS_MEANS })
     }
     // ★ E12 / task-19: `meeting` IS A RESERVED ENVELOPE KEY, NOT A REPLY FIELD. A fenced reply that names the meeting
     // it belongs to (`{"meeting":"m1","say":"…"}`) used to fall into the unknown-field gate: it either landed in
@@ -5848,7 +5924,28 @@ export function createTurnOrchestrator({
     // receipt showed `executed: 0` with no sentence saying what it counts. Run 37's office read that as "the members did
     // nothing" while the same turns had written proofs and Lean jobs in their own sessions. The batch receipt is read by
     // the same person as the single one, so it states the same fact — attached HERE, once, so every return path has it.
-    const withScope = (r) => Object.assign({}, r, { executedMeans: EXECUTED_MEANS, memberActsMeans: MEMBER_ACTS_MEANS, scope: driveScope(r.receipts || []) })
+    // ★★★ RUN 76 / TB-2710 (F76-10): THE BATCH FACE ASKS THE SAME QUESTION AS THE SINGLE ONE. `step` now reports
+    // `turnDelivered`, and the attribution stamp on a tool receipt reads exactly that key (`discloseActOnSeat`). A
+    // `drive` call from the OFFICE would still have said `memberActed:false` after its rounds were really delivered,
+    // because the batch aggregate carried no such key: the fact existed on every round and died at the aggregate —
+    // the same defect family as run 37s count-only `skipped`. So the aggregate states it once, from the rounds
+    // themselves, and each settled round keeps its own value for a reader who wants to know WHICH round was delivered.
+    const driveTurnDelivered = (rows) => {
+      const settled = rows.filter((x) => x && x.failed !== true)
+      if (settled.length === 0) return null
+      const answered = settled.filter((x) => x.turnDelivered === true || x.turnDelivered === false)
+      if (answered.length === 0) return null
+      return settled.some((x) => x.turnDelivered === true) ? true : false
+    }
+    const DRIVE_TURN_DELIVERED_MEANS = 'true when at least one settled round of this batch was DELIVERED to the named seat (the delivery path was not "caller"), false when every settled round was played by the caller, null when this call settled no round: one key for the whole batch, while each row in `receipts` keeps its own `turnDelivered`'
+    const withScope = (r) => {
+      const rows = Array.isArray(r.receipts) ? r.receipts : []
+      return Object.assign({}, r, {
+        executedMeans: EXECUTED_MEANS, memberActsMeans: MEMBER_ACTS_MEANS,
+        turnDelivered: driveTurnDelivered(rows), turnDeliveredMeans: DRIVE_TURN_DELIVERED_MEANS,
+        scope: driveScope(rows),
+      })
+    }
     // ★★ LANE turn-reply: A PENDING TOOL REPORT IS ALREADY ONE COMPLETED ROUND. Complete it BEFORE the loop, so a caller
     // that drives in a loop does not keep asking for prompts it has already answered (the report would otherwise never be
     // dispatched). It is reported separately as `completed` and does NOT count as a round: no member was woken for it.
@@ -5907,6 +6004,15 @@ export function createTurnOrchestrator({
         // answers INTO it (and a conflicting `meeting` on the reply is refused by name) without re-reading the prompt.
         if (r && r.awaiting) return withScope({ ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, meeting: (r.meeting || (r.memberPrompt && r.memberPrompt.meeting) || null), deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member })
         receipts.push({ round: i, member: spec.member, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
+          // ★★★ RUN 76 / TB-2710 (F76-10): the per-round delivery fact, so the batch can be read round by round as well
+          // as in aggregate (see driveTurnDelivered above). Null, never "absent", so a reader can tell "not reported"
+          // from "reported false". Computed from the SAME row field the settled step receipt reads: `run` does not carry
+          // the step receipt key (step composes it), so the batch derives it here rather than pretending it arrived.
+          turnDelivered: (() => {
+            const p = typeof r.deliveryPath === 'string' && r.deliveryPath !== '' ? r.deliveryPath
+              : (r.delivery && typeof r.delivery.path === 'string' && r.delivery.path !== '' ? r.delivery.path : null)
+            return p === null ? null : (p === 'caller' ? false : true)
+          })(),
           // ★ RUN 255 / TB-2606-A: the three field counts travel on a SUCCESSFUL round too (see fieldCountsOf).
           ...fieldCountsOf(r),
           // ★ ROUND 240: the same-value merge is a FACT about the two channels, and a batch receipt is read by the same
@@ -5978,6 +6084,9 @@ export function createTurnOrchestrator({
       ...(failureDelivery && (failureDelivery.deliveryPath || failureDelivery.deliveryPathMeans || Number.isFinite(failureDelivery.waitedMs)
         || failureDelivery.partial !== null) ? failureDelivery : {}),
       ...(e && typeof e.hint === 'string' ? { hint: e.hint } : {}),
+      // ★ RUN 76 / TB-2710 (F76-10): a refusal that carries executable next steps must not lose them at the receipt
+      // the operator reads — same defect family as run 37's count-only `skipped` (the answer existed one layer down).
+      ...(e && Array.isArray(e.starts) ? { starts: e.starts, startsMeans: typeof e.startsMeans === 'string' ? e.startsMeans : null } : {}),
       ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, REFUSAL_REPLY_EXCERPT_MAX), replyTruncated: typeof e.replyText === 'string' ? e.replyText.length > REFUSAL_REPLY_EXCERPT_MAX : null, replyLimitChars: REFUSAL_REPLY_EXCERPT_MAX, replyExcerptMeans: 'the reply as the member wrote it, CUT at replyLimitChars (' + REFUSAL_REPLY_EXCERPT_MAX + ') when replyTruncated is true; this is the REFUSAL excerpt (the reply could not be parsed into the declared shape), and replyLength is the FULL length', trackValue: e.trackValue } : {}),
       // ★★★ ROUND 38: the refusal object carries the side-effect disclosure (see attachReplyDiagnostics); it must also
       // reach the FAILURE RECEIPT, because that is the object an operator actually reads. A disclosure that stops one
@@ -6448,6 +6557,17 @@ export function createTurnOrchestrator({
         // SETTLED receipt only had it nested in `receipt.delivery`/`delegation` — the institute read that as "the
         // field does not exist" and could not compare the three cases. One name, on every shape.
         deliveryPath: deliveredThrough,
+        // ★ RUN 76 / TB-2710 (F76-10): WHO ran this turn is a fact of the DELIVERY, and it is not the same question
+        // as WHO called the tool. `deliveryPath:"activation"/"continuation"/"one-shot"` means a child of that seat
+        // ran the member turn (the member acted in its own turn even though the OFFICE made this call); `"caller"`
+        // means the calling session played the turn. The host-side seat disclosure reads THIS key to answer
+        // "did the seat act?", so the two questions stop sharing one field (they shared `caller === member`).
+        turnDelivered: deliveredThrough === null ? null : deliveredThrough !== 'caller',
+        turnDeliveredMeans: deliveredThrough === null
+          ? 'null because the delivery seam reported no path: whether a separate kernel ran this member turn is NOT READABLE here (null never means "the seat did nothing")'
+          : (deliveredThrough === 'caller'
+              ? 'false: the CALLING session played this member turn (deliverByReturning), so no child kernel of the seat ran it — the caller acted on the seat behalf'
+              : 'true: a separate kernel instance of the seat ran this member turn (path "' + String(deliveredThrough) + '"), so the answer came from the seat own session even though this tool call came from the office'),
         // ★ TASK-173 / TB-2690 (F75-12): the settled receipt carries the same three names as the awaiting one (`delivery`
         // nests them too, but the office reads the top level, so the mode reading is not one hop deeper than the path).
         deliverMode: (r.delivery && r.delivery.deliverMode) || null,

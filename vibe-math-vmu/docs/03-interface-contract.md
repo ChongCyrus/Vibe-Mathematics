@@ -218,6 +218,23 @@
 
 ★ **框架侧的同名能力**（`vibe_vmu_*`）仍在 §3.1；两套并存的边界以“谁是当前 pack 的 manifest 工具”为准，**不要用一张手写清单代替 manifest**。
 
+### 会议类型：中文别名 ≡ 英文 id（★ RUN 76 · TB-2715 / FEEDBACK63 C18）
+
+规则文档与任务书用的是**中文词**，run76 里主席照任务书写 `type:"结题"` 却被 `VMU_INVALID_ARGUMENT` 拒、只能改英文 id —— 合法中文输入不该被拒。`vibe_v5_meeting` 的 `type` 现在**先精确匹配 id，再匹配中文别名**（大小写、空白、`/`／`／` 容忍：`"未来规划 / 策划"` 与 `"未来规划策划"` 等价）。
+
+别名表是 `packs/v5r/meeting-procedures.js::MEETING_TYPE_ALIASES`（导出常量），与 `MEETING_TYPES[].label` **分开存**：`label` 是规则原文的**显示标签**（`tests/vmu-meeting-types.test.mjs` 逐字钉住它），别名是**接受的输入**。
+
+| id | 显示标签（不可改） | 可用中文输入（别名） |
+|---|---|---|
+| `ordinary` | 正常会议 | 例会、普通会议、正常会议 |
+| `academic` | 学术交流 | 学术 |
+| `debate` | 辩论 | （标签本身即别名） |
+| `closure` | 结题 | 决议 |
+| `paper` | 论文交流 | 论文 |
+| `planning` | 未来规划/策划 | 未来规划策划、未来规划/策划、未来规划、规划、规划会 |
+
+归一规则（回执可在 `packs/v5r/tools.js` 的 convene 回执读到）：`type` **永远是 id**（`"结题"` 与 `"closure"` 开出同一类型的会）；另带 `typeInput`（调用者原文；未传 `type` 时为 `null`）与 `typeMatchedBy`（`"id"`｜`"alias"`｜`"default"`），`typeMatchedByMeans` 用一句话说明命中的门。`action:"types"` 的每行也带 `aliases`。未命中 ⇒ `VMU_INVALID_ARGUMENT`，hint **先列英文 id、再列「id（中文标签；别名…）」成对清单**。别名只在这张面上被解开：传给内核与存进会议的永远是 id，所以声明了 `vmu.meetings.typeCatalog` 的部署不需要把中文词登记进目录。
+
 > ★★★ **R30 · 四种回执形状增量（逐条指到 `file:line`；`tests/vmu-run30-findings.test.mjs` 对它们逐条点名 ✓）**
 > - **`vibe_vmu_meeting{action:"close"}`**（`tools/meeting.js:353-368`）：回执并排给 `closureVote`（`cast`／`confirmed`／`votesCast`／`missing`，**同一实例上的一致同意读数**；不可读时是 `{readable:false,why}`）与 `closureVoteNote` —— note 明写它**不是**这次关会的要求、也**没被关会改动**，关会过的是 `enforced` 里点名的**会议策略轨** ⇒ **「closed」不等于「一致判定已解决」**；点名在 `missing` 里的人，正是「声称结题前该去问的人」✓。
 > - **v5r-pack 的 `vibe_v5_verdict_ask`**（`packs/v5r/tools.js:1805-1860`）：`propositionKind`（`card`／`meeting-subject`／`file-ref`／`unverified`）、`propositionVerified`、`fileChecked`、`propositionWhy` 说清**这个 id 被理解成了什么**；`propositionClause` 是**真写进成员邮件正文**的那句话（`packs/v5r/tools.js:1744-1752`；注册卡 ⇒ `null`，因为点名一张已登记的卡不额外声称什么）；`accounting` 把三个数**摆平**：`asked + excluded = accountedCount`（`packs/v5r/tools.js:1793-1803`）；`excluded` 逐条给 `{member, why:"presides"}` —— 主席**签名**这次提问，所以不**回答**它，这是唯一被过滤的原因；`mail` 给真正发出的 `text` 与状态读数（「辩论已结束」只在状态真是 `closed` 时才算**读到的事实**，读不到就写「状态不可读」✓）。命题既不是卡、也不是文件引用、也不是本会辩论对象 ⇒ 具名拒 `VMU_ASK_UNKNOWN_PROPOSITION`（**已登记于 §8 的 R30 批**；抛出点 `packs/v5r/tools.js:1597`／`:1607`）✓。
@@ -288,7 +305,7 @@
 | R1 ★★★ | 行的「谁的行为」 | `vibe_vmu_records list`／`vibe_v5_read_library` 的行只有 `owner`／`writer`／`by`（+ 字段来源 `writerSource`，回答「哪个字段」），所办代写与成员亲写**一模一样**；`writerSource` 今天指的是「by→writer→owner 哪个字段答的」 | 写入时由**唯一现场** `kernel.records.beginTurnCaller(member)` 记下这一派发是否跑在该席会话里：`own-turn`（该席自己跑）／`relayed`（office 或其他席以该席名义写、但没在该席运行）／`unknown`（两者都没建立）。行上默认带 `writtenFrom`（= 行为来源），回执带 `withWriter:true`；`withWriter:false` 时行上省略并回执 `writtenFromOmitted:true`（省略本身被回答）。**为什么不叫 `writerSource`**：`writerSource` 已公开回答另一个问题（`by`→`writer`→`owner` 哪个字段答的，见 §3 记录面 `by` 过滤行与 `writerOf`），一个名字答两个问题正是本轮反复消灭的病，故新事实另起名，库头行上的 `writerSource` 语义一字不动。两个读面读**同一批** `records` 行，故不各算一遍。 |
 | R2 ★★ | 跨箱欠 ack 数 | 该数只在 `vibe_vmu_mailbox status.notice` 上（`unackedRowsAllBoxes`／`perBox`）；`vibe_v5_inbox{action:"list"}` 只有本箱 `count`／`rows`，所办三次会话里三个箱各算一次 | `kernel/mailbox.js` 新增 `noticeBlockOf(per)` **单一派生**（一次遍历得 `unackedRowsAllBoxes`／`perBox`／`pendingMembers`／`acked`／`ackRequired`／`asOf`／`asOfSource`／`means`），`status().notice` 与 `list().notice` 都返回它；`packs/v5r/tools.js` 的 inbox `list` **原样转发**该块（不二次求和），两面 `asOf` 相同 ⇒ 可逐字段比对。ack 掉一条 ⇒ 两面同时 −1。 |
 | R3 ★★★ | 归档 PDF 的文件指纹 | `paper-pdf` 行 body 只有 `{pdfPath,pdfBytes,engine,…}`，`fingerprint` 是正文指纹不是文件 sha256；核对器算得出 `sha256(file)=591d23a6…` 却无法与行对账 ⇒ `ARITHMETIC-BLOCKED` | `kernel/latex.js` 在成功返回里用**同一次** `fs.readBytes` 的 buffer 同时给出 `pdfBytes` 与 `pdfSha256`，并 expose 只读 `pdfReading(pdfPath)`（`{ok,exists,pdfBytes,pdfSha256,why}`）；`kit/paper.js` 把 `r.pdfSha256` 落进 `paper-pdf` 行 body，`compiledPdfRow` 读回；`vibe_v5_paper{action:"status"}.pdfCompiled` 报 `pdfSha256`（行）／`diskPdfSha256`／`diskPdfBytes`／`pdfSha256MatchesDisk`／`pdfSha256Mismatch`，篡改 1 字节 ⇒ 具名 `mismatch:true` 且 `means` 点名 `TAMPERED OR REPLACED` 与两个 sha；旧行缺 sha ⇒ `null`（不是 `false`）且 `missing` 点名 `pdfSha256`。 |
-| R4 ★★ | 只读面的归属词 | `vibe_v5_read_library`（纯读）回执带 `memberActedMeans`「the record was written IN THAT SEAT'S NAME」——读一次库，读起来像写了一次 | `READ_ONLY_ACT_FACES`（闭集，当前仅 `vibe_v5_read_library`）在 `host-pack-tools.js` 走独立分支：`viewedBy`／`readForMember`／`wroteAnything:false` + 「this was a READ … wrote nothing in any seat name」；写面**逐字保留**原句（不是全局删句）——所以「读面不再这么说」与「写面仍然这么说」是两条同时成立的断言。 |
+| R4 ★★ | 只读面的归属词 | `vibe_v5_read_library`（纯读）回执带 `memberActedMeans`「the record was written IN THAT SEAT'S NAME」——读一次库，读起来像写了一次 | `READ_ONLY_ACT_FACES`（闭集，当前仅 `vibe_v5_read_library`）在 `host-pack-tools.js` 走独立分支：`viewedBy`／`readForMember`／`wroteAnything:false` + 「this was a READ … wrote nothing in any seat name」；写面保留自己的句子（不是全局删句）——所以「读面不再这么说」与「写面用自己的话说」是两条同时成立的断言；★ **RUN 76 / TB-2710**：写面现在把「记录写在该席位名下」与「内核是否真的投递了该席位的一轮」分开说（`turnDelivered`），不再用 `caller === member` 一个比对回答两个问题。 |
 
 ### 3.1h RUN 2699（TB-2699：`proofRefState` 只有一个生产者，`unknown` 只表示「未检查」）的两条契约增量
 
@@ -300,6 +317,38 @@
 | S2 ★★ | 两个读时机的同一个判定 | 读面不解析指针；写面在无 resolver／绝对路径／目录三种情况下照样 `resolved` | `proofRefReadingOf(kernel, pointer)` 是**唯一测量**（无指针／无 resolver／resolver 抛错 ⇒ `checked:false` 并给 `reason`；否则调一次 `library.resolvePointer`，`reason` 直接来自 library：`missing`／`absolute`／`not-a-file`）。写面（`source:"write-resolution"`）、读存储行（`source:"stored-row-read"`）、结算回读（`source:"settlement-read-back"`）都用它；`proofGateOfStoredCard(fields,{reading})` 只**转发**判定结果（`locked`/`reason`/`why`/`nextMove` 语义不变），回执 `proofGate` 与顶层 `proofRefState` 由同一份 `proofGateFinal` 提供。**行为变化（有意）**：①读面现在真解析，完整锁卡可能从 `unknown` 变为 `resolved` 或 `missing`——两面从此必须同词；②写面绝对路径／目录从 `resolved` 变为 `missing` 且锁被推迟（`proofGate.locked:false`，`reason:"complete-but-pointer-unresolved"`）。 |
 
 **F75-14 = ALREADY-TRUE（只核对，不改代码）**：`render` 从不编译（`render()` 只写记录种类，`.tex`/`.pdf` 只有 `compile` 落盘，`renderOkMeans` 与 `missingMeans` 都写明），`ok:true` 是**受理**不是完成（`PAPER_OK_MEANS` 与 `complete` 同源），`renderOkMeans`（`packs/v5r/tools.js:6979-6981`）已答全「写了什么/没写什么/完成与否」。三项断言固化在 `tests/vmu-run2699-proofrefstate-one-producer.test.mjs` §5，不为此造改动。
+
+### 3.1i RUN 76（TB-2713：评审票按 round 有效，作废必须说出来）的两条契约增量
+
+> 真机读数的缺口（run 76）：round 2 的三张 `deliverable:true` 评审票在 round 3 被读成 `stale:["r-acad"]`，不计入本轮覆盖，三次 `advance` 有两次因此回退；回执只给 `stale`/`notYetReviewed`，**没有一句话说「上轮票被轮次边界作废、是谁的哪张行、要重投」**。机制本身正确：一票审的是**它那一轮**的正文（`kit/paper.js` 的 `readReview` 只数 `body.round === state.round`，`durable-other-round` 是 ROUND MISMATCH 不是拒收），所以本轮不改机制，只补读数。
+
+| # | 面 | 改前（真机读数） | 改后（契约） |
+|---|---|---|---|
+| P1 ★★★ | `advance` 与 `status` 的本轮覆盖读数 | 两张回执都不给「本轮谁已投、谁上轮投过但本轮未投」；读者只能从后续 `stale:[…]` 反推，且不知道作废的是哪一行 | 两门打印**同一份** `perRoundReviewCoverage = {round, expected:[members], covered:[{member,recordId,round}], missing:[members], invalidatedByRound:[{member,recordId,round,why:'previous-round'}]}`，每值带 means 句（`expectedMeans`/`coveredMeans`/`missingMeans`/`invalidatedByRoundMeans`）。算术只有一处：`kit/paper.js#perRoundReviewCoverageOfState`；`advance` 门（`paper.advance` 包装）与 `status` 门（`paper.perRoundReviewCoverage(target)`）都只调用它——两门逐字相等由判据断言，工具面**不许**出现第二份算术。`covered` 要三件事同真：最新评审行的 `round` 等于论文当前 round、`deliverable === true`、`of` 点名**别人**（自审永不计入）；行属于更早的 round ⇒ 进 `invalidatedByRound`（带 recordId 与它所属的 round），不是静默消失。 |
+| P2 ★★ | 机制边界（**不改**，写明理由） | 无 | **上轮票作废是刻意的安全设计**：review 行写 `body.round = state.round`，`requireCrossReview` 只数 `Number(b.round) === Number(state.round)`，round 只在两处 `+= 1`（`advance` 的 disagreement 分支与 `final{revise}` 重开写作）；一条旧票不能替新正文作保。本字段是这条规则的**读数**，不是闸门：`missing` 非空时状态机照旧回 writing，`advance` 的 `moved/roundFrom/roundTo` 读数不变。逐条运行期断言：`tests/vmu-run76-round-review-coverage.test.mjs`（86/0，含唯一算术、「missing 不恒空」「invalidatedByRound 逐条带 round 2 的 recordId」「advance ≡ status 的 covered 逐字相等」四条反关灯）。 |
+
+**F75-19 = ALREADY-TRUE（只核对，不改机制）**：`advance` 的 `stale` 列表在「全席都已投」时为空（run 76 现场即是：三席都投了票，所以 `stale:[]`），旧票作废只能从 `invalidatedByRound` 读出——两条同时成立，判据 §4 钉住。
+
+### 3.1j RUN 76（TB-2710：谁跑了这一轮、以及 parked 两个码各自何时适用）的两条契约增量
+
+> 真机读数（run 76）：15 个回合确实在成员自己的子会话里跑完（`deliveryPath`=activation/continuation），但每张回执顶层都是 `memberActed:false`/`callerIsSeat:false`/`ranInOwnTurn:false` —— 因为 office 调用 `vibe_vmu_turn` 时 `caller` 是根会话，而 `memberActed` 只比对了 `caller === args.member`。同一个回执的 `memberWorkShare.memberActs` 却把这些回合算成成员动作。一个字段答了两个问题：**谁调用了工具** 与 **这一轮是谁跑的**。
+
+| # | 面 | 改前（真机读数） | 改后（契约） |
+|---|---|---|---|
+| A1 ★★★ | `vibe_vmu_turn` 顶层归属三键 | `memberActed` = `caller === args.member`，office 代调一律 false；`turnDelivered` 无生产者（全仓只有两个读点） | 回合结算回执（`kernel/turn/index.js` 的 `step` 成功路径）新增 `turnDelivered`（`deliveryPath === null` ⇒ `null`＝不可读；`"caller"` ⇒ `false`＝调用方代打；one-shot/activation/continuation ⇒ `true`＝席位自己的内核跑了这一轮）＋`turnDeliveredMeans`。`host-pack-tools.js#discloseActOnSeat` 的写面把 `memberActed` 改为 `turnDelivered === true \|\| caller === args.member`，`callerIsSeat` 仍只答「这次调用是否从这个席位发出」，`ranInOwnTurn` 同源；means 逐句说明两者不同问。 |
+| A2 ★★ | parked 两码的触发条件 | `VMU_TURN_ALREADY_PARKED`（已有 parked 回合又被要求派下一轮）的 `parkedFacts` 无 `parkedReason`；提示词把**再派同一席**教成 `VMU_TURN_PARKED_NEEDS_OWNER`；`NO_FENCE` 回执无 `starts` | 两码的 `parkedFacts` 都带 `parkedReason`：ALREADY 是「调用方仍握着这一轮，必须先答或 abandon」，NEEDS_OWNER 沿用三值 `no-parked-prompt`／`no-turn-id`／`turn-not-open`；两码 hint **第一句**各自写明「什么时候是这个码」；`packs/v5r/prompts/v5r-blocks-b.js` 的回合循环段改教真实码并写出两个触发器的区别。`VMU_TURN_NO_FENCE` 回执新增 `starts`（`[{tool,op,why,call}]`，`op:"reply"` 优先、`op:"step"` 兼容围栏 JSON）＋`startsMeans`：可执行结构是 hint 句子的机读孪生，不是第二套词表；`stepFailure` 把 `starts` 转发到失败回执，host 漏斗的 `refusalFacts` 自动带上它。逐条运行期断言：`tests/vmu-run76-attribution-and-parked.test.mjs`（含三盏反关灯：`memberActed` 改回常量 false、删 `parkedReason`、删 `starts` 各自必红）。 |
+
+### 3.1k RUN 76（TB-2712：蓝图 live 读数的三种具名缺席与一条真实 seam）
+
+> 真机读数（run 76）：每一轮的状态板都把 `liveReadings.blueprint` 报成 `{ value: null, why: "records.mdParse 没有注入", at: null, atSource: null }`，成员因此从未见过 `[蓝图]` 行。根因不是解析器不在，而是**唯一生产调用点的面没有它**：编排器拿到的是 `facesFrom(...)`，该映射只绑 `STATUS_BOARD_READ_OPS` 声明过的操作，而 `vmu.records` 只声明了 `['list','get']` —— 真正的 `records` 服务（`mdParse`/`mdDigest`/`mdRead` 俱在）从没到达回合层。同时「还没人提蓝图」与「解析器够不着」共用一句话，读者无法区分空研究所与断掉的 seam。
+
+| # | 面 | 改前（真机读数） | 改后（契约） |
+|---|---|---|---|
+| B1 ★★★ | `liveReadings.blueprint.why` | 所有缺席共用一句中文（`records.mdParse 没有注入…`） | `why` 是**机读名**，`whyText` 保留人话：`no-current-blueprint`（轨上没有行，或行的 md 正文读不到 ⇒ 等于还没有可读草案）、`md-parser-unavailable`（行在、正文在，但 md 解析器解析不出字段）、`records-face-unavailable`（回合层没拿到 `records.list`，或 list 失败/形状不对）。三者互斥；`liveReadings.blueprint` 的 `value` 在缺席时仍为 `null`，`at`/`atSource` 为 `null` 并带 `timeWhy`（RUN 102：不借读取时刻当内容时间）。 |
+| B2 ★★★ | 蓝图的 md 解析器从哪来 | 只认 `records.mdParse`；生产面没有 ⇒ 每一轮都是同一句缺席 | 优先用面带来的解析器（外部注入仍可覆盖）；面没有时用**内核自己的** `mdParseText`（`kernel/records.js` 的同一个导出，纯文本函数，不是第二套解析器）。读数 `detail.mdParserSource` 明说这次是 `records.mdParse` 还是 `kernel-own-md-parse`。 |
+| B3 ★★ | seam 接线 | `turnFaces = facesFrom(...)` 只绑 `list/get` | `kernel/index.js` 在 `facesFrom` 之后把真实 `records` 的 `mdParse`/`mdDigest`/`mdRead` 绑到 `turnFaces['vmu.records']`（同一实例、同一门；`mdDigest` 让 `draftMdMissing`/`mdChangedSinceIndex` 与 adopt 闸门同谓词）。成功后生产路径的 `status().liveReadings.blueprint.value` 非空、`[蓝图]` 行出现在提示词里，且二者是同一个值。 |
+
+逐条运行期断言：`tests/vmu-run76-blueprint-reading.test.mjs`（§1 空世界的 `no-current-blueprint`；§2 只用 `list/get` 的受限面仍能解析 = 不依赖外部注入；§3 真实内核 `status()` 与提示词同值且 `mdParserSource==='records.mdParse'`；§4 无可解析字段的正文 = `md-parser-unavailable`；§5 两个不同内核时钟 ⇒ 两个不同 `at`，`atSource==='records 的 updatedAt'`）。反关灯：删内核兜底、把两个 `why` 合成一个、把 `at` 写成常量，三者各自必红。
 
 ### 3.2 规划中（`⛔ 未实现`，**当前不可调用**）
 
@@ -740,12 +789,12 @@
 | `VMU_BALLOT_RULE_INVALID` | ★ **PHASE 7**：逐箱规则值非法（minVotes 超有表决权人数、minChoices>maxChoices、mode 非 single/multi 等） | 票箱 | ✗（按提示修正） |
 | `VMU_BALLOT_CHOICE_COUNT` | ★ **PHASE 7**：选择数违反该票箱的 minChoices/maxChoices（逐箱规则，不是全局设置） | 票箱 | ✗（按该票箱规则调整或改规则） |
 | `VMU_BALLOT_MIN_VOTES_NOT_MET` | 本次投票**成立门槛未达** | 表决 | ✅（须给**当前与门槛**） |
-| `VMU_TURN_NO_FENCE` | 回复里**既没有工具汇报、也没有可解析的 json 围栏** ⇒ 无可分派（★ **LANE turn-reply**：首选是工具汇报 `vibe_vmu_turn { op:"reply", report:{…} }`；围栏 JSON 仍是**兼容通道**，字节不变） | 轮次编排 26 | ✗（须**同时**给出工具形式与围栏 JSON 形式，★ 不再只要求"只输出一个围栏 JSON 对象"） |
+| `VMU_TURN_NO_FENCE` | 回复里**既没有工具汇报、也没有可解析的 json 围栏** ⇒ 无可分派（★ **RUN 76 / TB-2710**：回执现带 `starts`——`[{tool,op,why,call}]` 两条可直接执行的通道，`op:"reply"` 优先、`op:"step"` 兼容围栏 JSON，并配 `startsMeans`）（★ **LANE turn-reply**：首选是工具汇报 `vibe_vmu_turn { op:"reply", report:{…} }`；围栏 JSON 仍是**兼容通道**，字节不变） | 轮次编排 26 | ✗（须**同时**给出工具形式与围栏 JSON 形式，★ 不再只要求"只输出一个围栏 JSON 对象"） |
 | `VMU_TURN_REPLY_CONFLICT` | ★ **LANE turn-reply（08号决策）**：★ **同一回合里，工具汇报与围栏 JSON 对同一字段给出了不同的值** —— ★ 一个字段不能有两个真相；★ 冲突字段**逐一点名**，★ 且**在派发前**拒（半个回合都不会落地）。★ **RUN 230（task-19 / E12）扩用**：★ 同一名字也用于**会议绑定冲突** —— ★ `op:"reply"` 的 `meeting`（或围栏 JSON 顶层的 `meeting`）与停着的那个回合所属会议不一致时具名拒：★ 一个回答不能同时属于两场会，★ hint 点名停着那回合属于哪场会。★ **RUN 240（task-43 / FEEDBACK63 ①5）**：★ 冲突 message 现在**同时打印两个值**（`field (tool report: <值> vs fenced json: <值>)`），错误对象另带 `conflictRows:[{field,tool,fenced}]`，而 `fields` 仍是裸字段名；★ `op:"reply"` 的回执新增 `appliedWhen`／`conflictPolicy`／`notExecutedMeans`：**报告只是被记录**，冲突检查发生在应用（下一次 `step`/`drive` 结算该回合，或在途交付返回）时，不一致则整回合在派发前具名拒；★ 任何被记入 `counts.notExecuted` 的字段**必在 `skipped` 里带 `code`**（`VMU_TURN_FIELD_NOT_APPLICABLE`／`VMU_TURN_FACE_NOT_WIRED`／`VMU_TURN_DUPLICATE_SKIPPED`／形状适配器码如 `VMU_RECORD_SHAPE`）——「没有 code 的不执行」是 run 63 的实测缺陷；★ `vibe_vmu_turn { op:"status" }` 新增 `turns[]`（每回合 `{turn,member,openedBy,executed:[{field,channel}],skipped:[{field,reason,existingId?,code?}],writes:[{tool,recordId?}],codes,unavailable}` + `turnsMeans`），`openedBy ∈ drive|activation|wait|null`；★ 工具面 `vibe_vmu_turn { op:"step"|"drive", opened_by:"wait" }` 把「这一轮是会议唤醒后由所办结算」送进台账（省略＝drive；值域由内核记账，工具面不改判）；`unavailable` 具名列出本内核看不到的东西（独立子会话里的成员工具调用） | 轮次编排 26（`kernel/turn/index.js` 的 `supplyStructuredReply`、`runFrom`、`mergeReplyChannels`、`status`；读面 `vibe-math-vmu/tools/turn.js`） | ✅（★ 字段冲突：同一字段只走**一个**通道，两边值**相同**时合并（回执 `sameValueFields:[…]` 点名字段并附 `replyChannelsMeans`：两通道同值、只派发/只计一次，不是其中一条被静默丢弃）；★ 会议冲突：省略 `meeting`（继承停着那回合的会议）或改成该会的 id；★ 要把成员移到另一场会，先按那场会派发再答新 prompt；★ 迟到的报告：该回合已结算则具名拒并列出已应用字段，改在**下一回合**汇报；★ 想看 wait 唤醒的回合做了什么：`op:"status"` 读 `turns[]`，拿不到的写在该行的 `unavailable` 里） |
 | `VMU_TURN_NO_PENDING_MEMBER` | ★ **LANE turn-reply（08号决策）**：★ **没有打开着的成员回合，却有人用 `vibe_vmu_turn { op:"reply" }` 汇报** —— ★ 工具**不许凭空造出一个回合** | 轮次编排 26 | ✗（★ 先 `op:"step"` 拿到 `awaiting:true`＋`memberPrompt`，★ 再汇报那个回合；★ 兼容路径仍是 `op:"step"` 的围栏 JSON） |
-| `VMU_TURN_ALREADY_PARKED` | ★ **RUN 229（task-13）**：★ **已有一个成员回合停在调用方手里（`awaiting:true` 的 `memberPrompt`），却又被要求派发下一个回合** —— ★ `deliverByReturning` 只保留**一个** parked 槽（单槽是设计：没被回答的回合应被重新请求，而不是静默记住），★ 第二次派发**不许静默替换** | 轮次编排 26（`kernel/turn/index.js` 的 `drive`） | ✅（★ 先回答停着的那个：`op:"step"` 带 member 与回复，或 `op:"reply"` 带 report；★ 然后才能再派；★ 要答的 prompt 就是上一次派发 `awaiting:true` 返回的 `memberPrompt`） |
+| `VMU_TURN_ALREADY_PARKED` | ★ **RUN 229（task-13）**：★ **已有一个成员回合停在调用方手里（`awaiting:true` 的 `memberPrompt`），却又被要求派发下一个回合** —— ★ `deliverByReturning` 只保留**一个** parked 槽（单槽是设计：没被回答的回合应被重新请求，而不是静默记住），★ 第二次派发**不许静默替换** | 轮次编排 26（`kernel/turn/index.js` 的 `drive`） | ✅（★ 先回答停着的那个：`op:"step"` 带 member 与回复，或 `op:"reply"` 带 report；★ 然后才能再派；★ 要答的 prompt 就是上一次派发 `awaiting:true` 返回的 `memberPrompt`；★ **RUN 76 / TB-2710**：本码的 `parkedFacts.parkedReason` 一句话说明「调用方仍握着这一轮：必须先答（或 abandon）才能再派」，与 `VMU_TURN_PARKED_NEEDS_OWNER`（有 reply、无 parked）按触发器分开） |
 | `VMU_TURN_STALE_REPLY` | ★ **RUN 229（task-13）**：★ **汇报指向的成员不是当前停着的那个成员**（`reply_for` 点了别的成员，或 `supplyMemberReply(reply, forMember)` 的成员对不上）—— ★ 属于 `VMU_TURN_*` 族，★ 不把别人的答复塞进停着的回合 | 轮次编排 26（`kernel/turn/index.js` 的 `supplyStructuredReply`／`supplyMemberReply`） | ✅（★ 省略 `reply_for`（答的就是停着的那位），或传停着的那位；★ 想给别的成员答复，先把当前回合答完再派它） |
-| `VMU_TURN_PARKED_NEEDS_OWNER` | ★ **RUN 256 / TB-2616（task-97）**：★ **调用方交回了一条答复，但本次会话没有停着的成员提示词可回答它**（`op:"step"` 带 `reply` 之前没有 `awaiting:true` 的派发）—— ★ 收下它就会被交给**下一个**回合：写者名义对、回合错（run 73 实测的静默错归属），★ 所以具名拒、★ 并把已暂存的答复**丢弃**（`parkedReplyDiscarded:true`），★ 拒绝本身**不新开回合**。★ 同一守卫的三个 `parkedReason`：`no-parked-prompt`（本就没有停着的提示词）、`no-turn-id`（停着的提示词没有回合 id）、`turn-not-open`（它指的回合已不在开着的台账里） | 轮次编排 26（`kernel/turn/index.js` 的 `step` 守卫 `refuseParkedNeedsOwner`；工具面 `vibe_vmu_turn { op:"step", reply }` 以回执形式返回这三个事实） | ✅（★ 先 `op:"drive"`（或一次返回 `awaiting:true` 的 `op:"step"`）拿到 `memberPrompt`，★ 再用**同一 member** 的 `op:"step"` 带 `reply` 回答那个 prompt；★ 回执带 `parkedFacts:{turnId,member,promptId,parkedSince,parkedForMs,releaseBy}`、`parkedReason`、`parkedReplyDiscarded`） |
+| `VMU_TURN_PARKED_NEEDS_OWNER` | ★ **RUN 256 / TB-2616（task-97）**：★ **调用方交回了一条答复，但本次会话没有停着的成员提示词可回答它**（`op:"step"` 带 `reply` 之前没有 `awaiting:true` 的派发）—— ★ 收下它就会被交给**下一个**回合：写者名义对、回合错（run 73 实测的静默错归属），★ 所以具名拒、★ 并把已暂存的答复**丢弃**（`parkedReplyDiscarded:true`），★ 拒绝本身**不新开回合**。★ 同一守卫的三个 `parkedReason`：`no-parked-prompt`（本就没有停着的提示词）、`no-turn-id`（停着的提示词没有回合 id）、`turn-not-open`（它指的回合已不在开着的台账里） | 轮次编排 26（`kernel/turn/index.js` 的 `step` 守卫 `refuseParkedNeedsOwner`；工具面 `vibe_vmu_turn { op:"step", reply }` 以回执形式返回这三个事实） | ✅（★ 先 `op:"drive"`（或一次返回 `awaiting:true` 的 `op:"step"`）拿到 `memberPrompt`，★ 再用**同一 member** 的 `op:"step"` 带 `reply` 回答那个 prompt；★ 回执带 `parkedFacts:{turnId,member,promptId,parkedSince,parkedForMs,releaseBy,parkedReason}`、`parkedReason`、`parkedReplyDiscarded`） |
 | `VMU_PROMPT_BINDING_CONFLICT` | **同一段、同一维度上有两条绑定并列** ⇒ 拒（不再静默取其一） | 提示管线 06 | ✗（给其中一条更具体的维度；优先级 `role < phase < member < task`） |
 | `VMU_PROMPT_VARIABLE_MISSING` | **占位符无人供值**（`vmu.prompts.missingVariable=refuse` 时） | 提示管线 06 | ✗（在装配上下文或 settings 里补值；默认 `report` 只记录不拒） |
 | `VMU_TURN_BAD_JSON` | 围栏内容**不是合法 JSON**，或不是对象 | 轮次编排 26 | ✗（与"没有围栏"是**两种**失败 ✗） |

@@ -21,3 +21,9 @@
 | T13 | 论文/蓝图/结题已有真实状态之后 | normal；账本里有 `paper-state` 行（蓝图同理看 `blueprint` 行） | 状态板 live 三组 `[论文]`/`[蓝图]`/`[结题]`（`renderLiveStatus`，`kernel/turn/index.js`） | `status.paperLine` | `status.paperLineEarly`（没有持久行就不渲染空行——不是「没读」，来源与 why 仍在回执） | 装配层 |
 
 **这张图的边界**：① 装配层探针只覆盖 `assembleFor` 暴露的输入（phase/meeting/member）；会议发言人状态见第三列。② 投递失败（`mailbox/notice-lines-failed`）**不进本图**：它的可见形态是回执里的 `notifyFailed`/`deliveryFailed`，下一回合不产生新行；提示侧的正确教学是「别把约过当通知到、失败名单才要补发」，已由 §11/§12 与轮 A 事实表覆盖，轮 D 再补回执级同源断言。③ 行内 `出现/不出现` 单元格是探针键名（非文本片段）：键在 `tests/vmu-run256-prompt-timing.test.mjs` 的测量表里必须存在，改名或增行而不同步 ⇒ 红。
+
+## TB-2717 补记：三个「时机点」口径（无新探针行，判据在 `tests/vmu-run77-prompt-phase-and-votes.test.mjs`）
+
+- **派回合时**（normal）：`phase` 是**闭集四个全名** `heartbeat`／`paper-write`／`paper-review`／`paper-final`；`review`／`write`／`final` 是论文流程里的**动作词**，不是相位名——写成它们发生在「派回合」这个事件点，回执是 `VMU_INVALID_ARGUMENT unknown phase`（RUN 76 真机：成员写 `phase:"review"`）。`paper-review` 回合的产物是**评审票**，不是结题票。
+- **会议里表决时**（meeting）：结题票在三个层各有一个名字——**动作**走会议骨架 `vibe_vmu_vote`，**reply 字段**是 `vote_solved`，`set_solved` 不存在（旧任务书写法）。三者不是同义词替换题，混用发生在「会议回合决定要不要结题」这个时点。
+- **round 递增之后**（advance 的分歧 bounce，或 `final{revise}` 退回重写）：上一轮评审票**全部作废**，即使正文一字未改也要在本轮重投；回执 `stale` 点名的成员是**还没在本轮投的人**（不是拒绝、不是已投过）。这是 RUN 76 里 r-1 反复投旧票被 `stale` 打回的事件点，教学放在 `v5r-paper-review` 段（`paper-review` 相位装配时可见）。

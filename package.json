@@ -872,6 +872,7 @@
     "tests/_lib/corpus.mjs",
     "scripts/sim/scenarios/meeting-matrix.mjs",
     "tests/vmu-run268-mailbox-ack-reading.test.mjs",
+    "tests/check-task-brief-names.test.mjs",
     "tests/_lib/package-membership-legacy.json",
     "tests/package-membership-dev-only.json",
     "docs/acceptance/generator-cli-convention.md",
@@ -901,7 +902,15 @@
     "docs/acceptance/prompt-budget-tripwires.md",
     "tests/audit-plugin-receipt-superset.mjs",
     "docs/acceptance/hint-author-facing-allowlist.json",
-    "tests/_lib/repo-root.mjs"
+    "tests/_lib/repo-root.mjs",
+    "tests/vmu-run76-prompt-criticisms.test.mjs",
+    "tests/vmu-run76-round-review-coverage.test.mjs",
+    "tests/vmu-run76-meeting-type-aliases.test.mjs",
+    "tests/vmu-run76-attribution-and-parked.test.mjs",
+    "tests/vmu-run76-blueprint-reading.test.mjs",
+    "tests/vmu-run77-prompt-phase-and-votes.test.mjs",
+    "tests/vmu-doc-prompt-sync.test.mjs",
+    "tests/vmu-run77-prompt-determinism.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

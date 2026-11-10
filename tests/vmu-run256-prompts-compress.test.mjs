@@ -26,9 +26,9 @@ const sum = Object.values(combos).reduce((a, b) => a + b, 0)
 // three-seat normal sum 74047. TB-2692 then added teaching (+164 in this section: the four shape codes, V7) and
 // +1566 across the normal prompts, and this round deleted the one real duplication it found — the UNKNOWN_FIELD
 // sentence was stated twice inside the SAME section (once here, once in the receipt-contract line below): −46.
-const FIXTURE_TOOLS_MEASURED = 1409 // 1291 + 164 (TB-2692 teaching) − 46 (deleted duplication)
-const FIXTURE_TOOLS_MARGIN = Math.max(Math.ceil(FIXTURE_TOOLS_MEASURED * 0.01), 3) // 15
-const FIXTURE_TOOLS_CEILING = FIXTURE_TOOLS_MEASURED + FIXTURE_TOOLS_MARGIN // 1424
+const FIXTURE_TOOLS_MEASURED = 1585 // 1291 + 164 (TB-2692) − 46 (deleted duplication) + 176 (TB-2711 office attribution)
+const FIXTURE_TOOLS_MARGIN = Math.max(Math.ceil(FIXTURE_TOOLS_MEASURED * 0.01), 3) // 16
+const FIXTURE_TOOLS_CEILING = FIXTURE_TOOLS_MEASURED + FIXTURE_TOOLS_MARGIN // 1601
 // ★ TB-2707 (2026-11-10) — F75-16 archive sentence: the shared `v5r-turn-channels` block went from the
 // unconditional 「全文落 Members/…/Turns/<turn>.md」 to the conditional/checkable/named-failure sentence.
 // Measured per seat: 169 → 324 chars ⇒ +155 (the design note estimated 152→305 ≈ +153; the real render is +155).
@@ -40,12 +40,16 @@ const RUN2707_ARCHIVE_SENTENCE = { chair: 155, member: 155, temp: 155, sum: 465 
 // office answer `vibe_v5_paper { action:"consult", … }`, then retry `final`. Measured +94 chars, one seat (chair),
 // in every phase that carries the chair tool section ⇒ chair/normal and the three-seat sum each +94.
 const RUN260_CONSULT_TEACHING = { chair: 94, sum: 94 }
-const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair // 28778
-const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 288
-const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29066
-const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum // 76034
-const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 761
-const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 76795
+// ★ TB-2711 (2026-11-10) — the paper flow sentence gained `final` (`final` compiles and writes the pdf line,
+// `render` never compiles). Per seat: chair +3, member +3, temp +38 (temp had the shortest line), sum +44.
+const TB2711_FINAL_STEP = { chair: 362, member: 362, temp: 399, sum: 1123 }
+const TB2717_PHASE_STEP = { chair: 229, member: 229, temp: 229, sum: 687 } // TB-2717: the closed four-name phase set (shared `v5r-turn-tracks` block, 228 chars + the joining newline), one copy per seat
+const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair // 29369
+const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 294
+const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29663
+const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum // 77844
+const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 779
+const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 78623
 
 let passed = 0
 let failed = 0
@@ -104,7 +108,7 @@ test('§2 the shared turn-channels section: the repeated urgency sentence is gon
   // §2d 的基线按同样口径重定：TB-2705 诊断时实测 1159（RUN 256 压缩后），TB-2707 把无条件的归档句换成
   // 「仅当 truncated:true／写完回读校验／archiveMissing 具名失败」后实测 1314（+155，逐条记账见上面
   // RUN2707_ARCHIVE_SENTENCE 注释）。上限 = 实测 + max(1%, 3) 余量，不为教学让路而删句子。
-  const CHANNELS_MEASURED = 1314
+  const CHANNELS_MEASURED = 1332 // TB-2711: notices empty-block sentence (+18)
   const CHANNELS_MARGIN = Math.max(Math.ceil(CHANNELS_MEASURED * 0.01), 3) // 14
   const CHANNELS_CEILING = CHANNELS_MEASURED + CHANNELS_MARGIN // 1328
   ok(chair.length <= CHANNELS_CEILING, '§2d the section is at its compressed size (<= ' + CHANNELS_CEILING + ' = measured ' + CHANNELS_MEASURED + ' + margin ' + CHANNELS_MARGIN + '; TB-2707 +155)', chair.length)

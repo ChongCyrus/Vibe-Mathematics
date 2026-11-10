@@ -1,7 +1,12 @@
-# RUN 75 真机核对记录（机械核对器）
+# RUN 75 / RUN 76 真机核对记录（机械核对器）
 
 > **这是记录，不是证据。** 证据是 `scripts/audit/verify-run.mjs` 能在同一批 journal 上重跑出同一张表；
-> 本页只是把 2026-11-09 那次 run 75 的输出留档，方便后来人对照。
+> 本页只是把 2026-11-09 那次 run 75、2026-11-10 那次 run 76 的输出留档，方便后来人对照。
+>
+> **判据从 run 76 起有两处扩展（TB-2714）**：①每条 `NO-EVIDENCE` 必须带原因分类
+> `RUN-DID-NOT-REACH` / `PRODUCT-MISSING` / `RULE-UNREACHABLE`（未分类会被单独计数成 `UNCLASSIFIED`，
+> 不许默认归到任何一类）；②V1 的构建自证改成「run-metadata.json / driver TARBALL / git HEAD」三处互证，
+> journal 首帧只作加分——旧判据要求的 journal 帧由驱动在 `taskkill` 之后才 prepend，**运行期永远拿不到**。
 
 - run：session-75fe7e75-af03-4d1b-b927-555bb9658bad；build `92bc6d94`
 - 窗口：首事件 >= `2026-11-09T21:00:00Z`；7 个会话 / 223 条回执 / 75 条提示词
@@ -197,3 +202,71 @@ SUMMARY: PASS — 三条反关灯都变红，CLI 字节恢复一致
 
 三处假改动分别是：①把缺字段点名降级成一句泛称（`missing` 不再点 `unackedRowsAllBoxes`）；②perBox 只取最后一条读数、判定从此不会 FAIL 且不写两数；③`--since` 缺省成固定时间（不再以退出码 2 拒绝）。
 对应的红线理由：缺字段必须点名（否则人不知道补什么）；数量不等必须 FAIL 并给出两个数（否则人只能信结论）；没有时间窗的核对器等于核对全部历史，必须具名拒。
+
+## RUN 76（2026-11-10，build `3fed0ba8`）：四条尺子缺陷修好后的复跑
+
+> 本轮 12 验点里 4 条是**核对器自己写错了层/写错了键**（不是产品问题），TB-2714 修的就是尺子。
+> 下面是修完的复跑记录；run 75 的章节一字未改，作为「旧尺子长什么样」的对照。
+
+- 窗口：首事件 >= `2026-11-10T21:20:00+08:00`；5 个会话 / 152 条回执 / 60 条提示词
+- 结果：**PASS 10 / NO-EVIDENCE 2 / FAIL 0 / ENV-LIMIT 0**
+- `NO-EVIDENCE` 分类：`RUN-DID-NOT-REACH` 1（V2）、`PRODUCT-MISSING` 1（V4）、`RULE-UNREACHABLE` 0、`UNCLASSIFIED` 0
+- 采集命令原文：
+
+```
+node scripts/audit/verify-run.mjs \
+  --sessions-root D:/_tmp/slv-phase5/sessions \
+  --since 2026-11-10T21:20:00+08:00 \
+  --build 3fed0ba8 \
+  --driver-log D:/_tmp/slv-phase5/run76.drive.log \
+  --out D:/_tmp/verify76e
+```
+
+### 验点表（run 76）
+
+| 验点 | 判定 | 依据（回执字段=值） |
+|---|---|---|
+| V1 构建自证 | **PASS** | `run-metadata.build=3fed0ba8`、`tarballBuild=3fed0ba8`、`gitHead=3fed0ba8339c…`、`buildFrom=HEAD`、`dirty=false`；driver `TARBALL build=3fed0ba8`；`git rev-parse --short HEAD=3fed0ba8`（journal 帧没有落盘，只作加分） |
+| V2 成员/所办占比 | **NO-EVIDENCE**（RUN-DID-NOT-REACH） | `memberActs=3`、`officeRelayedActs=0`：本轮没有 caller 代跑，两侧未都 >0 ⇒ 比率核不了 |
+| V3 代跑 vs 自跑 | **PASS** | 成员投递回合 16 个：`memberToolCalls`/`memberSession`/`childSessionId`/`deliveryPath` 互证；同时记录 `status.memberWorkShare.memberActs=3` 与顶层 `memberActed:false` 并存的事实（A1 两把尺子，V3 只记事实） |
+| V4 论文三态 | **NO-EVIDENCE**（PRODUCT-MISSING） | 读数最全的 status 里 `liveReadings.blueprint.value=null`、`atSource=null`、`liveReadings.closure.atSource=null`（产品 A3：`records.mdParse 没有注入`） |
+| V5 渲染/定稿 | **PASS** | `final ok:true`、`complete:true`、`pdfBytes=110920`、`renderOk:true` |
+| V6 具名拒 + 可达替代 | **PASS** | `code=VMU_OFFICE_CONSULT_REQUIRED` + `hint=REACHABLE INSTEAD: …`，随后 `vibe_v5_paper` 真被调用且 `ok:true` |
+| V7 投递形状 | **PASS** | 信封层 1 条 `VMU_TURN_NO_FENCE`，带 `replyLength=39`、`hadBrace=false`、`hint`；全文无 `VMU_ENGINE_UNAVAILABLE` |
+| V8 parked | **PASS** | 1 条 `VMU_TURN_ALREADY_PARKED`，带 `parkedFacts`（`turnId=t-7`、`releaseBy=…`）、`parkedMeans`、`hint` |
+| V9 孤儿 abandon | **PASS** | `settledBy:"abandoned-orphan"`、`orphan:true`、`turnRow.status:"abandoned"`，之后 12 次 turn 调用无 `VMU_TURN_REENTRANT` |
+| V10 构造后申报 | **PASS** | `VMU_PACK_DECLARATION_TOO_LATE` + hint 含 `REACHABLE INSTEAD:` 与 `config.packManifests` + `facts.declaredAt` |
+| V11 未读计数 | **PASS** | 提示词含字面 `[新到的消息]`；`notice.unackedRowsAllBoxes=32 == sum(perBox)=32`（`r-1:3, r-2:0, r-acad:24, r-temp:5`）；`perBox[r-2]` 在 ack 1 条前后 `1→0` 净减 1 |
+| V12 结题票 + 终稿 | **PASS** | `votesCast=3 == solved 3`；`final.pdfBytes=110920 == 磁盘 110920`；`renderOk:true`；归档行回指且 sha 相符 |
+
+### 尺子改了什么（改前 ⇒ 改后）
+
+| 验点 | 改前（旧判据） | 改后（run 76 起的判据） | run 76 结果 |
+|---|---|---|---|
+| V1 | 必须 journal 首帧 = run-metadata；该帧由驱动在 `taskkill` 后 prepend ⇒ **运行期恒 NO-EVIDENCE** | `run-metadata.json` + driver `TARBALL build=` + `git rev-parse` 三处互证；journal 帧只作加分；三处不等 ⇒ FAIL，缺一处 ⇒ NO-EVIDENCE 并点名 | NO-EVIDENCE ⇒ **PASS** |
+| V3 | 用顶层 `memberActed:false` 当「归因反了」的反例 | 改判「该回合有没有成员投递」（`memberToolCalls`/`memberSession`/`deliveryPath`）；`memberActed` 与 `memberWorkShare` 的两把尺子只记事实、不互相裁决 | NO-EVIDENCE ⇒ **PASS** |
+| V7 | 只认适配器层 `VMU_TURN_DELIVERY_SHAPE`/`NO_PAYLOAD` | 认两层：信封层 `VMU_TURN_NO_FENCE`（`replyLength`/`hadBrace`/`hint`）与适配器层（`shape`/`keys`/`means`），码对了但缺解释字段 ⇒ FAIL | NO-EVIDENCE ⇒ **PASS** |
+| V8 | 只认 `VMU_TURN_PARKED_NEEDS_OWNER` + `parkedReason` | 两个具名码都认：`ALREADY_PARKED`（`parkedFacts`+`parkedMeans`，无 `parkedReason`）、`NEEDS_OWNER`（`parkedReason`+`parkedFacts`） | NO-EVIDENCE ⇒ **PASS** |
+| V11 | 读 `vibe_vmu_mailbox` 的 `action:"status"` 的 `notice.*`；该工具只有 `ack` ⇒ **恒 NO-EVIDENCE** | 读 `vibe_v5_inbox action:"list"` 的 `notice.{unackedRowsAllBoxes,perBox}`；ack 减一按「被 ack 成员自己的 perBox 净减」判，不拿全局总数减 | NO-EVIDENCE ⇒ **PASS** |
+
+### 反关灯（把新判据逐条弄坏，证明它们不是摆设）
+
+副本只放 `D:/_tmp/tb2714-mutants/`，仓库文件不动。做的是「控制组 vs 变异组」的 CLI 对照：
+每条 mutation 只改一处，控制组必须 PASS，变异组必须降级或错分。实测 **5/5 proven**（`proofs.json`）：
+
+```
+ok M1 V1 退回「必须有 journal 首帧」⇒ PASS 降级为 NO-EVIDENCE         control=PASS mutant=NO-EVIDENCE/RUN-DID-NOT-REACH
+ok M2 V7 只认适配器层 ⇒ 信封层 NO_FENCE 变 NO-EVIDENCE               control=PASS mutant=NO-EVIDENCE/RUN-DID-NOT-REACH
+ok M3 V8 只认 PARKED_NEEDS_OWNER ⇒ ALREADY_PARKED 变 NO-EVIDENCE     control=PASS mutant=NO-EVIDENCE/RUN-DID-NOT-REACH
+ok M4 V11 读回 mailbox status ⇒ 真实 list 形状变 NO-EVIDENCE（run 76 的原缺陷）
+ok M5 缺元数据被标成 PRODUCT-MISSING ⇒ 尺子坏被读成产品坏             control=NO-EVIDENCE/RUN-DID-NOT-REACH mutant=NO-EVIDENCE/PRODUCT-MISSING
+```
+
+（同一批判据在 `tests/verify-run.test.mjs` 里有 28 条正向断言 + 7 条反关灯断言，跑 `node tests/verify-run.test.mjs` 得 `28 passed / 0 failed`。）
+
+### 只判断不改：ack 之后全局 `unackedRowsAllBoxes` 从 12 涨到 17
+
+这是**设计**，不是缺陷：`unackedRowsAllBoxes` 是「全库未读总数」，期间别的席位新收消息自然会让它涨；
+被 ack 的那个成员自己的 `perBox` 才是该用来判「ack 生效」的数。run 76 里 `r-2` 的 `perBox` 在 ack 前后 `1→0`，
+而全局从 28 涨到 32（`r-acad` 8→24、`r-temp` 3→5 的新消息）——所以 V11 的判据必须是「同一成员的 perBox 净减」，
+不能拿全局总数直接减 1，否则会把别人的新消息算成这次 ack 的功劳。

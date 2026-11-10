@@ -5105,3 +5105,19 @@ proceed() only applies to a meeting WAITING for its scheduled start: m1 is sched
 - **病：提示词与 hint 教了不存在的工具。** 全树 58 处不可达命令名 = 修 32 + 登记 26（`fixed+registered === 58` 硬对账）；登记表带 STALE 检查，改完忘了删条目会红。
 - **病：字数闸只有上限。** 基线改小 1 字符会被 1% 余量吞掉；补 = 上限 + **等式 pin** + 重复计数三件套，涨预算前先判「教学」还是「重复」。
 - **方法学：`node --check` 不建作用域（重复声明只有 `import()` 才报）；shared 块一句 ×3 席，改完必须跑水位断言。** 本轮到 T1 **850 PASS / 0 FAIL**、`regen-all --check` 17/17、五门禁 PASS，提交 `本节所在提交（RUN 269 收口）`。
+
+## ROUND 269 —— 提示词已经教对，任务书还在教错，判据还在量错对象
+
+- **第 76 次真机（build `3fed0ba8`）第一次「闸 READY、无 override、构建三处互证」全占。** 2103 s / 35.0 min、27 964 412 token（cap 80M 未触）、toolCalls 86、transcriptEvents 549；16 个成员回合 + 1 次 abandon；结题票 3/3；结题 PDF 110 920 B，sha256 与归档行逐字相等；12 验点 9 PASS / 3 FAIL。
+- **病：一个字段同时答两个问题。** 顶层 `memberActed` 答的是「谁调用」，16 个真投递回合全写成 `false`，而同回执 `memberWorkShare.memberActs:15` 把它们数成成员动作；补 = 投递事实与服务事实同源（`host-pack-tools.js` 的 `deliveredTurn`/`seatActed`），调用来源另起具名键。
+- **病：一情两名。** 同席再派是 `VMU_TURN_ALREADY_PARKED`、reply 无可答 parked 才是 `VMU_TURN_PARKED_NEEDS_OWNER`，提示词却把前者教成后者；补 = 两码各带自己的 `parkedReason`，各写「什么时候是这个码」。
+- **病：两种缺席共用一句 why。** 蓝图组恒 null，「没人提过」与「解析器没接上」共用一个 `why`；根因不是解析器缺失，是 face 只按声明绑定（`STATUS_BOARD_READ_OPS` 只有 list/get）而 md 门没接上；补 = 内核自带 md 兜底 + `no-current-blueprint` / `md-parser-unavailable` 分开。
+- **病：round 递增静默作废旧票。** round 2 的评审票在 round 3 被读成 `stale`、不计入，回执不说；补 = `perRoundReviewCoverage` 给出本轮已投/未投/作废原因（`advance` 与 `status` 同一份算术）。
+- **病：互审段装出来是空模板。** 作者渲染成 `(unspecified)`、正文块 0 字符；补 = 注入作者 id + part recordId + 截断正文，再给三步取料（status → records expand → 逐条判断），不让评审人自己补三跳。
+- **四条尺子病（V1/V3/V7/V8/V11）。** V1 要的证据运行期不可达（journal 首帧只在 taskkill 后 prepend）⇒ 改 run-metadata / driver 日志 / git HEAD 三处互证；V3 拿语义错位的键当归因反例 ⇒ 改判「该回合有没有成员投递」；V7/V8 期望码写错层 ⇒ 信封层与适配器层各认各的事实键；V11 读错工具（v5r-pack 的 `vibe_v5_inbox`）⇒ 改它的 list 回执并断 `unackedRowsAllBoxes == Σ perBox`、ack 减一只看被 ack 成员自己的 perBox 净减。同一批 journal 从 `{NO-EVIDENCE:7, PASS:5}` 变 `{PASS:10, NO-EVIDENCE:2}`。
+- **补：`NO-EVIDENCE` 不是一种原因。** 每条必须带 `RULE-UNREACHABLE`（尺子错）/`RUN-DID-NOT-REACH`（这轮没走到）/`PRODUCT-MISSING`（产品沉默），没有分类记 `UNCLASSIFIED` 单独计数——把「尺子坏」读成「产品坏」是这一轮最贵的错。
+- **病：判据量错对象，第五次复发。** 有的判据手搓 face 表（传整个 records 服务，生产面只有 list/get），有的用了语义错位的键，有的只 pin hint 前缀、扩写对它无感；三条修法 = 改真实装配（读 kernel 暴露的 `faces`）、从注册表 enum 实算名字、从生产入口取读数。**通则：判据必须量生产对象；手搓的依赖图会在真缺陷面前保持绿色。**
+- **补：任务书层的名字闸。** 真机里成员是照任务书写 `set_solved` 的，而任务书是唯一指令来源；`check-task-brief.mjs` 新增名字闸，工具/形参/action 值/字段名全部从声明实算（106 工具、288 形参、422 action 值、6 653 属性键、313 源文件），只扫反引号内三类形状，不可解析的名字只允许同行否定词，非蛇形单词不算字段——误报一次（模板里的 `taskkill`），修法是收窄形状，不是加白名单。
+- **附：TB-2718 只读矩阵 20 条 = FIXED 15 / PARTIAL 4 / NOT-VERIFIED 1**，不把 PARTIAL 写成已修。
+- **口径：机制做了不等于读者读得到——名字、数字、缺席理由都要各自有名；判据要么量生产对象，要么它就是一条会绿的装饰。**
+本轮到 T1 **`TOTAL 859 PASS 859 FAIL 0`**（`773` suites + `86` probes，wall `657.0s（k=3）`）、五门禁 PASS，提交 `本节所在提交（RUN 270 收口）`。

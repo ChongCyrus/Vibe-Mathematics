@@ -18332,3 +18332,59 @@ tests/vmu-run259-audit14.test.mjs expected 0 got 1`），而且在人工加压�
 一句话：**豁免要窄，钉住豁免的断言不许自己空洞**；加了豁免就等于加了一条新判据，新判据同样要过 RULE E 那一关。
 教训与 355.11.15 同型、但多一层：**判据读到的不是它声称的那个事实**（一个是「两个时刻」、一个是「别人的临时文件」），
 而且**第一版修法用「等一等」掩盖了症状**——如果一条 flake 的 payload 显示计数**变小**，那就不是竞态窗口，而是主体选错了。
+
+## §355.12 RUN 76 缺陷批次收口：提示词教对、任务书教错、判据量错对象
+
+**观测时点。** 本节写于第 76 次真机（build `3fed0ba8`）之后的一个收口里；该轮同时收 TB-2710…TB-2718（七张缺陷任务书 + 一张只读矩阵）。原始材料在仓库外：`D:/_tmp/slv-phase5/slvp256-ws/SIM-REPORT76.md`（152 行）、`FEEDBACK76.md`（57 行）、`run76.drive.log`、`run76-metadata.json`，以及 `D:/_tmp/slv-phase5/PROGRESS.md:2299`；`D:/_tmp` 三小时内会被清理，所以关键读数与红原文都抄进正文。这一轮第一次同时看见三种拆台：**提示词已经教对、任务书还在教错、判据量的不是生产对象**——三者互相掩护，所以没有任何一道现有门禁会红。
+
+**355.12.1 第 76 次真机读数。** build `3fed0ba8`（树干净），21:24:42 起跑 → 22:01:16 结束（2103 s / 35.0 min），驱动日志 `RUN76 EXIT=0`；tokens 27 964 412 / cap 80 000 000（`tokenCapHit:false`），toolCalls 86，transcriptEvents 549，5 个会话（出处 `D:/_tmp/slv-phase5/PROGRESS.md:2299`、`run76.drive.log:90`）。主线走到结题：16 个成员回合（`t-1`…`t-16`）＋ 1 次 `abandon`，结题票 **3/3**（`closureVote={cast:true,votesCast:3,votesFor:3,against:0,missing:[]}`），结题 PDF `Paper/paper-p1/paper-p1.pdf` **110 920 B**，sha256 `0d780267e70647b4f56099523eec740223d78a300ebbffb9ec1a219c3771918b`——与归档行 `rec-45.body.pdfSha256` 逐字相等，磁盘 `Get-Item`/`Get-FileHash` 两个读数同值。归因聚合 `memberWorkShare={memberActs:15,officeRelayedActs:1,unknownActs:0,acts:16,provenActs:16,memberShare:0.9375}`（15/(15+1)）。12 个验点 **9 PASS / 3 FAIL**（FAIL = V4 蓝图组不可读、V7 投递形状码写错层、V8 parked 码与键不符，见 `SIM-REPORT76.md` ⑦ 的 V1–V12 判定行）。放行闸 **READY 且无 override**（`run76.drive.log:5` 是 `RELEASE GATE READY`，全日志没有 `RELEASE GATE OVERRIDDEN`）：这是本仓第一次「闸真 READY、无 override、构建三处互证」的真机，所以它暴露的缺陷没有一条能用「起跑条件不干净」解释掉。
+
+**355.12.2 十条产品缺陷（A 类）。** 十条都落在「机制在、读者读不到」这一层：
+
+| # | 缺陷 | 真机读数（回执原文） | 修法落点 |
+| --- | --- | --- | --- |
+| A1 | 顶层 `memberActed` 答的是「谁调用」，不是「席位有没有动作」 | 16 个真投递回合（`deliveryPath` 为 `activation`/`continuation`，child 会话真跑）全是 `memberActed:false`、`ranInOwnTurn:false`；同一回执 `memberWorkShare.memberActs:15` 把它们算成成员动作 | `vibe-math-vmu/host-pack-tools.js:331-332`：`deliveredTurn = out.turnDelivered === true`、`seatActed = deliveredTurn || actedBySeat` |
+| A2 | parked 一情两名 | `t-7` 未答时再 `step` ⇒ `code:"VMU_TURN_ALREADY_PARKED"`，`parkedFacts` 无 `parkedReason`；任务书 V8 期望 `VMU_TURN_PARKED_NEEDS_OWNER` + `parkedReason` | `vibe-math-vmu/kernel/turn/index.js:2573-2624`：两个码各自带 `PARKED_ALREADY_REASON` / `PARKED_NEEDS_OWNER_MEANS` |
+| A3 | 蓝图读数恒 null，且「没人提过」与「解析器没接上」共用一句 why | `liveReadings.blueprint={value:null,why:"…records.mdParse 没有注入…"}`，状态块连 `[蓝图]` 行都没有；根因不是解析器缺失，是 `STATUS_BOARD_READ_OPS` 只声明 `['list','get']` 而 `facesFrom` 只按声明绑定 | `vibe-math-vmu/kernel/turn/index.js:24-29`（内核自带 `mdParseText` 兜底）、`:1945-1985`（`no-current-blueprint` 与 `md-parser-unavailable` 分开） |
+| A4 | 结题票入口一名三写 | 任务书 `set_solved`、回执登记字段 `vote_solved`、会议骨架教 `vibe_vmu_vote`；照任务书字面写 ⇒ 整轮被判未知字段 | `vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js:125`：`vote_solved` 是唯一入口，`set_solved` 只以否定形式出现 |
+| A5 | round 递增静默作废上轮评审票 | round 2 的 `rec-32`/`rec-29` 在 round 3 被读成 `stale:["r-acad"]`、不计入；三次 `advance` 有两次因此回退 | `vibe-math-vmu/kit/paper.js:1038` 的 `perRoundReviewCoverageOfState`：回执带 `missing`/`invalidatedByRound`（各自带 `why:'previous-round'`） |
+| A6 | 互审段装配出来是空模板 | 作者渲染成字面量 `(unspecified)`、两条虚线之间 0 字符；而同一时刻 `paper status` 的 `reviewOf` 已配对、`parts.r-2=rec-10` 正文可读 | `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:546-558`：注入作者 id 与 part recordId，再加三步取料（status → expand → 逐条判断） |
+| A7 | `review` 不在 phase 闭集 | `phase:"review"` ⇒ `VMU_INVALID_ARGUMENT`「unknown phase: review」；闭集只认全名 | pack 用 `extraPhases:['heartbeat','paper-write','paper-review','paper-final']` 追加；提示词写明「`review`/`write`/`final` 是过程词不是 phase」（`tests/vmu-run77-prompt-phase-and-votes.test.mjs:2-4`、`:37`） |
+| A8 | 主席席 `op:"prompt"` 被拒 | `code:"VMU_NOT_PERMITTED"`「a member turn cannot run the institute turn engine (op: prompt)」；装配文本只有 office 能读 | 判为**任务书口径错**而非机制缺陷：只读面继续拒绝 step/abandon/prompt（`tests/vmu-run75-attend-receipt-budget.test.mjs:356-359`），第 77 次任务书改成「装配文本由所办派单后回读」 |
+| A9 | 中文会议类型被拒 | `type:"结题"` ⇒ `unknown meeting type: "结题"`；改 `closure` 成功 | `vibe-math-vmu/packs/v5r/meeting-procedures.js:48-50` 的 `MEETING_TYPE_ALIASES`：先 id 后别名，回执 `type` 永远是 id，另带 `typeInput`/`typeMatchedBy` |
+| A10 | 临时工立所后从未派到回合 | `vibe_v5_hire` 回执 `hired.slot:"temp"`，但本轮 `t-1` 一直是 `assigned`，没有 r-temp 回合 ⇒ 验点表该栏只能写「无回执」 | 第 77 次任务书把「一次性复核」排进前 10 分钟（TB-2714 §3.4 的排程要求） |
+
+十条里 5 条（A1/A2/A3/A4/A5）是**回执与名字**层，3 条（A6/A7/A9）是**装配与闭集**层，2 条（A8/A10）是**任务书口径与排程**层；没有一条是「机制不存在」，全部是「机制做了，但读者拿到的名字/数字/说明答错了问题」。
+
+**355.12.3 四条尺子缺陷（C 类）。** 同一轮 12 个验点里，4 处 FAIL/NO-EVIDENCE 的根因在核对器而不在产品（`scripts/audit/verify-run.mjs`，TB-2714 修）：
+
+- **V1 要的证据运行期不存在。** 原判据要求「journal 首帧 = run-metadata」，而该帧是驱动在 `taskkill` 之后才 prepend 的 ⇒ 运行期恒 `NO-EVIDENCE`（`RULE-UNREACHABLE`）。改成三处互证：`run-metadata.json` 的 `build`/`tarballBuild`/`gitHead`、driver 日志的 `TARBALL build=`、被核对仓库的 `git rev-parse HEAD`（短 + 全）；三处全等才 PASS，journal 首帧降为加分（`:277-360`，`:350` 的 `record` 带 `arithmetic` 六个读数）。
+- **V3 用了一个自身语义错位的键。** 原判据拿顶层 `memberActed:false` 当「归因反了」的反例，而那正是 A1 的缺陷键（它答调用来源）；改成读「该回合有没有成员投递」：`memberToolCalls>0` 或 `memberSession`/`childSessionId` 非空，或 `deliveryPath ∈ activation|continuation`（`:408-425`，`:412` 的注释写明「不再用顶层 memberActed」）。
+- **V7/V8 期望码写错层。** 裸散文在**信封层**被判 `VMU_TURN_NO_FENCE`（带 `replyLength`/`hadBrace`/`hint`），`VMU_TURN_DELIVERY_SHAPE`/`VMU_TURN_DELIVERY_NO_PAYLOAD` 是**适配器边界**的码（带 `shape`/`keys`/`means`）；两个 parked 码各自对应两种事实（同席再派 vs reply 无可答 parked），要各认各自的事实键。修后判据认任一命中、但要求该层的解释字段齐全，出现 `VMU_ENGINE_UNAVAILABLE` 仍直接 FAIL（`:637-700`、`:679-`）。
+- **V11 取错了工具与键。** `unackedRowsAllBoxes`/`perBox` 只在 `vibe_v5_inbox {action:"list"}` 的回执里（`vibe_vmu_mailbox` 只有 `action:"ack"`），原判据读错工具 ⇒ 永远 NO-EVIDENCE。修后断 `unackedRowsAllBoxes == Σ perBox` 恒等式，并把「ack 减一」限定为「被 ack 成员自己的 `perBox` 净减」（`:775-800`）：run76 实测 ack 前 `unackedRowsAllBoxes:12`、`perBox={r-1:1,r-2:0,r-acad:8,r-temp:3}`，ack 后 `:17`、`{r-1:0,r-2:0,r-acad:14,r-temp:3}`——r-1 盒 1→0，全局 12→17 是期间别人新增（r-acad 8→14），**不是 ack 失效**。
+
+尺子修后同一批 journal 从 `{NO-EVIDENCE:7, PASS:5}` 变成 `{PASS:10, NO-EVIDENCE:2}`；并且每个 `NO-EVIDENCE` 必须带 `noEvidenceClass`：`RULE-UNREACHABLE`（判据要求的东西运行期不产出）/`RUN-DID-NOT-REACH`（产品能产出、这轮没走到）/`PRODUCT-MISSING`（该产出却沉默），没有分类的记 `UNCLASSIFIED` 单独计数（`:962`）。口径：**`NO-EVIDENCE` 不是一种原因；先问尺子可不可达，再问产品有没有缺。**
+
+**355.12.4 七张任务书交付。** 缺陷按层拆给七张任务书，全部交付：
+
+- **TB-2710 归因与 parked**：`memberActed` 改成答「该回合有没有成员投递」，调用来源另由 `callerIsSeat`/`ranInOwnTurn` 答；两个 parked 码各带 `parkedReason`；`VMU_TURN_NO_FENCE` 补 `starts`；提示词 parked 段等长改写（110 字符）。新判据 51/0。
+- **TB-2711 提示词十批评**：互审段注入作者 id + part recordId + 截断正文；状态板固定三列「读数｜来源｜取值时刻」并恒渲染 `[蓝图]`；通知块无未结算行也渲染头；论文流程句补 `final`（chair-only 编译并写 pdf 行）。三席 normal 合计 76 034→77 157（+1 123）。
+- **TB-2712 蓝图读数**：根因是 `STATUS_BOARD_READ_OPS` 只声明 `['list','get']` 且 `facesFrom` 只按声明绑定，不是解析器缺失；内核加自带 `mdParseText` 兜底，缺席拆成 `no-current-blueprint` 与 `md-parser-unavailable`。判据 34/0。
+- **TB-2713 每轮评审覆盖**：新增 `perRoundReviewCoverageOfState`，`advance` 与 `status` 同一份算术，`missing`/`invalidatedByRound` 具名；机制未改。判据 86/0。
+- **TB-2714 尺子四修**：即 355.12.3 的 V1/V3/V7/V8/V11 与三类 `noEvidenceClass`；`verify-run` 28/0 → 37/0。
+- **TB-2715 会议类型别名**：六型各带中文别名，回执归一到 id 并披露 `typeMatchedBy`；未命中时 hint 列「id（别名）」成对。判据 62/0。
+- **TB-2717 phase 闭集与结题票一名**：全文三处教学收敛到「`review` 不是 phase」「结题票只写 `vote_solved`」「round 递增后上轮评审票全部作废、要逐轮重投」；总预算 77 844（+687）。
+
+附 **TB-2718 只读复核矩阵**（不含代码改动）：20 条缺陷逐条判定 **FIXED 15 / PARTIAL 4 / NOT-VERIFIED 1**——PARTIAL 的四条是「修了一部分、但仍有读者可见的缺口」，NOT-VERIFIED 一条是「本轮没有部署条件复核」，矩阵按此口径落盘，而不是把 20 条一律写成已修复。
+
+**355.12.5 三处「判据量错对象」的复发与通则。** 本轮最贵的教训不是缺陷本身，而是三处判据在产品缺陷面前一直绿：
+
+- **`tests/vmu-run256-status-block-live.test.mjs` 量的是一个生产不存在的面。** 它自己手搓 `{'vmu.tasks': K.tasks, 'vmu.records': K.records, 'vmu.meetings': K.meetings}`——把整个 records 服务当 face 传进去，而生产调 `facesFrom(...)` 只绑 `STATUS_BOARD_READ_OPS`（`vmu.records` 只有 `list`/`get`），再由 kernel 在顶上补 md 门。于是「records face 没有 `mdParse` ⇒ 蓝图读数每回合都 null」这条真缺陷，在这套判据里永远不会发生。修法：`productionFaces(K)` 直接读 `K.faces`（kernel 保留并暴露真正交给编排器的那个对象），§0b 同时量「受限面」与「接好 md 门的面」（`:64-83`、`:121+`）。
+- **`scripts/audit/verify-run.mjs` 的 V3 用了一个语义错位的键。** 它把顶层 `memberActed:false` 当作「归因反了」的证据，而那个键答的是「谁调用」；判据在真投递回合上必然判反，产品缺陷却被记成「验点通过」。
+- **`tests/vmu-meeting-name-space.test.mjs` 的旧 hint 断言对新 hint 无感。** 它只 pin 前缀 `vibe_vmu_meeting { action: "status"`——hint 只点名 status 就停时是绿的，扩写到四个动作仍然是绿的。修法：B11 断「四个动作逐字点名」且「这四个动作从 `vibe_vmu_meeting` 的注册 spec enum 实算」（`:147-179`），不再信文件里抄的那份名单。
+
+**通则：判据必须量生产对象。** 测试里手搓的依赖图、自造的 face 表、自己传进去的完整内核对象，都会让判据在真缺陷面前保持绿色。本仓同类教训已记过多次（§327「一把量错对象的尺」`:15898`；字数闸量了真实回合里不会出现的角色 `:15872`），这是**第五次复发**。三条修法各自配一盏「删掉产品侧那一段必红」的灯：改真实装配（`K.faces`）、从注册表实算名字（`toolSpec` 的 enum）、从生产入口取读数（`vibe_v5_inbox` 的 list 回执）。
+
+**355.12.6 任务书闸：brief 里不许教不存在的名字。** 前五条修的是产品与提示词，但真机里成员是照**任务书**写 `set_solved` 的——任务书是每轮唯一的指令来源，却没有一道闸守名字：`scripts/check-task-brief.mjs` 原先只守结构（十节/验点表/≤180 行/占位题声明）。现在新增「名字闸」，名字全部从声明**实算**，不抄名单：工具/形参/action 值来自 `buildCatalog`（`host.js` 的 `toolSpecs` + pack 工具表），字段名来自扫 `vibe-math-vmu/` 与 `scripts/` 的源码对象字面量键（`buildKnownNames` `:182`），action 值还从源码派发处补（`op === 'step'`/`case 'drive':`，`NAME_ACTION_LITERAL` `:144`）——因为 `vibe_vmu_turn` 的 `op` 没有 enum，只靠 enum 会把真的 `step` 判成假名。实算读数：**106 工具、288 形参、422 action 值、6 653 属性键、313 个源文件**。抽取刻意收窄：只扫反引号内、只认三类形状（工具名/`action:` 值/snake_case 字段），`null`/`true`/`false`/`undefined` 不算名字；不可解析的名字只有在**同一行**出现否定词（`不存在|不是|旧|未登记|别写|不要`）时才放行，否则 FAIL 并点名 `UNKNOWN_NAME <name> at line <n> — a brief may not teach a name that does not exist (unless it says so in the same line)`（`:250`、`:262`、`:268`）。77 brief 从 3 条误报到 `OK — 1 file(s), 0 problem(s)`；`--self-probe` 31 例（21 planted 捕获 / 10 control 静默）。误报一次：模板里的 `` `taskkill` ``（Windows 命令）被首版字段形状判成字段——修法是**把字段形状收窄到 snake_case**（`NAME_FIELD` `:136`），不是加白名单。新判据 `tests/check-task-brief-names.test.mjs` 27/0，脚本改动 `+207/−5`。
+
+冷全量 T1 由收口执行：**`TOTAL 859 PASS 859 FAIL 0`**（**`773`** suites + **`86`** probes，wall **`657.0s（k=3）`**）；本节所在提交 **`本节所在提交（RUN 270 收口）`**；本节写入后 conformance 行数 **`18390`**。

@@ -25,15 +25,15 @@
 | 2 | chair/normal | `vibe_v5_hire` | **E** | `prompts/01-chair.txt:27`（`vibe_v5_hire`） | `receipts.jsonl:2`（seq 2，`hired`） | hire 回执 roster/hiredNow 与提示词「用 vibe_v5_hire」一致 |
 | 3 | chair/normal | `vibe_v5_record_proposition` | **E** | `prompts/01-chair.txt:20`（`vibe_v5_record_proposition`） | `receipts.jsonl:3`（seq 3，`proofState`） | proof_state 入参 / proofState 回执的别名对照提示词已明文写出 |
 | 4 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/01-chair.txt:364`（`mdChangedSinceIndex`） | `receipts.jsonl:4`（seq 4，`mdWritten`） | 回执同屏给顶层 mdWritten:true 与嵌套 md.written:false（本次调用写没写 vs 文件在不在），提示词只说「md 是唯一真相」，没教两形 |
-| 5 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/03-chair.txt:360`（`mdChangedSinceIndex`） | `receipts.jsonl:5`（seq 5，`formatSwitched`） | 同 P4 的两形，另加 formatSwitched:true（落盘形态被改写）无教学 |
-| 6 | chair/normal | `vibe_v5_blueprint adopt` | **D** | `prompts/03-chair.txt:360`（`materialize:true`） | `receipts.jsonl:6`（seq 6，`mdOwner`） | adopt 回执 mdWrite.written:true + mdOwner.writtenBy:"kernel-materialized"，而提示词把 kernel-materialized 只挂在「显式 materialize:true」下 |
-| 7 | chair/normal | `vibe_v5_blueprint read` | **E** | `prompts/03-chair.txt:360`（`mdChangedSinceIndex`） | `receipts.jsonl:7`（seq 7，`mdChangedSinceIndex`） | read 回执 mdChangedSinceIndex/md.written 与提示词 fs-first 段一致 |
+| 5 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/03-chair.txt:362`（`mdChangedSinceIndex`） | `receipts.jsonl:5`（seq 5，`formatSwitched`） | 同 P4 的两形，另加 formatSwitched:true（落盘形态被改写）无教学 |
+| 6 | chair/normal | `vibe_v5_blueprint adopt` | **D** | `prompts/03-chair.txt:362`（`materialize:true`） | `receipts.jsonl:6`（seq 6，`mdOwner`） | adopt 回执 mdWrite.written:true + mdOwner.writtenBy:"kernel-materialized"，而提示词把 kernel-materialized 只挂在「显式 materialize:true」下 |
+| 7 | chair/normal | `vibe_v5_blueprint read` | **E** | `prompts/03-chair.txt:362`（`mdChangedSinceIndex`） | `receipts.jsonl:7`（seq 7，`mdChangedSinceIndex`） | read 回执 mdChangedSinceIndex/md.written 与提示词 fs-first 段一致 |
 | 8 | member/normal | `vibe_vmu_records list` | **A** | `prompts/04-member.txt:32`（`vibe_v5_read_library`） | `receipts.jsonl:8`（seq 8，`truncated`） | 读记录本真要 vibe_vmu_records list，但 12 份提示词 0 命中该工具名；成员只被教 read_library/inbox |
 | 9 | member/normal | `vibe_v5_meeting` | **E** | `prompts/04-member.txt:2`（`vibe_v5_meeting`） | `receipts.jsonl:9`（seq 9，`notified`） | convene(at) 回执 notified:[r-1,r-2] 与提示词「预约=给被邀者下一回合的通知块」一致（notifyRows 未教，见 B 注） |
 | 10 | member/normal | `vibe_v5_meeting` | **B** | `prompts/07-member.txt:3`（`vibe_v5_meeting`） | `receipts.jsonl:9`（seq 9，`notifyRows`） | 被预约者提示词首行出现会议预约块，但 notifyRows/notifyFailed/noticesMeans 读数无教学 |
-| 11 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:360`（`waitingFor`） | `receipts.jsonl:10`（seq 10，`waitingFor`） | attend 回执 waitingFor/lateAdmission 与提示词「到点不自开、等 quorum/chair-proceed」一致 |
-| 12 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:360`（`waitingFor`） | `receipts.jsonl:11`（seq 11，`lateAdmission`） | 同 P11（第二个迟到者 lateAdmission 口径一致） |
-| 13 | member/meeting | `vibe_vmu_meeting status` | **B** | `prompts/05-member.txt:294`（`vibe_vmu_meeting`） | `receipts.jsonl:12`（seq 12，`speechUsed`） | status 板几十个读数（speechUsed/speechExtendMs/waiters/eligible…）提示词未教怎么用 |
+| 11 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:361`（`waitingFor`） | `receipts.jsonl:10`（seq 10，`waitingFor`） | attend 回执 waitingFor/lateAdmission 与提示词「到点不自开、等 quorum/chair-proceed」一致 |
+| 12 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:361`（`waitingFor`） | `receipts.jsonl:11`（seq 11，`lateAdmission`） | 同 P11（第二个迟到者 lateAdmission 口径一致） |
+| 13 | member/meeting | `vibe_vmu_meeting status` | **B** | `prompts/05-member.txt:295`（`vibe_vmu_meeting`） | `receipts.jsonl:12`（seq 12，`speechUsed`） | status 板几十个读数（speechUsed/speechExtendMs/waiters/eligible…）提示词未教怎么用 |
 | 14 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:23`（`vibe_v5_say`） | `receipts.jsonl:13`（seq 13，`memberActed`） | 提示词说「发言只能你自己在本回合做完，别请所办代办」，回执却是所办代 r-1 发言：memberActed:true（动作记在 r-1 名下）+actedForMember:"r-1"+via:"meeting"——做的人不是 r-1，承诺与现行形状相反 |
 | 15 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:23`（`vibe_v5_say`） | `receipts.jsonl:14`（seq 14，`actedForMember`） | 同 P14（代 r-2 发言；memberActed:true + actedForMember:"r-2" + via:"meeting"） |
 | 16 | chair/meeting | `vibe_v5_motion` | **E** | `prompts/06-chair.txt:42`（`vibe_v5_motion`） | `receipts.jsonl:15`（seq 15，`motion`） | motion 回执与提示词会议动议段一致 |
@@ -41,7 +41,7 @@
 | 18 | chair/meeting | `vibe_vmu_vote` | **D** | `prompts/06-chair.txt:11`（`vote_solved`） | `receipts.jsonl:17`（seq 17，`closureVote`） | 提示词教「用回执字段 vote_solved 表达结题判定」，回执里同名事实长成 closureVote{cast,votesCast,votesFor…}；且真工具 vibe_vmu_vote 12 份提示词 0 命中 |
 | 19 | chair/meeting | `vibe_vmu_vote` | **D** | `prompts/01-chair.txt:11`（`vote_solved`） | `receipts.jsonl:18`（seq 18，`closureVote`） | 同 P18（r-1 票） |
 | 20 | chair/meeting | `vibe_vmu_vote` | **D** | `prompts/01-chair.txt:11`（`vote_solved`） | `receipts.jsonl:19`（seq 19，`closureVote`） | 同 P18（r-2 票） |
-| 21 | member/normal | `vibe_vmu_meeting status` | **B** | `prompts/07-member.txt:384`（`vibe_vmu_meeting`） | `receipts.jsonl:20`（seq 20，`waiters`） | status 回执的 waiters/eligible/floor 等读数提示词未教 |
+| 21 | member/normal | `vibe_vmu_meeting status` | **B** | `prompts/07-member.txt:387`（`vibe_vmu_meeting`） | `receipts.jsonl:20`（seq 20，`waiters`） | status 回执的 waiters/eligible/floor 等读数提示词未教 |
 | 22 | member/normal | `vibe_v5_verdict_ask` | **A** | `prompts/08-member.txt:3`（`verdict`） | `receipts.jsonl:21`（seq 21，`verdict_ask`） | member 调 vibe_v5_verdict_ask，但 07/08 两份 member 提示词 0 命中 verdict_ask（chair 提示词各有 3–4 处） |
 | 23 | member/normal | `vibe_v5_verdict_ask` | **A** | `prompts/07-member.txt:2`（`verdict`） | `receipts.jsonl:21`（seq 21，`verdict_ask`） | 同 P22（07-member） |
 | 24 | member/normal | `vibe_v5_verdict` | **E** | `prompts/08-member.txt:3`（`vibe_v5_verdict`） | `receipts.jsonl:22`（seq 22，`submission`） | verdict 回执与提示词打分段一致 |
@@ -545,11 +545,11 @@ BLOCKERS 0 (UNKNOWN_TOOL + UNKNOWN_PARAM + taught-reading without producer=0 + c
 | 1 | `v5r-role-block`「分派决定做什么，判断属于你自己…」只说留痕、不说归因口径 | **TAUGHT** | `**归属口径**：\`memberWorkShare = memberActs/(memberActs+officeRelayedActs)\`（\`unknownActs\` 不进分母）` | `objective-chair-normal.md:383`（`v5r-turn-tracks` 状态板段） |
 | 2 | 同段「所办/人类代笔可代写读数并回执 `panelOwner`」承认代笔却不给键名 | **TAUGHT** | `**代笔回执**带 \`memberActed:false\`、\`actedForMember\`、\`ranInOwnTurn:false\`，落盘行带 \`writtenFrom\`（\`own-turn\`｜\`relayed\`｜\`unknown\`，问的是「这次写是怎么到这个席位的」）` | `objective-chair-normal.md:383`（**更正过一次**：初版写的是 `writerSource`，那是 RUN 2691 命名裁定前的旧名——行上的行为来源是 `writtenFrom`，`writerSource` 在库头上仍是「哪个字段作答 by/writer/owner」，判据 §3 现在同时断「教了 writtenFrom」与「没教旧名」） |
 | 3 | `[结题] 已投 1/5` 提示词教了一个与内核不一致的分母（2/5 含 temp，内核 4/4） | **TAUGHT**（机制侧 TB-2690） | `\`[结题]\` 票数读 \`closureVote.votesCast\`/\`votesTotal\`（分母=有表决权席，不含 temp），别自己数人头` | `objective-chair-normal.md:383`；机制修复归 TB-2690，提示词不再教算法，只教「读回执的读数」 |
-| 4 | `------------ 合并稿（各成员部分）------------` / `互审结论` 在 parts/reviews 齐全时仍是空白 | **TAUGHT** | `（本段由装配器注入；**没有注入就是「未提供」，不是「没有内容」**——用 \`vibe_v5_paper {action:"status", target:"<论文 target>"}\` 读 \`parts\`。）` | `out/pipeline-member-paper-final.md`（paper-final 段的第一条非空行即这句；不再出现「标题下一行就是下一个标题」的空白段） |
-| 5 | `render` 不编译只散在论文段/回执段，且两处说法不一 | **TAUGHT** | `\`render\` **永不编译**，pdf 行与 \`pdfBytes\` 只由 compile/final 写` | `objective-chair-normal.md:63`（角色段收敛成这一句）＋ `out/pipeline-chair-paper-final.md:510`（论文段同口径） |
+| 4 | `------------ 合并稿（各成员部分）------------` / `互审结论` 在 parts/reviews 齐全时仍是空白 | **TAUGHT** | `装配器应注入 \`审阅对象：<作者 id>\` 与 \`正文：<part recordId> <partText>\`（partText 超 1600 字符截断、尾部注明「按 rec id 重拉」）；本节若只有骨架、没有正文，或作者的占位符没有解析 / 标题仍是占位，都按「未注入」处理，先走下面三步取料。` | `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:550`（paper-review 段；三步取料在 `554-557`） |
+| 5 | `render` 不编译只散在论文段/回执段，且两处说法不一（RUN 76 已统一「：」口径） | **TAUGHT** | `\`render\` **永不编译**：pdf 行与 \`pdfBytes\` 只由 compile/final 写。` | `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:612`（paper-final 段）＋ `vibe-math-vmu/packs/v5r/prompts/v5r-core.js:608`（chair 角色段，TB-2711 已把 `final` 补进流程句） |
 | 6 | `VMU_NO_SUCH_OBJECT` 的 hint 不可照抄（「the roster holds the live ids」） | **TAUGHT**（hint 本身归 TB-2693） | `hint 里的 REACHABLE INSTEAD：先 \`vibe_v5_overview {member:"<你的 id>"}\`，再 \`vibe_v5_inbox {action:"list", member:"<roster id>"}\`` | `objective-chair-normal.md:389`；提示词教的是「照 hint 的两个可到达动作」，不是「照抄那句提示语」 |
-| 7 | 只提 `VMU_TURN_BAD_JSON`，缺其余形状码与「不是引擎坏了」 | **TAUGHT** | `没有围栏或对象 ⇒ \`VMU_TURN_NO_FENCE\`，… ⇒ \`VMU_TURN_BAD_JSON\`；顶层字段不在清单 ⇒ \`VMU_TURN_UNKNOWN_FIELD\`（照 hint 改），投递形状不对 ⇒ \`VMU_TURN_DELIVERY_SHAPE\`，声明了却没有载荷 ⇒ \`VMU_TURN_DELIVERY_NO_PAYLOAD\`——这四种都是**形状问题，不等于引擎不可用**：改回执，不要去 probe 引擎。` | `objective-chair-normal.md:9`（`v5r-fixture-tools`） |
-| 8 | `parked` 全文 0 命中，被 parked 的席位没有处置教学 | **TAUGHT** | `上一回合**未答**（parked）时再派同一席＝具名拒 \`VMU_TURN_PARKED_NEEDS_OWNER\`；顺序：同席位先答 → 答不了就 \`op:"abandon"\`（带 turn、why）→ 再派。` | `objective-chair-normal.md:395`（`v5r-turn-loop-stuck`） |
+| 7 | 只提 `VMU_TURN_BAD_JSON`，缺其余形状码与「不是引擎坏了」 | **TAUGHT** | `没有围栏或对象 ⇒ \`VMU_TURN_NO_FENCE\`，围栏里的 JSON 不合法 ⇒ \`VMU_TURN_BAD_JSON\`；投递形状不对 ⇒ \`VMU_TURN_DELIVERY_SHAPE\`，声明了却没有载荷 ⇒ \`VMU_TURN_DELIVERY_NO_PAYLOAD\`——这四种都是**形状问题，不等于引擎不可用**：改回执，不要去 probe 引擎。` | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js:561`（`v5r-fixture-tools`） |
+| 8 | `parked` 全文 0 命中，被 parked 的席位没有处置教学（RUN 76 已补两码分流） | **TAUGHT** | `parked 时再派同席＝\`VMU_TURN_ALREADY_PARKED\`（先答）；reply 无 parked＝\`VMU_TURN_PARKED_NEEDS_OWNER\`（丢弃）。先答→abandon→再派。` | `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:1102`（`v5r-turn-loop-stuck`） |
 | 9 | 通知块 `[新到的消息]` 被装配在整份提示词第一行（早于身份段） | **REJECTED**（归内核） | —（不改提示词） | 装配顺序由 `vibe-math-vmu/kernel/turn/index.js:3049` 的 `let assembledText = (noticeText ? noticeText + "\n" : "") + out.text` 决定；提示词层拿不到这个拼接点。改它要动 `kernel/**`（本轮写域外），故只登记；`tests/vmu-tb2692-prompt-criticisms.test.mjs` §14 把该行 pin 成「机制归属」 |
 | 10 | 结题核对只教「看产物」，没写死两个数 | **TAUGHT** | `★ 结题核对**两个数**：磁盘上的 PDF \`bytes\` 与归档行里的 \`pdfSha256\`（归档行没有 \`pdfSha256\` 就是没核对，不要只报字节数）。` | `out/pipeline-chair-paper-final.md:508`（`v5r-paper-final`；两个字段由 TB-2691 提供） |
 | 11 | 「会被具名拒」+「未接线」并列成自相矛盾括注 | **TAUGHT**（改为单一口径） | `**不代签**：所办调 \`final\` 会被角色门禁具名拒（\`VMU_NOT_PERMITTED\`）——E4 的所办前置在本实现里未接线，那是另一道手续，不放松这条角色门禁。` | `out/pipeline-chair-paper-final.md:111`（矛盾消除：角色门禁是硬的，「未接线」只说明另有一道手续没接，不再暗示这条门禁可能没接） |
@@ -560,11 +560,29 @@ BLOCKERS 0 (UNKNOWN_TOOL + UNKNOWN_PARAM + taught-reading without producer=0 + c
 **反关灯（删掉新教学 ⇒ 判据必红，实测原文）**：
 - m1 删 `★ 题目由 …` 硬规则 ⇒ `TB-2692 prompt criticisms: 49 passed, 2 failed`，`FAIL §1 normal: the hard rule survives every phase :: "不得自行替换或改写命题卡"`、`FAIL §1 the disagreement channel is note + the office ruling, not a rewrite :: "等所办裁决"`。
 - m2 删归属口径 ⇒ `FAIL §2 attribution: memberShare formula is taught :: "memberWorkShare = memberActs/(memberActs+officeRelayedActs)"`（并连锁 `memberActs`/`officeRelayedActs`/`unknownActs` 三条）。
-- m3 删 parked 三步 ⇒ `FAIL §8 parked: the code is named :: "VMU_TURN_PARKED_NEEDS_OWNER"`。
+- m3 删 parked 三步 ⇒ `FAIL §8 parked: the code is named :: "VMU_TURN_PARKED_NEEDS_OWNER"`（**RUN 75 旧句时点**：RUN 76 已把该句改成两码分流 + 先答→abandon→再派，见 §16.1）。
 
 **回归**：`vmu-run239-prompts` / `vmu-run257-prompt-receipt-parity` / `vmu-run256-prompt-timing` / `vmu-run256-mail-tool-facts` / `vmu-run33-p2-teaching` / `vmu-v5r-tools` / `vmu-prompt-corrections` / `vmu-run31-seat-faces` / `sim-assembly-parity` / `vmu-run247-prompt-dedup` / `vmu-tb2692-prompt-criticisms` / `vmu-ledger-teaching-pins` 全绿；`check-docs` PASS。
 
 **`problem` 回显的真实通路（事实记录，未在本轮改动）**：装配文本里的题目来自 `{{ setting:vmu.turn.objective }}` → **部署设置**（charter 块）；`vibe_v5_start` 的 `problem` 参数是否写回同一个 `vmu.turn.objective` 设置、从而让运行时写入也进入装配，**属机制层未验证项**——提示词层只负责教「题目由 `problem` 给出、不得自行替换」，不假定这条回写已经接好。本轮 §16 只登记这条通路与未验证边界，没有造任何新字段。
+
+### RUN 76 同步记录（TB-2710 / TB-2711）
+
+本节跟随 RUN 76 **已经改过的**提示词（`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js`），只同步文档、不再改提示词。四处改动各一行「变更来源」，判断依据是装配后的真实文本；判据见 `tests/vmu-doc-prompt-sync.test.mjs`（行号随工作树漂移，判据按 `includes` 命中、不按行号）。
+
+- **parked 两码分流**（TB-2710，`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:1102`）：旧句把「同席再派」一律说成具名拒 `VMU_TURN_PARKED_NEEDS_OWNER`，可那只是 reply 无 parked 时的丢弃码；新句把两码分开——parked 时再派同席＝`VMU_TURN_ALREADY_PARKED`（先答），reply 无 parked＝`VMU_TURN_PARKED_NEEDS_OWNER`（丢弃），并保留三步「先答→abandon→再派」。
+- **互审段删空模板、改成三步取料**（TB-2711，`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:547-558`）：旧段只有 `{{ setting:vmu.paper.reviewedMember }}` 拟名与两条 `------------ 待审部分（…）------------` 虚线空块，作者 id 与正文 recordId 都落不到回执上；新段先给注入契约（`审阅对象：<作者 id>`、`正文：<part recordId> <partText>`，partText 超 1600 字符截断、尾部注明「按 rec id 重拉」），再给三步取料（`vibe_v5_paper{action:"status"}` 读 `reviewOf`/`parts` → `vibe_vmu_records{action:"expand",id:"rec-N"}` 取正文 → 逐条判断），本节只有骨架、没有正文时按「未注入」处理。
+- **状态板固定三列 + `[蓝图]` 恒渲染**（TB-2711，`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:1067`）：旧句允许「没有内容就不出现」，于是读数缺列、`[蓝图]` 在无现行版时整段消失；新句规定每行固定「读数｜来源｜取值时刻」三列（没有时刻写具名理由），`[蓝图]` 恒渲染，无现行版写 `[蓝图] 无现行版（rev 0，md 未落盘）`。
+- **通知块头恒渲染 + 结题票唯一入口**（TB-2711，`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:1043`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js:125`）：旧句「无未读则不出现块头」让装配回执的 `rendered:false` 与「通知丢了」不可区分，新句在无未结算行时仍渲染 `[新到的消息] （无未结算行）`；结题票旧 note 只说「诚实布尔值」，新 note 写明 `vote_solved` 是唯一入口、`set_solved` 未登记（写进回执整轮判未知字段），且只要一位有表决权者没有填 true 就不结题。
+
+**反关灯（同一组文档检查跑在文档副本上，实测红行）**：把第 8 行换回 RUN 75 旧句 ⇒
+```
+FAIL §16 row 8 quote is a sentence a seat really reads :: "上一回合**未答**（parked）时再派同一席＝具名拒 `VMU_TURN_PARKED_NEEDS_OWNER`；顺序：同席位先答 → 答不了就 `op:\"abandon\"`（带 turn、why）→ 再派。"
+```
+删掉本节 ⇒
+```
+FAIL §16.1 the RUN 76 sync record exists
+```
 
 ## §17 RUN 269 / TB-2664 收尾 —— A2 剩余 6 对的重新枚举与逐对判定（lead 已裁定：采纳 P5a）
 

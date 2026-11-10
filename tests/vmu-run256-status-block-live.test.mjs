@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import {
-  createTurnOrchestrator, liveStatusReadings, renderLiveStatus, LIVE_STATUS_FIELDS,
+  createTurnOrchestrator, facesFrom, liveStatusReadings, renderLiveStatus, LIVE_STATUS_FIELDS, STATUS_BOARD_READ_OPS,
 } from '../vibe-math-vmu/kernel/turn/index.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -61,10 +61,26 @@ const boot = async () => {
 
 /** A minimal pipeline: this suite asserts the STATUS BLOCK, not the pack's sections; the loop composes its own block. */
 const fakePrompt = { assemble: async () => ({ ok: true, text: '', sources: [], instructionDelivered: false }) }
-const orchFor = (K, clock = () => 1000) => createTurnOrchestrator({
+/**
+ * TB-2720 (task-203): THE MAP PRODUCTION HANDS THE ORCHESTRATOR.
+ *
+ * This suite used to build the faces bag by hand (`{'vmu.records': K.records}` — the whole service), so it measured a
+ * face no turn ever receives: production calls `facesFrom(...)` (which binds only STATUS_BOARD_READ_OPS) and then the
+ * kernel adds the md door on top (`kernel/index.js` `mdOps`). That hand-made bag is exactly why the run-76 production
+ * defect (a records face without mdParse ⇒ blueprint reading null on EVERY turn) stayed green here.
+ *
+ * The kernel keeps the real map and exposes it (`get faces()`), so the suite reads THAT object — the same one handed to
+ * `createTurnOrchestrator` — instead of rebuilding a lookalike. `facesFrom` is still imported so §0b can measure the
+ * restricted shape the run-76 turns actually got.
+ */
+const productionFaces = (K) => {
+  assert.ok(K && K.faces && typeof K.faces === 'object', 'the kernel exposes the face map it handed to the turn orchestrator')
+  return K.faces
+}
+const orchFor = (K, clock = () => 1000, faces = null) => createTurnOrchestrator({
   prompt: fakePrompt,
   deliver: async () => '',
-  faces: { 'vmu.tasks': K.tasks, 'vmu.records': K.records, 'vmu.meetings': K.meetings },
+  faces: faces || productionFaces(K),
   settings: {},
   clock,
 })
@@ -101,6 +117,65 @@ ok(emptyAsm.asm.text.indexOf('[论文]') < 0 && emptyAsm.asm.text.indexOf('[蓝�
 const emptyStatus = orchEmpty.status({ roster: ['r-acad', 'r-1', 'r-2'] })
 ok(emptyStatus.liveReadings && emptyStatus.liveReadings.paper.value === null, 'status().liveReadings carries the same named absence (null, not missing key)')
 ok(typeof emptyStatus.liveReadingsMeans === 'string' && emptyStatus.liveReadingsMeans.indexOf('null') >= 0, 'liveReadingsMeans explains what null means')
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// §0b — THE FACE MAP IS THE PRODUCTION ONE, AND BOTH DOORS ARE MEASURED (TB-2720 / task-203)
+//
+// The question this section answers: does the suite hand the orchestrator the SAME face map production does? Before
+// task-203 the answer was no — the bag was hand-made from whole services, so a production face that carries only
+// list/get (STATUS_BOARD_READ_OPS) was never measured, and the run-76 defect (blueprint reading null on every turn)
+// stayed green. Now: §0b pins the function by name, measures the restricted face (the run-76 shape: no mdParse ⇒ kernel
+// fallback), and measures the wired face (mdParse present ⇒ records.mdParse). Both readings must be non-null — a named
+// absence is only acceptable when the row really does not exist.
+console.log('\n§0b the face map is the production assembly, not a hand-made bag')
+const fsForFaces = await import('node:fs')
+const kernelSrcForFaces = fsForFaces.readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
+ok(typeof facesFrom === 'function', '★ facesFrom is exported from the turn module — the function the kernel really calls')
+ok(typeof STATUS_BOARD_READ_OPS === 'object' && JSON.stringify(STATUS_BOARD_READ_OPS['vmu.records']) === JSON.stringify(['list', 'get']),
+  '★ STATUS_BOARD_READ_OPS binds the records face to list/get only (the seam that drops mdParse)', STATUS_BOARD_READ_OPS['vmu.records'])
+ok(kernelSrcForFaces.indexOf('const turnFaces = facesFrom({') >= 0 && kernelSrcForFaces.indexOf('faces: turnFaces') >= 0,
+  '★ the kernel builds the turn face map with THAT function and hands THAT map to the orchestrator (renaming the function turns this red instead of silently measuring another object)')
+const faceBoot = await boot()
+const prodFaces = productionFaces(faceBoot.K)
+ok(prodFaces && prodFaces['vmu.records'] && typeof prodFaces['vmu.records'].list === 'function',
+  'the production map carries the records face with list', prodFaces && Object.keys(prodFaces['vmu.records'] || {}))
+ok(['mdParse', 'mdDigest', 'mdRead'].every((op) => typeof prodFaces['vmu.records'][op] === 'function'),
+  '★ the PRODUCTION records face carries the md door (the wiring createKernel adds after facesFrom)', Object.keys(prodFaces['vmu.records'] || {}))
+const restrictedFaces = facesFrom({ records: faceBoot.K.records })
+ok(restrictedFaces && restrictedFaces['vmu.records'] && typeof restrictedFaces['vmu.records'].list === 'function',
+  'facesFrom alone still binds the declared reads (list/get)', restrictedFaces && Object.keys(restrictedFaces['vmu.records'] || {}))
+ok(typeof restrictedFaces['vmu.records'].mdParse !== 'function',
+  '★ facesFrom alone does NOT bind mdParse — this is the run-76 production shape the defect lived on')
+// A real blueprint row on this kernel, then read it through BOTH faces — the fallback and the wired parser answer the
+// same question, and each reading says which door answered.
+await faceBoot.call('vibe_v5_start', { problem: 'face map' })
+const bpRelF = 'Shared/Drafts/Face-r1.md'
+faceBoot.K.records.mdWrite({
+  path: bpRelF, title: 'Face', track: 'blueprint', kind: 'blueprint',
+  fields: { path: 'VibeMath/Face.md', status: 'draft', revision: 1, proposedBy: 'r-acad', proposedAt: '2026-11-09T00:00:00.000Z' },
+  text: 'face body',
+})
+const bpProposedF = await faceBoot.call('vibe_v5_blueprint', { action: 'propose', path: 'VibeMath/Face.md', member: 'r-acad', mdPath: bpRelF })
+ok(bpProposedF && bpProposedF.ok === true, 'a blueprint really exists on this kernel (the reading has something to read)', bpProposedF && bpProposedF.code)
+const orchRestricted = orchFor(faceBoot.K, () => 1000, restrictedFaces)
+await assembleFor(orchRestricted)
+const stRestricted = orchRestricted.status({ roster: ['r-acad', 'r-1', 'r-2'] })
+const bpRestricted = stRestricted && stRestricted.liveReadings ? stRestricted.liveReadings.blueprint : null
+ok(bpRestricted && bpRestricted.value !== null, '★ a list/get-only face STILL reads the blueprint (no null reading where a row exists)', bpRestricted && (bpRestricted.why || bpRestricted.value))
+ok(bpRestricted && bpRestricted.detail && bpRestricted.detail.mdParserSource === 'kernel-own-md-parse',
+  '★ and the restricted reading names the FALLBACK parser as the door that answered', bpRestricted && bpRestricted.detail && bpRestricted.detail.mdParserSource)
+const orchWired = orchFor(faceBoot.K)
+await assembleFor(orchWired)
+const stWired = orchWired.status({ roster: ['r-acad', 'r-1', 'r-2'] })
+const bpWired = stWired && stWired.liveReadings ? stWired.liveReadings.blueprint : null
+ok(bpWired && bpWired.value !== null, '★ through the WIRED production face the blueprint is read too', bpWired && (bpWired.why || bpWired.value))
+ok(bpWired && bpWired.detail && bpWired.detail.mdParserSource === 'records.mdParse',
+  '★ and it says records.mdParse answered — the two doors are kept apart, not collapsed into one sentence', bpWired && bpWired.detail && bpWired.detail.mdParserSource)
+ok(bpWired && bpRestricted && bpWired.detail && bpRestricted.detail &&
+  String(bpWired.detail.id) === String(bpRestricted.detail.id) &&
+  bpWired.detail.status === bpRestricted.detail.status && bpWired.detail.revision === bpRestricted.detail.revision,
+'both doors parse the SAME row into the same fields (status/revision/id); only the mdDigest door differs, and that is said out loud',
+{ wired: bpWired && bpWired.detail, fallback: bpRestricted && bpRestricted.detail })
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // §2 — PAPER: READ FROM THE DURABLE `paper-state` ROW, MISSING DERIVED, NOT INVENTED

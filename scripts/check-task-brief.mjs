@@ -48,6 +48,15 @@
  *   BRIEF_TOO_LONG              the TEMPLATE exceeds its 180-line cap
  *   BRIEF_SEAT_SECTION_TOO_LONG a TEMPLATE seat section exceeds 15 body lines (the problem names the seat)
  *
+ * NAMES (TB-2721 / task-204 — the task-brief side of the RUN 76 incident). A brief is also a PROMISE about names:
+ * every backticked identifier (`vibe_*`, an `action:` value, or a field-shaped word) must resolve to a name the
+ * product really declares. A name that does not exist is allowed only in the SAME line as a negation
+ * (`不存在|不是|旧|未登记|别写|不要`) — then the sentence is about a retired name instead of teaching it.
+ * The universe is DERIVED, never typed: tool names, parameter names and their enum values come from
+ * `buildCatalog()` (host.js#toolSpecs + V5R_PACK_TOOLS); field names are the object-literal property keys
+ * declared in the JavaScript sources under `vibe-math-vmu/` and `scripts/` — a name exists in this product iff
+ * its source declares it. This is what catches a brief that copies `set_solved`, a name only the prompts used to teach.
+ *
  * Exit codes: 0 = every call matches the declarations; 1 = at least one problem, a derivation failure, bad usage.
  *
  * PROBLEM CODES (the three the task names, and only these):
@@ -63,7 +72,7 @@
  *
  * Grep anchors: check-task-brief, BRIEF_UNKNOWN_TOOL.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -106,6 +115,169 @@ export const FORBIDDEN = Object.freeze(['所办替成员', '所办代写', 'offi
 
 export const TEMPLATE_MAX_LINES = 180
 export const SEAT_MAX_LINES = 15
+
+/** TB-2721: the naming gate's one code. The message carries the name and the line, so a reader can fix it. */
+export const NAME_CODES = Object.freeze({ unknownName: 'UNKNOWN_NAME' })
+
+/** A sentence that talks ABOUT a retired name instead of teaching it (the task-204 §3 verbatim list). */
+const NAME_NEGATION = /不存在|不是|旧|未登记|别写|不要/
+
+/** JSON literals are not names: a brief that says `null` teaches nothing about the product. */
+const NAME_LITERALS = new Set(['null', 'true', 'false', 'undefined'])
+
+/** The task's THREE shapes, narrow on purpose (task-204 §6: 宁窄勿宽 — only backticks, only these shapes). */
+const NAME_TOOL = /^vibe_[a-z0-9_]+$/
+/**
+ * FIELD-SHAPED means snake_case (at least one `_`), which is how this product names fields (`set_solved`,
+ * `failedSteps` is camel but only ever appears inside calls). A single lower-case English word inside
+ * backticks is usually a COMMAND or a piece of prose the brief quotes (`taskkill`, `grep`), not a field
+ * claim — flagging those is the false-positive class the task says to avoid, so the shape is narrowed.
+ */
+const NAME_FIELD = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/
+const NAME_ACTION_VALUE = /\b(?:action|op)\s*:\s*"([A-Za-z0-9_.-]+)"/g
+const NAME_TOOL_IN_CALL = /vibe_[a-z0-9_]+/g
+/**
+ * An action value can be real WITHOUT an `enum`: `vibe_vmu_turn`'s `op` is a free string and the closed
+ * set lives in the dispatch (`op === 'step'`, `case 'drive':`). The value a brief may teach is therefore
+ * "enum value OR a literal the code compares against" — derived from the source, never transcribed here.
+ */
+const NAME_ACTION_LITERAL = /(?:\b(?:op|action)\s*(?:===?|!==?)\s*|case\s+)'([A-Za-z][A-Za-z0-9_.-]{0,40})'/g
+
+/** Source files whose declared property keys are the product's vocabulary (no hand list of names!). */
+function collectSourceFiles(dir, out) {
+  let entries
+  try { entries = readdirSync(dir) } catch (e) { return }
+  for (const name of entries) {
+    if (name === 'node_modules' || name === '.git' || name === 'archive' || name.startsWith('.')) continue
+    const path = join(dir, name)
+    let stat
+    try { stat = statSync(path) } catch (e) { continue }
+    if (stat.isDirectory()) { collectSourceFiles(path, out); continue }
+    if (/\.(js|mjs)$/.test(name)) out.push(path)
+  }
+}
+
+/** Object-literal property keys on one line: `k:` at line start, `{ k:` / `, k:` inline, and shorthand `k,`. */
+function propertyKeysOf(text) {
+  const keys = []
+  for (const line of text.split('\n')) {
+    const atStart = /^\s*(?:'([A-Za-z_$][\w$]*)'|"([A-Za-z_$][\w$]*)"|([A-Za-z_$][\w$]*))\s*:/.exec(line)
+    if (atStart) { keys.push(atStart[1] || atStart[2] || atStart[3]); continue }
+    const shorthand = /^\s*([A-Za-z_$][\w$]*)\s*,\s*$/.exec(line)
+    if (shorthand) { keys.push(shorthand[1]); continue }
+    const inline = /[{,]\s*(?:'([A-Za-z_$][\w$]*)'|"([A-Za-z_$][\w$]*)"|([A-Za-z_$][\w$]*))\s*:/g
+    let m
+    while ((m = inline.exec(line))) keys.push(m[1] || m[2] || m[3])
+  }
+  return keys
+}
+
+/**
+ * TB-2721: the KNOWN-NAME universe, derived at run time.
+ *   tools/params/actions  — `buildCatalog()` (the same declarations the call checks use).
+ *   fields                — every object-literal property key the source under `vibe-math-vmu/` and `scripts/`
+ *                           declares. ★ Derived, not copied: a field that the code stops producing disappears
+ *                           from this set, and a name that only ever lived in prose (`set_solved`) is not in it.
+ */
+export function buildKnownNames(catalog, { repo = REPO } = {}) {
+  const tools = new Set(catalog.tools.keys())
+  const params = new Set()
+  const actions = new Set()
+  for (const spec of catalog.tools.values()) {
+    for (const [name, decl] of Object.entries(spec.parameters || {})) {
+      params.add(name)
+      if (decl && Array.isArray(decl.enum)) for (const value of decl.enum) if (typeof value === 'string') actions.add(value)
+    }
+  }
+  const fields = new Set()
+  const files = []
+  collectSourceFiles(join(repo, 'vibe-math-vmu'), files)
+  collectSourceFiles(join(repo, 'scripts'), files)
+  for (const file of files) {
+    const text = readFileSync(file, 'utf8')
+    for (const key of propertyKeysOf(text)) fields.add(key)
+    NAME_ACTION_LITERAL.lastIndex = 0
+    let literal
+    while ((literal = NAME_ACTION_LITERAL.exec(text))) actions.add(literal[1])
+  }
+  return { tools, params, actions, fields, sourceFiles: files.length }
+}
+
+/**
+ * Every backticked identifier the task's three shapes recognise, with its 1-based line.
+ * Narration outside backticks is never touched — that is the rule that keeps prose ("把 `member` 填自己") quiet.
+ */
+export function extractBacktickedNames(rawText) {
+  const text = String(rawText).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  const found = []
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const backtick = /`([^`\n]*)`/g
+    let b
+    while ((b = backtick.exec(line))) {
+      const token = b[1].trim()
+      const lineNo = i + 1
+      if (NAME_TOOL.test(token)) found.push({ name: token, kind: 'tool', line: lineNo })
+      else {
+        NAME_TOOL_IN_CALL.lastIndex = 0
+        let t
+        while ((t = NAME_TOOL_IN_CALL.exec(token))) {
+          if (t.index > 0 && /[A-Za-z0-9_]/.test(token[t.index - 1])) continue
+          found.push({ name: t[0], kind: 'tool', line: lineNo })
+        }
+      }
+      NAME_ACTION_VALUE.lastIndex = 0
+      let a
+      while ((a = NAME_ACTION_VALUE.exec(b[1]))) found.push({ name: a[1], kind: 'action', line: lineNo })
+      if (!NAME_TOOL.test(token) && !NAME_LITERALS.has(token) && NAME_FIELD.test(token)) found.push({ name: token, kind: 'field', line: lineNo })
+    }
+  }
+  const seen = new Set()
+  return found.filter((candidate) => {
+    const id = candidate.kind + '|' + candidate.name + '|' + candidate.line
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
+/**
+ * TB-2721: check the NAMES a brief teaches. Separate from the call checks on purpose — a call is validated by
+ * its shape (`name { … }`), a name by its EXISTENCE in the derived universe. The negation escape is per LINE:
+ * a brief is allowed to say "`set_solved` is not a legal field"; it is not allowed to say "结题票写 `set_solved`".
+ */
+export function checkBriefNames(path, rawText, known) {
+  const text = String(rawText).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  const lines = text.split('\n')
+  const problems = []
+  for (const candidate of extractBacktickedNames(text)) {
+    const { name, kind, line } = candidate
+    let knownName
+    if (kind === 'tool') knownName = known.tools.has(name)
+    else if (kind === 'action') knownName = known.actions.has(name)
+    else knownName = known.fields.has(name) || known.params.has(name) || known.actions.has(name) || NAME_LITERALS.has(name)
+    if (knownName) continue
+    const lineText = (lines[line - 1] || '').trim()
+    if (NAME_NEGATION.test(lineText)) continue
+    problems.push(problem({
+      file: path,
+      line,
+      tool: kind === 'tool' ? name : null,
+      param: kind === 'field' ? name : null,
+      code: NAME_CODES.unknownName,
+      message: name + ' at line ' + line + ' — a brief may not teach a name that does not exist (unless it says so in the same line)',
+      hint: kind === 'tool'
+        ? 'a brief is an executed interface: name a tool the registry declares (host.js#toolSpecs), or say in the same line that the old name does not exist'
+        : kind === 'action'
+          ? 'name an action value a declaration accepts (`enum` of the action/op parameter), or say in the same line that the old value is retired'
+          : 'name a declared parameter or a field the product produces; if the sentence is about a RETIRED name, say 不存在/旧/未登记 in the same line',
+      legal: null,
+      lineText,
+    }))
+  }
+  return problems
+}
 
 /** The task's item 3: a tool name is only a call candidate when it is exactly this shape. */
 const TOOL_NAME = /^vibe_[a-z0-9_]+$/
@@ -719,6 +891,27 @@ export function selfProbe(catalog) {
   return { results, failures }
 }
 
+/** TB-2721: proof that the NAME checks bite — an invented tool/field is caught, a negated sentence is not. */
+export function selfProbeNames(catalog, known) {
+  const cases = [
+    { name: 'control-known-name-parameter', expected: [], text: '1) `problem` 用第 0 节的原文逐字。\n' },
+    { name: 'control-known-name-tool', expected: [], text: '1) 调用 `vibe_v5_start {}`。\n' },
+    { name: 'plant-unknown-name-tool', expected: [NAME_CODES.unknownName], text: '1) 调用 `vibe_zzz_name_probe_absent`。\n' },
+    { name: 'plant-unknown-name-field', expected: [NAME_CODES.unknownName], text: '1) 结题票写 `zzz_self_probe_absent_field`。\n' },
+    { name: 'control-negated-unknown-name', expected: [], text: '1) `zzz_self_probe_absent_field` 不是合法字段。\n' },
+    { name: 'plant-unknown-action-value', expected: [NAME_CODES.unknownName], text: '1) `vibe_v5_paper { action:"zzz_self_probe_absent_action" }`\n' },
+  ]
+  const results = []
+  const failures = []
+  for (const c of cases) {
+    const got = checkBriefNames('<self-probe-names>', c.text, known).map((p) => p.code)
+    const pass = c.expected.length === 0 ? got.length === 0 : c.expected.every((code) => got.includes(code))
+    results.push({ name: c.name, expected: c.expected, got, pass, text: c.text })
+    if (!pass) failures.push(c.name + ' planted ' + JSON.stringify(c.text) + ' but the naming gate reported ' + JSON.stringify(got))
+  }
+  return { results, failures }
+}
+
 /** Line numbers are 1-based over the normalised text (the same convention as the call problems). */
 function structureProblem(path, line, code, message, hint) {
   return problem({ file: path, line, tool: null, param: null, code, message, hint, legal: null, lineText: '' })
@@ -952,10 +1145,12 @@ async function main(argv) {
     return
   }
   if (probe) {
+    const known = buildKnownNames(catalog)
     const probeReport = selfProbe(catalog)
+    const nameProbe = selfProbeNames(catalog, known)
     const structureProbe = selfProbeStructure()
-    probeReport.results = probeReport.results.concat(structureProbe.results)
-    probeReport.failures = probeReport.failures.concat(structureProbe.failures)
+    probeReport.results = probeReport.results.concat(structureProbe.results).concat(nameProbe.results)
+    probeReport.failures = probeReport.failures.concat(structureProbe.failures).concat(nameProbe.failures)
     if (asJson) {
       process.stdout.write(JSON.stringify({ ok: probeReport.failures.length === 0, selfProbe: probeReport, derived: { tools: catalog.tools.size } }, null, 2) + '\n')
     } else {
@@ -972,6 +1167,7 @@ async function main(argv) {
     return
   }
   if (files.length === 0) { usage('no brief file given'); process.exitCode = 1; return }
+  const known = buildKnownNames(catalog)
   const reports = []
   for (const file of files) {
     let text
@@ -984,15 +1180,21 @@ async function main(argv) {
     }
     const report = checkBriefText(file, text, catalog)
     const structural = checkBriefStructure(file, text, { force: structureForce })
-    report.problems = structural.concat(report.problems)
+    const naming = checkBriefNames(file, text, known)
+    report.problems = structural.concat(naming, report.problems)
     report.structure = structural.length
+    report.names = naming.length
     reports.push(report)
   }
   const total = reports.reduce((n, r) => n + r.problems.length, 0)
   if (asJson) {
-    process.stdout.write(JSON.stringify(jsonReport(reports, catalog), null, 2) + '\n')
+    process.stdout.write(JSON.stringify(jsonReport(reports, catalog, {
+      names: { tools: known.tools.size, parameters: known.params.size, actionValues: known.actions.size, propertyKeys: known.fields.size, sourceFiles: known.sourceFiles },
+    }), null, 2) + '\n')
   } else {
     process.stdout.write('check-task-brief: derived ' + catalog.tools.size + ' tools from the declarations (' + catalog.host + ' host faces + ' + catalog.pack + ' pack tools)\n')
+    process.stdout.write('check-task-brief: naming gate knows ' + known.tools.size + ' tools, ' + known.params.size + ' parameters, ' +
+      known.actions.size + ' action values, ' + known.fields.size + ' property keys from ' + known.sourceFiles + ' source files\n')
     for (const report of reports) for (const line of renderHuman(report, catalog)) process.stdout.write(line + '\n')
     process.stdout.write('check-task-brief: ' + (total === 0 ? 'OK' : 'FAIL') + ' — ' + reports.length + ' file(s), ' + total + ' problem(s)\n')
   }

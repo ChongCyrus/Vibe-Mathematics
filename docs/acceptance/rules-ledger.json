@@ -1623,7 +1623,7 @@
       "text": "辩论骨架①各成员同时独立单次表态",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/meeting-procedures.js::debate"
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::step(1, 'independent-estimates'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1645,7 +1645,7 @@
       "text": "辩论骨架②轮流/举手/邀请展开",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/meeting-procedures.js::debate"
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::step(2, 'debate', 'vibe_vmu_meeting',"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"

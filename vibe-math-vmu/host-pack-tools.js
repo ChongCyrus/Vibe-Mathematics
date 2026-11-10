@@ -322,6 +322,14 @@ export function discloseActOnSeat(kernel = null, exec = null, args = null, out =
     })
   }
   const actedBySeat = caller !== null && caller === namedMember
+  // ★★★ RUN 76 / TB-2710 (F76-10): `memberActed` ANSWERS "DID THE SEAT ACT?", NOT "DID THE SEAT CALL THIS TOOL?".
+  // Measured: 15 turns really ran in the members' own child sessions (deliveryPath activation/continuation), yet every
+  // receipt said `memberActed:false` because the OFFICE called `vibe_vmu_turn` and `caller !== namedMember`. The kernel
+  // step receipt now reports `turnDelivered` (true when the seam reported a path other than "caller"), so this key is
+  // true when EITHER the call ran from the seat OR the kernel delivered that seat's turn. `callerIsSeat` keeps answering
+  // only the caller question, which is the one that was always about the call.
+  const deliveredTurn = out.turnDelivered === true
+  const seatActed = deliveredTurn || actedBySeat
   // ★★★ TB-2691 / F75-09: the READ-ONLY branch — same call/question inputs, but the claim is "who viewed whose
   // library" instead of "the record was written in that seat's name". `memberActed` stays (a read DOES run from a
   // session; the sim-wide gate asks every seat-naming receipt whether it is a boolean), while `wroteAnything:false`
@@ -351,16 +359,18 @@ export function discloseActOnSeat(kernel = null, exec = null, args = null, out =
     // seat?" and "did the seat do the thing in its own turn?" - and run 64 read `memberActed:false` on r-acad's first
     // turn, which had in fact run in r-acad's own child session (deliveryPath:"activation", write rec-2). Both questions
     // are now asked separately, so a reader never has to guess which one a false answers.
-    memberActed: actedBySeat,
+    memberActed: seatActed,
     callerIsSeat: actedBySeat,
     callerIsSeatMeans: 'this key answers ONE question: did this call run from the named seat and its own session? It does not say whether the seat carried the act out - that is what a delivered turn (turnReceipts, deliveryPath) answers',
-    ranInOwnTurn: out.turnDelivered === true || actedBySeat,
+    ranInOwnTurn: deliveredTurn || actedBySeat,
     ranInOwnTurnMeans: 'true when this call ran from the seat own session, or when the kernel reported that a turn for this seat was actually DELIVERED and returned (out.turnDelivered) - the two facts that one key used to conflate',
     actedForMember: namedMember,
     callerMember: caller === null ? null : caller,
-    memberActedMeans: actedBySeat
-      ? "member \"" + namedMember + "\" is the CALLER of this call, so the seat acted in its own turn: what this receipt records is that seat's own act"
-      : "this call ran from " + (caller === null ? "the OFFICE (a root session, which is not a seat)" : "member \"" + caller + "\"") + " and named member \"" + namedMember + "\": the record was written IN THAT SEAT'S NAME, but the seat did not act in its own turn. `memberActed:false` states that difference - orchestrating on a seat's behalf is not the same act as carrying it out, and a reader who needs the seat's own judgement should ask for it in a turn of that seat",
+    memberActedMeans: deliveredTurn
+      ? "a SEPARATE kernel session of member \"" + namedMember + "\" DELIVERED and returned this turn (out.turnDelivered:true, deliveryPath is not \"caller\"), so the seat acted in its own turn: this call came from " + (caller === null ? "the OFFICE (a root session, which is not a seat)" : "member \"" + caller + "\"") + " and the delivery fact wins over the caller identity - orchestrating a turn is not the same as running it, and here the seat ran it"
+      : (actedBySeat
+          ? "member \"" + namedMember + "\" is the CALLER of this call, so the seat acted in its own turn: what this receipt records is that seat's own act"
+          : "this call ran from " + (caller === null ? "the OFFICE (a root session, which is not a seat)" : "member \"" + caller + "\"") + " and named member \"" + namedMember + "\": the record was written IN THAT SEAT'S NAME, and NO delivered turn for that seat was reported (out.turnDelivered was not true). `memberActed:false` states that difference - orchestrating on a seat's behalf is not the same act as carrying it out, and a reader who needs the seat's own judgement should ask for it in a turn of that seat"),
   })
 }
 

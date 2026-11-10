@@ -191,9 +191,16 @@ try {
     '反：旧的读数清单（把裸 unackedRows 当读数教）已经不在提示词里')
   ok(body.includes('`settledBy:"ack"`') && body.includes('**唯一**结算'),
     'pin：RUN 254-C 的「ack 是唯一结算」教学句仍在（本轮只换读数名，不换语义）')
-  const budgetDeltaPinned = body.length > 0 && body.includes('无未读则**不出现块头**')
+  // 旧世界为何不再成立（T1 冷全量 2026-11-11）：RUN 254 的这条 pin 钉的是「无未读则**不出现块头**」——通知块整段
+  // 消失。TB-2711 §③（RUN 76 / SIM-REPORT76 §④-8）把契约改成反面：块头恒渲染，没有未结算行时写具名空
+  // `[新到的消息] （无未结算行）`（不是通知丢失）。旧 pin 描述的世界已被这次教学有意替换，因此这里改钉新真相：
+  // 头仍渲染 + 具名空字面在 + 旧「不出现块头」句不在；语义比旧 pin 更强（既断言保留、又断言旧解释退场）。
+  const budgetDeltaPinned = body.length > 0
+    && body.includes('无未结算行时块头**仍渲染**')
+    && body.includes('[新到的消息] （无未结算行）')
+    && !body.includes('无未读则**不出现块头**')
     && !body.includes('未读时块头在最上方，')
-  ok(budgetDeltaPinned, 'pin：等量删字的另一处（重复的块头说明）也真的删了，净字符不涨')
+  ok(budgetDeltaPinned, 'pin：通知块头恒渲染 + 无未结算行时具名空（TB-2711 §③ 取代了「无未读则不出现块头」的旧世界）')
 
   // ── 5. status().notice 的正名与 perBox 同源（提示词依赖的读数本身） ───────────────────────────────────────
   console.log('=== 5. status().notice：unackedRowsAllBoxes 与 perBox 同一次计算 ===')

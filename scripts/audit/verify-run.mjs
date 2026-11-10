@@ -15,7 +15,7 @@
  * 用法：
  *   node scripts/audit/verify-run.mjs --sessions-root <dir> --since <ISO> [--build <sha>]
  *        [--out <file.json|dir>] [--checks V1,V5] [--ws <workspace path>]
- *        [--driver-log <file>] [--repo <path>] [--dry-run]
+ *        [--driver-log <file>] [--run-metadata <file>] [--repo <path>] [--dry-run]
  *
  * --sessions-root 缺省读 DSH_SESSIONS_ROOT；两者都没有 ⇒ 退出码 2 并说明怎么给，绝不 skip。
  * --since 必须显式给（防止把旧 run 混进来）⇒ 缺省退出码 2。
@@ -43,6 +43,7 @@ const USAGE = [
   '  --checks V1,V5          只跑列出的验点（未知 id 退出码 2）',
   '  --ws <path>             只读某个工作区的会话目录（缺省扫 sessions-root 下全部工作区）',
   '  --driver-log <file>     run 的 driver 日志（构建自证的第一处）',
+  '  --run-metadata <file>   run-metadata.json；缺省从 driver 日志的 "RUN METADATA written:" 行自动定位',
   '  --repo <path>           git 仓库根（缺省本仓库）',
   '  --dry-run               标记「run 可能仍在运行」，全 NO-EVIDENCE 允许',
   '',
@@ -83,6 +84,7 @@ const WS = opt('--ws', null)
 const DRIVER_LOG = opt('--driver-log', null)
 const REPO = opt('--repo', path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..'))
 const EXPECTED_BUILD = opt('--build', null)
+const RUN_METADATA = opt('--run-metadata', null)
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
 
 /* ------------------------------------------------------------------ 读取 */
@@ -220,6 +222,33 @@ function readDriverLog(file) {
   return { file, exists: true, lines, build, rev, stamp: stampLine }
 }
 
+function readRunMetadata(explicit, driverLog) {
+  // TB-2714 V1：构建自证的第二处是 run-metadata.json（build/tarballBuild/gitHead/buildFrom/dirty）。
+  // 路径显式给优先；否则从 driver 日志的 "RUN METADATA written: <path>" 行解析（相对路径按 driver 日志目录解析）。
+  let file = explicit || null
+  let fromDriver = false
+  if (!file && driverLog && driverLog.exists) {
+    const line = [...driverLog.lines].reverse().find((l) => /^RUN METADATA written:/.test(l))
+    if (line) {
+      // 该行形如 "RUN METADATA written: <path>  build=<sha>  gitHead=<sha> …"：
+      // 路径只到第一个双空格之前，后面是 driver 附带的键值对（不能整串当路径）。
+      const m = line.match(/RUN METADATA written:\s*(.+)$/)
+      if (m && m[1]) {
+        const parts = m[1].split(/\s{2,}/)
+        file = (parts[0] || '').trim() || null
+        fromDriver = true
+        if (file && !path.isAbsolute(file) && driverLog.file) file = path.resolve(path.dirname(driverLog.file), file)
+      }
+    }
+  }
+  if (!file) return { file: null, exists: false, fromDriver, data: null, build: null, tarballBuild: null, gitHead: null, buildFrom: null, dirty: null, why: 'no --run-metadata and the driver log has no "RUN METADATA written:" line' }
+  if (!fs.existsSync(file)) return { file, exists: false, fromDriver, data: null, build: null, tarballBuild: null, gitHead: null, buildFrom: null, dirty: null, why: 'the run metadata file does not exist: ' + file }
+  let data = null
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (e) { return { file, exists: true, fromDriver, data: null, build: null, tarballBuild: null, gitHead: null, buildFrom: null, dirty: null, why: 'the run metadata is not parseable JSON: ' + String((e && e.message) || e) } }
+  const g = (k) => (data && data[k] !== undefined ? data[k] : null)
+  return { file, exists: true, fromDriver, data, build: g('build'), tarballBuild: g('tarballBuild'), gitHead: g('gitHead'), buildFrom: g('buildFrom'), dirty: g('dirty'), why: null }
+}
+
 function note(msg) { console.error('[verify] ' + msg) }
 
 /* ---------------------------------------------------------------- 判定骨架 */
@@ -234,9 +263,11 @@ function record(V, title, expectation, verdict, evidence, why, missing, extra = 
 const data = loadAll()
 const { sessions, receipts, messages, metadata } = data
 const driver = readDriverLog(DRIVER_LOG)
+const runMeta = readRunMetadata(RUN_METADATA, driver)
 const gShort = gitRev(true)
 const gFull = gitRev(false)
 note(`sessions=${sessions.length} receipts=${receipts.length} messages=${messages.length} driver=${driver.exists} git=${gShort}`)
+note(`run-metadata=${runMeta.exists ? runMeta.file : 'absent'} build=${so(runMeta.build)} tarballBuild=${so(runMeta.tarballBuild)} gitHead=${so(runMeta.gitHead)}`)
 if (DRY) note('DRY-RUN 模式：真机可能仍在运行，回执/提示词可能不全；全 NO-EVIDENCE 是允许的。')
 
 const allTextOf = (r) => { try { return JSON.stringify(r.receipt) } catch { return '' } }
@@ -246,45 +277,77 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
 /* =============================================================== V1 构建自证 */
 
 {
+  // TB-2714：原先要求「journal 首帧 = run-metadata」，但该帧是驱动在 taskkill 之后 prepend 的
+  // ⇒ 运行期永远 NO-EVIDENCE（RULE-UNREACHABLE）。改成三处互证：
+  //   ① run-metadata.json（build / tarballBuild / gitHead / buildFrom / dirty）
+  //   ② driver 日志的 TARBALL build=（以及 BUILD REV: 全 sha，若有）
+  //   ③ 被核对仓库的 git rev-parse HEAD（短 + 全）
+  // 三处全等才 PASS；journal 首帧的 run-metadata 帧只作加分（有就贴，不再作为判定前提）。
   const evidence = []
   const missing = []
+  if (runMeta.exists) {
+    const tag = 'metadata:' + path.basename(runMeta.file) + (runMeta.fromDriver ? ' (path from driver log)' : '')
+    evidence.push({ call: tag, receiptField: 'build', value: so(runMeta.build) })
+    evidence.push({ call: tag, receiptField: 'tarballBuild', value: so(runMeta.tarballBuild) })
+    evidence.push({ call: tag, receiptField: 'gitHead', value: so(runMeta.gitHead) })
+    evidence.push({ call: tag, receiptField: 'buildFrom', value: so(runMeta.buildFrom) })
+    evidence.push({ call: tag, receiptField: 'dirty', value: so(runMeta.dirty) })
+  } else {
+    missing.push('run-metadata.json（' + so(runMeta.why) + '）')
+  }
   if (driver.exists) {
     const idx = driver.lines.findIndex((l) => /^TARBALL build=/.test(l))
-    if (idx >= 0) evidence.push({ call: `driver:${path.basename(driver.file)}:${idx + 1}`, receiptField: 'TARBALL build', value: driver.build })
+    if (idx >= 0) evidence.push({ call: 'driver:' + path.basename(driver.file) + ':' + (idx + 1), receiptField: 'TARBALL build', value: driver.build })
     const ridx = driver.lines.findIndex((l) => /^BUILD REV:/.test(l))
-    if (ridx >= 0) evidence.push({ call: `driver:${path.basename(driver.file)}:${ridx + 1}`, receiptField: 'BUILD REV', value: driver.rev })
-  } else missing.push(driver.file ? `driver 日志 ${driver.file}` : "driver 日志（未提供 --driver-log：构建自证的第一处缺失，不是通过）")
-  if (gShort) evidence.push({ call: `git:${REPO}`, receiptField: 'rev-parse --short HEAD', value: gShort })
-  if (gFull) evidence.push({ call: `git:${REPO}`, receiptField: 'rev-parse HEAD', value: gFull })
-  if (driver.stamp) {
-    const sidx = driver.lines.findIndex((l) => /^STAMP exit=/.test(l))
-    evidence.push({ call: `driver:${path.basename(driver.file)}:${sidx + 1}`, receiptField: 'STAMP exit', value: driver.stamp })
-    const jidx = driver.lines.findIndex((l) => /"stamped"/.test(l))
-    if (jidx >= 0) evidence.push({ call: `driver:${path.basename(driver.file)}:${jidx + 1}`, receiptField: 'stamp 工具回执', value: so(driver.lines[jidx], 150) })
-  }
-
-  const metaWithBuild = metadata.filter((m) => m.build !== undefined && m.build !== null)
-  for (const m of metaWithBuild) {
-    evidence.push({ call: `journal:${m.session}:${new Date(m.at).toISOString()}`, receiptField: 'session.build', value: m.build })
-    evidence.push({ call: `journal:${m.session}:${new Date(m.at).toISOString()}`, receiptField: 'session.buildSource', value: m.buildSource })
-    evidence.push({ call: `journal:${m.session}:${new Date(m.at).toISOString()}`, receiptField: 'session.dirty', value: m.dirty })
-  }
-  if (metaWithBuild.length === 0) missing.push(`journal 首帧 run-metadata.build（本部署 session 事件无 build/buildSource/dirty；driver 里 STAMP exit=0 但 stamp 工具回执 sessions:0/stamped:0 "no session folder for this workspace"，build 帧没有落盘）`)
+    if (ridx >= 0) evidence.push({ call: 'driver:' + path.basename(driver.file) + ':' + (ridx + 1), receiptField: 'BUILD REV', value: driver.rev })
+    const midx = driver.lines.findIndex((l) => /^RUN METADATA written:/.test(l))
+    if (midx >= 0) evidence.push({ call: 'driver:' + path.basename(driver.file) + ':' + (midx + 1), receiptField: 'RUN METADATA written', value: so(driver.lines[midx], 160) })
+  } else missing.push(driver.file ? 'driver 日志 ' + driver.file : 'driver 日志（未提供 --driver-log：构建自证的一处缺失，不是通过）')
+  if (gShort) evidence.push({ call: 'git:' + REPO, receiptField: 'rev-parse --short HEAD', value: gShort })
+  if (gFull) evidence.push({ call: 'git:' + REPO, receiptField: 'rev-parse HEAD', value: gFull })
   if (EXPECTED_BUILD) evidence.push({ call: 'lead:期望', receiptField: 'build', value: EXPECTED_BUILD })
 
-  const vals = [driver.build, gShort, ...metaWithBuild.map((m) => m.build)].filter((v) => v !== null && v !== undefined)
+  // 加分项：journal 首帧若真的带 run-metadata，贴出来（不再作为必要条件）。
+  const metaWithBuild = metadata.filter((m) => m.build !== undefined && m.build !== null)
+  for (const m of metaWithBuild) {
+    evidence.push({ call: 'journal:' + m.session + ':' + new Date(m.at).toISOString(), receiptField: 'session.build (bonus)', value: m.build })
+    evidence.push({ call: 'journal:' + m.session + ':' + new Date(m.at).toISOString(), receiptField: 'session.buildSource (bonus)', value: m.buildSource })
+    evidence.push({ call: 'journal:' + m.session + ':' + new Date(m.at).toISOString(), receiptField: 'session.dirty (bonus)', value: m.dirty })
+  }
+
+  const shortOf = (v) => (v === null || v === undefined ? null : String(v).slice(0, 8))
   let verdict = 'NO-EVIDENCE'
   let why = ''
-  if (!driver.build) { verdict = 'NO-EVIDENCE'; why = '缺 driver 日志的 TARBALL build 行：三处自证的第一处拿不到。' }
-  else if (!gShort) { verdict = 'NO-EVIDENCE'; why = '缺 git HEAD（无法读仓库）。' }
-  else if (driver.build !== gShort) { verdict = 'FAIL'; why = `TARBALL build=${driver.build} 与 git short HEAD=${gShort} 不等——构建不是从该 HEAD 出的。` }
-  else if (metaWithBuild.length === 0) { verdict = 'NO-EVIDENCE'; why = `TARBALL build 与 git 短 HEAD 都是 ${driver.build}，但 journal 首帧没有 run-metadata 帧（该部署不写 build/buildSource/dirty），第三处自证拿不到，不能算三处相等。${driver.stamp ? '；本轮回执里 STAMP 行是 ' + driver.stamp + '，但 stamp 工具回执 sessions:0/stamped:0（"no session folder for this workspace"），build 帧这次没有落进 journal。' : ''}` }
-  else if (metaWithBuild.some((m) => m.build !== driver.build)) { verdict = 'FAIL'; why = `journal 首帧 build=${so(metaWithBuild.find((m) => m.build !== driver.build).build)} 与 TARBALL build=${driver.build} 不等。` }
-  else if (metaWithBuild.some((m) => m.dirty === true) || metaWithBuild.some((m) => String(m.buildSource).includes('working-tree'))) { verdict = 'ENV-LIMIT'; why = 'journal 首帧报告 dirty:true 或 buildSource 为 working-tree——构建不是从干净 HEAD 出的，这是环境事实。' }
-  else { verdict = 'PASS'; why = `三处相等：TARBALL build=${driver.build}、git short HEAD=${gShort}、journal 首帧 build=${so(metaWithBuild[0].build)}，且 buildSource=${so(metaWithBuild[0].buildSource)} / dirty=${so(metaWithBuild[0].dirty)}。` }
-  record('V1', '构建自证（TARBALL / git HEAD / journal 首帧三处一致）',
-    'TARBALL build = git short HEAD = journal 首帧 run-metadata build；buildSource git HEAD (git archive)；dirty:false',
-    verdict, evidence, why, missing, { arithmetic: { short: driver.build, gitShort: gShort, journalBuild: metaWithBuild[0] ? metaWithBuild[0].build : null } })
+  let cls = 'RUN-DID-NOT-REACH'
+  const bad = []
+  if (!runMeta.exists) {
+    why = '缺 run-metadata：三处互证的第一处拿不到（' + so(runMeta.why) + '；可用 --run-metadata 显式给，或让 driver 写 RUN METADATA written: 行）。'
+    cls = 'RUN-DID-NOT-REACH'
+  } else if (!driver.exists) {
+    why = '缺 driver 日志：三处互证的第二处拿不到（driver 里的 TARBALL build= 是出包事实）。'
+    cls = 'RUN-DID-NOT-REACH'
+  } else if (!gShort || !gFull) {
+    why = '缺 git HEAD（无法读仓库，第三处拿不到）。'
+    cls = 'RUN-DID-NOT-REACH'
+  } else {
+    if (!runMeta.build) bad.push('run-metadata.build 缺失')
+    if (runMeta.tarballBuild && runMeta.build && runMeta.tarballBuild !== runMeta.build) bad.push('run-metadata.tarballBuild=' + runMeta.tarballBuild + ' 与 build=' + runMeta.build + ' 不等（tar 包不是这份元数据出的）')
+    if (runMeta.build && shortOf(runMeta.build) !== gShort) bad.push('run-metadata.build=' + runMeta.build + ' 与 git short HEAD=' + gShort + ' 不等')
+    if (runMeta.gitHead && runMeta.gitHead !== gFull) bad.push('run-metadata.gitHead=' + runMeta.gitHead + ' 与 git HEAD=' + gFull + ' 不等')
+    if (!driver.build) bad.push('driver 日志没有 TARBALL build= 行')
+    else if (driver.build !== gShort) bad.push('driver TARBALL build=' + driver.build + ' 与 git short HEAD=' + gShort + ' 不等')
+    if (driver.rev && runMeta.gitHead && driver.rev !== runMeta.gitHead) bad.push('driver BUILD REV=' + driver.rev + ' 与 run-metadata.gitHead=' + runMeta.gitHead + ' 不等')
+    if (EXPECTED_BUILD && runMeta.build && shortOf(EXPECTED_BUILD) !== shortOf(runMeta.build)) bad.push('期望 build=' + EXPECTED_BUILD + ' 与 run-metadata.build=' + runMeta.build + ' 不等')
+    if (bad.length) { verdict = 'FAIL'; why = '三处互证不一致：' + bad.join('；') + '。' }
+    else if (runMeta.dirty === true || String(runMeta.buildFrom || '').includes('working-tree')) { verdict = 'ENV-LIMIT'; why = 'run-metadata 报 dirty:true 或 buildFrom=working-tree——构建不是从干净 HEAD 出的，这是环境事实。' }
+    else {
+      verdict = 'PASS'
+      why = '三处相等：run-metadata.build=' + runMeta.build + '（tarballBuild=' + so(runMeta.tarballBuild) + '）、driver TARBALL build=' + driver.build + '、git short HEAD=' + gShort + '；journal 首帧 run-metadata ' + (metaWithBuild.length ? '也落盘了（加分项）。' : '没有落盘（这条只是加分项，不再决定判定）。')
+    }
+  }
+  record('V1', '构建自证（run-metadata / driver TARBALL / git HEAD 三处一致）',
+    'run-metadata.json 的 build==tarballBuild==driver TARBALL build==git short HEAD，gitHead==git HEAD；dirty:false；journal 首帧只作加分',
+    verdict, evidence, why, missing, { noEvidenceClass: cls, arithmetic: { metadataBuild: runMeta.build, metadataTarball: runMeta.tarballBuild, metadataGitHead: runMeta.gitHead, driverTarball: driver.build, driverRev: driver.rev, gitShort: gShort, gitFull: gFull, dirty: runMeta.dirty } })
 }
 
 /* ========================================================= V2 成员/所办占比 */
@@ -335,40 +398,52 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
     }
     record('V2', '成员/所办工作量占比（memberWorkShare）',
       '回执带 memberActs>0、officeRelayedActs>0、unknownActs、acts、memberShare(4 位小数)、means；手算 memberShare == memberActs/(memberActs+officeRelayedActs)',
-      verdict, evidence, why, missing, { arithmetic: meta })
+      verdict, evidence, why, missing, { arithmetic: meta, noEvidenceClass: 'RUN-DID-NOT-REACH' })
   }
   if (!last) record('V2', '成员/所办工作量占比（memberWorkShare）',
     '回执带 memberActs>0、officeRelayedActs>0、unknownActs、acts、memberShare(4 位小数)、means；手算 memberShare == memberActs/(memberActs+officeRelayedActs)',
-    'NO-EVIDENCE', evidence, why, missing)
+    'NO-EVIDENCE', evidence, why, missing, { noEvidenceClass: 'RUN-DID-NOT-REACH' })
 }
 
 /* ================================================= V3 所办代跑 vs 成员自跑 */
 
 {
+  // TB-2714：原先用「顶层 memberActed===false」当所办代跑的反例，把 16 个真投递回合读成
+  // 「归因反了」（RUN 76 的 A1 产品缺陷：两把尺子在同一回执上并存）。改为读「该回合是否有成员投递」：
+  // 成员投递的证据 = memberToolCalls>0 或 memberSession/childSessionId 非空（TB-2710 的新形状），
+  // 或 turnReceipts 行的 deliveryPath 是 activation/continuation 这类真投递值。
   const evidence = []
   const missing = []
-  const relay = receipts.filter((r) => r.receipt.memberActed === false && r.receipt.actedForMember && r.receipt.ranInOwnTurn === false)
-  const relayR1 = relay.filter((r) => r.receipt.actedForMember === 'r-1')
-  const picked = relayR1.length ? relayR1[relayR1.length - 1] : (relay.length ? relay[relay.length - 1] : null)
-  if (!picked) missing.push('memberActed:false + actedForMember + ranInOwnTurn:false 的所办代跑回执')
+  const turnReceipts = receipts.filter((r) => r.tool === 'vibe_vmu_turn')
+  const stepRows = turnReceipts.filter((r) => r.receipt.memberToolCalls !== undefined || r.receipt.memberSession !== undefined || r.receipt.childSessionId !== undefined || r.receipt.deliveryPath !== undefined)
+  const memberDelivery = stepRows.filter((r) => (num(r.receipt.memberToolCalls) || 0) > 0 || (typeof r.receipt.memberSession === 'string' && r.receipt.memberSession.length > 0) || (typeof r.receipt.childSessionId === 'string' && r.receipt.childSessionId.length > 0))
+  const callerOnly = stepRows.filter((r) => r.receipt.deliveryPath === 'caller' && !memberDelivery.includes(r))
+
+  if (!stepRows.length) missing.push('带成员投递字段的回执（memberToolCalls / memberSession / childSessionId / deliveryPath）')
   else {
-    evidence.push({ call: callLabel(picked), receiptField: 'memberActed', value: picked.receipt.memberActed })
-    evidence.push({ call: callLabel(picked), receiptField: 'actedForMember', value: picked.receipt.actedForMember })
-    evidence.push({ call: callLabel(picked), receiptField: 'ranInOwnTurn', value: picked.receipt.ranInOwnTurn })
+    const sample = memberDelivery.length ? memberDelivery[memberDelivery.length - 1] : stepRows[stepRows.length - 1]
+    evidence.push({ call: callLabel(sample), receiptField: 'memberToolCalls', value: so(sample.receipt.memberToolCalls) })
+    if (sample.receipt.memberSession !== undefined) evidence.push({ call: callLabel(sample), receiptField: 'memberSession', value: so(sample.receipt.memberSession, 120) })
+    if (sample.receipt.childSessionId !== undefined) evidence.push({ call: callLabel(sample), receiptField: 'childSessionId', value: so(sample.receipt.childSessionId, 120) })
+    if (sample.receipt.deliveryPath !== undefined) evidence.push({ call: callLabel(sample), receiptField: 'deliveryPath', value: so(sample.receipt.deliveryPath) })
+    if (sample.receipt.continuation !== undefined) evidence.push({ call: callLabel(sample), receiptField: 'continuation', value: so(sample.receipt.continuation) })
   }
-  const statusRows = []
-  for (const r of findReceipts(receipts, 'vibe_vmu_turn', (x) => deep(x.receipt, 'status.turnReceipts'))) {
-    for (const row of r.receipt.status.turnReceipts) statusRows.push({ r, row })
+  if (memberDelivery.length) {
+    const m = memberDelivery[memberDelivery.length - 1]
+    evidence.push({ call: callLabel(m), receiptField: '有成员投递的回合数', value: memberDelivery.length })
+  } else missing.push('有成员投递的回合（memberToolCalls>0 或 memberSession/childSessionId 非空）')
+  if (callerOnly.length) evidence.push({ call: callLabel(callerOnly[callerOnly.length - 1]), receiptField: 'deliveryPath === "caller" 的回合数（对照）', value: callerOnly.length })
+
+  // A1 产品缺陷的事实（只记不判红）：同一轮里顶层 memberActed:false 与 status.memberWorkShare.memberActs>0 并存。
+  const squares = findReceipts(receipts, 'vibe_vmu_turn', (r) => deep(r.receipt, 'status.memberWorkShare'))
+  const shareActs = squares.map((r) => num(deep(r.receipt, 'status.memberWorkShare.memberActs')) || 0)
+  const maxShare = shareActs.reduce((a, b) => Math.max(a, b), 0)
+  const memberActedFalse = turnReceipts.filter((r) => r.receipt.memberActed === false)
+  if (maxShare > 0 && memberActedFalse.length) {
+    evidence.push({ call: callLabel(memberActedFalse[memberActedFalse.length - 1]), receiptField: 'memberActed（顶层，A1 缺陷）', value: 'false 与 status.memberWorkShare.memberActs=' + maxShare + ' 并存' })
   }
-  const callerRows = statusRows.filter(({ row }) => row.deliveryPath === 'caller')
-  if (!callerRows.length) missing.push('turnReceipts 行的 deliveryPath:"caller"（所办代跑的回合行）')
-  else evidence.push({ call: callLabel(callerRows[callerRows.length - 1].r), receiptField: `turnReceipts[${callerRows[callerRows.length - 1].row.turn || '?'}].deliveryPath`, value: 'caller' })
-  const memberRows = statusRows.filter(({ row }) => typeof row.deliveryPath === 'string' && row.deliveryPath.length > 0 && row.deliveryPath !== 'caller')
-  if (memberRows.length) evidence.push({ call: callLabel(memberRows[memberRows.length - 1].r), receiptField: `turnReceipts[${memberRows[memberRows.length - 1].row.turn || '?'}].deliveryPath`, value: memberRows[memberRows.length - 1].row.deliveryPath })
-  else missing.push('turnReceipts 行的成员自跑 deliveryPath（如 activation）')
-  // 行来源键：run 75 当时的回执叫 writerSource（旧公开语义，哪个字段作答）；RUN 2691 起记录行的来源键是
-  // writtenFrom（own-turn/relayed/unknown），writerSource 一字不改地留在库头。核对器两个名字都认，未来真机
-  // 用 writtenFrom 作答时这里才不会永远 NO-EVIDENCE。
+
+  // 行来源键（重建行走哪条路）：writtenFrom（own-turn/relayed/unknown），run 75 当时的回执叫 writerSource。
   const writerKeyOf = (r) => (r.receipt.writtenFrom !== undefined ? 'writtenFrom' : (r.receipt.writerSource !== undefined ? 'writerSource' : null))
   const writerRows = receipts.filter((r) => writerKeyOf(r) !== null)
   if (!writerRows.length) missing.push('重建行的行来源键（writtenFrom；run 75 当时的回执叫 writerSource）+ means')
@@ -379,23 +454,28 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
     evidence.push({ call: callLabel(w), receiptField: k, value: w.receipt[k] })
     evidence.push({ call: callLabel(w), receiptField: k + 'Means', value: so(means, 120) })
   }
-  const memberActedTrue = receipts.filter((r) => r.receipt.memberActed === true && r.receipt.ranInOwnTurn !== false)
-  if (memberActedTrue.length) evidence.push({ call: callLabel(memberActedTrue[memberActedTrue.length - 1]), receiptField: 'memberActed', value: true })
-  else missing.push('对照：成员自跑回执中 memberActed:true 的样本')
+  const writerDomainOf = (r) => (writerKeyOf(r) === 'writtenFrom' ? ['own-turn', 'relayed', 'unknown'] : ['field-argument', 'meta.writer', 'meta.owner', 'member'])
+  const badWriter = writerRows.filter((r) => !writerDomainOf(r).includes(r.receipt[writerKeyOf(r)]))
 
   let verdict = 'NO-EVIDENCE'
   let why = ''
-  const writerDomainOf = (r) => (writerKeyOf(r) === 'writtenFrom' ? ['own-turn', 'relayed', 'unknown'] : ['field-argument', 'meta.writer', 'meta.owner', 'member'])
-  if (picked && callerRows.length && writerRows.length && memberActedTrue.length) {
-    const bad = writerRows.filter((r) => !writerDomainOf(r).includes(r.receipt[writerKeyOf(r)]))
-    if (bad.length) { verdict = 'FAIL'; why = `${writerKeyOf(bad[bad.length - 1])}=${so(bad[bad.length - 1].receipt[writerKeyOf(bad[bad.length - 1])])} 不在该键的值域 ${writerDomainOf(bad[bad.length - 1]).join('/')} 内。` }
-    else { verdict = 'PASS'; why = `所办代跑（${so(picked.receipt.tool)} actedForMember=${picked.receipt.actedForMember}、ranInOwnTurn=false）与成员自跑（memberActed=true）可区分；回合行 deliveryPath 同时有 caller 与自跑值；重建行 ${writerKeyOf(writerRows[writerRows.length - 1])}=${so(writerRows[writerRows.length - 1].receipt[writerKeyOf(writerRows[writerRows.length - 1])])} 带 means。` }
+  let cls = 'RUN-DID-NOT-REACH'
+  if (!memberDelivery.length) {
+    why = '本轮没有任何「成员真的投递过」的回合回执：' + (missing.join('；') || '字段缺失') + '。'
+    cls = 'RUN-DID-NOT-REACH'
+  } else if (badWriter.length) {
+    verdict = 'FAIL'
+    why = writerKeyOf(badWriter[badWriter.length - 1]) + '=' + so(badWriter[badWriter.length - 1].receipt[writerKeyOf(badWriter[badWriter.length - 1])]) + ' 不在该键的值域 ' + writerDomainOf(badWriter[badWriter.length - 1]).join('/') + ' 内。'
+  } else if (callerOnly.length || maxShare > 0) {
+    verdict = 'PASS'
+    why = '有成员投递的回合 ' + memberDelivery.length + ' 个（memberToolCalls/memberSession/deliveryPath 互证），与「所办代跑」可区分：' + (callerOnly.length ? '另有 deliveryPath:"caller" 的回合 ' + callerOnly.length + ' 个' : '顶层 memberActed:false 与 status.memberWorkShare.memberActs=' + maxShare + ' 并存（A1 缺陷事实，两把尺子不同源，V3 只记事实）') + '。'
   } else {
-    why = `缺：${missing.join('；')}。` + (relay.length ? `（已见 ${relay.length} 条 memberActed:false 回执，但四件套不齐）` : '（本轮尚未见 memberActed:false 回执）')
+    why = '有成员投递的回合，但既没有 caller-only 对照、也没有 memberWorkShare 可交叉，无法证明两类回合可区分。'
+    cls = 'RUN-DID-NOT-REACH'
   }
-  record('V3', '所办代跑 vs 成员自跑（回执 + 回合行 + 重建行三处可区分）',
-    '所办代跑回执 memberActed:false、actedForMember、ranInOwnTurn:false；回合行 deliveryPath:"caller"；重建行行来源键 writtenFrom∈{own-turn,relayed,unknown}（run 75 当时的回执叫 writerSource∈{field-argument,meta.writer,meta.owner,member}）+ means',
-    verdict, evidence, why, missing)
+  record('V3', '所办代跑 vs 成员自跑（该回合是否有成员投递）',
+    '成员投递的证据来自 memberToolCalls>0 / memberSession / childSessionId / deliveryPath=activation(或 continuation)，而不是顶层 memberActed:false；另需重建行的行来源键 writtenFrom∈{own-turn,relayed,unknown}（或 run 75 的 writerSource）',
+    verdict, evidence, why, missing, { noEvidenceClass: cls })
 }
 
 /* ===================================== V4 论文三态与状态板（liveReadings） */
@@ -418,7 +498,10 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
   else missing.push('final.complete:true 的回执（论文 finalized）')
 
   const statusReceipts = findReceipts(receipts, 'vibe_vmu_turn', (r) => deep(r.receipt, 'status.liveReadings'))
-  const lastStatus = statusReceipts.length ? statusReceipts[statusReceipts.length - 1] : null
+  // 取"读数最全"的那条 status（三组里 value 非 null 的个数最多，并列取最晚）：早期 status 早于论文/蓝图/闭题轨时
+  // 三组是 null，盲取最后一条会把「读数存在但这一条没读到」误判成「产品不产出」。
+  const richnessOf = (r) => ['paper', 'blueprint', 'closure'].filter((g) => { const x = deep(r.receipt, 'status.liveReadings.' + g); return x && x.value !== null && x.value !== undefined }).length
+  const lastStatus = statusReceipts.length ? statusReceipts.reduce((best, r) => (richnessOf(r) >= richnessOf(best) ? r : best), statusReceipts[0]) : null
   if (!lastStatus) missing.push('vibe_vmu_turn {op:status} 回执的 status.liveReadings')
   else {
     for (const grp of ['paper', 'blueprint', 'closure']) {
@@ -453,17 +536,22 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
   const evidenceOk = start && finalReceipt && allStates.includes('reviewing') && allStates.some((s) => /final/.test(s)) && allStates.some((s) => /writ|draft/.test(s))
   let verdict = 'NO-EVIDENCE'
   let why = ''
+  let cls = 'RUN-DID-NOT-REACH'
   if (!start) why = '缺论文 start 回执。'
   else if (!finalReceipt) why = '没看到 final.complete:true（论文未到 finalized）。'
   else if (!lastStatus) why = '缺 status.liveReadings（状态板同值无法核对）。'
-  else if (missing.length) why = `缺：${missing.join('；')}。`
+  else if (missing.length) {
+    // 状态回执在、但三组读数是 null/缺键 ⇒ 产品该给读数却没给（RUN 76 的 A3：blueprint.value=null，why="records.mdParse 没有注入"）。
+    why = `缺：${missing.join('；')}。`
+    cls = 'PRODUCT-MISSING'
+  }
   else if (asm.length < 3) why = `三态中只取到 ${asm.length} 份装配文本（需要三个状态各一份）。`
   else if (sHas.size < 3) { verdict = 'FAIL'; why = `三份装配文本的 sha256 只有 ${sHas.size} 个不同值（要求三份互异）。` }
   else if (!evidenceOk) why = `状态序列未覆盖 draft/writing→reviewing→finalized：实测 ${allStates.join('→')}。`
   else { verdict = 'PASS'; why = `论文三态 ${allStates.join('→')} 均出现；三份装配文本 sha 互异（${[...sHas].map((h) => h.slice(0, 8)).join('/')}）；state block 的 paper/blueprint/closure 三组都带 source+atSource。` }
   record('V4', '论文三态推进 + 每态下一回合装配文本 sha 互异 + 状态板三组读数',
     'paper start 后经 part/review 推进 draft→reviewing→finalized；每态主席席取一次装配文本并算 sha256（三份互异）；状态板 paper/blueprint/closure 带 source+atSource；turn.status() 的 liveReadings 同值',
-    verdict, evidence, why, missing, { arithmetic: { assembly: asm.map((a) => ({ state: a.state, sha256: a.sha })), states: allStates } })
+    verdict, evidence, why, missing, { arithmetic: { assembly: asm.map((a) => ({ state: a.state, sha256: a.sha })), states: allStates }, noEvidenceClass: cls })
 }
 
 /* ================================================== V5 论文渲染/定稿回执 */
@@ -545,48 +633,86 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
   if (!results.find((x) => x.V === 'V6')) record('V6', '具名拒 + 可达替代（hint 真能走通）', 'code+hint 含 REACHABLE INSTEAD:+真工具+真参数；逐字第二次不得同码拒', 'NO-EVIDENCE', evidence, `缺：${missing.join('；')}。`, missing)
 }
 
+
 /* ============================================ V7 投递形状：具名种类不是引擎不可用 */
 
 {
+  // TB-2714：裸散文交付在信封层被判 VMU_TURN_NO_FENCE（replyLength/hadBrace 给原文），
+  // 适配器边界才是 VMU_TURN_DELIVERY_SHAPE / NO_PAYLOAD（shape/keys/means 给解释）。
+  // 两层都是「具名形状拒」，同一判据要认任一命中，且必须带解释字段。
   const evidence = []
   const missing = []
-  const shape = receipts.filter((r) => ['VMU_TURN_DELIVERY_SHAPE', 'VMU_TURN_DELIVERY_NO_PAYLOAD'].includes(r.receipt.code))
+  const envelope = receipts.filter((r) => r.receipt.code === 'VMU_TURN_NO_FENCE')
+  const adapter = receipts.filter((r) => ['VMU_TURN_DELIVERY_SHAPE', 'VMU_TURN_DELIVERY_NO_PAYLOAD'].includes(r.receipt.code))
   const engine = receipts.filter((r) => r.receipt.code === 'VMU_ENGINE_UNAVAILABLE')
-  for (const r of shape) {
-    evidence.push({ call: callLabel(r), receiptField: 'code', value: r.receipt.code })
-    if (r.receipt.starts !== undefined) evidence.push({ call: callLabel(r), receiptField: 'starts', value: r.receipt.starts })
+  const explainedEnvelope = (r) => num(r.receipt.replyLength) !== null || typeof r.receipt.replyExcerpt === 'string' || typeof r.receipt.hint === 'string'
+  const explainedAdapter = (r) => typeof r.receipt.shape === 'string' || Array.isArray(r.receipt.keys) || typeof r.receipt.hint === 'string' || typeof r.receipt.means === 'string'
+  for (const r of envelope) {
+    evidence.push({ call: callLabel(r), receiptField: 'code（信封层）', value: r.receipt.code })
+    if (r.receipt.replyLength !== undefined) evidence.push({ call: callLabel(r), receiptField: 'replyLength', value: so(r.receipt.replyLength) })
+    if (r.receipt.hadBrace !== undefined) evidence.push({ call: callLabel(r), receiptField: 'hadBrace', value: so(r.receipt.hadBrace) })
+    if (r.receipt.hint) evidence.push({ call: callLabel(r), receiptField: 'hint', value: so(r.receipt.hint, 160) })
+  }
+  for (const r of adapter) {
+    evidence.push({ call: callLabel(r), receiptField: 'code（适配器层）', value: r.receipt.code })
+    if (r.receipt.shape !== undefined) evidence.push({ call: callLabel(r), receiptField: 'shape', value: so(r.receipt.shape) })
+    if (r.receipt.starts !== undefined) evidence.push({ call: callLabel(r), receiptField: 'starts', value: so(r.receipt.starts) })
     if (r.receipt.hint) evidence.push({ call: callLabel(r), receiptField: 'hint', value: so(r.receipt.hint, 160) })
   }
   for (const r of engine) evidence.push({ call: callLabel(r), receiptField: 'code（反例）', value: r.receipt.code })
   let verdict = 'NO-EVIDENCE'
   let why = ''
-  if (!shape.length) { missing.push('code 为 VMU_TURN_DELIVERY_SHAPE 或 VMU_TURN_DELIVERY_NO_PAYLOAD 的投递形状拒回执（本轮 0 条）'); why = '本轮回执中没有 VMU_TURN_DELIVERY_SHAPE / VMU_TURN_DELIVERY_NO_PAYLOAD。' }
-  else if (engine.length) { verdict = 'FAIL'; why = `出现 VMU_ENGINE_UNAVAILABLE（${engine.map((r) => callLabel(r)).join('、')}）——投递形状问题被写成引擎不可用。` }
-  else if (shape.some((r) => typeof r.receipt.starts === 'number' && r.receipt.starts > 1)) { verdict = 'FAIL'; why = '投递形状回执 starts>1（语义只该起一次）。' }
-  else { verdict = 'PASS'; why = `具名拒 ${shape.map((r) => r.receipt.code).join('、')} 出现，且全文没有 VMU_ENGINE_UNAVAILABLE。` }
-  record('V7', '投递形状具名拒（不是引擎不可用）', 'code:"VMU_TURN_DELIVERY_SHAPE" 或 "VMU_TURN_DELIVERY_NO_PAYLOAD"；不得是 VMU_ENGINE_UNAVAILABLE；starts≤1', verdict, evidence, why, missing)
+  let cls = 'RUN-DID-NOT-REACH'
+  if (engine.length) { verdict = 'FAIL'; why = '出现 VMU_ENGINE_UNAVAILABLE（' + engine.map((r) => callLabel(r)).join('、') + '）——投递形状问题被写成引擎不可用。' }
+  else if (!envelope.length && !adapter.length) { missing.push('code 为 VMU_TURN_NO_FENCE（信封层）或 VMU_TURN_DELIVERY_SHAPE / NO_PAYLOAD（适配器层）的投递形状拒回执（本轮 0 条）'); why = '本轮回执里没有信封层或适配器层的投递形状拒。'; cls = 'RUN-DID-NOT-REACH' }
+  else {
+    const unexplained = envelope.filter((r) => !explainedEnvelope(r)).concat(adapter.filter((r) => !explainedAdapter(r)))
+    if (unexplained.length) { verdict = 'FAIL'; why = '形状拒缺解释字段（信封层要 replyLength/replyExcerpt/hint，适配器层要 shape/keys/means/hint）：' + unexplained.map((r) => callLabel(r)).join('、') + '。' }
+    else if (adapter.some((r) => typeof r.receipt.starts === 'number' && r.receipt.starts > 1)) { verdict = 'FAIL'; why = '投递形状回执 starts>1（语义只该起一次）。' }
+    else { verdict = 'PASS'; why = '具名形状拒出现（' + [envelope.length ? '信封层 ' + envelope.length + ' 条 VMU_TURN_NO_FENCE' : null, adapter.length ? '适配器层 ' + adapter.length + ' 条 ' + adapter.map((r) => r.receipt.code).join('/') : null].filter(Boolean).join('；') + '），均带解释字段，且全文没有 VMU_ENGINE_UNAVAILABLE。' }
+  }
+  record('V7', '投递形状具名拒（信封层或适配器层，不是引擎不可用）',
+    'code 为"VMU_TURN_NO_FENCE"（信封层，带 replyLength/hint）或"VMU_TURN_DELIVERY_SHAPE"/"VMU_TURN_DELIVERY_NO_PAYLOAD"（适配器层，带 shape/keys/means）；不得是 VMU_ENGINE_UNAVAILABLE；starts≤1',
+    verdict, evidence, why, missing, { noEvidenceClass: cls })
 }
 
 /* ================================================== V8 parked 停放回执 */
 
 {
+  // TB-2714：parked 有两种具名拒，两个名字对应两种事实：
+  //   VMU_TURN_ALREADY_PARKED        —— 同席再派：parkedFacts（releaseBy 等）+ parkedMeans/hint
+  //   VMU_TURN_PARKED_NEEDS_OWNER    —— reply 无可答 parked / turn 已关：parkedReason + parkedFacts
+  // 判据认任一命中，并要求该层自带的解释字段齐全（缺字段 = FAIL，不是 PASS）。
   const evidence = []
   const missing = []
-  const parked = hasCode('VMU_TURN_PARKED_NEEDS_OWNER')
-  for (const r of parked) {
-    evidence.push({ call: callLabel(r), receiptField: 'code', value: r.receipt.code })
+  const owner = receipts.filter((r) => r.receipt.code === 'VMU_TURN_PARKED_NEEDS_OWNER')
+  const already = receipts.filter((r) => r.receipt.code === 'VMU_TURN_ALREADY_PARKED')
+  const hasFacts = (r) => r.receipt.parkedFacts !== undefined && r.receipt.parkedFacts !== null && (typeof r.receipt.parkedFacts !== 'string' || r.receipt.parkedFacts.length > 0)
+  for (const r of owner) {
+    evidence.push({ call: callLabel(r), receiptField: 'code（需所有者）', value: r.receipt.code })
     evidence.push({ call: callLabel(r), receiptField: 'parkedReason', value: so(r.receipt.parkedReason, 160) })
     evidence.push({ call: callLabel(r), receiptField: 'parkedFacts', value: so(r.receipt.parkedFacts, 200) })
   }
+  for (const r of already) {
+    evidence.push({ call: callLabel(r), receiptField: 'code（已停放）', value: r.receipt.code })
+    evidence.push({ call: callLabel(r), receiptField: 'parkedFacts', value: so(r.receipt.parkedFacts, 200) })
+    evidence.push({ call: callLabel(r), receiptField: 'parkedMeans', value: so(r.receipt.parkedMeans, 160) })
+    if (r.receipt.hint) evidence.push({ call: callLabel(r), receiptField: 'hint', value: so(r.receipt.hint, 160) })
+  }
   let verdict = 'NO-EVIDENCE'
   let why = ''
-  if (!parked.length) { missing.push('code:"VMU_TURN_PARKED_NEEDS_OWNER" 的回执'); why = '本轮还没有 parked 回执。' }
+  let cls = 'RUN-DID-NOT-REACH'
+  if (!owner.length && !already.length) { missing.push('code 为"VMU_TURN_ALREADY_PARKED"或"VMU_TURN_PARKED_NEEDS_OWNER"的 parked 回执'); why = '本轮没有 parked 回执（两种具名 code 都没出现）。'; cls = 'RUN-DID-NOT-REACH' }
   else {
-    const bad = parked.find((r) => !r.receipt.parkedReason || typeof r.receipt.parkedReason !== 'string' || !r.receipt.parkedFacts)
-    if (bad) { verdict = 'FAIL'; why = 'parked 回执缺非空 parkedReason 或 parkedFacts（处置建议）。' }
-    else { verdict = 'PASS'; why = `parked 回执 ${parked.length} 条，parkedReason 非空，parkedFacts 带处置建议。` }
+    const badOwner = owner.filter((r) => !r.receipt.parkedReason || typeof r.receipt.parkedReason !== 'string' || !hasFacts(r))
+    const badAlready = already.filter((r) => !hasFacts(r) || !(typeof r.receipt.parkedMeans === 'string' || typeof r.receipt.hint === 'string'))
+    if (badOwner.length) { verdict = 'FAIL'; why = 'VMU_TURN_PARKED_NEEDS_OWNER 回执缺非空 parkedReason 或 parkedFacts（' + badOwner.map((r) => callLabel(r)).join('、') + '）。' }
+    else if (badAlready.length) { verdict = 'FAIL'; why = 'VMU_TURN_ALREADY_PARKED 回执缺 parkedFacts 或 parkedMeans/hint（' + badAlready.map((r) => callLabel(r)).join('、') + '）。' }
+    else { verdict = 'PASS'; why = 'parked 拒出现 ' + (owner.length ? owner.length + ' 条 VMU_TURN_PARKED_NEEDS_OWNER（parkedReason+parkedFacts）' : '') + (owner.length && already.length ? '、' : '') + (already.length ? already.length + ' 条 VMU_TURN_ALREADY_PARKED（parkedFacts+parkedMeans）' : '') + '，解释字段齐全。' }
   }
-  record('V8', 'parked 停放：具名 code + 原因 + 处置建议', 'code:"VMU_TURN_PARKED_NEEDS_OWNER"；parkedReason 非空；parkedFacts 给处置建议', verdict, evidence, why, missing)
+  record('V8', 'parked 停放：两种具名 code + 各自原因/处置建议',
+    'code 为"VMU_TURN_ALREADY_PARKED"（同席再派，parkedFacts+parkedMeans）或"VMU_TURN_PARKED_NEEDS_OWNER"（reply 无可答 parked，parkedReason+parkedFacts）；解释字段缺一即 FAIL',
+    verdict, evidence, why, missing, { noEvidenceClass: cls })
 }
 
 /* ================================================== V9 孤儿 abandon 收尾 */
@@ -649,6 +775,8 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
 /* ==================================== V11 回合通知：字面头 + 计数恒等 + ack 减一 */
 
 {
+  // TB-2714：unackedRowsAllBoxes / perBox 只出现在 vibe_v5_inbox 的 action:"list" 回执里
+  // （vibe_vmu_mailbox 只有 action:"ack"，没有 status 形状）⇒ 原判据读错工具，永远 NO-EVIDENCE。
   const evidence = []
   const missing = []
   const notices = messages.filter((m) => m.type === 'user/message' && m.text.includes('[新到的消息]'))
@@ -656,89 +784,75 @@ const hasCode = (code) => receipts.filter((r) => r.receipt.code === code)
   else {
     const n = notices[notices.length - 1]
     const line = n.text.split('\n').find((l) => l.includes('[新到的消息]')) || n.text.slice(0, 80)
-    evidence.push({ call: `journal:${n.session}:${new Date(n.at).toISOString()}`, receiptField: 'prompt 首行', value: line.slice(0, 120) })
-    evidence.push({ call: `journal:${n.session}:${new Date(n.at).toISOString()}`, receiptField: 'notice 行数', value: (n.text.match(/读后 mailbox ack /g) || []).length })
+    evidence.push({ call: 'journal:' + n.session + ':' + new Date(n.at).toISOString(), receiptField: 'prompt 首行', value: line.slice(0, 120) })
+    evidence.push({ call: 'journal:' + n.session + ':' + new Date(n.at).toISOString(), receiptField: 'notice 行数', value: (n.text.match(/读后 mailbox ack /g) || []).length })
   }
-  // 计数恒等：status.notice.unackedRowsAllBoxes == sum(perBox)，对每一条 status 回执都算一遍。
-  // 不能只看最后一条：一条前后矛盾的读数本身就是 FAIL 的证据（反关灯②），
-  // 一条缺字段的读数则必须被点名（反关灯①），两者都不能被后面的正确读数盖住或静默跳过。
-  const mailStatuses = findReceipts(receipts, 'vibe_vmu_mailbox', (r) => r.receipt.action === 'status')
+
+  // 计数恒等：list 回执的 notice.unackedRowsAllBoxes == sum(notice.perBox)，每一条都算（一条矛盾读数本身就是 FAIL 证据）。
+  const mailLists = findReceipts(receipts, 'vibe_v5_inbox', (r) => r.receipt.action === 'list')
   let arithmetic = null
   const readings = []
   let firstBad = null
   let firstMissing = null
-  for (const r of mailStatuses) {
+  for (const r of mailLists) {
     const total = deep(r.receipt, 'notice.unackedRowsAllBoxes')
     const perBox = deep(r.receipt, 'notice.perBox')
     if (total === undefined || perBox === undefined) {
-      if (!firstMissing) {
-        firstMissing = { r, fields: [total === undefined ? 'notice.unackedRowsAllBoxes' : null, perBox === undefined ? 'notice.perBox' : null].filter(Boolean) }
-      }
+      if (!firstMissing) firstMissing = { r, fields: [total === undefined ? 'notice.unackedRowsAllBoxes' : null, perBox === undefined ? 'notice.perBox' : null].filter(Boolean) }
       continue
     }
     const sum = Object.values(perBox).reduce((a, b) => a + (num(b) || 0), 0)
-    const reading = { status: callLabel(r), unackedRowsAllBoxes: total, perBox, perBoxSum: sum, equal: num(total) === sum }
+    const reading = { status: callLabel(r), unackedRowsAllBoxes: total, perBox, perBoxSum: sum, equal: num(total) === sum, at: r.at }
     readings.push(reading)
     if (!reading.equal && !firstBad) firstBad = reading
   }
-  if (firstMissing) {
-    for (const f of firstMissing.fields) missing.push(`${f}（${callLabel(firstMissing.r)} 的 status 回执里没有这个字段）`)
-  }
+  if (!mailLists.length) missing.push('vibe_v5_inbox 的 action:"list" 回执（notice.unackedRowsAllBoxes / notice.perBox 只在这里）')
+  if (firstMissing) for (const f of firstMissing.fields) missing.push(f + '（' + callLabel(firstMissing.r) + ' 的 list 回执里没有这个字段）')
   if (readings.length) {
     const chosen = firstBad || readings[readings.length - 1]
-    arithmetic = { status: chosen.status, unackedRowsAllBoxes: chosen.unackedRowsAllBoxes, perBox: chosen.perBox, perBoxSum: chosen.perBoxSum, equal: chosen.equal, readings }
+    arithmetic = { source: 'vibe_v5_inbox list notice', status: chosen.status, unackedRowsAllBoxes: chosen.unackedRowsAllBoxes, perBox: chosen.perBox, perBoxSum: chosen.perBoxSum, equal: chosen.equal, readings: readings.map((x) => ({ status: x.status, unackedRowsAllBoxes: x.unackedRowsAllBoxes, perBox: x.perBox, perBoxSum: x.perBoxSum, equal: x.equal })) }
     for (const r of readings.slice(-2)) {
       evidence.push({ call: r.status, receiptField: 'notice.unackedRowsAllBoxes', value: r.unackedRowsAllBoxes })
-      evidence.push({ call: r.status, receiptField: 'sum(notice.perBox)', value: `${r.perBoxSum} (${Object.entries(r.perBox).map(([k, v]) => k + ':' + v).join(', ')})` })
+      evidence.push({ call: r.status, receiptField: 'sum(notice.perBox)', value: r.perBoxSum + ' (' + Object.entries(r.perBox).map(([k, v]) => k + ':' + v).join(', ') + ')' })
     }
-    if (firstBad) missing.push(`perBox 求和 == unackedRowsAllBoxes（${firstBad.status} 上 unackedRowsAllBoxes=${firstBad.unackedRowsAllBoxes} 与 perBox 求和=${firstBad.perBoxSum} 不等）`)
+    if (firstBad) missing.push('perBox 求和 == unackedRowsAllBoxes（' + firstBad.status + ' 上 unackedRowsAllBoxes=' + firstBad.unackedRowsAllBoxes + ' 与 perBox 求和=' + firstBad.perBoxSum + ' 不等）')
   }
-  // ack 减一：优先"同一成员 inbox list 的 count"；必要时退到 mailbox status 的总数。
-  // 判据严格：ack 了 k 条，则 after == before - k（k 取 args.ids.length，缺省 1）。
-  const lists = findReceipts(receipts, 'vibe_v5_inbox', (r) => r.receipt.action === 'list' && typeof r.receipt.count === 'number')
+
+  // ack 减一：按「同一成员 perBox 的净减 k」判，不拿全局 total 直接减（全库未读会在期间被别盒新消息抬高）。
   const acks = findReceipts(receipts, 'vibe_vmu_mailbox', (r) => r.receipt.action === 'ack' && r.receipt.ok === true)
   let delta = null
   let noisy = null
   for (const ack of acks) {
-    const member = ack.args && ack.args.member
+    const member = (ack.args && ack.args.member) || ack.receipt.member || null
     const k = Array.isArray(ack.args && ack.args.ids) ? ack.args.ids.length : 1
-    const before = [...lists].reverse().find((r) => r.at < ack.at && r.args && r.args.member === member)
-    const after = lists.find((r) => r.at > ack.at && r.args && r.args.member === member)
+    if (!member) continue
+    const before = [...readings].reverse().find((r) => r.at < ack.at && num(r.perBox[member]) !== null)
+    const after = readings.find((r) => r.at > ack.at && num(r.perBox[member]) !== null)
     if (!before || !after) continue
-    const cand = { member, before: before.receipt.count, after: after.receipt.count, acked: k, at: ack.at, source: 'vibe_v5_inbox list count' }
-    if (after.receipt.count === before.receipt.count - k) { delta = cand; break }
+    const cand = { member, before: before.perBox[member], after: after.perBox[member], acked: k, at: ack.at, source: 'vibe_v5_inbox list notice.perBox[' + member + ']', statusBefore: before.status, statusAfter: after.status }
+    if (num(cand.after) === num(cand.before) - k) { delta = cand; break }
     if (!noisy) noisy = cand
   }
-  if (!delta) {
-    // 退路：mailbox status 的 notice.unackedRowsAllBoxes 在 ack 前后的差（同一根账本，口径写清）。
-    for (const ack of acks) {
-      const k = Array.isArray(ack.args && ack.args.ids) ? ack.args.ids.length : 1
-      const sBefore = [...mailStatuses].reverse().find((r) => r.at < ack.at)
-      const sAfter = mailStatuses.find((r) => r.at > ack.at)
-      if (!sBefore || !sAfter) continue
-      const b = num(deep(sBefore.receipt, 'notice.unackedRowsAllBoxes'))
-      const a = num(deep(sAfter.receipt, 'notice.unackedRowsAllBoxes'))
-      if (a === b - k) {
-        delta = { member: ack.args && ack.args.member, before: b, after: a, acked: k, at: ack.at, source: 'vibe_vmu_mailbox status.unackedRowsAllBoxes', statusBefore: callLabel(sBefore), statusAfter: callLabel(sAfter) }
-        break
-      }
-    }
-  }
   if (delta) {
-    evidence.push({ call: delta.statusBefore ? delta.statusBefore : `inbox:${delta.member}`, receiptField: `${delta.source} before`, value: delta.before })
-    evidence.push({ call: delta.statusAfter ? delta.statusAfter : `inbox:${delta.member}`, receiptField: `${delta.source} after`, value: `${delta.after}（ack ${delta.acked} 条）` })
+    evidence.push({ call: delta.statusBefore, receiptField: delta.source + ' before', value: delta.before })
+    evidence.push({ call: delta.statusAfter, receiptField: delta.source + ' after', value: delta.after + '（ack ' + delta.acked + ' 条）' })
   } else if (noisy) {
-    evidence.push({ call: `inbox:${noisy.member}`, receiptField: 'count before/after ack', value: `${noisy.before} → ${noisy.after}（ack ${noisy.acked} 条；未找到净减 pair）` })
-    missing.push('ack 前后净减 k 条的计数 pair（找到的 pair 期间有新消息，差不能归因给这次 ack）')
-  } else missing.push('同一成员在 ack 前后的两次 inbox list count（或 mailbox status 总数）')
+    evidence.push({ call: 'inbox:' + noisy.member, receiptField: 'perBox before/after ack', value: noisy.before + ' → ' + noisy.after + '（ack ' + noisy.acked + ' 条；期间有新到，差不能归因给这次 ack）' })
+    missing.push('同一成员 perBox 在 ack 前后净减 k 条的 pair（找到的 pair 期间有新消息，差不能归因给这次 ack）')
+  } else if (acks.length) missing.push('同一成员在 ack 前后的两次 inbox list 读数（notice.perBox）')
+  else missing.push('vibe_vmu_mailbox 的 action:"ack" 成功回执')
+
   let verdict = 'NO-EVIDENCE'
   let why = ''
-  if (!notices.length) why = '没找到字面 "[新到的消息]" 的下一回合提示词。'
-  else if (!arithmetic) why = '缺 mailbox status 的 unackedRowsAllBoxes/perBox，计数恒等无法算。'
-  else if (!arithmetic.equal) { verdict = 'FAIL'; why = `unackedRowsAllBoxes=${arithmetic.unackedRowsAllBoxes} 与 perBox 求和 ${arithmetic.perBoxSum} 不等。` }
-  else if (!delta) why = `缺可归因的 ack 减一计数：${missing[missing.length - 1]}。`
-  else { verdict = 'PASS'; why = `提示词含字面 "[新到的消息]"；unackedRowsAllBoxes=${arithmetic.unackedRowsAllBoxes} == sum(perBox)=${arithmetic.perBoxSum}；${delta.source} 在 ack ${delta.acked} 条前后 ${delta.before}→${delta.after}（净减 ${delta.before - delta.after}）。` }
-  record('V11', '回合通知字面头 + 未读计数恒等 + ack 减一', '" [新到的消息]" 字面出现在下一回合提示词；unackedRowsAllBoxes==sum(perBox)；ack 一次后总数减 1', verdict, evidence, why, missing, { arithmetic })
+  let cls = 'RUN-DID-NOT-REACH'
+  if (!notices.length) { why = '没找到字面 "[新到的消息]" 的下一回合提示词。'; cls = 'RUN-DID-NOT-REACH' }
+  else if (!arithmetic) { why = '缺 list 回执的 notice.unackedRowsAllBoxes/perBox，计数恒等无法算。'; cls = 'RUN-DID-NOT-REACH' }
+  else if (!arithmetic.equal) { verdict = 'FAIL'; why = 'unackedRowsAllBoxes=' + arithmetic.unackedRowsAllBoxes + ' 与 perBox 求和 ' + arithmetic.perBoxSum + ' 不等。' }
+  else if (!delta) { why = '缺可归因的 ack 减一计数：' + missing[missing.length - 1] + '。'; cls = 'RUN-DID-NOT-REACH' }
+  else { verdict = 'PASS'; why = '提示词含字面 "[新到的消息]"；unackedRowsAllBoxes=' + arithmetic.unackedRowsAllBoxes + ' == sum(perBox)=' + arithmetic.perBoxSum + '；' + delta.source + ' 在 ack ' + delta.acked + ' 条前后 ' + delta.before + '→' + delta.after + '（净减 ' + (num(delta.before) - num(delta.after)) + '）。' }
+  record('V11', '回合通知字面头 + 未读计数恒等 + ack 减一',
+    '"[新到的消息]" 字面出现在下一回合提示词；vibe_v5_inbox list 的 unackedRowsAllBoxes==sum(perBox)；ack k 条后该成员 perBox 净减 k',
+    verdict, evidence, why, missing, { noEvidenceClass: cls, arithmetic })
 }
 
 /* ============================= V12 结题票 + 终稿 + 归档回指 + 字节/sha 恒等 */
@@ -844,6 +958,28 @@ const kept = (CHECKS_ONLY ? results.filter((r) => CHECKS_ONLY.includes(r.V)) : r
 const summary = {}
 for (const r of kept) summary[r.verdict] = (summary[r.verdict] || 0) + 1
 
+// TB-2714：NO-EVIDENCE 不是一种原因，而是三种，混在一个数里就会把「尺子坏」读成「产品坏」。
+//   RULE-UNREACHABLE   判据要求的产品在运行期根本不会产出的证据（尺子错，e.g. 旧 V1 的 journal 首帧）
+//   RUN-DID-NOT-REACH  产品能产出，但这次 run 没走到那条路（覆盖率缺口，不是缺陷）
+//   PRODUCT-MISSING    这次 run 应该产出却沉默（产品缺陷，要单独立项）
+// 每条 NO-EVIDENCE 必须自带分类；没有分类的记 UNCLASSIFIED 并单独计数（不许默认到任何一类里）。
+const NO_EVIDENCE_CLASSES = ['RULE-UNREACHABLE', 'RUN-DID-NOT-REACH', 'PRODUCT-MISSING']
+const classOf = (r) => {
+  if (r.verdict !== 'NO-EVIDENCE') return null
+  return NO_EVIDENCE_CLASSES.includes(r.noEvidenceClass) ? r.noEvidenceClass : 'UNCLASSIFIED'
+}
+const noEvidence = {
+  total: kept.filter((r) => r.verdict === 'NO-EVIDENCE').length,
+  byClass: { 'RULE-UNREACHABLE': 0, 'RUN-DID-NOT-REACH': 0, 'PRODUCT-MISSING': 0, 'UNCLASSIFIED': 0 },
+  rows: [],
+}
+for (const r of kept) {
+  const c = classOf(r)
+  if (!c) continue
+  noEvidence.byClass[c] = (noEvidence.byClass[c] || 0) + 1
+  noEvidence.rows.push({ id: r.V, class: c, why: r.why })
+}
+
 const perSession = sessions.map((s) => ({
   id: s.id,
   firstEventAt: new Date(s.firstTime).toISOString(),
@@ -864,8 +1000,10 @@ const payload = {
     why: r.why,
     missing: r.missing || [],
     arithmetic: r.arithmetic || null,
+    noEvidenceClass: classOf(r),
   })),
   summary,
+  noEvidence,
   buildReadings: {
     expected: EXPECTED_BUILD,
     driverTarball: driver.build,
@@ -913,6 +1051,14 @@ tableLines.push("")
 tableLines.push("## 汇总")
 tableLines.push("")
 tableLines.push(JSON.stringify(summary))
+tableLines.push("")
+tableLines.push("### NO-EVIDENCE 按原因分类（TB-2714）")
+tableLines.push("")
+tableLines.push("- RULE-UNREACHABLE（尺子错：产品运行期不会产出该证据）：" + noEvidence.byClass['RULE-UNREACHABLE'])
+tableLines.push("- RUN-DID-NOT-REACH（产品能产出，但这次 run 没走到）：" + noEvidence.byClass['RUN-DID-NOT-REACH'])
+tableLines.push("- PRODUCT-MISSING（这次 run 应该产出却沉默：产品缺陷）：" + noEvidence.byClass['PRODUCT-MISSING'])
+tableLines.push("- UNCLASSIFIED（没给分类的 NO-EVIDENCE，不许默认成上面任一类）：" + noEvidence.byClass['UNCLASSIFIED'])
+for (const row of noEvidence.rows) tableLines.push("  - " + row.id + " " + row.class + "：" + row.why)
 const tableText = tableLines.join("\n") + "\n"
 
 if (OUT) {
@@ -932,5 +1078,6 @@ console.error("")
 console.error("=== verify-run ===")
 console.error("sessions=" + sessions.length + " receipts=" + receipts.length + " prompts=" + messages.length)
 console.error("summary: " + JSON.stringify(summary))
+console.error("no-evidence classes: " + JSON.stringify(noEvidence.byClass))
 for (const r of kept) console.error(r.V.padEnd(4) + " " + r.verdict.padEnd(16) + r.title + " | " + r.why.slice(0, 140))
 process.exitCode = kept.some((r) => r.verdict === "FAIL") ? 1 : 0

@@ -23,7 +23,7 @@ import { parseCard, parseCardBody, findVerified, promoteVerified, VERIFIED_TRACK
 import { createPaperSubsystem, PAPER_CONSULT_ROLES } from './paper.js'
 // ★ GOAL ROUND 3 (rule conformance): the meeting TYPE catalog and the recommended procedure skeletons are INSTITUTION
 // vocabulary, so they live in this pack (`./meeting-procedures.js`) — the kernel only carries the type string.
-import { MEETING_TYPE_IDS, meetingTypeOf, procedureFor } from './meeting-procedures.js'
+import { MEETING_TYPE_ALIASES, MEETING_TYPE_IDS, meetingTypeOf, meetingTypePairs, procedureFor } from './meeting-procedures.js'
 // ★ RUN 51 residue #4 (design: docs/acceptance/conformance/member-scope-design.md): WHICH FACE a seat may call is
 // INstitution vocabulary, so the table lives in this pack and the derived lists come from it — one source, two
 // readers (the narrowing below and the gate in tests/audit-member-scope.test.mjs).
@@ -4491,6 +4491,9 @@ function meetingTypeCatalog() {
       type: String(id),
       kind: str(row && row.kind ? row.kind : 'meeting-type'),
       label: row ? str(row.label || '') : '',
+      // ★ TB-2715: the accepted INPUT words are listed next to the displayed label, so a Chinese caller reading the
+      // catalog never has to translate: `type:"结题"` and `type:"closure"` reach the same meeting.
+      aliases: Array.isArray(MEETING_TYPE_ALIASES[id]) ? MEETING_TYPE_ALIASES[id].slice() : [],
       purpose: row ? str(row.purpose || '') : '',
       declared: Boolean(face && face.declared),
       subjectRequired: Boolean(procedure && procedure.subjectRequired),
@@ -4674,12 +4677,22 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // 「院士可以设置会议的类型」 and the academician could not set it at all. The type is now a parameter, validated against
   // the pack's own catalog with the legal list named in the refusal; the kernel ADDITIONALLY validates it against the
   // declared `vmu.meetings.typeCatalog` when the institution declares that key, so the vocabulary is tunable without code.
-  const typeInfo = meetingTypeOf(has(args.type) ? str(args.type) : 'ordinary')
+  // ★ TB-2715 (RUN 76 / FEEDBACK63 C18): a Chinese alias is a LEGAL input, not a typo to be corrected by the chair.
+  // `meetingTypeOf` resolves id first, then the pack's own alias table (空白 / `/` 容忍), and says which door matched.
+  // `type` below is ALWAYS the canonical id — the alias never reaches the kernel, so no second vocabulary is stored.
+  const typeGiven = has(args.type)
+  const typeInfo = meetingTypeOf(typeGiven ? str(args.type) : 'ordinary')
   if (!typeInfo.known) {
+    // The sentence keeps the ENGLISH ids first (old callers and pins read it that way) and then the pair list
+    // 「id（中文标签；别名…）」 so a Chinese user is told the accepted words instead of being sent to learn a closed set.
     throw refuse('VMU_INVALID_ARGUMENT', 'unknown meeting type: "' + typeInfo.type + '"',
-      'the declared types are: ' + MEETING_TYPE_IDS.join(', ') + ' — declare vmu.meetings.typeCatalog to change the vocabulary')
+      'the declared types are: ' + MEETING_TYPE_IDS.join(', ') + ' — with Chinese aliases: ' + meetingTypePairs()
+      + ' — declare vmu.meetings.typeCatalog to change the vocabulary')
   }
   const type = typeInfo.type
+  const typeInput = typeGiven ? str(args.type) : null
+  // "default" is the convention default ordinary, not a match: a caller who passed nothing did not "match an id".
+  const typeMatchedBy = typeGiven ? typeInfo.matchedBy : 'default'
   // ★ LIVE RUN 122 (E6, second half): `kind` DEFAULTED to 'sync'. That default is what let the label rail stay
   // unreachable on the only face that turns it on (r122a convened m2 with neither title nor kind and read back
   // "kind":"sync"). The default is KEPT — `sync` is a legal kind and a framework that always has a word for the
@@ -4963,6 +4976,16 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       + deniedSeatList.join(', ') + ') forbids their seat to attend or vote: an attempt to attend is refused BY NAME, and the unanimity reading does not wait for them'
   return { ok: true, tool: 'vibe_v5_meeting', meeting: opened && opened.meeting ? opened.meeting : opened,
     type, subject: opened && opened.subject !== undefined ? opened.subject : null,
+    // ★ TB-2715 (RUN 76 / FEEDBACK63 C18): the receipt says WHICH word the caller used and which door matched it —
+    // `type` alone cannot tell `type:"closure"` from `type:"结题"`, and both are legal now. `type` stays the canonical id
+    // so every downstream reader (kernel, archive, prompts) keeps one vocabulary; the alias never propagates.
+    typeInput,
+    typeMatchedBy,
+    typeMatchedByMeans: typeMatchedBy === 'alias'
+      ? 'the caller passed a Chinese alias (the rule wording); `type` is its canonical id — the alias is an accepted INPUT, never a stored type'
+      : (typeMatchedBy === 'id'
+        ? 'the caller passed a declared type id'
+        : 'no type was passed, so the convention default "ordinary" applies; pass type (id or Chinese alias) to choose'),
     title: opened && opened.title !== undefined ? opened.title : title,
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
     kind, agenda: agendaText,
@@ -6634,6 +6657,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ...envRead,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
+        // ★★★ TB-2713 (RUN 76 / A5, MEASURED): round 2's `deliverable:true` votes were read as stale on round 3, and no
+        // receipt said which members a round boundary had invalidated. The reading now travels on the READ face too — and
+        // it is the SAME object the advance door prints: `paper.perRoundReviewCoverage` owns the only arithmetic, this line
+        // only calls it. A missing paper has no round coverage ⇒ null (the exists:false branch names what it can answer).
+        perRoundReviewCoverage: exists && typeof paper.perRoundReviewCoverage === 'function' ? paper.perRoundReviewCoverage(target) : null,
         // ★★ RUN 182 (run 27 / FEEDBACK27 F27-10, MEASURED): `final{decision:"revise"}` is the ONLY way back to writing, and
         //   it was documented only in the refusal a caller gets AFTER trying the wrong move. A state machine that can say what
         //   it accepts should say it on the read face, not only when it says no.

@@ -19,6 +19,7 @@
 //   node scripts/audit/mutations/run.mjs --rules E3,E14 # several
 //   node scripts/audit/mutations/run.mjs --json         # machine-readable results (used by the test)
 //   node scripts/audit/mutations/run.mjs --doc          # regenerate docs/acceptance/mutation-evidence.md
+//   node scripts/audit/mutations/run.mjs --check-anchors # fast preflight: every anchor must occur EXACTLY once in the working tree
 // Exit code: 0 only when every entry is RED (and, with --doc, the document was written).
 //
 // The manifest is `scripts/audit/mutations/manifest.json`; each entry is
@@ -280,6 +281,21 @@ if (isMain) {
   const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined }
   const json = has('--json')
   const all = loadManifest()
+  // ── anchor preflight (cheap, no repo copy): an anchor is a literal; when product code is refactored
+  // around it the anchor silently rots (0 matches) and the harness reports ERROR instead of RED.
+  // Run this after any change to a file named in the manifest, before trusting a green --all.
+  if (has('--check-anchors')) {
+    const rot = []
+    for (const e of all) {
+      let text = ''
+      try { text = readFileSync(join(REPO, e.file), 'utf8') } catch { rot.push({ rule: e.ruleId, file: e.file, count: 'file-missing' }); continue }
+      const count = text.split(e.anchor).length - 1
+      if (count !== 1) rot.push({ rule: e.ruleId, file: e.file, count })
+    }
+    for (const r of rot) console.error('ROTTEN ANCHOR ' + r.rule + ' · ' + r.file + ' — occurs ' + r.count + '× (need exactly 1)')
+    console.log('anchor check: ' + (all.length - rot.length) + '/' + all.length + ' unique' + (rot.length ? ' · ' + rot.length + ' ROTTEN' : ''))
+    process.exit(rot.length ? 1 : 0)
+  }
   let entries = all
   if (val('--rule')) entries = all.filter((e) => e.ruleId === val('--rule'))
   else if (val('--rules')) { const set = new Set(String(val('--rules')).split(',').map((s) => s.trim())); entries = all.filter((e) => set.has(e.ruleId)) }

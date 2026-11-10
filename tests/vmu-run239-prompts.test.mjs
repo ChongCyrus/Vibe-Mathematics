@@ -354,8 +354,8 @@ try {
     console.log('§8 ·8 the delivery readings a seat can check are taught (block rendered, full reply, empty reply)')
     ok(says(blocksBSource, 'rendered') && says(blocksBSource, 'blockChars') && says(blocksBSource, '装配回执 `notices`') && says(blocksBSource, '小节读数'),
       '§8a ·8 the assembly reading is named exactly as the turn receipt emits it')
-    ok(says(blocksBSource, '不出现块头') && says(blocksBSource, '通知丢了'),
-      '§8b ·8 "no header" is taught as "no message", not as "the notice was lost"')
+    ok(says(blocksBSource, '无未结算行') && says(blocksBSource, '仍渲染'),
+      '§8b ·8 the empty notice block is NAMED (a named empty, not a silent disappearance)')
     ok(says(blocksBSource, 'vmu.turn.replyLimitChars') && says(blocksBSource, '`truncated`') && says(blocksBSource, '`excerptLen`'),
       '§8c ·8 the reply limit is named with its setting key and the AUTHORITATIVE cut keys (truncated / excerptLen)')
     ok(says(blocksBSource, '只是它的旧称'), '§8c2 ·8 replyTruncated / replyExcerpt are taught as old names, not as row keys')

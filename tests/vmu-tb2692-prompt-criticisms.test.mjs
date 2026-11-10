@@ -104,10 +104,17 @@ for (const code of ['VMU_TURN_BAD_JSON', 'VMU_TURN_UNKNOWN_FIELD', 'VMU_TURN_DEL
 has(chairNormal, '形状问题，不等于引擎不可用', '§7 shape codes: shape problems are not engine unavailability')
 has(chairNormal, '不要去 probe 引擎', '§7 shape codes: the seat is told what NOT to do (probe the engine)')
 
-// ── §8 V8 parked: the code and the three-step order ────────────────────────────────────────────────────────
-has(chairNormal, 'VMU_TURN_PARKED_NEEDS_OWNER', '§8 parked: the code is named')
-has(chairNormal, '同席位先答', '§8 parked: first remedy = answer the same seat')
-has(chairNormal, 'op:"abandon"', '§8 parked: second remedy = abandon the turn')
+// ── §8 V8 parked: the codes and the three-step order ───────────────────────────────────────────────────────
+// WHY THIS IS NOT THE OLD ASSERTION ANY MORE (RUN 76 / TB-2710): the old text taught ONE code for TWO different
+// refusals -- "re-dispatch the same seat while its turn is unanswered" was taught as VMU_TURN_PARKED_NEEDS_OWNER,
+// while the kernel refuses that case with VMU_TURN_ALREADY_PARKED (refuseParkedOverwrite) and reserves
+// PARKED_NEEDS_OWNER for "the reply names no parked prompt". So the prompt now names BOTH codes with their own
+// trigger, and the three remedies are written as an arrow chain ("先答→abandon→再派") instead of the old prose.
+// The claim being pinned is unchanged in substance: the seat is told the order answer -> abandon -> re-dispatch.
+has(chairNormal, 'VMU_TURN_ALREADY_PARKED', '§8 parked: the RE-DISPATCH refusal is named with its own code')
+has(chairNormal, 'VMU_TURN_PARKED_NEEDS_OWNER', '§8 parked: the OTHER code is named too (two situations, two codes)')
+has(chairNormal, '先答→abandon→再派', '§8 parked: the three-step order is written as one chain')
+has(chairNormal, '（先答）', '§8 parked: first remedy = answer that same seat first')
 has(chairNormal, '再派', '§8 parked: third step = re-dispatch')
 
 // ── §10 V12 closure numbers: two hard numbers, bytes on disk and pdfSha256 in the archive row ───────────────

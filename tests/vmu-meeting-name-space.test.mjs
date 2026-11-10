@@ -144,6 +144,39 @@ console.log('=== 5. A DECLARED `validate` REACHES THE FUNNEL (it was dropped by 
     'its hint points at the face that CAN answer', refused && refused.hint)
   ok(refused && !/meeting needs an agenda/.test(String(refused.message)),
     'it does not pretend the agenda is missing — the misleading part of the original refusal', refused && refused.message)
+
+  // ── B11 (TB-2720 / task-203): THE HINT MUST NAME ALL FOUR READ/DRIVE ACTIONS, AND THEY MUST EXIST IN THE REGISTRY ──
+  //
+  // The old assertion above only pinned the prefix `vibe_vmu_meeting { action: "status"` — a hint that named `status`
+  // and then stopped was green. B11 widened the hint to four verbs, but nothing measured the widening: a reader would
+  // have to trust the sentence. These two assertions split the question: (i) the sentence really names the four verbs,
+  // (ii) those verbs are ACTUALLY dispatched by `vibe_vmu_meeting` — read from the registered tool spec (the same
+  // registry the agent's tool list comes from), not from a copy of the list in this file.
+  const hintText = String((refused && refused.hint) || '')
+  ok(/to READ or drive an existing meeting/.test(hintText),
+    '★ B11 hint sentence: names the read/drive face, not only "choose another id" advice', hintText)
+  const namedVerbs = ['status', 'summary', 'snapshot', 'flow']
+  ok(namedVerbs.every((v) => hintText.indexOf('"' + v + '"') >= 0),
+    '★ B11 hint names all four actions verbatim (status/summary/snapshot/flow)', namedVerbs.filter((v) => hintText.indexOf('"' + v + '"') < 0))
+  // The registry: boot with the meetings intent so `vibe_vmu_meeting` is really published, then read its action enum.
+  const regState = { specs: [] }
+  const regCtx = {
+    effect(fn) { return fn() },
+    on() { return () => {} },
+    tools: { register: async (s) => { regState.specs.push(s); return () => {} } },
+  }
+  const regHandle = ENTRY.apply(regCtx, { root: join(root, 'k4'), clock: () => NOW, packs: ['v5r'], meetings: true })
+  await regHandle.ready()
+  const meetingSpec = regState.specs.find((s) => s && s.name === 'vibe_vmu_meeting') || null
+  ok(!!meetingSpec, 'the meetings intent really publishes vibe_vmu_meeting (the registry this assertion reads)', regState.specs.map((s) => s && s.name))
+  const actionEnum = meetingSpec && meetingSpec.parameters && meetingSpec.parameters.properties &&
+    meetingSpec.parameters.properties.action && Array.isArray(meetingSpec.parameters.properties.action.enum)
+    ? meetingSpec.parameters.properties.action.enum : []
+  ok(actionEnum.length > 0, 'the registered spec carries an action enum (a hint cannot name an action the tool does not take)')
+  const missingVerbs = namedVerbs.filter((v) => actionEnum.indexOf(v) < 0)
+  ok(missingVerbs.length === 0,
+    '★★ every verb the hint tells the reader to use is DISPATCHED by the registered tool spec (computed, not copied from the hint)',
+    missingVerbs)
 }
 
 // ── ⑥ THE REVERSE DIRECTION AT THE PACK FACE (live run 30, finding b-1) ────────────────────────────────────────────
