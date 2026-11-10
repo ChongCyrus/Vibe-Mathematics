@@ -107,7 +107,10 @@ try {
   }
 
   // ── §1 NO UNREAD ROW: ZERO IS A READING ──────────────────────────────────────────────────────────────────
-  section('§1 a turn with no unread mail carries notices {0, false, 0} and explicit nulls for the archive')
+  // ★ TB-2724 / RUN 77 (A): the OLD world here was "no unread rows ⇒ no notice block at all"; `rendered:false` and
+  // `blockChars:0` were read as "nothing to say". The hole: an empty queue and a swallowed block looked identical.
+  // The named-empty block makes them different readings — zero rows, a rendered block, a real byte count.
+  section('§1 a turn with no unread mail carries the NAMED-empty block {0, true, >0} and explicit nulls for the archive')
   {
     const replyText = fence({ progress: '§1 完成：无未读信件的回合。' })
     const { k, seen, root } = await bootCapturing(replyText)
@@ -115,9 +118,15 @@ try {
     const turnId = turnIdOf(r)
     const row = rowOf(k, turnId)
     ok(!!row, '§1a the ledger row exists for the settled turn', turnId)
-    ok(seen.text.indexOf(HEADER) === -1, '§1b the prompt the seam received really had NO notice header')
-    ok(row && row.notices && row.notices.lines === 0 && row.notices.rendered === false && row.notices.blockChars === 0,
-      '§1c the row says zero lines, nothing rendered, zero characters — the absence is a reading', row && row.notices)
+    // ★ TB-2724 / RUN 77 (A): OLD world — `seen.text.indexOf(HEADER) === -1`. It no longer holds: an empty queue is
+    // rendered as the NAMED empty, so the prompt now STARTS with the header followed by the named-empty sentence.
+    ok(seen.text.startsWith(HEADER + ' （无未结算行）'),
+      '§1b the prompt the seam received really had the NAMED empty notice header first', seen.text.slice(0, 40))
+    // ★ TB-2724 / RUN 77 (A): OLD world — `rendered:false, blockChars:0`. The row still carries only the three readings
+    // (the ledger projection is deliberately narrow), and those three now say the opposite truth: zero LINES, but the
+    // block WAS rendered and has a real byte count — "no rows" and "no block" stay different questions.
+    ok(row && row.notices && row.notices.lines === 0 && row.notices.rendered === true && row.notices.blockChars > 0,
+      '§1c the row says zero lines, a rendered block and a real byte count — the empty queue is named', row && row.notices)
     ok(row && row.truncated === false && row.excerptLen === replyText.length && row.replyBytes === byteLen(replyText),
       '§1d a complete reply reads truncated:false with excerptLen == the text it quoted', row && { truncated: row.truncated, excerptLen: row.excerptLen, replyBytes: row.replyBytes })
     ok(row && row.emptyReply === false, '§1e emptyReply is false for a content reply', row && row.emptyReply)

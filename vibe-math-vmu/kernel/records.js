@@ -664,6 +664,17 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
    * a fact the caller already possesses instead of inventing one at read time.
    */
   let ambientTurnCaller = null
+  /**
+   * ★★★ RUN 77 / TB-2723 (F77-1): THE TURN'S DELIVERY FACTS, NOT ONLY ITS CALLER. The reply channel writes rows through
+   * the `vmu.records` face (a field like `progress` is dispatched to `put`), and it never went through the tool-call
+   * seam above, so `ambientTurnCaller` was null there and every row written by a DELIVERED turn said `relayed`. The
+   * turn receipt said the opposite (`deliveryPath:"activation"`, `memberActed:true`, memberWorkShare.memberActs:8) -
+   * one fact, two readings, contradicting each other. The delivery routine knows the answer before the write happens:
+   * `activation`/`continuation` mean the seat's own kernel session played the turn, `caller` means the calling session
+   * did. `beginTurnDelivery` carries that fact across the SAME seam as `beginTurnCaller` (prev/restore, returns the
+   * release), and `put` prefers it over the caller identity when deriving `writtenFrom`.
+   */
+  let ambientTurnDelivery = null
 
   /**
    * One time resolver for EVERY field, not just `updatedAt`. RUN 259 / P1-4: the sort comparator did
@@ -811,6 +822,20 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const text = member === null || member === undefined ? '' : String(member).trim()
       ambientTurnCaller = text === '' ? null : text
       return () => { ambientTurnCaller = prev }
+    },
+    /**
+     * ★★★ RUN 77 / TB-2723 (F77-1): open the DELIVERY facts for the duration of one reply dispatch and return the
+     * release. `path` is the turn receipt's own word (`activation` / `continuation` / `caller` / null); `turnId` and
+     * `member` travel with it so a reader can line the row up with the turn row that carried it. A caller that has no
+     * delivery fact passes nothing and the old derivation applies unchanged - the seam is additive, never required.
+     */
+    beginTurnDelivery(delivery = {}) {
+      const prev = ambientTurnDelivery
+      const path = delivery && typeof delivery.path === 'string' && delivery.path !== '' ? delivery.path : null
+      const turnId = delivery && delivery.turnId !== null && delivery.turnId !== undefined && String(delivery.turnId).trim() !== '' ? String(delivery.turnId).trim() : null
+      const member = delivery && delivery.member !== null && delivery.member !== undefined && String(delivery.member).trim() !== '' ? String(delivery.member).trim() : null
+      ambientTurnDelivery = path === null && turnId === null && member === null ? null : { path, turnId, member }
+      return () => { ambientTurnDelivery = prev }
     },
     apiVersion,
 
@@ -963,11 +988,27 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           'allowed: ' + WRITTEN_FROM_VALUES.join(' / ') + ' (own-turn = the seat ran it in its own turn; relayed = named but not run by the seat; unknown = neither could be established)', [], 'put')
       }
       const namedWriter = mergedBy === null || mergedBy === undefined || String(mergedBy).trim() === '' ? null : String(mergedBy)
-      const derivedWrittenFrom = ambientTurnCaller === null
-        ? (namedWriter === null ? 'unknown' : 'relayed')
-        : (namedWriter === null || namedWriter === ambientTurnCaller ? 'own-turn' : 'relayed')
+      // ★★★ RUN 77 / TB-2723 (F77-1): THE DELIVERY ROUTE OUTRANKS THE CALLER IDENTITY. A reply-channel write has no
+      // `ambientTurnCaller` (that seam was opened only around a tool call), so a row written by a turn the seat itself
+      // played said `relayed` while its own turn receipt said `deliveryPath:"activation"` + `memberActed:true`. The
+      // delivery routine now states the route before the write: activation/continuation = the seat ran it, caller = the
+      // calling session played the turn. When there is no delivery fact the caller-based derivation below is unchanged.
+      const deliveryPath = ambientTurnDelivery && typeof ambientTurnDelivery.path === 'string' && ambientTurnDelivery.path !== '' ? ambientTurnDelivery.path : null
+      const deliveryMember = ambientTurnDelivery && typeof ambientTurnDelivery.member === 'string' && ambientTurnDelivery.member !== '' ? ambientTurnDelivery.member : null
+      // Any route the delivery seam names OTHER THAN `caller` means the seat's own session (or a host subagent running
+      // as that seat) played the turn — the same classifier `memberWorkShare` uses on the turn row. `caller` is the one
+      // route where the calling session played the member, and that is exactly the relayed case. No route at all falls
+      // back to the caller identity (legacy behaviour).
+      const deliveredOwnTurn = deliveryPath !== null && deliveryPath !== 'caller'
+      const derivedWrittenFrom = deliveryPath === 'caller'
+        ? 'relayed'
+        : (deliveredOwnTurn
+          ? (namedWriter === null || deliveryMember === null || namedWriter === deliveryMember ? 'own-turn' : 'relayed')
+          : (ambientTurnCaller === null
+            ? (namedWriter === null ? 'unknown' : 'relayed')
+            : (namedWriter === null || namedWriter === ambientTurnCaller ? 'own-turn' : 'relayed')))
       const mergedWrittenFrom = writtenFromGiven ? String(writtenFrom).trim()
-        : (updating && WRITTEN_FROM_VALUES.indexOf(updating.writtenFrom) !== -1 && ambientTurnCaller === null ? updating.writtenFrom : derivedWrittenFrom)
+        : (updating && WRITTEN_FROM_VALUES.indexOf(updating.writtenFrom) !== -1 && ambientTurnCaller === null && deliveryPath === null ? updating.writtenFrom : derivedWrittenFrom)
 
       const bodyNew = body === undefined || body === null ? '' : String(body)
       const bodyModeUsed = !updating ? 'replace' : (!bodyGiven ? 'kept' : bodyModeRaw)

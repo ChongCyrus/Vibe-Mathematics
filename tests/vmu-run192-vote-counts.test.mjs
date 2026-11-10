@@ -51,7 +51,11 @@ test('§1 votesCast is arrivals; the split and the electorate are named beside i
     may: (id) => id !== 'r-temp',
   })
   ok(t.votesTotal === 2 && t.votesCast === 2 && t.votesFor === 2, '§1i the temp judgement is not in the tally')
-  ok(t.notEligible.includes('r-temp'), '§1j and it is named as not eligible, not dropped in silence')
+  // ★ TB-2724 / RUN 77 (C): `notEligible` rows carry the judgement instead of a bare id (the 77th run showed a bare
+  // `r-temp` beside a Means sentence that promised "recorded"). Old world: `t.notEligible.includes('r-temp')`.
+  ok(Array.isArray(t.notEligible) && t.notEligible.length === 1 && t.notEligible[0].member === 'r-temp'
+    && t.notEligible[0].solved === false && t.notEligible[0].why === 'no-closure-vote-permission',
+    '§1j and it is named WITH its judgement as not eligible, not dropped in silence', t.notEligible)
 })
 
 test('§2 the drive receipt says which count it is (live reading)', () => {

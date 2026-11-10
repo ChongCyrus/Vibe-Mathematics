@@ -68,7 +68,7 @@ export function offendersOf(text, where = 'text') {
   ok(caught('结题表决回执：{"vote_solved":true} 或 {"solved":false}'), 'TEETH: offering the bare-solved sample INSIDE the closure clause is caught')
   ok(!caught('结题表决用 {"vote_solved":true}'), 'TEETH: a closure clause naming vote_solved is clean')
   ok(!caught('{"solved":false} 是你这一轮的个人判断（不计票）'), 'TEETH: a bare solved as a per-round judgement is clean (it is a real field)')
-  ok(!caught('结题表决用 `{"vote_solved": true|false}`（只有它计结题票）；个人本轮判断用 `{"solved": false}`（不计票）'), 'TEETH: the fixed two-clause sentence is clean')
+  ok(!caught('结题票用工具 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；只有该工具不可见时才写 `{"vote_solved": true|false}`；个人判断用 `{"solved": false}`（不计票）'), 'TEETH: the fixed two-clause sentence is clean')
   ok(!caught('vote_solved: true|false  ← 会议/结题表决用'), 'TEETH: the vote_solved declaration line is clean')
   ok(CLOSURE_WORDS.length >= 3 && BARE_SOLVED.test('solved') && !BARE_SOLVED.test('vote_solved'), 'TEETH: the rule is not vacuous')
 }
@@ -110,7 +110,8 @@ const sections = PACK.sections
     ok(bad.length === 0, 'RULE C holds in the assembled prompt of ' + seat.role, bad.slice(0, 2))
   }
   const chair = texts.find((t) => t.seat === 'chair').text
-  ok(chair.includes('只有它计结题票'), 'the assembled prompt says vote_solved is the ONE that counts')
+  ok(chair.includes('vibe_vmu_vote') && chair.includes('唯一入口') && chair.includes('静默忽略'),
+    'the assembled prompt says the TOOL is the one entry and that a visible tool silently ignores the reply vote')
   ok(chair.includes('（**不计票**）'), 'and that a bare solved does NOT count')
   ok(!chair.includes('"solved": false}（结题表决'), 'the old ambiguous sample is gone from the assembled text')
   // The charter's receipt catalogue still declares `solved` — correctly, as the per-round judgement.

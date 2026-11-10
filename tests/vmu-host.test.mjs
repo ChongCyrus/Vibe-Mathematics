@@ -487,7 +487,12 @@ if (SELF_PROBE) {
     '★★ 默认面比 full 小【一个数量级】以上 —— 这才是"默认可读"的可测形式（不是某个拍脑袋的绝对阈值）',
     { summary: defaultText.length, full: fullText.length, ratio: Math.round(fullText.length / defaultText.length) })
   const closureText = await statusSpec.execute({ detail: 'closure' }, {})
-  ok(closureText.length < 1500, '★ detail:"closure" 是专门的小读数面，实测 < 1500 字符', closureText.length)
+  // ★ TB-2724 (RUN 77) re-pin: the measured value is now 1603, not 880. The growth is ONE deliberate sentence —
+  // `notEligibleMeans` now has to say what a judged-but-not-enfranchised row MEANS (member + the judgement it recorded +
+  // why it does not count), because that row became an OBJECT ({member, solved, why}) instead of a bare id and a reader
+  // can no longer infer it. The face still returns ONLY the closing reading (no turns, no board, no live readings); this
+  // ceiling exists to catch runaway growth, so it is re-pinned above the measured value with the measurement written down.
+  ok(closureText.length < 2400, '★ detail:"closure" 是专门的小读数面，实测 1603 < 2400 字符（TB-2724 后 +723，全部是 notEligible 的 Means 句）', closureText.length)
   const parsed = JSON.parse(closureText)
   ok(parsed.closureVote && parsed.closureVote.eligible.includes('member-a'),
     '★ closure 小面回的就是统一后的 reading（与 kernel 同一份输入）', parsed.closureVote)

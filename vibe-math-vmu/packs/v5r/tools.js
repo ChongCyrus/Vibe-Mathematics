@@ -4886,7 +4886,7 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // `formalAgendaItems:null` forever (live run 63). The kernel now stores what is said (a boolean declaration or an
   // ordered list), so the face passes the argument through untouched instead of folding it into `=== true`.
   const formalAgendaParam = args.formal_agenda === undefined ? null : args.formal_agenda
-  const opened = kernel.meetings.open({ ...(wantedId !== null ? { id: wantedId } : {}), type, chair: member, actor: member,
+  const opened = kernel.meetings.open({ ...(wantedId !== null ? { id: wantedId } : {}), type, typeInput, typeMatchedBy, chair: member, actor: member,
     ...(declaredRoster === null ? { roster } : { members: declaredRoster }),
     // ★ WAVE 2 (audit E6): 「会议要有有意义的标签」 is enforced on the face the rule talks about. The kernel rail is
     // opt-in (`labelRequired`) so direct service callers and the ~70 unlabelled fixtures keep working; a PACK face that

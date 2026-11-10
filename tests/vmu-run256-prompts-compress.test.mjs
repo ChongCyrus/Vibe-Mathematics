@@ -26,7 +26,7 @@ const sum = Object.values(combos).reduce((a, b) => a + b, 0)
 // three-seat normal sum 74047. TB-2692 then added teaching (+164 in this section: the four shape codes, V7) and
 // +1566 across the normal prompts, and this round deleted the one real duplication it found — the UNKNOWN_FIELD
 // sentence was stated twice inside the SAME section (once here, once in the receipt-contract line below): −46.
-const FIXTURE_TOOLS_MEASURED = 1585 // 1291 + 164 (TB-2692) − 46 (deleted duplication) + 176 (TB-2711 office attribution)
+const FIXTURE_TOOLS_MEASURED = 1638 // 1291 + 164 (TB-2692) − 46 (deleted duplication) + 176 (TB-2711 office attribution) − 59 (TB-2725 receipt-contract merge) + 112 (RUN 270: the copy-pasteable progress sample TB-2725 merged away, restored — in fixtureMode=tools it had been left in no block a member/temp seat reads)
 const FIXTURE_TOOLS_MARGIN = Math.max(Math.ceil(FIXTURE_TOOLS_MEASURED * 0.01), 3) // 16
 const FIXTURE_TOOLS_CEILING = FIXTURE_TOOLS_MEASURED + FIXTURE_TOOLS_MARGIN // 1601
 // ★ TB-2707 (2026-11-10) — F75-16 archive sentence: the shared `v5r-turn-channels` block went from the
@@ -44,12 +44,17 @@ const RUN260_CONSULT_TEACHING = { chair: 94, sum: 94 }
 // `render` never compiles). Per seat: chair +3, member +3, temp +38 (temp had the shortest line), sum +44.
 const TB2711_FINAL_STEP = { chair: 362, member: 362, temp: 399, sum: 1123 }
 const TB2717_PHASE_STEP = { chair: 229, member: 229, temp: 229, sum: 687 } // TB-2717: the closed four-name phase set (shared `v5r-turn-tracks` block, 228 chars + the joining newline), one copy per seat
-const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair // 29369
-const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 294
-const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29663
-const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum // 77844
-const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 779
-const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 78623
+const TB2725_CORRECTIONS = { chair: 19, member: -1, temp: -27, sum: -9 } // TB-2725: six RUN-77 corrections, net ≤0 (fixture contract merged, vote channel fixed, temp attendance merged, close/park one-liners)
+// RUN 270 (Lead) — TB-2725's merge dropped the copy-pasteable `progress` sample with the contract line; in
+// fixtureMode=tools that left member/temp with NO sample anywhere (measured). Restored as one 111-char line (+newline)
+// in the shared `v5r-fixture-tools` block: +112 per seat, +336 for the three normal assemblies.
+const RUN270_PROGRESS_SAMPLE = { chair: 112, member: 112, temp: 112, sum: 336 }
+const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair // 29500
+const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 295
+const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29795
+const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum // 78171
+const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 782
+const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 78953
 
 let passed = 0
 let failed = 0

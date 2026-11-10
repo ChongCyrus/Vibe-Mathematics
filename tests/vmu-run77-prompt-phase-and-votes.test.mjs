@@ -91,7 +91,7 @@ test('§2 the closure ballot three-way mapping is in the meeting prompt', () => 
   ok(says(t, '结题票三处对照'), 'the meeting prompt carries the three-way mapping')
   ok(says(t, '`vibe_vmu_vote`'), 'names the ACTION surface (meeting skeleton vibe_vmu_vote)')
   ok(says(t, '`vote_solved`'), 'names the reply FIELD (vote_solved)')
-  ok(says(t, '`set_solved` **不存在**'), 'names set_solved as non-existent (old taskbook wording)')
+  ok(says(t, '`set_solved` **未登记**'), 'names set_solved as unregistered (old taskbook wording; TB-2725 wording)')
   // negative: set_solved must never appear as a callable field/action
   ok(denies(all, '"set_solved": true'), 'no prompt shows set_solved as a reply field')
   ok(denies(all, 'action:"set_solved"'), 'no prompt shows set_solved as an action')

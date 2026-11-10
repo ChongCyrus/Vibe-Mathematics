@@ -2918,7 +2918,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // external injection and cannot drift from the adopt gate (both read through records.js). `mdRead` comes along for
   // the same reason: it is the records face's documented md door (docs/03 §7).
   if (turnFaces['vmu.records'] && records && typeof records === 'object') {
-    const mdOps = ['mdParse', 'mdDigest', 'mdRead']
+    // ★★★ RUN 77 / TB-2723 (F77-1): the SAME wiring, for the delivery seam. A reply-channel write (`progress` ->
+    // `records.put`) is dispatched through this face, and a face built only from STATUS_BOARD_READ_OPS has no
+    // `beginTurnDelivery`; the write then could not learn the route its own turn receipt states (`deliveryPath`), so
+    // every row a delivered turn wrote said `writtenFrom:"relayed"` while the receipt said `memberActed:true`. Bound
+    // here to the SAME real records instance, exactly like the md doors above - one face, one instance, no drift.
+    const mdOps = ['mdParse', 'mdDigest', 'mdRead', 'beginTurnDelivery']
     for (const op of mdOps) {
       if (typeof records[op] === 'function' && typeof turnFaces['vmu.records'][op] !== 'function') {
         turnFaces['vmu.records'][op] = records[op].bind(records)
@@ -3189,6 +3194,21 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   }
   const closureVoteInput = () => ({
     votes: closureVotesMerged(),
+    // ★★★ TB-2724 / RUN 77 (F77-C, second half) — THE TOOL FACE COULD NOT SEE THE JUDGEMENTS IT PROMISED TO RECORD.
+    // `closureVoteOf` builds `notEligible` from the votes map AND the per-round `solved` map, and its Means sentence
+    // promises that a seat which judged the question but holds no vote permission is "recorded, neither counted nor
+    // missing". The turn-level reading passes `solvedThisRound` (`kernel/turn/index.js:6846`); this tool-face input did
+    // not, so `vibe_vmu_turn{op:"status"}.closureVote.notEligible` listed only members who had VOTED, and a temp seat
+    // that only wrote `solved` vanished from the tally - the receipt was narrower than its own Means sentence. Read the
+    // same session map the turn-level reading reads (a plain object on the turn status; an empty map when there is none).
+    solvedThisRound: (() => {
+      const out = new Map()
+      try {
+        const live = turn && typeof turn.status === 'function' ? turn.status().solvedThisRound : null
+        if (live && typeof live === 'object') for (const k of Object.keys(live)) out.set(String(k), live[k] === true)
+      } catch { /* a status read that throws must not make the tally unreadable: an empty map is the honest absence */ }
+      return out
+    })(),
     // ★★ RUN 172 (FEEDBACK17 P2-5): the raw durable rows travel too, so the reading can say WHERE each judgement came from
     // (`session` = the kernel that wrote it, `voterSession` = where the voter ran) instead of leaving a reader to compare
     // two row shapes and guess which name answers which question.

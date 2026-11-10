@@ -122,7 +122,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'solved', face: null, op: null, common: true,
     note: '你这一轮的个人判断（框架据此了解全所收敛度）' }),
   Object.freeze({ field: 'vote_solved', face: null, op: null,
-    note: '结题票的**唯一入口**就是本字段 `"vote_solved": true|false`（它已登记、计票；`set_solved` 未登记，写进回执整轮被判未知字段）。**只要有一位有表决权者没有填 true（漏填或填 false）就不会结题**，本所继续推进；只有全体都 true 才停止' }),
+    note: '结题票用工具 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；只有它不可见时才写本字段（可见时被静默忽略 `kept:false`；`set_solved` 未登记）。' }),
   Object.freeze({ field: 'prioritize', face: null, op: null,
     note: '{order:[{task_id,priority}],why}：优先级（院士席牵头，记在轮次状态里）' }),
   Object.freeze({ field: 'hire', face: null, op: null,

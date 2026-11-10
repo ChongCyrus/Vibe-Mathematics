@@ -270,3 +270,11 @@ ok M5 缺元数据被标成 PRODUCT-MISSING ⇒ 尺子坏被读成产品坏     
 被 ack 的那个成员自己的 `perBox` 才是该用来判「ack 生效」的数。run 76 里 `r-2` 的 `perBox` 在 ack 前后 `1→0`，
 而全局从 28 涨到 32（`r-acad` 8→24、`r-temp` 3→5 的新消息）——所以 V11 的判据必须是「同一成员的 perBox 净减」，
 不能拿全局总数直接减 1，否则会把别人的新消息算成这次 ack 的功劳。
+
+### RUN 77 实测更正（build `f84f6a31`）：V8 旧说法「没有 `parkedReason`」已过时
+
+> 上面 RUN 76 的章节按原样保留（历史不改写）。本节只更正同一张表里 V8 的一处旧说法。
+
+- **更正行**：TB-2714 写的「`ALREADY_PARKED`（`parkedFacts`+`parkedMeans`，无 `parkedReason`）」在第 77 次真机被实测推翻——build `f84f6a31` 的 `VMU_TURN_ALREADY_PARKED` 回执**有**顶层 `parkedReason`（原文 `the caller still holds THIS turn prompt: …`），嵌套 `parkedFacts.parkedReason` 同句，`parkedMeans` 与 hint 的 `REACHABLE INSTEAD:` 也都在。
+- **原因**：TB-2710 给 `parkedFactsOf` 加 `parkedReason` 时把它同时提到回执顶层（见 `vibe-math-vmu/kernel/turn/index.js` 的 `refuseParkedOverwrite`）；模板 §3.2 沿用旧说法，于是同一 build 上任务书与产品各说一套。
+- **处置**：第 77 次按「BROKEN 不许改写成 PASS」把这条记为任务书与产品不符（产品不改）；`taskbooks/RUN-BRIEF-TEMPLATE.md` §3.2 的 V8 行已按实测改写（两码各自字段 + 触发区别句），并加判据 `tests/brief-claims-match-product.test.mjs` 让「任务书声称的字段」对产品真回执取键，防再腐烂。

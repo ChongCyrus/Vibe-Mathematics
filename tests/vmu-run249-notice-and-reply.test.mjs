@@ -134,9 +134,13 @@ try {
       '§1c the assembly receipt says 1 line drained, block rendered, and its size', made.notices)
 
     const fresh = await assemblyText(k, 'm-2')
-    ok(fresh.text.includes(HEADER) === false, '§1d a member with NO unread row gets NO header (zero mechanism)')
-    ok(fresh.notices && fresh.notices.lines === 0 && fresh.notices.rendered === false,
-      '§1e and the receipt says zero lines, nothing rendered', fresh.notices)
+    // ★ TB-2724 / RUN 77 (A): the old world rendered NOTHING for a seat with zero unread rows and called that "zero
+    // mechanism". The 77th run showed the cost: `[新到的消息]` vanished entirely and the reader could not tell
+    // "nothing arrived" from "the notice channel is broken". An empty queue is now a NAMED EMPTY reading, with no body row.
+    ok(fresh.text.includes(HEADER) && fresh.text.includes('（无未结算行）') && fresh.text.includes('会议预约：探针会') === false,
+      '§1d a member with NO unread row gets the NAMED empty header (zero rows, zero bodies)', fresh.notices)
+    ok(fresh.notices && fresh.notices.lines === 0 && fresh.notices.rendered === true && fresh.notices.blockChars > 0 && fresh.notices.namedEmpty === true,
+      '§1e and the receipt says zero lines, a rendered named-empty block, and names it', fresh.notices)
   }
 
   // ── §2 F-02: THE CUT IS A POINTER NOW ─────────────────────────────────────────────────────────────────────
@@ -258,8 +262,11 @@ try {
     })
     ok(settled, '§4d0 the ack settled in the shared queue before the next assembly')
     const after = await assemblyText(k, 'c-1')
-    ok((after.text.match(/\[新到的消息\]/g) || []).length === 0,
-      '§4d after ack the header is GONE for that seat (a settled row is not a reminder)', after.notices)
+    // ★ TB-2724 / RUN 77 (A): after the ack the header is no longer GONE — it is the named empty. What must stay true is that
+    // a SETTLED row is not a reminder: the seat's body text must not reappear. Both halves are asserted.
+    const afterHeaders = (after.text.match(/\[新到的消息\]/g) || []).length
+    ok(afterHeaders === 1 && after.text.includes('（无未结算行）') && after.text.includes('会议预约：c-1') === false,
+      '§4d after ack the settled row is not a reminder (the header is the named empty)', after.notices)
     ok(after.notices && after.notices.lines === 0, '§4e and the receipt says zero lines drained', after.notices)
 
     // a pack block still wins where a pack is loaded

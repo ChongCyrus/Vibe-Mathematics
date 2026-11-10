@@ -99,7 +99,12 @@ ok(JSON.stringify(LIVE_STATUS_FIELDS.map((d) => d.key)) === JSON.stringify(['pap
 ok(LIVE_STATUS_FIELDS.every((d) => typeof d.label === 'string' && d.label.trim() !== ''), 'every group has a non-empty label (an unlabelled row is impossible)')
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// §1 — EMPTY WORLD: EVERY GROUP IS A NAMED ABSENCE, AND THE BLOCK IS BYTE-IDENTICAL TO PRE-RUN-258
+// §1 — EMPTY WORLD: THE BLUEPRINT GROUP IS A NAMED ABSENCE
+//
+// ★ TB-2724 / RUN 77 (B) moved this world. Old world: a null group rendered NOTHING, so an all-null status block was
+// byte-identical to pre-RUN-258 and the 77th run simply lost its `[蓝图]` line. New world: a null group that NAMES a why is
+// a reading and must render — but only the blueprint group does so this round (the taskbook scopes B to `[蓝图]`;
+// paper/closure keep the RUN-258 silent skip until their own reading is asked).
 console.log('\n§1 empty world ⇒ named absence, no empty rows')
 const empty = await boot()
 const liveEmpty = liveStatusReadings({ records: empty.K.records })
@@ -108,12 +113,14 @@ ok(typeof liveEmpty.paper.why === 'string' && liveEmpty.paper.why.trim() !== '',
 ok(typeof liveEmpty.paper.source === 'string' && liveEmpty.paper.source.indexOf('paper') >= 0, 'paper names the ledger/source it tried', liveEmpty.paper.source)
 ok(liveEmpty.blueprint && liveEmpty.blueprint.value === null && typeof liveEmpty.blueprint.why === 'string' && liveEmpty.blueprint.why.trim() !== '', 'no blueprint row ⇒ null + why')
 ok(liveEmpty.closure && liveEmpty.closure.value === null && typeof liveEmpty.closure.why === 'string' && liveEmpty.closure.why.trim() !== '', 'no votes and no bound meeting ⇒ null + why')
-ok(renderLiveStatus(liveEmpty) === '', 'all-null world renders NO line (empty rows are noise)')
+ok(renderLiveStatus(liveEmpty) === '[蓝图] 无现行版（rev 0，md 未落盘）',
+  'all-null world renders the NAMED blueprint absence (empty is a reading now, and only the blueprint group speaks)', renderLiveStatus(liveEmpty))
 const orchEmpty = orchFor(empty.K)
 const emptyAsm = await assembleFor(orchEmpty)
 ok(emptyAsm.asm.text.indexOf('[状态板]') >= 0, 'the pre-existing board is still there')
-ok(emptyAsm.asm.text.indexOf('[论文]') < 0 && emptyAsm.asm.text.indexOf('[蓝图]') < 0 && emptyAsm.asm.text.indexOf('[结题]') < 0,
-  'an empty world adds no [论文]/[蓝图]/[结题] line', { chars: emptyAsm.asm.text.length })
+ok(emptyAsm.asm.text.indexOf('[论文]') < 0 && emptyAsm.asm.text.indexOf('[结题]') < 0
+  && emptyAsm.asm.text.indexOf('[蓝图]') >= 0 && emptyAsm.asm.text.indexOf('无现行版') >= 0,
+  'an empty world adds the [蓝图] named absence, and still no [论文]/[结题] line', { chars: emptyAsm.asm.text.length })
 const emptyStatus = orchEmpty.status({ roster: ['r-acad', 'r-1', 'r-2'] })
 ok(emptyStatus.liveReadings && emptyStatus.liveReadings.paper.value === null, 'status().liveReadings carries the same named absence (null, not missing key)')
 ok(typeof emptyStatus.liveReadingsMeans === 'string' && emptyStatus.liveReadingsMeans.indexOf('null') >= 0, 'liveReadingsMeans explains what null means')

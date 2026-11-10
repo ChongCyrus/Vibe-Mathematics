@@ -907,8 +907,18 @@ try {
   // And the prompts really carry that sample (so the proof above cannot drift away from the text a member reads).
   const sampleMarker = '"progress":{"track":"progress"'
   const withSample = [...PACK.sections].filter((s) => String(s.text || '').includes(sampleMarker))
-  ok(withSample.length >= 4,
-    '★★ the copy-paste sample appears in the prompts a member reads (fixture-constraint / fixture-tools / all three role lists)', withSample.map((s) => s.name))
+  // RUN 270 (TB-2725): this used to count SECTION COPIES (`>= 4`) and went red when the duplicate copy inside the
+  // fixture-tools block was removed — a dedup, not a coverage loss. Counting copies is the wrong ruler: what the
+  // real-machine defect needs is that a member actually READS the sample. So the requirement is now stated per SEAT
+  // through the same assembly pipeline the seats get (`kernelPrompt.assemble`), plus "it survives in more than one
+  // section" so a future edit that drops it from the shared block is still caught.
+  const seatsWithSample = []
+  for (const seatRole of ['chair', 'member', 'temp']) {
+    const seatText = (await kernelPrompt.assemble({ member: 'r-1', role: seatRole, roleLabel: seatRole, phase: 'normal', settings: {} })).text
+    if (String(seatText).includes(sampleMarker)) seatsWithSample.push(seatRole)
+  }
+  ok(withSample.length >= 3 && seatsWithSample.length === 3,
+    '★★ the copy-paste sample appears in the prompts a member reads — every seat (chair/member/temp) really renders it', { sections: withSample.map((s) => s.name), seats: seatsWithSample })
   const wrongArraySample = [...PACK.sections].filter((s) => String(s.text || '').includes('"progress":['))
   ok(wrongArraySample.length === 0,
     '★★ the OLD array-shaped sample is GONE from every section (it was the shape that produced the real-machine failure)', wrongArraySample.map((s) => s.name))

@@ -156,11 +156,21 @@ try {
   ok(afterAck.acked === true && afterAck.ackRequired === false && afterAck.unackedRows.length === 0,
     'the receipt now says nothing is owed (acked:true, unackedRows:[])', afterAck)
   const simC = await h.prompts.assembleFor(ASSEMBLY)
-  ok(blockOf(simC) === '', 'the simulated prompt no longer renders the block')
+  // ★ TB-2724 / RUN 77 (A): OLD world — after the ack the prompt rendered no notice block at all (`blockOf === ''`).
+  // Now an empty queue is the NAMED empty block, so what must be gone is the settled MAIL LINE; the header stays and
+  // says by name that nothing is left to settle (`lineCount === 1` is the whole reading).
+  // `blockOf` ends at the first BLANK line; the named-empty block is a single line, so read the first line directly.
+  const simHead = String(simC || '').split(NL)[0]
+  ok(simHead === HEADER + ' （无未结算行）' && String(simC || '').indexOf('P1-1 结算探针') === -1,
+    'the simulated prompt starts with the NAMED empty block (the settled row is gone)', { head: simHead })
   const driveC = await h.call('vibe_vmu_turn', { op: 'drive', member: 'r-1', rounds: 1, phase: 'normal', why: 'RUN 254-B 回合 C' })
   ok(driveC && driveC.roundsRun === 1, 'a third real turn ran', driveC && { roundsRun: driveC.roundsRun, code: driveC.code })
   const realC = String((h.delivered[h.delivered.length - 1] || {}).text || '')
-  ok(blockOf(realC) === '', 'and a REAL turn after the ack renders no block either', { block: blockOf(realC) })
+  // ★ TB-2724 / RUN 77 (A): OLD world — `blockOf(realC) === ''`. Same change as the simulated leg: the settled row is
+  // gone, and the block that remains is exactly the one-line named empty.
+  const realHead = String(realC || '').split(NL)[0]
+  ok(realHead === HEADER + ' （无未结算行）' && String(realC || '').indexOf('P1-1 结算探针') === -1,
+    'and a REAL turn after the ack starts with the NAMED empty block', { head: realHead })
   const statusAfter = await h.call('vibe_vmu_mailbox', { action: 'status' })
   ok(statusAfter && statusAfter.notice && statusAfter.notice.acked === true && statusAfter.notice.unackedRows === 0,
     'the aggregate face agrees: no member is owed an ack', statusAfter && statusAfter.notice)

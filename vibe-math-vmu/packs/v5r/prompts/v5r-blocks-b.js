@@ -608,7 +608,6 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '                    decision: "deliverable", note: "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",',
         '                    conclusion: "（可选）定稿代表对原问题的最终结论（只写有证据的）" }',
         '★ decision="revise" 会退回继续修订（有轮次上限）。**只有主席席（即院士）可以定稿**；其他席位调用会被具名拒。\n★ 结题核对**两个数**：磁盘上的 PDF `bytes` 与归档行里的 `pdfSha256`（归档行没有 `pdfSha256` 就是没核对，不要只报字节数）。',
-        '★ 所办问询门（`vmu.paper.officeConsult=required` 时）：被拦会具名拒 `VMU_OFFICE_CONSULT_REQUIRED`，拒里给 `requestId` 与 `target`——让所办先答复 `vibe_v5_paper { action:"consult", target:"<论文 target>", member:"<所办 id>", request_id:"<拒里的 requestId>", answer:"<核对结论>" }`，**答完重试 `action:"final"`**；普通成员答复会被具名拒 `VMU_NOT_PERMITTED`（能答复的角色由部署声明）。',
         '★★ `ok:true` 只表示「请求被接受」；完成看 `complete`、产物看 `renderOk`、缺什么看 `missing`（`ok:true`+`complete:false` 是【正常读数】）。`render` **永不编译**：pdf 行与 `pdfBytes` 只由 compile/final 写。`compile` 要宿主装了 LaTeX，没装时拒 `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`，那是环境事实：先 `vibe_vmu_env { action:"probe", need:"xelatex" }` 探，缺引擎时 `final` 仍可收口、`pdf` 会记在 `missing` 里；被拦时读 `vibe_v5_paper { action:"consult_state", target }` 取 `awaiting.id`，由所办答复后再 `final`，不要改成 off 绕过。',
       ].join('\n'),
     },
@@ -842,7 +841,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
         '★ 席位不参会（temp：attend 被拒）时 `input`/`hand` 被拒——走 `vibe_v5_say`。',
         '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。院士用 `vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "<被邀者 id>", by: "<你的 id>", why: "<为何请他发言>" }` 请人发言（**`by` 必填且必须是主席自己**：服务会议缺 `by` ⇒ `VMU_INVALID_ARGUMENT`、`by` 不是主席 ⇒ `VMU_NOT_PERMITTED`；`why` 必填；批量用 `members: [ … ]` 按给定顺序入队）——邀请≠签到，被邀者仍须自己 `attend` 才计法定人数。',
-        '**沉默不等于投票**：`vote_solved` 必须显式给出——认为已解决就填 "vote_solved": true；结题要求**表决人数达到法定人数 m = min(所办设定的上限, 院士+常驻研究员人数)**（以状态块「法定票数」为准）**且无人投反对**；缺 `vote_solved` 会**阻止结题**，未表态名单会被列出。；**结题票三处对照**：投票**动作**走会议骨架 `vibe_vmu_vote`，你的 reply 里写**字段** `vote_solved`，`set_solved` **不存在**（旧任务书写法，写进回执整轮判未知字段）。',
+        '**沉默不等于投票**：`vote_solved` 必须显式给出——认为已解决就填 "vote_solved": true；结题要求**表决人数达到法定人数 m = min(所办设定的上限, 院士+常驻研究员人数)**（以状态块「法定票数」为准）**且无人投反对**；缺 `vote_solved` 会**阻止结题**，未表态名单会被列出。；**结题票三处对照**：投票**动作**走会议骨架 `vibe_vmu_vote`，你的 reply 里写**字段** `vote_solved`，`set_solved` **未登记**（旧任务书写法，写进回执整轮判未知字段）。',
         '**辩论的最终裁决也受同一个 m 约束**：`vibe_v5_verdict_final` 的签署人数＝交来裁决的成员数＋签字的院士；低于 m 会**具名拒** `VMU_MEETING_QUORUM_LOST`（hint 给 `vibe_v5_verdict_ask` 与缺谁）。只有主席**故意**在不足 m 的席位上裁决时才用 `partial: true` + `why`；回执会写 `floor.gate.escapedBy: "partial"` 与 `satisfiedBy: false`，把例外留在记录上。',
         'input：发言；vote_solved：明确的结题判断，沉默不计赞成。',
       ].join('\n'),
@@ -932,7 +931,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '【参会与预约（非会议回合）】被召集/预约时内核给每位被邀者投一条**耐久预约邮件**（`kind:"meeting-appointment"`）：你的**下一回合提示最上方**会出现 `[新到的消息]` 块，其中一行 `【会议预约·<主席>】<标题> @ <开始时间> — <可直接照抄的入席调用>；读后 mailbox ack {id}`。那行不是提醒而是**未结算的邮件**：ack 之前每个回合都会再来一次（块内最新在前、最多 8 行；更多用 `vibe_v5_inbox {action:"list", member}`）。三步结算：① `vibe_v5_inbox {action:"open", id:"<邮件 id>", member:"<你>"}` 读正文（会议类型/议题/时间/你的席位/确切入席调用）；② 会议开始后 `vibe_v5_meeting {op:"attend", id:"<会 id>", member:"<你>"}`（邀请≠签到，不 attend 不计法定人数；预约状态下 attend 只登记座位、不会提前开会）；③ `vibe_vmu_mailbox {action:"ack", member:"<你>", ids:["<邮件 id>"]}` 结算（pack 面 `vibe_v5_inbox` 只有 list/open/mark，ack 在内核邮箱面 `vibe_vmu_mailbox`，框架面不由 pack 收窄）。没有实时唤醒缝时你不会被叫醒，只在自己的回合看到它；预约会在 `at` 到点前只许座位登记，治理动作被具名拒。会议类型与迟到入席规则见会议回合。',
       ].join('\n'),
       temp: [
-        '【参会与预约（非会议回合）】临时工席位不参会（`attend` 被具名拒），无表决权；受邀发言走群聊。会议类型与会中动作见会议回合。',
+        '【参会与预约】临时工：可读可群聊（`vibe_v5_say`），不入会、不投票。',
       ].join('\n'),
     },
   },
@@ -948,7 +947,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       academician: [
         '【开会与预约：按事件时机的顺序（你的手册）】会议类型六种：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型；动议 kind 为 topic/procedural/resolution；**可用的命令随类型与身份不同**。辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权；上面这些动词只是常用手段，不是穷举。**会议进行中的一切内容、控制、活动都由你的命令决定**——但每个成员的动作（发言、投票、签到）仍由成员自己在其回合做完，你编排的是顺序与时机。',
         '  · ① 先定议程：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 读议程条目、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——`agendaitems`/`agendaclose` 这两个动词只认**内核原语会**（`vibe_vmu_meeting { action:"open" }` 开的）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`title` 是**可选**的独立名称（非字符串会被具名拒）。`open` 回执里的 `procedureNote` 是**建议**（`procedure` 同源，`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：`ordinary` 类型**故意不给推荐骨架**，其余五种的步骤只是**建议**，可跳过、可重排，是否遵循由你决定。　★ **正式议程要条目就给数组**：`formal_agenda` 传 `["条目", {title:"条目2", kind:"review"}]` 才逐条落库（`formalAgendaItems` 读得到）；传 `true` 只是**声明**（`formalAgendaDeclared:true`、`formalAgendaItems:null` ＋ `formalAgendaItemsWhy`），读者一条都看不到（真机 P-04 正因如此只剩这个布尔。）',
-        '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做）。召集成功会对除主席外每位在册者发出 `meeting-appointment` **耐久邮件**（`channel:"mail"`，每个被邀者一条，含议题/时间/你的席位/可照抄的入席调用）：回执 `invitation.delivered`＝已投递——对方**下个回合提示最上方的 `[新到的消息]` 块**里会出现一行 `【会议预约·<你>】…`，在其 `mailbox ack` 之前每回合都在（也可用 `vibe_v5_inbox` 读），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。预约/召集的回执还直接给内核投递三数组：`notified`（真拿到行的成员）、`notifyRows`（每人 mailId）、`notifyFailed`（逐人具名原因，附 `noticesMeans`）——`notifyFailed` 里的人才是你要补发的，别把「约过」当「通知到」。不必逐个私信催：没投出去的人会具名出现在 `unreachable`／open 回执的 `notifyFailed` 里，只有他们需要补消息；被邀者迟迟不 attend 是他自己回合的事，不是你没通知到。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
+        '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做；有 roster 未到场者时，`close` 前先问 `status.present`）。召集成功会对除主席外每位在册者发出 `meeting-appointment` **耐久邮件**（`channel:"mail"`，每个被邀者一条，含议题/时间/你的席位/可照抄的入席调用）：回执 `invitation.delivered`＝已投递——对方**下个回合提示最上方的 `[新到的消息]` 块**里会出现一行 `【会议预约·<你>】…`，在其 `mailbox ack` 之前每回合都在（也可用 `vibe_v5_inbox` 读），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。预约/召集的回执还直接给内核投递三数组：`notified`（真拿到行的成员）、`notifyRows`（每人 mailId）、`notifyFailed`（逐人具名原因，附 `noticesMeans`）——`notifyFailed` 里的人才是你要补发的，别把「约过」当「通知到」。不必逐个私信催：没投出去的人会具名出现在 `unreachable`／open 回执的 `notifyFailed` 里，只有他们需要补消息；被邀者迟迟不 attend 是他自己回合的事，不是你没通知到。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
         '  · ③ 预约与会前：`vibe_v5_meeting { type, agenda, at: <epoch ms / ISO-8601 / 相对偏移如 "+120s"> }`（可写相对偏移——**你没有自己的钟**，由内核换算）→ 会议进入 `scheduled`；`status`/`summary` 可读，开始前的治理动作都被具名拒；例外：`attend` 可提前签到（不开会）、主席可 `proceed` 提前开（记 `startsEarly`/`earlyByMs`，提前开不是迟到）。**到点不会自己开会**：到点后的下一次 touch 只结算一次考勤——那一刻人已齐才直接开（`startedLate:true`），否则落 `waiting`，并给 `waitingFor`（`"quorum"`＝人没齐；`"chair-proceed"`＝人齐了等你）。`waiting` 期间迟到者 `attend` 让考勤满足时那次 touch 仍会开；等待到期只把 `waitDecisionDue` 置真（提醒，不开会）；其余只有 `proceed` 能开（`lapse` 弃会、`recess` 体会是两个出口）。`requiresChairProceed:true` 的准确含义是「开会不是框架按钟自己决定的」：需要一个动作把它推过去（你 `proceed`，或考勤在等待期间被补齐）。没有定时器：靠 `beat()` 的 sweep 与 touch 结算；回执 `nextActions` 列出此刻能接的动作——出现 `proceed` 就是你开（可提前开，记 `startedLate:true`），出现 `attend`＝还要有人签到，出现 `beat` 说明只差一次 touch。迟到入席看每会 `lateAdmission`（open|chair|refuse，缺省 chair）决定：`open` 直接入座记 `late:true`；`chair` 挡在门口（`pendingLate:true`），只有主席 `vibe_vmu_meeting { action:"admit", id, member, actor }` 放行；`refuse` 具名拒 `VMU_LATE_ADMISSION_REFUSED`；「迟到」由 `lateAfterMs` 对 `openedAt` 判定（缺省 0）。',
         '  · ⑦ 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
         '  · ⑧ 面别记错：`vibe_v5_meeting` 只**召集/预约**；`close`/`attend`/`hand`/`admit`/`status`/`summary` 走 `vibe_vmu_meeting { action, id, member?, actor? }`，拿错面会被具名拒 `VMU_INVALID_ARGUMENT`。',
@@ -1100,7 +1099,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '【回合循环卡住了怎么办】读 `vibe_vmu_turn { op:"status" }.turnLoop`：`inFlight` 是本内核的**单轮锁**、不是账本承诺（`turnInFlightMeans`：`human.recover` 读耐久账，可与锁并存）；`inFlightTurn`/`inFlightMember`/`inFlightOpenedBy`/`inFlightForMs`＝哪轮/谁开/锁时，`abandonAfterMs`＝上限，`wakeQueue`/`recentAbandonments`＝排队/最近关的轮。',
         '  · 连续两次 `VMU_TURN_REENTRANT` 就**不要第三次重试**：用 `vibe_vmu_turn` 的 `op:"abandon"`（`turn` 给 inFlightTurn、`why` 必填）按名关掉：该行变 `status:"abandoned"` + `VMU_TURN_ABANDONED`、释放锁、报告**不应用**；给错 id 读 `status:"open"` 的行或 `inFlightTurn`。',
         '  · 只关抱锁那一轮；关完读 status 确认 `inFlight:false`。',
-        '  · parked 时再派同席＝`VMU_TURN_ALREADY_PARKED`（先答）；reply 无 parked＝`VMU_TURN_PARKED_NEEDS_OWNER`（丢弃）。先答→abandon→再派。',
+        '  · parked 时再派同席＝`VMU_TURN_ALREADY_PARKED`（先答）；reply 无 parked＝`VMU_TURN_PARKED_NEEDS_OWNER`（丢弃）。先答→abandon→再派。解析失败会释放 park（下条 `step` 开新回合）',
       ].join('\n'),
     },
   },
@@ -1112,7 +1111,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【临时工】临时工是**特殊/临时任务**用的，不是常设席位：雇佣用 `vibe_v5_hire { purpose, initial_task, to }`（三项必填，缺一具名拒）；只开 temp 席；',
-        '无表决权、默认不参会，产出由临时工在回执里交回（指派者只核对、不代写）。所办**开所**用 `vibe_v5_start`：它坐好院士席并记为 `vmu.turn.leaderId`（已有则不覆盖）。',
+        '产出由临时工在回执里交回（指派者只核对、不代写）。所办**开所**用 `vibe_v5_start`：它坐好院士席并记为 `vmu.turn.leaderId`（已有则不覆盖）。',
       ].join('\n'),
     },
   },

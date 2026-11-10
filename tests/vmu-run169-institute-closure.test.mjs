@@ -150,8 +150,14 @@ const SEATS = [['r-acad', 'chair'], ['r-1', 'member'], ['r-2', 'member'], ['r-te
   // …but the reply field is recorded without a permission gate, so such a reading CAN exist; it must be visible and unused.
   const applied = await A.kernel.turn.apply({ vote_solved: true }, null, 'r-temp')
   const view = A.kernel.closureVoteView()
-  ok(applied.ok === true && J(view.notEligible) === J(['r-temp']) && view.votesCast === 0 && J(view.for) === J([]),
-    '§2 a judgement from a member outside the electorate appears in `notEligible`, is NOT counted, and is NOT called missing',
+  // ★ TB-2724 / RUN 77 (C) moved this shape: `notEligible` is no longer a bare id list — each row now carries the
+  // judgement it recorded and why it does not count (`{member, solved, why}`), because the 77th run showed a bare id
+  // next to a Means sentence promising "recorded". The old world (`J(view.notEligible) === J(['r-temp'])`) is why the
+  // promise and the value could disagree; the assertions below are the same claims, one field deeper.
+  ok(applied.ok === true && Array.isArray(view.notEligible) && view.notEligible.length === 1
+    && view.notEligible[0].member === 'r-temp' && view.notEligible[0].solved === true
+    && view.notEligible[0].why === 'no-closure-vote-permission' && view.votesCast === 0 && J(view.for) === J([]),
+    '§2 a judgement from a member outside the electorate appears in `notEligible` WITH its value and why, is NOT counted, and is NOT called missing',
     { notEligible: view.notEligible, votesCast: view.votesCast, for: view.for, missing: view.missing })
   ok(/neither counted nor listed as missing/.test(view.notEligibleMeans),
     '§2 and the field says exactly that in words', view.notEligibleMeans)

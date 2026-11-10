@@ -381,7 +381,15 @@ ok(allPrompts.includes('replyTruncated'), 'S8k truncated/replyTruncated alias do
 // ---- S9. notice block is real and rendered (ASCII brackets) ----------------
 const blockPairs = pairs.filter((p) => textOf(p).startsWith('[新到的消息]'));
 ok(blockPairs.length >= 6, 'S9a notice block rendered in at least six prompts (got ' + blockPairs.length + ')');
-ok(blockPairs.every((p) => /【(会议预约|邮件)·/.test(textOf(p).slice(0, 1200))), 'S9b every rendered block carries an appointment/mail line');
+// ★ TB-2711 (RUN 76 §④) — the notice block now renders its header even when there are no unsettled rows
+// (`[新到的消息] （无未结算行）`, a NAMED empty), instead of disappearing entirely. The old world (block only when
+// non-empty) is why this rule could assume every rendered block carried an appointment/mail line: that assumption
+// was the disappearing-block bug itself. Split the set: a named-empty header is allowed to carry no line; a block
+// WITH rows must still carry one, so the rule is not weakened to a tautology.
+const namedEmpty = blockPairs.filter((p) => textOf(p).startsWith('[新到的消息] （无未结算行）'));
+const withRows = blockPairs.filter((p) => !textOf(p).startsWith('[新到的消息] （无未结算行）'));
+ok(namedEmpty.length >= 1, 'S9b0 at least one prompt renders the named-empty header instead of losing the block (got ' + namedEmpty.length + ')');
+ok(withRows.every((p) => /【(会议预约|邮件)·/.test(textOf(p).slice(0, 1200))), 'S9b every rendered block WITH rows carries an appointment/mail line');
 ok(blockPairs.every((p) => textOf(p).split('\n').length > 100), 'S9c block is a prefix, the whole prompt follows');
 ok(!allPrompts.includes('【新到的消息】'), 'S9d full-width bracket variant does not exist (earlier false negative)');
 const p9 = pairs.find((p) => p.pairIndex === 9);

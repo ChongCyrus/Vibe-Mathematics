@@ -822,15 +822,30 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(asmRp.ok === true && asmRp.text.includes('字段目录') && asmRp.text.includes('因此这一段并非合法对象字面量') && asmRp.text.includes('你真正要交回的 `report` 必须严格合法'),
     'T75. **** the catalogue arrives AND admits it is not a valid object literal while demanding a strictly valid `report` - the contradiction is stated instead of left for a model to guess',
     { chars: asmRp.text.length })
-  ok(asmRp.text.includes('最小合法 report 样例') && asmRp.text.includes('report: {"say":"…","progress":"…","solved":false,"contextPct":40}') && asmRp.text.includes('"vote_solved": true|false'),
-    'T76. **** and it ends with a STRICTLY VALID minimal report sample, with the unanimity rule stated right next to vote_solved and the authority matrix next to fire',
+  // T76's second half used to pin `"vote_solved": true|false` inside the catalogue row, with the unanimity rule
+  // stated right next to it. That world no longer holds (TB-2725 / RUN 77): the row now names the TOOL as the only
+  // entry and says the reply field is IGNORED (`kept:false`) whenever the tool is visible - the unanimity rule moved
+  // to the stop rule in the role block ('全体有表决权者一致认为原问题已解决'), which is asserted below so the fact is
+  // still carried by this same assembly rather than silently dropped.
+  ok(asmRp.text.includes('最小合法 report 样例') && asmRp.text.includes('report: {"say":"…","progress":"…","solved":false,"contextPct":40}'),
+    'T76. **** and it ends with a STRICTLY VALID minimal report sample a model can copy without guessing',
     { sample: true })
+  ok(asmRp.text.includes('全体有表决权者一致认为原问题已解决'),
+    'T76c. **** the unanimity rule is still carried by this assembly (it moved from the vote_solved row to the stop rule, it was not dropped)',
+    { unanimity: true })
   ok(asmRp.text.includes('调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`') && asmRp.text.includes('```json') === false,
     'T76b. ★★ F5: the reply transport is a TOOL CALL, not a fenced JSON blob - the lead sentence names the tool and the whole spec carries no ```json fence',
     { toolLead: true, fences: (asmRp.text.match(/```json/g) || []).length })
-  ok(asmRp.text.includes('常驻研究员只能由所办解聘') && asmRp.text.includes('只要有一位有表决权者没有填 true'),
-    'T77. **** the two corrections the source records are carried verbatim: the firing authority matrix and what a partial yes does',
+  // T77 used to pin '只要有一位有表决权者没有填 true' as the second correction. TB-2725 rewrote that row on purpose
+  // (RUN 77 F77-6: the reply field is silently ignored while the tool is visible, so teaching it as the only entry
+  // was the defect). The two corrections this suite holds are now: the firing authority matrix, and the vote channel
+  // (tool = only entry, reply field = only when the tool is invisible, and it says so with `kept:false`).
+  ok(asmRp.text.includes('常驻研究员只能由所办解聘') && asmRp.text.includes('结题票用工具 `vibe_vmu_vote`') && asmRp.text.includes('唯一入口') && asmRp.text.includes('kept:false') && asmRp.text.includes('set_solved` 未登记'),
+    'T77. **** the two corrections the source records are carried verbatim: the firing authority matrix and the vote channel (the tool is the only entry; the reply field says when it is ignored)',
     { corrected: true })
+  ok(asmRp.text.includes('只要有一位有表决权者没有填 true') === false,
+    'T77b. ★ the old "the reply field is the only entry" wording is GONE - a reader can no longer be taught the channel that is silently ignored',
+    { stale: true })
 }
 
 // 19) THE PER-TURN HEADING AND ASK BY PHASE (docs/26 section 3.13): every prompt in the source is one eight-part

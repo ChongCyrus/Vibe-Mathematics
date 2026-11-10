@@ -20,7 +20,8 @@
 //
 // Budgets are MEASURED, not guessed (this repo's own rule: "a family budget is measured, never guessed"):
 //   end-to-end        1.9 s   (gate-load amplification measured on this tree: +15 % at T1 concurrency 3)
-//   meeting-matrix   12.8 s   (measured INSIDE this gate, not standalone: 9.4 s alone, 12.8 s under gate load)
+//   meeting-matrix   12.9-17.0 s INSIDE this gate (standalone 8.4 s); the 17.0 s reading is contention from a heavy peer
+//                    in the same wave (k=3), so the baseline is the concurrent maximum, not the quiet cost (see the doc)
 //   audit/all        43-58 s quiet, 75.0 s under T1 concurrency 3 (measured: 75.03 s, the run that raised this cap)
 //   determinism pair  2 x 1.9 s
 //   => the three named segments sum to ~90 s quiet against the 150 s total backstop; audit/all's OWN segment cap is

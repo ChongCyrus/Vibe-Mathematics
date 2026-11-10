@@ -291,6 +291,13 @@ const TIMEOUT_OVERRIDES = {
   // counts green in every standalone run). 800 s = 2.52x the measurement (the 2x rule), budget only: the
   // assertion set is untouched, and the red team detects a hang because a killed family reports exit 1.
   'release-ready.test.mjs': 800000,
+  // mutation-evidence.test.mjs: the in-repo mutation batch. It GROWS with every taskbook that adds a mutant (43 in-repo
+  // entries + 4 negative controls = 52 assertions today), and each entry runs a real mutated copy of the tree, so its
+  // wall time tracks the batch size, not the machine. MEASURED 155 s standalone on 2026-11-11 (52/0, exit 0,
+  // `mutation-evidence: 43 in-repo entries + 4 negative controls · 153901ms`) and KILLED at the 180 s default in the
+  // full sweep - its own counts were green there, i.e. amplification by gate concurrency, not a hang. 400 s = 2.58x
+  // the measurement (the 2x rule), budget only: the assertion set and the mutation semantics are untouched.
+  'mutation-evidence.test.mjs': 400000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then (S22) the family
  *  default for `*.mutants.mjs`, then the 180 s suite default. Every layer has a safe default, so a
@@ -329,6 +336,9 @@ const DURATION_WEIGHTS = {
   // attack vectors, so leaving it at the default weight (2) started it last and cost the tail it was
   // meant to avoid. Only the ORDER moves (LPT), never what runs.
   'release-ready.test.mjs': 317,
+  // MEASURED 155 s standalone on 2026-11-11 (52/0). Without a weight it starts LAST and pays its whole wall as tail;
+  // the mutation batch only grows (43 in-repo entries today), so the weight tracks it. Order only, never what runs.
+  'mutation-evidence.test.mjs': 155,
   'e2e-v5-round2.test.mjs': 47.0,
   'v2-fix-probes.test.mjs': 40.3,
 }

@@ -95,8 +95,14 @@ try {
       '§0b the wording says BY NAME that unknown is not in the denominator')
     ok(turnSource.includes('      deliveryPath: null,') && turnSource.includes("if (typeof patch.deliveryPath === 'string'"),
       '§0c the turn row keeps deliveryPath from OPEN time and the settle patch copies it (the whitelist no longer drops it)')
-    ok(turnSource.includes('memberWorkShare: workShareOf({ turns: Array.from(turnReceipts.values()) })'),
-      '§0d status derives the share from the SAME rows turnReceipts publishes (one computation, no second ledger)')
+    // RUN 270 (TB-2724 D): the reading is now hoisted into `memberWorkShareReading` so the `detail:"board"` slice and
+    // the full status publish the SAME object; the old pin spelled the assignment inline and went red on a refactor
+    // that changed nothing it was about. Pin the FACT (one derivation from the published rows, then published), not
+    // the line: the derivation must exist exactly once and both readers must point at it.
+    ok(turnSource.split('workShareOf({ turns: Array.from(turnReceipts.values()) })').length === 2
+      && turnSource.includes('memberWorkShare: memberWorkShareReading'),
+      '§0d status derives the share from the SAME rows turnReceipts publishes (one computation, no second ledger)',
+      { derivations: turnSource.split('workShareOf({ turns: Array.from(turnReceipts.values()) })').length - 1 })
     ok(turnSource.includes('classifiedBy: WORK_SHARE_CLASSIFIED_BY') && turnSource.includes("'office-relayed': 'row.deliveryPath === \"caller\""),
       '§0e the receipt carries the classification rule under classifiedBy (readable, not an implicit heuristic)')
     ok(turnSource.includes('no path proves NEITHER side') && turnSource.includes('never folded into'),
@@ -227,7 +233,10 @@ try {
     ok(keys.every((key) => share && share[key] !== undefined),
       '§5d the receipt carries every named key (no undefined hole a reader could mistake for zero)', keys.filter((key) => !share || share[key] === undefined))
     const turnToolSource = await readFile(join(REPO, 'vibe-math-vmu', 'tools', 'turn.js'), 'utf8')
-    ok(turnToolSource.includes('const status = kernel.turn.status()') && turnToolSource.includes('return { ok: true, status, turns: perTurn,'),
+    // RUN 270 (TB-2724 D): the tool now selects a SLICE before the kernel assembles the big object
+    // (`kernel.turn.status(detail === 'board' ? { detail: 'board' } : {})`), so the old literal `status()` went red
+    // while the property this assertion is about — the tool returns the WHOLE kernel reading under `status` — is intact.
+    ok(/const status = kernel\.turn\.status\(/.test(turnToolSource) && turnToolSource.includes('return { ok: true, status, turns: perTurn,'),
       '§5e the turn tool returns the whole kernel status (so the share reaches the tool face unchanged)')
     const after = turnModule.workShareOf({ turns: JSON.parse(JSON.stringify(status.turnReceipts)) })
     ok(JSON.stringify(plainShare(after)) === JSON.stringify(plainShare(share)),

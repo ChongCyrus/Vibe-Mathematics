@@ -1007,6 +1007,39 @@ function procedureProgressOf(m) {
   }
 }
 
+/** ★★★ ROUND 77 / TB-2726 (RUN 77 defect 5): the RESOLVED type alone cannot answer "was this meeting opened with
+ *  an alias?". The convene receipt already printed `typeInput` / `typeMatchedBy`, but the DURABLE open row lost them
+ *  (it carried `""` for both), so a post-hoc audit had to go back to the chair's own turn transcript to learn the
+ *  word — which may be truncated or missing. Same generality as TB-2668: a face receipt and the durable row are two
+ *  readings of ONE act, and the durable row must not know less. `''` is NOT a value here: an unrecorded word reads
+ *  as null plus a `typeMatchedByMeans` sentence, because an empty string claims "the caller typed nothing", which is
+ *  a different (and false) claim. The caller's bytes are kept VERBATIM (CJK, quotes) — nothing is re-normalised here. */
+const TYPE_MATCH_PATHS = Object.freeze(['id', 'alias', 'default'])
+function typeMatchRowOf(typeInput, typeMatchedBy) {
+  const raw = (typeInput === undefined || typeInput === null) ? null : String(typeInput)
+  const input = (raw !== null && raw.trim() !== '') ? raw : null
+  const by = (typeMatchedBy === undefined || typeMatchedBy === null) ? null : String(typeMatchedBy)
+  const matchedBy = TYPE_MATCH_PATHS.includes(by) ? by : null
+  const means = input === null && matchedBy === null
+    ? 'this open row does not record the caller\'s type word or how it matched: read both as UNKNOWN (null), not as empty — the row predates RUN 77 and only the resolved `type` was kept'
+    : (matchedBy === 'alias'
+      ? 'the caller passed a word that is NOT a declared type id; it matched a declared type\'s ALIAS, and `type` is the declared id it resolved to (the alias is an accepted input, never the stored type)'
+      : (matchedBy === 'id'
+        ? 'the caller passed a declared type id; `typeInput` is that same word, so this meeting was not opened through an alias'
+        : (matchedBy === 'default'
+          ? 'the caller passed no type word at all; the meeting type defaulted to ordinary, so `typeInput` is null BY DESIGN — it is not a lost value'
+          : 'the row records the caller\'s type word but not how it matched (a writer that did not report the path); `type` is the resolved id')))
+  return { typeInput: input, typeMatchedBy: matchedBy, typeMatchedByMeans: means }
+}
+/** The READ face over a stored receipt row: an OLD row (no `typeInput`/`typeMatchedBy`, or the RUN 77 `""` pair) is
+ *  served with null + the means sentence instead of a blank that reads like a value; a NEW row round-trips unchanged. */
+function receiptRowRead(r) {
+  if (r === null || typeof r !== 'object' || Array.isArray(r)) return r
+  const row = Object.assign({}, r)
+  if (row.action === 'open') Object.assign(row, typeMatchRowOf(row.typeInput, row.typeMatchedBy))
+  return row
+}
+
 function procedureRow(p) {
   if (p === null || p === undefined || typeof p !== 'object' || Array.isArray(p)) return null
   return {
@@ -4071,7 +4104,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     /** READ-ONLY: the receipt ring (bounded; drops counted). */
     receiptsView({ limit = 50 } = {}) {
       const capN = Number.isInteger(limit) && limit > 0 ? limit : 50
-      const kept = receipts.slice(Math.max(0, receipts.length - capN)).map((r) => Object.assign({}, r))
+      // ★★★ ROUND 77 / TB-2726: OLD open rows (no type provenance, or the defect's `""` pair) are read as null + a
+      // means sentence instead of a blank that looks like a value; a row written since RUN 77 round-trips unchanged.
+      const kept = receipts.slice(Math.max(0, receipts.length - capN)).map((r) => receiptRowRead(r))
       return { ok: true, receipts: kept, count: kept.length, available: receipts.length, dropped: receipts.length - kept.length, ringDropped: receiptDropped.n, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -4598,10 +4633,25 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // `formalAgenda` accepts the declaration the pack already forwards (`true`) and, now, a per-item LIST — the caller
     // that wants "a formal agenda" to mean "these items were registered" must be able to say so. `formal_agenda` and
     // `agendaItems` are accepted as spelling aliases only (one fact, three spellings; no second mechanism).
-      formalAgenda = undefined, formal_agenda = undefined, agendaItems = undefined } = {}) {
+      formalAgenda = undefined, formal_agenda = undefined, agendaItems = undefined,
+    // ★★★ ROUND 77 / TB-2726: the CALLER's type word and the path it matched on, handed over so the durable open row
+    // can keep them (the convene receipt already computed both; the durable row used to drop them and store `""`).
+    // `type` stays the RESOLVED id — these two are the provenance of that resolution, never a second type.
+      typeInput = undefined, typeMatchedBy = undefined } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
+    // ★ the caller word is kept VERBATIM; only "not said" (undefined/null/whitespace-only) becomes null, and a path
+    // outside id|alias|default is a named refusal rather than a row that claims a fourth possibility.
+    if (typeInput !== undefined && typeInput !== null && typeof typeInput !== 'string') {
+      throw deny('VMU_INVALID_ARGUMENT', 'typeInput must be the caller\'s type word as a STRING (or omitted); got ' + JSON.stringify(typeInput),
+        'pass the exact text the caller wrote (CJK aliases included), or omit it — it is recorded verbatim and never re-normalised', enforced)
+    }
+    if (typeMatchedBy !== undefined && typeMatchedBy !== null && !TYPE_MATCH_PATHS.includes(String(typeMatchedBy))) {
+      throw deny('VMU_INVALID_ARGUMENT', 'typeMatchedBy must be one of id|alias|default (or omitted); got ' + JSON.stringify(typeMatchedBy),
+        'say HOW the type word matched: `id` for a declared id, `alias` for a word that only matched an alias, `default` when no type word was passed', enforced)
+    }
+    const typeMatch = typeMatchRowOf(typeInput, typeMatchedBy)
     // ★★ PHASE 12 D1 — 预约：`at` 指向未来 ⇒ 会议先处于 scheduled 态，**不是**"一个 openedAt 在未来的已开会议"。
     // 差别是实打实的：旧实现把未来的 `at` 直接写进 openedAt，于是一个"预约"会议可以立刻被发言、投票、关闭，
     // 预约只是个装饰字段。现在它有自己的状态，而状态由 `syncMeeting` 在到点时结算。
@@ -4967,6 +5017,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           : 'the caller gave an ABSOLUTE time (epoch ms, numeric string or ISO-8601); at/scheduledFor is that instant in epoch ms'),
       scheduledForIso: m.scheduledFor === null ? null : new Date(Number(m.scheduledFor)).toISOString(),
       ...startReads,
+      // ★★★ ROUND 77 / TB-2726: the DURABLE row keeps the type's provenance, so an audit can answer "was this meeting
+      // opened with an alias?" from the ledger alone (RUN 77 had to read the chair's turn transcript to find out).
+      ...typeMatch,
     })
     pushReceipt(receipt)
     say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, rosterNarrowed: m.rosterNarrowed === true, lateAdmission: m.lateAdmission, enforced, enforcedScope: ENFORCED_SCOPE })
@@ -4990,6 +5043,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // ★ RUN 251: the same start window + `at` provenance are ALSO at the top level (the same reason type/subject are):
       // a caller that asked for a scheduled start should not have to know the receipt envelope to read it back.
       atSource, atSourceMeans: receipt.atSourceMeans, scheduledForIso: receipt.scheduledForIso, ...startReads,
+      // ★★★ ROUND 77 / TB-2726: the same three keys at the top level too — the convene face prints them and the durable
+      // row now records them; one reading, so the caller and the ledger cannot disagree about the alias.
+      ...typeMatch,
       enforced, enforcedScope: ENFORCED_SCOPE }
     
   }

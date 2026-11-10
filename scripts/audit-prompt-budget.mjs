@@ -182,6 +182,9 @@ export async function measure(options = {}) {
   // two measure two different prompts and the suite red for a difference that is not a defect (see the RUN 242 note below).
   const rulerMeetingId = (typeof options.meetingId === 'string' && options.meetingId.trim() !== '') ? options.meetingId.trim() : RULER_MEETING
   const { createTurnOrchestrator } = await import(pathToFileURL(join(VMU, 'kernel', 'turn', 'index.js')).href)
+  // The framework's own notice block: the kernel supplies it by default (`kernel/index.js:3004`), so a prompt assembled
+  // by this ruler without it is 16 characters lighter than the one a seat reads (see the TB-2724 note at `loopOf`).
+  const { inboxBlock } = await import(pathToFileURL(join(VMU, 'kernel', 'notices.js')).href)
   const { createPromptPipeline } = await import(pathToFileURL(join(VMU, 'kernel', 'prompt', 'index.js')).href)
   const { collectPackSections } = await import(pathToFileURL(join(VMU, 'kernel', 'pack.js')).href)
   const { PACK } = await import(pathToFileURL(join(VMU, 'packs', 'v5r', 'prompts', 'v5r-core.js')).href)
@@ -240,6 +243,17 @@ export async function measure(options = {}) {
     sectionPolicy: decideSections,
     settings,
     faces: rulerFaces,
+    // ★★★ TB-2724 / RUN 77 — THE RULER WAS 16 CHARACTERS SHORT OF THE PROMPT A SEAT RECEIVES.
+    // The turn assembly now renders a NAMED EMPTY notice block (`[新到的消息] （无未结算行）`, 16 chars with its newline)
+    // whenever the deployment has a notice renderer and the queue is empty — the member must be able to tell "the channel
+    // was read, there is nothing" from "this section was swallowed" (RUN 77 F77-A). The kernel supplies that renderer by
+    // default (`kernel/index.js:3004` passes `kernelNoticeBlock`), so every real seat gets the block; this gate passed NO
+    // `noticeBlock` and therefore measured a prompt 16 characters lighter than the one the simulator assembles — the
+    // exact failure mode `tests/sim-assembly-parity.test.mjs` exists to catch (it went red on all 12 seat×phase rows).
+    // The gate stays a TEMPLATE ruler (no mailbox, so no notice LINES), but it must include the block the template
+    // always carries. `tests/vmu-run249-notice-and-reply.test.mjs` pins that this framework block and the v5r pack's
+    // agree line-for-line, so passing the framework default here measures the same bytes the deployment renders.
+    noticeBlock: inboxBlock,
     prompt: createPromptPipeline({
       sections: collectPackSections([PACK]),
       bindings: PACK.bindings,

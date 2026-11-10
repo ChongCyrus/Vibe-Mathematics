@@ -27,6 +27,7 @@ import { readDeliveryBudget } from '../../settings/schema.js'
 // records.js mdParseText (a pure text function, no host, no fs) makes the reading independent of that injection;
 // a face parser, when present, still takes precedence (see liveStatusReadings).
 import { mdParseText } from '../records.js'
+import { INBOX_HEADER } from '../notices.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -176,7 +177,7 @@ export const FIELD_OWNERS = Object.freeze({
  * @param permission the permission that grants a closure vote. Defaults to the framework's own README word only as
  *                   a last resort; a deployment should set `vmu.turn.closureVotePermission`.
  */
-export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null, rows = [] } = {}) {
+export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null, rows = [], solvedThisRound = new Map() } = {}) {
   const enfranchised = roster
     .map((m) => String(m && m.id !== undefined ? m.id : m))
     .filter((id) => {
@@ -275,12 +276,26 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // ★ RUN 169 (F15-3, second half): a judgement recorded for somebody OUTSIDE the electorate (`solvedThisRound` carried
     // `"r-temp": false` for a temp seat that holds no vote) is not counted and not "missing" - it is a reading this tally
     // cannot use, and the receipt names it instead of silently dropping it.
+    // ★★★ TB-2724 / RUN 77 (C — notEligible must name the JUDGEMENT too): on the 77th run r-temp judged
+    // (solvedThisRound carried "r-temp": false) and the tally showed a bare id, so the Means sentence "recorded, neither
+    // counted nor listed as missing" promised a judgement the value did not carry. Each row is now {member, solved, why}:
+    // `solved` is the seat's own reading (true/false, null when it made no closure judgement at all), `why` names the
+    // missing permission. Sources are the votes map AND the solvedThisRound map, deduped by member — a seat that judged
+    // without voting appears once.
     notEligible: (() => {
-      const ids = []
-      if (votes && typeof votes.keys === 'function') for (const id of votes.keys()) if (!enfranchised.includes(String(id))) ids.push(String(id))
-      return ids
+      const rows = []
+      const seen = new Set()
+      const add = (member, solved) => {
+        const id = String(member)
+        if (seen.has(id) || enfranchised.includes(id)) return
+        seen.add(id)
+        rows.push({ member: id, solved: solved === true ? true : (solved === false ? false : null), why: 'no-closure-vote-permission' })
+      }
+      if (votes && typeof votes.keys === 'function') for (const id of votes.keys()) add(id, votes.get(id) === true)
+      if (solvedThisRound && typeof solvedThisRound.keys === 'function') for (const id of solvedThisRound.keys()) add(id, solvedThisRound.get(id) === true)
+      return rows
     })(),
-    notEligibleMeans: 'members who judged but hold no closure-vote permission: recorded, neither counted nor listed as missing',
+    notEligibleMeans: 'members who judged or voted but hold no closure-vote permission: each row names the member, the judgement it recorded (solved true/false, null when it recorded none) and why it does not count — recorded, neither counted nor listed as missing',
     // ★★ RUN 172 (run 17 / FEEDBACK17 P2-5): THE DURABLE ROWS HAD TWO NAMES FOR THE SAME QUESTION. Every judgement is written
     // to the fold key `closure_votes` as `{member, solved, at, session, voterSession}` — `session` is the kernel that WROTE the
     // row, `voterSession` is where the voter RAN (unknown in a kernel that did not see the delivery). Rows written before
@@ -2054,7 +2069,8 @@ export function liveStatusReadings({ records = null, rosterIds = [], votes = nul
       votesAgainst: Number.isFinite(Number(cv.votesAgainst)) ? Number(cv.votesAgainst) : 0,
       votesTotal: Number.isFinite(Number(cv.votesTotal)) ? Number(cv.votesTotal) : 0,
       eligible: Array.isArray(cv.eligible) ? cv.eligible.map(String) : null,
-      notEligible: Array.isArray(cv.notEligible) ? cv.notEligible.map(String) : [],
+      notEligible: Array.isArray(cv.notEligible) ? cv.notEligible.map((e) => String(e && typeof e === 'object' ? e.member : e)) : [],
+      notEligibleJudged: Array.isArray(cv.notEligible) ? cv.notEligible.filter((e) => e && typeof e === 'object').map((e) => ({ member: String(e.member), solved: e.solved === true ? true : (e.solved === false ? false : null), why: String(e.why || 'no-closure-vote-permission') })) : [],
       asOf: cvAsOf === null ? null : new Date(cvAsOf).toISOString(),
     }
   const shownCast = tally === null ? votesCast : tally.votesCast
@@ -2094,6 +2110,7 @@ export function liveStatusReadings({ records = null, rosterIds = [], votes = nul
     if (tally !== null) {
       detail.eligible = tally.eligible
       detail.notEligible = tally.notEligible
+      detail.notEligibleJudged = tally.notEligibleJudged
       detail.notEligibleMeans = 'judged but holds no closure-vote permission: recorded, neither counted nor listed as missing'
       detail.asOfSource = tally.asOf === null ? null : 'closure_votes 行：最新一条投票的 at（closureVote.votersAsOf）'
       detail.tallySource = 'kernel closureVoteOf：合并后的 closureVotes + durable closure_votes 行'
@@ -2121,10 +2138,11 @@ export function liveStatusReadings({ records = null, rosterIds = [], votes = nul
 }
 
 /**
- * Render only the groups that HAVE a value: a null group prints nothing in the prompt (an empty label is noise), while
- * `turn.status().liveReadings` still carries its `why`. With every group null this returns "" and the status block is
- * byte-identical to the pre-RUN-258 one — that property is asserted, because a board that grows an empty row on every
- * prompt would break prompt diffability for no reading at all.
+ * Render every group that HAS a value, and give a null group a NAMED line when its `why` names a cause (RUN 77 / TB-2724
+ * B: a board whose `[蓝图]` line simply vanished read as "no blueprint feature" rather than "no current blueprint").
+ * A null group without a `why` still prints nothing — there is nothing honest to name. The OLD world here was "null groups
+ * print nothing at all, and the all-null status block is byte-identical to pre-RUN-258"; that assertion is rewritten,
+ * because a named absence is now a reading the board must carry.
  */
 export function renderLiveStatus(live) {
   if (!live || typeof live !== 'object') return ''
@@ -2133,7 +2151,21 @@ export function renderLiveStatus(live) {
     const f = live[decl.key]
     if (!f || typeof f !== 'object') continue
     const value = typeof f.value === 'string' && f.value.trim() !== '' ? f.value.trim() : null
-    if (value === null) continue
+    // ★★★ TB-2724 / RUN 77 (B — a NAMED absence is a reading): the 77th live run rendered only `[论文]`/`[结题]` and
+    // the `[蓝图]` line was simply gone, because this loop skipped null groups (the RUN-258 design above). The group's
+    // `why` ALREADY names the cause ("no-current-blueprint" = rev 0 / md not on disk), so printing it is the difference
+    // between "there is no blueprint" and "this reader has no blueprint line at all". Groups null for OTHER reasons get
+    // the same treatment with their own why; only a null WITHOUT a why keeps the old silent skip (nothing to name).
+    if (value === null) {
+      // ★ TB-2724 / RUN 77 (B): only the blueprint group gets a named-absence line this round — the taskbook scopes B to
+      // the `[蓝图]` line the 77th run lost. paper/closure keep the RUN-258 silent skip until their own reading is asked.
+      if (decl.key !== 'blueprint') continue
+      const why = typeof f.why === 'string' && f.why.trim() !== '' ? f.why.trim() : null
+      if (why === null) continue
+      if (why === 'no-current-blueprint') lines.push('[蓝图] 无现行版（rev 0，md 未落盘）')
+      else lines.push('[' + decl.label + '] 读数不可得：' + why)
+      continue
+    }
     const source = typeof f.source === 'string' && f.source.trim() !== '' ? f.source.trim() : null
     const when = f.at === null || f.at === undefined || String(f.at).trim() === '' ? null : String(f.at).trim()
     const timeWhy = when === null && typeof f.timeWhy === 'string' && f.timeWhy.trim() !== '' ? f.timeWhy.trim() : null
@@ -3066,9 +3098,22 @@ export function createTurnOrchestrator({
     // With a noticeBlock the notices are PREPENDED as their own block and kept OUT of the status block, because that
     // is what the corpus shows: a header, indented notice lines, a blank line, then the round heading. Without one
     // they join the status block, which is the framework's own fallback rather than an institution's wording.
-    const noticeText = pendingNotices.length && typeof noticeBlock === "function"
-      ? String(noticeBlock(pendingNotices) || "")
+    // ★★★ TB-2724 / RUN 77 (A — an EMPTY notice block is a READING, not a broken channel): measured on the 77th live
+    // run, `turn t-1` reported notices:{lines:0,rendered:false,blockChars:0} and the whole `[新到的消息]` line vanished,
+    // while the pack prompt teaches that an empty queue still renders a NAMED empty. Both inboxBlock renderers return ''
+    // on empty input on purpose (zero mechanism), so the named empty is added HERE, at the assembly level: the block is
+    // what the member reads, and its presence says "the channel was read", not "the channel broke". The receipt keeps
+    // the three facts separate (lines/rendered/blockChars + namedEmpty), so "0 lines" and "not rendered" stay distinct.
+    const noticeRenderer = typeof noticeBlock === "function" ? noticeBlock : null
+    let noticeText = noticeRenderer !== null && pendingNotices.length > 0
+      ? String(noticeRenderer(pendingNotices) || "")
       : ""
+    let noticeNamedEmpty = false
+    if (noticeRenderer !== null && noticeText === "" && pendingNotices.length === 0) {
+      const renderedEmpty = String(noticeRenderer([]) || "")
+      noticeText = renderedEmpty !== "" ? renderedEmpty : INBOX_HEADER + " （无未结算行）"
+      noticeNamedEmpty = true
+    }
     const suppliedStatus = (noticeText ? [turn.statusBlock] : [turn.statusBlock, ...pendingNotices])
       .filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
     // ★ R15: a caller that supplies nothing gets the loop's own composition instead of a hole; a caller that DOES
@@ -3166,7 +3211,7 @@ export function createTurnOrchestrator({
       // mails and the office could only find out that the block never rendered by grepping the capture. The assembly
       // now reports the count it drained, whether a block was rendered, and its characters — so "delivered to the
       // queue" and "reached the prompt" are two separately readable facts.
-      notices: { lines: pendingNotices.length, rendered: noticeText !== '', blockChars: noticeText.length } }
+      notices: { lines: pendingNotices.length, rendered: noticeText !== '', blockChars: noticeText.length, namedEmpty: noticeNamedEmpty } }
   }
 
   /**
@@ -4140,6 +4185,13 @@ export function createTurnOrchestrator({
 
   const apply = async (reply, faceMap = null, memberId = null, opts = null) => {
     const map = faceMap || faces
+    // ★★★ RUN 77 / TB-2723 (F77-1): THE TURN'S OWN DELIVERY FACT REACHES THE WRITE. A reply field that writes a row
+    // (`progress` -> the records `put` action) used to reach the ledger with no caller and no delivery, so the row said
+    // `writtenFrom:"relayed"` while this same turn's receipt said `deliveryPath:"activation"` + `memberActed:true` -
+    // one fact, two contradictory readings. The dispatcher now opens the delivery seam around the face call, and the
+    // row records the route the turn receipt already states. Absent a delivery fact the old derivation is untouched.
+    const deliverySeam = opts && opts.delivery && typeof opts.delivery === 'object' ? opts.delivery : null
+    const recordsFace = map && typeof map === 'object' ? map['vmu.records'] : null
     const r = reply && typeof reply === 'object' ? reply : {}
     const bookkeeping = []
     turnEffects.length = 0   // R11: effects are per-apply, never accumulated across turns
@@ -4481,7 +4533,14 @@ export function createTurnOrchestrator({
       }
       const attributed = recordComposed !== null && recordComposed.attributed ? recordComposed.payload : null
       let res
+      let releaseDelivery = null
       try {
+        // ★ RUN 77 / TB-2723 (F77-1): open the delivery seam for exactly the face call that writes. `beginTurnDelivery`
+        // is prev/restore, so nesting two turns cannot leak one route into the other; a face without the seam (a fake
+        // host in a suite, an older records) is untouched and the old caller-based derivation applies.
+        if (deliverySeam !== null && recordsFace && typeof recordsFace.beginTurnDelivery === 'function') {
+          releaseDelivery = recordsFace.beginTurnDelivery(deliverySeam)
+        }
         res = adapted !== null
           ? await fn(...adapted.args)
           : await fn(onBehalf ? composed : (recordComposed !== null ? recordComposed.payload : d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
@@ -4515,6 +4574,13 @@ export function createTurnOrchestrator({
           means: 'a dispatch that THREW is a named skip now, not the end of the turn: the fields that did apply are in `executed`, and this one is in `skippedFields` with the refusal code that stopped it' })
         failures.push({ field: d.field, code, error: e })
         continue
+      } finally {
+        // ★ RUN 77 / TB-2723 (F77-1): the delivery route is single-turn state, so it is released on BOTH paths. A
+        // throwing release must never replace the dispatch result (or the refusal just recorded).
+        if (releaseDelivery !== null) {
+          try { releaseDelivery() } catch { /* the seam is bookkeeping, never the outcome */ }
+          releaseDelivery = null
+        }
       }
       counts.dispatched += 1
       const entry = { field: d.field, face: d.face, op: d.op, result: res }
@@ -4652,7 +4718,15 @@ export function createTurnOrchestrator({
     // arrive with no reply text at all, so the only way to learn what the verifier actually wrote was another run.
     let out
     try {
-      out = await apply(parsed.reply, null, attributedTo || turn.member, { meeting, turnStart: turn && turn.at, turnId: turn && turn.id })
+      // ★★★ RUN 77 / TB-2723 (F77-1): the receipt already knows HOW this turn reached the member (`lastAttribution`,
+      // written by the delivery step and copied into the turn row at `noteTurnReceipt`). It now travels with the reply
+      // into `apply()`, so a row written by that reply states the SAME route instead of falling back to "relayed".
+      const turnDelivery = {
+        path: lastAttribution && typeof lastAttribution.deliveryPath === 'string' && lastAttribution.deliveryPath !== '' ? lastAttribution.deliveryPath : null,
+        turnId: turn && turn.id !== undefined && turn.id !== null ? String(turn.id) : null,
+        member: turn && turn.member !== undefined && turn.member !== null ? String(turn.member) : null,
+      }
+      out = await apply(parsed.reply, null, attributedTo || turn.member, { meeting, turnStart: turn && turn.at, turnId: turn && turn.id, delivery: turnDelivery })
     } catch (e) {
       try {
         const text = typeof rawText === 'string' ? rawText : JSON.stringify(parsed.reply)
@@ -6760,7 +6834,26 @@ export function createTurnOrchestrator({
     /** ★ PHASE 8: record a closure vote through the SAME writer the reply path uses. */
     recordClosureVote: (memberId, solved, source = 'reply') => recordClosureVote(memberId, solved, source),
     resetClosureVotes,
-    status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, turnReceipts: Array.from(turnReceipts.values()), fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
+    status: ({ roster = [], may = null, permission = 'vote', detail = null } = {}) => {
+      // ★★★ TB-2724 / RUN 77 (D — the full status measured 51 988 B against a 12 000 B host bound, so the truncator,
+      // not the reader, chose what survived): `detail:"board"` returns the four blocks a board renders, assembled from the
+      // SAME readings the full object below uses, and — crucially — it returns BEFORE the big fields exist, so the slice
+      // cannot be truncated. Any other value is a NAMED refusal; omitting detail keeps the full reading byte for byte.
+      const wantedDetail = detail === undefined || detail === null || String(detail).trim() === '' ? null : String(detail).trim()
+      if (wantedDetail !== null && wantedDetail !== 'board') {
+        fail('VMU_INVALID_ARGUMENT', 'unknown status detail: ' + wantedDetail, 'known detail values: board (omit detail for the full status)')
+      }
+      const closureVoteReading = closureVoteOf({ votes: closureVotes, roster, may, permission, solvedThisRound })
+      const memberWorkShareReading = workShareOf({ turns: Array.from(turnReceipts.values()) })
+      if (wantedDetail === 'board') {
+        return { ok: true, apiVersion, action: 'status', detail: 'board',
+          detailMeans: 'the BOARD slice of the SAME status reading: turnLoop, memberWorkShare, closureVote and liveReadings only — the four blocks a board renders. Omitted on purpose: dispatch, turnReceipts (the per-turn ledger), lastAttribution, counts, memberSessions — exactly the fields that made the full status exceed the host bound (51 988 B measured on the 77th run). `op:"status"` without detail still returns everything; the four values here are JSON-identical to that full reading.',
+          turnLoop: turnLoopReading(),
+          memberWorkShare: memberWorkShareReading,
+          closureVote: closureVoteReading,
+          liveReadings: lastLiveReadings }
+      }
+      return { apiVersion, dispatch: dispatchStatus(), turns: turns.size, turnReceipts: Array.from(turnReceipts.values()), fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
       // ★★ ROUND 57 (F-41b): THE TURN ENGINE KEEPS ONE ATTRIBUTION SLOT, AND NO READER COULD SEE EVEN THAT ONE. The
       // orchestrator has always computed `lastAttribution` (who the most recent delivery went to, why it was delivered
       // and how) - it is what the receipt's `delivery` block copies - but `status` never included it, so an operator
@@ -6778,7 +6871,7 @@ export function createTurnOrchestrator({
       // `turnReceipts` publishes (one computation, no second ledger), so an acceptance test can recompute it from the
       // rows and compare numbers. `unknownActs` is NOT in the memberShare denominator; a null memberShare means both
       // proven sides are zero. See `workShareOf` for the shape and `means` for the wording.
-      memberWorkShare: workShareOf({ turns: Array.from(turnReceipts.values()) }),
+      memberWorkShare: memberWorkShareReading,
       // ★★★ ROUND 240 (FEEDBACK63 ①4/①9): THE PER-TURN LEDGER THE OFFICE COULD NOT READ. `turns` above is a COUNT; this is
       // the list. One row per turn (bounded to the last TURN_RECEIPT_CAP): who, which door opened it (`drive` = the
       // caller's own step/drive, `activation` = the background pump, `wait` = a meeting wake settling a parked turn, null =
@@ -6819,12 +6912,13 @@ export function createTurnOrchestrator({
       // closure-vote permission (run 15 read `"r-temp": false` and could not tell whether that seat's judgement counted).
       // It never counted toward closure; `closureVote` is the counted tally and this field says which is which.
       solvedThisRoundMeans: 'the raw per-round `solved` readings of this session, one per member that emitted the field - INCLUDING seats that hold no closure-vote permission (they appear here and never count toward closure; `closureVote` is the counted tally). It is the per-round convergence reading, NOT the closure vote: use `closureVote` for "is the question judged solved"',
-      closureVote: closureVoteOf({ votes: closureVotes, roster, may, permission }),
+      closureVote: closureVoteReading,
       // ★★★ RUN 258 / TB-2621 (task-102): THE SAME THREE GROUPS THE PROMPT'S STATUS BLOCK NOW CARRIES, read through the
       // SAME `statusReadingsFor` call (this object is updated by that call, so a reader can reconcile the prompt text
       // against this receipt field by field). null means "no turn has been assembled in this loop yet" - not "no paper".
       liveReadings: lastLiveReadings,
-      liveReadingsMeans: 'the paper/blueprint/closure groups the LAST assembled status block carried, produced by the same statusReadingsFor call that built that block (so prompt and receipt cannot drift). Each group is {value|null, why, source, detail, at, atSource, timeWhy}: a null value names WHY the group is absent (no paper row, no bound meeting, an unreadable ledger), `source` names the ledger row/face that answered, and `at`/`timeWhy` say whether the content had a timestamp. `detail` is the derived reading (paper: status/round/missing/participants; blueprint: status/revision/mdPath/draftMdMissing/mdChangedSinceIndex; closure: votesCast/votesTotal/votesFor/votesAgainst/motionsPending). It is DERIVED from the durable rows on every assemble and never stored, so it cannot become a second truth source' }),
+      liveReadingsMeans: 'the paper/blueprint/closure groups the LAST assembled status block carried, produced by the same statusReadingsFor call that built that block (so prompt and receipt cannot drift). Each group is {value|null, why, source, detail, at, atSource, timeWhy}: a null value names WHY the group is absent (no paper row, no bound meeting, an unreadable ledger), `source` names the ledger row/face that answered, and `at`/`timeWhy` say whether the content had a timestamp. `detail` is the derived reading (paper: status/round/missing/participants; blueprint: status/revision/mdPath/draftMdMissing/mdChangedSinceIndex; closure: votesCast/votesTotal/votesFor/votesAgainst/motionsPending). It is DERIVED from the durable rows on every assemble and never stored, so it cannot become a second truth source' }
+    },
   }
 }
 

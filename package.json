@@ -905,12 +905,17 @@
     "tests/_lib/repo-root.mjs",
     "tests/vmu-run76-prompt-criticisms.test.mjs",
     "tests/vmu-run76-round-review-coverage.test.mjs",
+    "tests/brief-claims-match-product.test.mjs",
     "tests/vmu-run76-meeting-type-aliases.test.mjs",
     "tests/vmu-run76-attribution-and-parked.test.mjs",
     "tests/vmu-run76-blueprint-reading.test.mjs",
     "tests/vmu-run77-prompt-phase-and-votes.test.mjs",
     "tests/vmu-doc-prompt-sync.test.mjs",
-    "tests/vmu-run77-prompt-determinism.test.mjs"
+    "tests/vmu-run77-prompt-determinism.test.mjs",
+    "tests/vmu-run77-meeting-receipt-type.test.mjs",
+    "tests/vmu-run77-prompt-corrections.test.mjs",
+    "tests/vmu-run77-reader-readings.test.mjs",
+    "tests/vmu-run77-written-from.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

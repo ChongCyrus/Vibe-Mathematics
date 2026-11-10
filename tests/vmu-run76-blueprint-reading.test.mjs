@@ -87,10 +87,18 @@ for (const [needle, name] of [
   ['mdParserSource: blueprintParser.source', 'the reading says WHICH md parser answered'],
   ["import { mdParseText } from '../records.js'", 'the fallback is the framework own parser, not a second implementation'],
 ]) ok(turnSrc.indexOf(needle) >= 0, name, needle)
-for (const [needle, name] of [
-  ["const mdOps = ['mdParse', 'mdDigest', 'mdRead']", 'the production face is GIVEN the md operations'],
-  ["turnFaces['vmu.records'][op] = records[op].bind(records)", 'and they are bound to the same real records instance'],
-]) ok(kernelSrc.indexOf(needle) >= 0, name, needle)
+// This line used to be pinned as the whole literal `const mdOps = ['mdParse', 'mdDigest', 'mdRead']`. TB-2723 (RUN 77)
+// added a FOURTH op to the same array (`beginTurnDelivery`, so a reply row records how its turn was delivered) and the
+// whole-line pin went red for a change that never touched the md wiring. The pin is now the fact this suite is about:
+// the three md operations are in that array, and the delivery seam is named in the same array so a future reader knows
+// it belongs there (it is bound by the same loop, so dropping it silently would take the md ops with it).
+const mdOpsLine = (kernelSrc.split('\n').find((l) => l.includes('const mdOps = [')) || '')
+ok(['mdParse', 'mdDigest', 'mdRead'].every((op) => mdOpsLine.includes("'" + op + "'")),
+  'the production face is GIVEN the md operations', mdOpsLine)
+ok(mdOpsLine.includes("'beginTurnDelivery'"),
+  'and the same binding loop also carries the turn-delivery seam (TB-2723)', mdOpsLine)
+ok(kernelSrc.indexOf("turnFaces['vmu.records'][op] = records[op].bind(records)") >= 0,
+  'and they are bound to the same real records instance')
 ok(docsSrc.indexOf('TB-2712') >= 0 && docsSrc.indexOf('no-current-blueprint') >= 0 && docsSrc.indexOf('md-parser-unavailable') >= 0,
   'docs/03 names both absences and the production wiring (a contract nobody can read is not a contract)')
 
@@ -103,7 +111,11 @@ ok(typeof liveEmpty.blueprint.whyText === 'string' && liveEmpty.blueprint.whyTex
 ok(liveEmpty.blueprint.at === null && typeof liveEmpty.blueprint.timeWhy === 'string' && liveEmpty.blueprint.timeWhy.trim() !== '',
   'an absence has NO at and says why (no read clock is borrowed as a content time - RUN 102 byte determinism)', liveEmpty.blueprint)
 ok(typeof liveEmpty.blueprint.source === 'string' && liveEmpty.blueprint.source.indexOf('blueprint') >= 0, 'the source names the ledger it looked at')
-ok(renderLiveStatus(liveEmpty) === '', 'an all-null world still renders NO line (empty rows are noise)')
+// ★ TB-2724 / RUN 77 (B): OLD world — a null group printed nothing, so an all-null reading rendered zero lines and the
+// `[蓝图]` row simply vanished from the board. That silence is the hole: `why:"no-current-blueprint"` already named the
+// cause, so the empty institute must say "no current blueprint", not say nothing. paper/closure stay silent this round.
+ok(renderLiveStatus(liveEmpty) === '[蓝图] 无现行版（rev 0，md 未落盘）',
+  'an all-null world renders ONE named line — the blueprint absence, not silence', renderLiveStatus(liveEmpty))
 
 console.log('\n§2 RESTRICTED face (list/get only - the run-76 production shape) ⇒ the kernel fallback parser still reads it')
 const one = await boot(1000)

@@ -235,6 +235,8 @@
 
 归一规则（回执可在 `packs/v5r/tools.js` 的 convene 回执读到）：`type` **永远是 id**（`"结题"` 与 `"closure"` 开出同一类型的会）；另带 `typeInput`（调用者原文；未传 `type` 时为 `null`）与 `typeMatchedBy`（`"id"`｜`"alias"`｜`"default"`），`typeMatchedByMeans` 用一句话说明命中的门。`action:"types"` 的每行也带 `aliases`。未命中 ⇒ `VMU_INVALID_ARGUMENT`，hint **先列英文 id、再列「id（中文标签；别名…）」成对清单**。别名只在这张面上被解开：传给内核与存进会议的永远是 id，所以声明了 `vmu.meetings.typeCatalog` 的部署不需要把中文词登记进目录。
 
+★ **耐久账里的同一事实（RUN 77 · TB-2726）**：convene 回执的这三个字段不是「回执装饰」——会议的**耐久 open 行**（`<root>/vmu/state.json` 的 `keys.meetings.value.data.receipts`，唯一生产写点 `kernel/meetings.js::pushReceipt`）逐字携带同一个投影：`type`（恒 id）、`typeInput`（调用者原文，原样保存：CJK、引号、空白都不再规范化）、`typeMatchedBy`（`id`｜`alias`｜`default`），并带 `typeMatchedByMeans` 一句话。缺值写 `null` + means，**不写 `""`**：RUN 77 现场 m3 行的 `""` 对是「没记录」，不是「调用者什么都没写」——那是两个不同的断言，空串会让读者分不清。读面 `receiptsView`（`kernel/meetings.js::receiptRowRead`）对旧行（缺键、或 RUN 77 的 `""` 对）一律读作 `null` + 同一句 means，不改写、不猜测、不抛错；新行 round-trip 不变。于是同一次开会后三处读数（convene 回执 / 耐久行 / `receiptsView`）的 `type`·`typeInput`·`typeMatchedBy` 必须逐字相等——`tests/vmu-run77-meeting-receipt-type.test.mjs` 对三种入口（英文 id、中文别名、省略 type）各钉一遍，并含旧行兼容与三盏反关灯。
+
 > ★★★ **R30 · 四种回执形状增量（逐条指到 `file:line`；`tests/vmu-run30-findings.test.mjs` 对它们逐条点名 ✓）**
 > - **`vibe_vmu_meeting{action:"close"}`**（`tools/meeting.js:353-368`）：回执并排给 `closureVote`（`cast`／`confirmed`／`votesCast`／`missing`，**同一实例上的一致同意读数**；不可读时是 `{readable:false,why}`）与 `closureVoteNote` —— note 明写它**不是**这次关会的要求、也**没被关会改动**，关会过的是 `enforced` 里点名的**会议策略轨** ⇒ **「closed」不等于「一致判定已解决」**；点名在 `missing` 里的人，正是「声称结题前该去问的人」✓。
 > - **v5r-pack 的 `vibe_v5_verdict_ask`**（`packs/v5r/tools.js:1805-1860`）：`propositionKind`（`card`／`meeting-subject`／`file-ref`／`unverified`）、`propositionVerified`、`fileChecked`、`propositionWhy` 说清**这个 id 被理解成了什么**；`propositionClause` 是**真写进成员邮件正文**的那句话（`packs/v5r/tools.js:1744-1752`；注册卡 ⇒ `null`，因为点名一张已登记的卡不额外声称什么）；`accounting` 把三个数**摆平**：`asked + excluded = accountedCount`（`packs/v5r/tools.js:1793-1803`）；`excluded` 逐条给 `{member, why:"presides"}` —— 主席**签名**这次提问，所以不**回答**它，这是唯一被过滤的原因；`mail` 给真正发出的 `text` 与状态读数（「辩论已结束」只在状态真是 `closed` 时才算**读到的事实**，读不到就写「状态不可读」✓）。命题既不是卡、也不是文件引用、也不是本会辩论对象 ⇒ 具名拒 `VMU_ASK_UNKNOWN_PROPOSITION`（**已登记于 §8 的 R30 批**；抛出点 `packs/v5r/tools.js:1597`／`:1607`）✓。
@@ -349,6 +351,43 @@
 | B3 ★★ | seam 接线 | `turnFaces = facesFrom(...)` 只绑 `list/get` | `kernel/index.js` 在 `facesFrom` 之后把真实 `records` 的 `mdParse`/`mdDigest`/`mdRead` 绑到 `turnFaces['vmu.records']`（同一实例、同一门；`mdDigest` 让 `draftMdMissing`/`mdChangedSinceIndex` 与 adopt 闸门同谓词）。成功后生产路径的 `status().liveReadings.blueprint.value` 非空、`[蓝图]` 行出现在提示词里，且二者是同一个值。 |
 
 逐条运行期断言：`tests/vmu-run76-blueprint-reading.test.mjs`（§1 空世界的 `no-current-blueprint`；§2 只用 `list/get` 的受限面仍能解析 = 不依赖外部注入；§3 真实内核 `status()` 与提示词同值且 `mdParserSource==='records.mdParse'`；§4 无可解析字段的正文 = `md-parser-unavailable`；§5 两个不同内核时钟 ⇒ 两个不同 `at`，`atSource==='records 的 updatedAt'`）。反关灯：删内核兜底、把两个 `why` 合成一个、把 `at` 写成常量，三者各自必红。
+
+### 3.1l RUN 77（TB-2723：行级 `writtenFrom` 与回合级 `deliveryPath` 必须同源）
+
+> 真机读数（run 77）：同一个回合的回执写着 `deliveryPath:"activation"`、`memberWorkShare.memberActs:8`、`memberActed:true`（席位自己的内核跑了这一轮）；而这一轮的 reply 通道写下的 31 行却全是 `writtenFrom:"relayed"`（办公室代写）。同一个事实，两处读数相反。根因：`writtenFrom` 的派生只认 `ambientTurnCaller`，而那个 seam 只在**工具调用**通道打开（`host-pack-tools.js` 的 `makePackToolSpec.run`），reply 通道把 `progress` 这类字段直接派发到 `vmu.records` 面的 `put`，写行时它一直是 `null`。
+
+| # | 面 | 改前（真机读数） | 改后（契约） |
+|---|---|---|---|
+| C1 ★★★ | `records.put` 写入行的 `writtenFrom` | `ambientTurnCaller === null` 且写了 `by` ⇒ 一律 `relayed`；reply 通道从不打开 caller seam | `kernel/records.js` 新增与 `beginTurnCaller` 同形的 `beginTurnDelivery({path, turnId, member})`（prev/restore，返回 release）。派生前缀不变（显式 `writtenFrom` 仍最优先）；有投递事实时：`path` 非空且非 `"caller"`（`activation`/`continuation`/`one-shot`/任何宿主 seam 名）⇒ `own-turn`；`"caller"` ⇒ `relayed`；没有投递事实时才回落到原来的 caller 判据（`unknown`/`relayed`/`own-turn`）。更新行继承旧值的分支只在**既无 caller 也无投递事实**时生效。 |
+| C2 ★★ | 回合层把投递事实交给写入 | `dispatchReply` 调 `apply()` 时只带 `turnId`/`turnStart`；`apply` 的派发循环对 face 一无所知 | `dispatchReply` 从 `lastAttribution.deliveryPath`（回合行自己用的同一个字段）组 `{path, turnId, member}` 放进 `opts.delivery`；`apply` 的派发循环在调用记录面之前 `beginTurnDelivery(opts.delivery)`，`try/finally` 释放（异常路径也释放；release 自身抛错不覆盖结果）。没有 `opts.delivery` 的旧调用者行为逐字节不变。 |
+| C3 ★★ | seam 接线 | `turnFaces = facesFrom(...)` 的 `vmu.records` 面只绑 `STATUS_BOARD_READ_OPS`，没有 `beginTurnDelivery` | `kernel/index.js` 在 TB-2712 的同一段接线里把真实 `records` 的 `beginTurnDelivery` 绑到 `turnFaces['vmu.records']`（同一实例）；此后生产路径写出的行与回合行同源：非 caller 回合的每一行 `writtenFrom` 都不再是 `relayed`。 |
+
+三值判定表（`writtenFrom` 只有这三个值；判定只发生在写入那一刻，行里的值与其 `writtenFromMeans` 必须能对回同一行证据）：
+
+| 写入时的环境事实 | 行的 `writtenFrom` | 那句话的意思 |
+|---|---|---|
+| 调用方显式给了 `writtenFrom`（三值之一） | **原样保留** | 写入者自己声明来源；派生不覆盖声明 |
+| 投递 seam 说 `deliveryPath` 非空且不是 `caller`（`activation`/`continuation`/`one-shot`/任何宿主 verb） | `own-turn` | 该席位自己的会话（或宿主以该席位身份跑的子代理）真的跑了这一轮 |
+| 投递 seam 说 `deliveryPath:"caller"` | `relayed` | 调用方亲自扮演了席位，写入是代笔 |
+| 没有投递事实，但工具通道开着 `ambientTurnCaller` | `own-turn`（同名）或 `relayed`（异名） | 旧判据：工具调用期间谁在跑 |
+| 既无投递事实也无 caller 事实 | `unknown` | 不能证明谁写的；不猜 |
+
+逐条运行期断言：`tests/vmu-run77-written-from.test.mjs`（§1 activation 回合的 reply 写行 ⇒ 行 `own-turn`、回执 `deliveryPath:"activation"`、`memberActed:true` 三处同源；§2 caller 代转 ⇒ `relayed`；§3 显式 `writtenFrom` 仍最优先；§4 集合级交叉断言：所有 `deliveryPath !== "caller"` 的回合行，其 `writes[].recordId` 指向的每一行都不得是 `relayed`，且这些写非空——单行绿不算绿）。反关灯：改回只认 `ambientTurnCaller`、把 caller 也判成 `own-turn`、删掉 `opts.delivery` 的传递，三者各自必红。
+
+### 3.1m RUN 77（TB-2724：读者面的四条读数）
+
+> 真机读数（run 77，build `f84f6a31`）：(1) `vibe_vmu_turn{op:"step"}` 的 `notices` 报 `{lines:0,rendered:false,blockChars:0}`，整段 `[新到的消息]` 从提示词消失——而提示词自己教「无未结算行时块头仍渲染具名空」；(2) 三次装配都只有 `[论文]`/`[结题]`，`liveReadings.blueprint.why` 已是机读名 `no-current-blueprint`，却没有任何一行说「蓝图没有现行版」；(3) `r-temp`（非选举席）的判断只进 `solvedThisRound`，`closureVote.notEligible` 只收录投过票的席位，`notEligibleMeans` 承诺的「recorded」对纯判断行不成立；(4) `vibe_vmu_turn{op:"status"}` 的 `originalBytes` 实测 51 988 B，被宿主 12 000 B 的预算截断，board 需要的四块与整本回合台账混在同一份回执里。
+
+| # | 面 | 改前（真机读数） | 改后（契约） |
+|---|---|---|---|
+| A1 ★★★ | 空通知块 | 零未结算行 ⇒ 不渲染通知块，回执 `{lines:0,rendered:false,blockChars:0}`；读者看不出「看过了、确实没有」与「这一段被吞了」 | 零未结算行仍渲染**具名空**：块体 `[新到的消息] （无未结算行）`，回执 `notices:{lines:0,rendered:true,blockChars:15,namedEmpty:true}`。渲染器对空输入仍返回 `''`（`kernel/notices.js` 的零机制不变）；具名空只在**回合装配处**补：先试 `noticeBlock([])` 的文案，渲染器不给就用 `INBOX_HEADER + ' （无未结算行）'`。有行时 `namedEmpty:false`、块首仍是 `[新到的消息]`、第二行是行体——「有行」「无行」是同一判据的两个观测面。 |
+| A2 ★★ | `[蓝图]` 具名缺席 | `renderLiveStatus` 对 `value===null` 的组一律 `continue`（注释写明是 RUN-258 的取舍），于是 `why:"no-current-blueprint"` 这条读数只存在于 JSON，提示词里没有一行 `[蓝图]` | `why` 是机读名，渲染层只对 `key:'blueprint'` 的 null 组说话：`why==='no-current-blueprint'` ⇒ `[蓝图] 无现行版（rev 0，md 未落盘）`；其它非空 `why` ⇒ `[蓝图] 读数不可得：<why>`。`why` 为 `null`/空串的组**仍静默**；`paper`/`closure` 的缺席本轮仍静默（它们的读面另有 lane）。 |
+| A3 ★★★ | `notEligible` 的行形状 | 名字数组，只收「投过票但没有选举权」的席位；r-temp 的纯判断（`solvedThisRound`）不在里面，尽管 `notEligibleMeans` 写的是 recorded | `closureVoteOf({...,solvedThisRound})` 产出 `notEligible:[{member, solved, why:'no-closure-vote-permission'}]`——来源是 votes 与 solvedThisRound 两个 Map 的并集，按 member 去重，有选举权的席位不收录；`solved` 只读投票值与判断值，不猜。board 面的 `notEligible` 仍映射成**名字数组**（既有消费者不变），另给 `notEligibleJudged`（同一批行）；`detail.notEligible` 保持名字数组并追加 `detail.notEligibleJudged`。 |
+| A4 ★★★ | `status` 的可截断切片 | 只有全量回执（51 988 B），board 要的四块被账本字段挤到宿主预算之外 | 内核 `status({detail:'board'})` 在组装前早返回 `{ok,apiVersion,action:'status',detail:'board',detailMeans,turnLoop,memberWorkShare,closureVote,liveReadings}`；四块与 full 回执的同名键**逐字相等**（同一份读数，不是二次计算）。`tools/turn.js` 的门接受 `closure|board`，board 命中时直接转发并带 `detailMeans`；非法值 ⇒ `VMU_INVALID_ARGUMENT`，hint 列允许值（工具面 `closure \| board`）。实测 board 7 031 B / full 27 761 B。 |
+
+运行期断言：`tests/vmu-run77-reader-readings.test.mjs`（**39/0**；§0 源码五条具名形状、§A 空/有行两世界、§B 三份装配与反例 `why`、§C 对象行与 turn-level 同源、§D 四块逐字相等 + 字节数 + 非法 detail 具名拒）。改 pin 的旧世界已写进断言注释：`tests/vmu-run249-notice-and-reply.test.mjs` §1d/§1e/§4d（「零未读完全不渲染」不再成立）、`tests/vmu-run256-status-block-live.test.mjs` §1（「全空块与 pre-RUN-258 逐字节相同」不再成立）、`tests/vmu-run169-institute-closure.test.mjs` §2 与 `tests/vmu-run192-vote-counts.test.mjs`（`notEligible` 从名字数组变对象数组）。
+
+**既有产品缺口（只报不改，修点在禁碰文件）**：`vibe_vmu_turn{op:"status"}` 的 `closureVote` 在工具面被 `kernel/index.js#closureVoteView`（`kernel/index.js:3241`）覆盖，而它的输入 `closureVoteInput()`（`kernel/index.js:3195`）不传 `solvedThisRound` ⇒「只写 `solved`、未写 `vote_solved`」的判断行在**工具面**的 `notEligible` 仍不可见（turn-level `kernel.turn.status({roster,may})` 已可见）。修法：让 `closureVoteInput()` 把 `turn.status().solvedThisRound` 交给 `closureVoteOf`。
 
 ### 3.2 规划中（`⛔ 未实现`，**当前不可调用**）
 

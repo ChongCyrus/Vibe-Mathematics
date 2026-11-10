@@ -89,7 +89,11 @@ test('§1 the peer-review section is no longer an empty template', () => {
 
 test('§2 one closure-ballot entry name: vote_solved (registered); set_solved is not taught as a call', () => {
   ok(says(all, 'vote_solved'), 'vote_solved is taught')
-  const lines = all.split('\n').filter((l) => l.includes('set_solved'))
+  // The closure-comparison teaching lives in the meeting-scope section (`v5r-turn-meeting-schedule`), which is
+  // not part of the paper-phase assembly above; that section is static, so its declared text IS its assembled text.
+  // Reading it too keeps the rule from passing vacuously on an empty set.
+  const closureText = CHARTER_SECTIONS.filter((s) => typeof s.text === 'string' && s.text.includes('set_solved')).map((s) => s.text).join('\n')
+  const lines = (all + '\n' + closureText).split('\n').filter((l) => l.includes('set_solved'))
   ok(lines.length > 0 && lines.every((l) => /未登记|已废|不要用/.test(l)), 'any mention of set_solved is a negative one', JSON.stringify(lines.slice(0, 2)))
   ok(denies(all, '"set_solved": true'), 'set_solved is never offered as a shape to write')
   const src = readFileSync(new URL('../vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js', import.meta.url), 'utf8')

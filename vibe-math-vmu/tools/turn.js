@@ -253,22 +253,36 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           pages: Math.ceil(text.length / limit) }
       }
       if (op === 'status') {
-    const status = kernel.turn.status()
+    // ★★★ TB-2724 / RUN 77 (D — the status receipt was 51 988 B against the host's 12 000 B bound): `detail` now
+    // selects a SLICE, and the choice is made BEFORE the kernel assembles the big object. `closure` keeps the round-12
+    // narrowing; `board` is the board slice (turnLoop/memberWorkShare/closureVote/liveReadings) the kernel builds
+    // without dispatch/turnReceipts/lastAttribution/counts. Any other value is still a NAMED refusal, never a no-op.
+    const detail = args.detail === undefined || args.detail === null || String(args.detail).trim() === ''
+      ? null
+      : String(args.detail).trim()
+    if (detail !== null && detail !== 'closure' && detail !== 'board') {
+      return refused('VMU_INVALID_ARGUMENT', 'unknown status detail: ' + detail,
+        'known detail values: closure | board (omit detail for the full status)')
+    }
+    // ★ TB-2724 (D): the KERNEL only knows the `board` slice; `closure` is still assembled here from the full reading.
+    const status = kernel.turn.status(detail === 'board' ? { detail: 'board' } : {})
     // ★ PHASE 7 / round 17: the turn face used to call closureVoteOf with its DEFAULTS (roster []), so a seated member
     // with the vote permission still read eligible:[]. Use the kernel's ONE calculation instead of a second one.
     if (typeof kernel.closureVoteView === 'function') status.closureVote = kernel.closureVoteView()
-    // ★ PHASE 9+ / round 12: `detail` used to be silently dropped (not even declared), so `detail:'closure'` returned
-    // the FULL status and the caller could not tell whether it had been narrowed. It NARROWS here (the reason it
-    // exists: status was large enough to be truncated), and any unknown value is a NAMED refusal, never a no-op.
-    const detail = args.detail === undefined || args.detail === null ? null : String(args.detail)
-    if (detail !== null && detail !== 'closure') {
-      return refused('VMU_INVALID_ARGUMENT', 'unknown status detail: ' + detail,
-        'known detail values: closure (omit detail for the full status)')
-    }
     if (detail === 'closure') {
       return { ok: true, detail: 'closure',
         closureVote: status.closureVote || null,
         closureVoteWrites: Number.isInteger(status.closureVoteWrites) ? status.closureVoteWrites : 0 }
+    }
+    if (detail === 'board') {
+      // ★★ TB-2724 / RUN 77 (D): these four blocks are the SAME values the full status carries (both come from one
+      // reading inside the kernel), so a board reader and a full reader cannot disagree; the small receipt is the point.
+      return { ok: true, detail: 'board',
+        detailMeans: status.detailMeans || null,
+        turnLoop: status.turnLoop || null,
+        memberWorkShare: status.memberWorkShare || null,
+        closureVote: status.closureVote || null,
+        liveReadings: status.liveReadings || null }
     }
     // ★★★ ROUND 240 (FEEDBACK63 ①4/①9, MEASURED): THE OFFICE COULD NOT READ WHAT A WAIT-WOKEN TURN DID. `status` used to
     // carry a tally (`turns: 3`) and nothing per turn, so the eye had to reverse-engineer the session files to learn what

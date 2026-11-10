@@ -172,7 +172,14 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //   ★ TB-2711（2026-11-10）— 论文流程句补 `final`（`final` 才编译写 pdf、`render` 永不编译）。三席各改本席的
   //       论文流程行：chair +3、member +3、temp +38（temp 原句最短、补齐说明最多），合计 +44；逐席记账。
   const TB2711_FINAL_STEP = { chair: 362, member: 362, temp: 399, sum: 1123 }
-  const TB2717_PHASE_STEP = { chair: 229, member: 229, temp: 229, sum: 687 } // TB-2717: the closed four-name phase set (shared `v5r-turn-tracks` block, 228 chars + the joining newline), one copy per seat
+  const TB2717_PHASE_STEP = { chair: 229, member: 229, temp: 229, sum: 687 }
+  const TB2725_CORRECTIONS = { chair: 19, member: -1, temp: -27, sum: -9 } // TB-2725: six RUN-77 corrections, net ≤0 // TB-2717: the closed four-name phase set (shared `v5r-turn-tracks` block, 228 chars + the joining newline), one copy per seat
+  //   ★ RUN 270 (Lead) — TB-2725 的回退缺口：那次把「回执契约」两句合并成一句时，把 progress 的**可照抄样例**一起删了。
+  //       实测后果：fixtureMode=tools 下 member/temp 席的提示词里**一处样例都没有**（只剩 chair 自己的
+  //       `v5r-tools-academician` 里还有一份）。这个样例存在的理由是真机缺陷——席位写 `"progress":"长叙述"`（字符串）⇒
+  //       `unknown record track: undefined` ×19，整个回合的写入全废。所以它必须在**写它的席位读得到**的地方可照抄。
+  //       加回 shared `v5r-fixture-tools` 块中的一行（111 字符 + 换行 = 112），三席各一份 ⇒ 逐席 +112、合计 +336。
+  const RUN270_PROGRESS_SAMPLE = { chair: 112, member: 112, temp: 112, sum: 336 }
   const SIGNATURE = /\{ *[a-z_][a-z_0-9.?]* *, *[a-z_]/
   const signatureRows = (slot) => {
     let lines = 0
@@ -183,11 +190,11 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
     return { lines, chars }
   }
   const chairNormal = charsOf('chair', 'normal')
-  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair + RUN252_TEACHING.chair + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair
+  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair + RUN252_TEACHING.chair + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair
   ok(chairNormal <= chairCeiling,
     `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair} ＋ RUN 252 教学 ${RUN252_TEACHING.chair} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.chair} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.chair} ＋ TB-2711 final 流程句 ${TB2711_FINAL_STEP.chair} ＋ TB-2717 相位闭集句 ${TB2717_PHASE_STEP.chair}，逐条记账、无余量）`, chairNormal)
   const sum = charsOf('chair', 'normal') + charsOf('member', 'normal') + charsOf('temp', 'normal')
-  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum + RUN252_TEACHING.sum + RUN2692_TEACHING.sum + RUN2692_FIELD_FIX.sum + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum
+  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum + RUN252_TEACHING.sum + RUN2692_TEACHING.sum + RUN2692_FIELD_FIX.sum + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum
   ok(sum <= sumCeiling,
     `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum} ＋ RUN 252 机制教学 ${RUN252_TEACHING.sum} ＋ RUN 2692 净增 ${RUN2692_TEACHING.sum} ＋ RUN 2692 字段名更正 ${RUN2692_FIELD_FIX.sum} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.sum} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.sum} ＋ TB-2711 final 流程句 ${TB2711_FINAL_STEP.sum} ＋ TB-2717 相位闭集句 ${TB2717_PHASE_STEP.sum}）`, sum)
   for (const seat of ['chair', 'member', 'temp']) {

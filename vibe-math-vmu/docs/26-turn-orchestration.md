@@ -5120,4 +5120,19 @@ proceed() only applies to a meeting WAITING for its scheduled start: m1 is sched
 - **补：任务书层的名字闸。** 真机里成员是照任务书写 `set_solved` 的，而任务书是唯一指令来源；`check-task-brief.mjs` 新增名字闸，工具/形参/action 值/字段名全部从声明实算（106 工具、288 形参、422 action 值、6 653 属性键、313 源文件），只扫反引号内三类形状，不可解析的名字只允许同行否定词，非蛇形单词不算字段——误报一次（模板里的 `taskkill`），修法是收窄形状，不是加白名单。
 - **附：TB-2718 只读矩阵 20 条 = FIXED 15 / PARTIAL 4 / NOT-VERIFIED 1**，不把 PARTIAL 写成已修。
 - **口径：机制做了不等于读者读得到——名字、数字、缺席理由都要各自有名；判据要么量生产对象，要么它就是一条会绿的装饰。**
-本轮到 T1 **`TOTAL 859 PASS 859 FAIL 0`**（`773` suites + `86` probes，wall `657.0s（k=3）`）、五门禁 PASS，提交 `本节所在提交（RUN 270 收口）`。
+本轮到 T1 **`TOTAL 859 PASS 859 FAIL 0`**（`773` suites + `86` probes，wall `657.0s（k=3）`）、五门禁 PASS，提交 `RUN 270 收口提交`。
+
+## ROUND 270 —— 回执窄于自己的说明，提示词窄于自己的契约
+
+- **第 77 次真机（build `f84f6a31`）13 个验点全 PASS，缺陷全部落在「机制在、读者读不到」这一层。** 2652 s / 44.2 min、29 560 249 token（cap 80M 未触）；11 个成员回合，`deliveryPath` 分布 `activation(t-1..t-5)/continuation(t-6,t-7,t-8,t-10)/caller(t-11)`；结题票 4/4；结题 PDF 94 350 B，sha256 与归档行 `rec-35.body.pdfSha256` 逐字相等；`memberWorkShare.memberShare 0.8889`（8/(8+1)）。四条预登记假设 A/B/D HOLDS，C 结构化 HOLDS、提示词 BROKEN。
+- **病：回执窄于自己的说明。** `notEligibleMeans` 承诺「judged 也 recorded」，而工具面的 `closureVoteInput()` 没传 `solvedThisRound` ⇒ r-temp 那种只写 `solved` 的判断在 `detail:"board"` 面查不到。补 = 同一会话映射喂给两个入口，判据同时断「turn-level 有」与「工具面也有」——**所办能产出与读者能读到不是同一个事实**。
+- **病：一个字段两个来源。** 31 行 reply 写回 `writtenFrom:"relayed"`，而同回合 `deliveryPath` 是 `activation`/`continuation`。补 = 投递路径作为环境事实随回合传下去（`beginTurnDelivery`/`ambientTurnDelivery`），行上派生 `deliveryPath`/`deliveryMember`/`deliveredOwnTurn`，三个读法与 `memberWorkShare` 同谓词。
+- **病：缺席没有名字。** 空通知队列整段消失（提示词说它会渲染具名空）、`[蓝图]` 行从每份装配里消失（`value===null` 直接 continue）、零到场会议可 close 而不说清。补 = 三处各自具名：`[新到的消息] （无未结算行）`、`[蓝图] 无现行版（rev 0，md 未落盘）`、`notEligible` 行对象带 `why`。
+- **病：一个回执塞两件事。** `vibe_vmu_turn{op:"status"}` `originalBytes:51988` 被宿主 12 000 截断。补 = `detail:"board"` 早返回四块（7 031 B），非法 detail 值具名拒并列出 `known detail values: board`。
+- **病：会议耐久行不存来源。** `typeInput`/`typeMatchedBy` 实测是 `""` 占位。补 = 写面收 provenance（`typeMatchRowOf`）、读面投影旧行为 null+means、pack 透传两个既有局部变量，三向（回执/耐久行/视图）三键相等。
+- **两条尺子病。** ① `sim-assembly-parity` 12 行统一 +16：**不是 harness 多渲染，是 gate 少算**——模板尺子构造 orchestrator 时没传 `noticeBlock`，具名空那段不进它的文本。补 = 传框架自己的 `inboxBlock`；口径「两个尺子都绿不等于量的是同一份提示词」。② 判据按整行字面量 pin（`const mdOps = [...]`、`memberWorkShare: workShareOf({...})`）被无关改动判红，改断事实。
+- **病：去重删掉了某类席位唯一的一份。** TB-2725 合并「回执契约」两句时把 progress 的可照抄样例一起删了；`fixtureMode=tools`（真机跑的就是它）下 member/temp 席一处样例都没有——而这个样例存在的理由是真机缺陷（`"progress":"长叙述"` ⇒ `unknown record track: undefined` ×19）。补 = shared `v5r-fixture-tools` 加回一行（112/席，逐席记账 +336），断言从「数份数」改成「按席位断」。**去重删掉的必须是重复，不是写它的那个人唯一能看到的那份。**
+- **病：注释里的键名被当成运行时读取。** `kernel/turn/index.js` 一句注释写了一个点分设置键名，`vmu-settings` 判它读了未声明的设置键。补 = 注释去掉具体键名；通则「注释与文档里的例子也是判据的输入」。
+- **补：预算按实测抬，不按红抬。** 变异批从 43 涨到 52 条，单跑 155 s 在 gate 并发下被 180 s 默认值杀掉（自身计数全绿）⇒ `TIMEOUT_OVERRIDES = 400000`（2.58×）+ LPT 权重 155；`sim-gate` 那两段超允许量是**我在 T1 期间自己跑探针造成的假红**，静默重跑 8 360 ms / 42 655 ms 全绿，**不重钉 baseline**。
+- **口径：一条规则要被三处点名才算落地——机制、回执、读者手里的那份文本；缺一处，缺陷会在下一轮以「没触发」的形状回来。**
+本轮到 T1 **`TOTAL 864 PASS 864 FAIL 0`**（`778` suites + `86` probes，wall `660.7s`）、五门禁 PASS，提交 `RUN 271 收口提交`。
