@@ -344,9 +344,22 @@ try {
     const w0 = fired.length === 1 ? fired[0].wake : null
     ok(w0 !== null && (w0.pending === true || w0.woken === true || (w0.delivered === false && typeof w0.why === 'string' && w0.why.length > 0)),
       '§6j ★ … and that wake is delivered, marked pending, or refused WITH the reason (never a silent no-op)', w0)
-    await new Promise((r) => setTimeout(r, 50))
-    const s2 = b.K.meetings.summary({ meeting: mid })
-    const w2 = Array.isArray(s2 && s2.waiters) ? s2.waiters : []
+    // ★ The wake seam answers ASYNCHRONOUSLY (a real delivery is a subagent activation), so "settled in
+    // place" is a DEADLINE question, never a fixed-sleep question. This used to `setTimeout(50)` and then
+    // assert; under a loaded gate the seam was still running when the sleep expired, and §6l blamed the
+    // product for the test's own impatience (T1 ci3: `{"delivered":false,"pending":true,...}` at 50 ms,
+    // then 91/0 standalone). Poll a bounded window and assert on the state actually reached; if it never
+    // settles the failure still names the pending row, so a real "stays a claim forever" bug stays red.
+    let w2 = []
+    {
+      const settleDeadline = Date.now() + 10000
+      for (;;) {
+        const s2 = b.K.meetings.summary({ meeting: mid })
+        w2 = Array.isArray(s2 && s2.waiters) ? s2.waiters : []
+        if ((w2.length === 1 && w2[0].wake && w2[0].wake.pending !== true) || Date.now() >= settleDeadline) break
+        await new Promise((r) => setTimeout(r, 25))
+      }
+    }
     ok(w2.length === 1 && w2[0].state === 'fired', '§6k the waiter stays fired (an event is never rolled back)', w2)
     ok(w2.length === 1 && w2[0].wake && w2[0].wake.pending !== true,
       '§6l ★ the pending wake settled in place instead of staying a claim forever', w2[0] && w2[0].wake)
@@ -386,9 +399,19 @@ try {
     ok(spoke2 && spoke2.ok === true, '§6q3 the chair speaks there', spoke2 && spoke2.code)
     const fired2 = Array.isArray(spoke2 && spoke2.firedWaiters) ? spoke2.firedWaiters : []
     ok(fired2.length === 1 && fired2[0].member === 'r-1', '§6q4 the waiter fires', fired2)
-    await new Promise((r) => setTimeout(r, 100))
-    const s3 = b2.K.meetings.summary({ meeting: mid2 })
-    const w3 = Array.isArray(s3 && s3.waiters) ? s3.waiters : []
+    // Same deadline rule as §6k/§6l: the seat turn is opened by the same asynchronous seam, so a fixed
+    // 100 ms sleep is a claim about this machine's load, not about the product. Poll until woken (or the
+    // bounded window expires) and let §6q6 fail with the row it actually read.
+    let w3 = []
+    {
+      const wokenDeadline = Date.now() + 10000
+      for (;;) {
+        const s3 = b2.K.meetings.summary({ meeting: mid2 })
+        w3 = Array.isArray(s3 && s3.waiters) ? s3.waiters : []
+        if ((w3.length === 1 && w3[0].wake && w3[0].wake.woken === true) || Date.now() >= wokenDeadline) break
+        await new Promise((r) => setTimeout(r, 25))
+      }
+    }
     ok(w3.length === 1 && w3[0].state === 'fired', '§6q5 the fired row stays on the ledger', w3)
     ok(w3.length === 1 && w3[0].wake && w3[0].wake.woken === true, '§6q6 ★ … and the wake really happened (the seat turn was run), not refused', w3[0] && w3[0].wake)
     ok(delivered.length === 0, '§6q7 ★ the REPORT transport was NOT used as a wake channel (a wake envelope is not a report row)', delivered)

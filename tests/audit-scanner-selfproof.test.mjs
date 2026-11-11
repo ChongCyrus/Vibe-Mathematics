@@ -55,6 +55,10 @@ const UNPROVEN = new Set([
   // negative controls; a runnable `--self-test` would only replay what §2a-§2g already assert. Delete this row the
   // day the suite grows one (or a `.mutants.mjs` sibling).
   'audit-corpus-nested-keys.test',
+  // ROUND 272 (CI run 43073739104): the doc-lint reproducibility suite is a BEHAVIOUR case — it copies the whole repo
+  // to a temp dir, runs `scripts/check-docs.mjs` there, plants one bare reference and shows D4 fires by name. Its three
+  // lamps live in-file (§2), so a `--self-test` would only replay them. Delete this row if it ever grows one.
+  'audit-doc-lint-reproducible.test',
   // Round task-7 (settings hot-truth): there is no SCANNER here to prove — the file reads the exported settings table and
   // asserts each construction-only key's declared class, and its §3 TEETH assertions are the in-file negative controls
   // (a H1 row for the same key must be caught, H2/H3 must pass, a planned row is exempt). Its §4 is an even stronger

@@ -6,7 +6,7 @@
 
 ## What a row claims
 
-Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md` (rev `27c5cd1c25d9`, 74 lines) answers four questions, and each answer is a **machine-re-resolved citation**
+Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md` (rev `073175fe5bd3`, 74 lines) answers four questions, and each answer is a **machine-re-resolved citation**
 (`path::pattern`): **M** mechanism (the kernel/pack enforces it) · **T** tool (a reachable face answers it) ·
 **P** prompt (live teaching says it) · **R** real run (a receipt proves it).
 

@@ -617,8 +617,10 @@ function check(ledgerPath, overrides = {}) {
   // version of it (revision = sha256, lineCount = lines) and that every line declared structural really is a blank
   // line, a `---` separator or a heading. A silent edit of the document therefore reds the gate instead of drifting.
   // The document path is declared under whichever key the ledger shape uses: a migrated ledger writes `source.path`,
-  // an older one `source.pathRelative`, and today's writes `source.file`. All three are read, in that order.
-  const docFile = ['path', 'pathRelative', 'file']
+  // an older one `source.pathRelative`, and today's writes `source.file`. All three are read, in that order —
+  // but the VERSIONED copy comes first (ROUND 272 / CI run 43080516326): a clean checkout has no absolute master, and
+  // this laptop keeps the master CRLF while git stores the copy LF, so the executable copy is the only single fact.
+  const docFile = ['pathRelative', 'path', 'file']
     .map((key) => (ledger.source && typeof ledger.source[key] === 'string' ? ledger.source[key].trim() : ''))
     .find((value) => value) || ''
   if (!docFile) {

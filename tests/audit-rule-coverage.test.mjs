@@ -85,7 +85,7 @@ const docProbe = (label, docLines, mutate, extra = []) => {
   delete led.ruleLines
   led.items = [led.items[0]]
   delete led.source.structuralLines
-  led.source = Object.assign({}, led.source, { path: docFile, file: docFile, revision: 'deadbeef', lineCount: docLines.length })
+  led.source = Object.assign({}, led.source, { pathRelative: docFile, path: docFile, file: docFile, revision: 'deadbeef', lineCount: docLines.length })
   mutate(led, docFile)
   const file = join(dir, 'ledger.json')
   writeFileSync(file, JSON.stringify(led))

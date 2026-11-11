@@ -325,6 +325,15 @@ const TIMEOUT_OVERRIDES = {
   // full sweep - its own counts were green there, i.e. amplification by gate concurrency, not a hang. 400 s = 2.58x
   // the measurement (the 2x rule), budget only: the assertion set and the mutation semantics are untouched.
   'mutation-evidence.test.mjs': 400000,
+  // sim-gate.test.mjs: the gate inside the gate. Its own internal programme is bounded by CPU cost (each
+  // segment has a SEG_MS hard cap), so its outer wall time is what gate concurrency inflates. MEASURED on
+  // 2026-11-12: 107 s standalone (101/0, exit 0) but 136.5 / 144.5 / 181.1 s inside three consecutive k=3
+  // sweeps - the third KILLED at the 180 s default while its own counts were green, i.e. amplification by
+  // the surrounding sweep (this run also had four gate scripts and a live SLV driver on the same box), not
+  // a hang. 300 s = 1.66x the worst inside-gate measurement and 2.8x the standalone one; budget only, the
+  // segment rulers, thresholds and assertions are untouched, and a real hang still lands as a named
+  // "TIMEOUT after 300s".
+  'sim-gate.test.mjs': 300000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then (S22) the family
  *  default for `*.mutants.mjs`, then the 180 s suite default. Every layer has a safe default, so a

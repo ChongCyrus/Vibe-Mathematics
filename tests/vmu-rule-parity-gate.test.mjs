@@ -52,14 +52,17 @@ test('§3 dead prompt data and historical corpus are NOT counted as live teachin
 test('§4 the ledger records the document revision it was audited against', () => {
   const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'))
   assert.ok(ledger.source && ledger.source.revision, 'ledger.source.revision is missing')
-  if (!existsSync(sourceRules)) {
-    // The rule document lives beside the repository in this workspace; when it is absent the gate
-    // already skips the hash comparison, so this test asserts the recorded shape instead.
-    assert.match(String(ledger.source.revision), /^[0-9a-f]{64}$/, 'revision must be a sha256')
-    return
+  // ROUND 272 (CI run 43080516326): revision pins the bytes GIT STORES, so it must be checked against the copy that
+  // travels with the repository. The workspace master that lives beside the repo is CRLF on this laptop and the blob
+  // is LF ('.gitattributes'), so comparing the master directly made this case pass only on the laptop that held it.
+  const vendored = join(repo, 'docs', 'acceptance', 'v5r-rules-source.md')
+  assert.ok(existsSync(vendored), 'docs/acceptance/v5r-rules-source.md is missing: the ledger is not reproducible')
+  const sha = createHash('sha256').update(readFileSync(vendored)).digest('hex')
+  assert.equal(sha, String(ledger.source.revision), 'the versioned rule copy changed: re-audit the ledger')
+  if (existsSync(sourceRules)) {
+    const fold = (file) => createHash('sha256').update(readFileSync(file).toString('utf8').split('\r\n').join('\n')).digest('hex')
+    assert.equal(fold(sourceRules), fold(vendored), 'the workspace master and the versioned copy drifted apart')
   }
-  const sha = createHash('sha256').update(readFileSync(sourceRules)).digest('hex')
-  assert.equal(sha, String(ledger.source.revision), 'the rule document changed: re-audit the ledger')
 })
 
 test('§5 every structural line is declared with a reason, not merely assumed', () => {
@@ -85,8 +88,11 @@ function copyLedger(mutate) {
 }
 
 test('§6 the rule document is found through source.path when source.file is gone', () => {
+  // ROUND 272: point `path` at the VERSIONED copy, whose bytes are what source.revision pins. Pointing it at the
+  // out-of-repo master made this case pass only on a laptop that keeps that master CRLF (27c5cd1c != 073175fe).
+  const vendored = join(repo, 'docs', 'acceptance', 'v5r-rules-source.md')
   const file = copyLedger((ledger) => {
-    ledger.source.path = ledger.source.file
+    ledger.source.path = vendored
     delete ledger.source.pathRelative
     delete ledger.source.file
   })
