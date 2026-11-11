@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "source": {
     "file": "D:/wd/vibemath开发/宏观层面v5r运行规则.md",
-    "revision": "27c5cd1c25d917261bec617d71f2d018362309f14bcea36e9ef6e09b385e46e2",
+    "pathRelative": "docs/acceptance/v5r-rules-source.md",
+    "revision": "073175fe5bd399c5d4f03f46b58d957bb177e4f2f7fe59775fbb457d73ebea2f",
     "lineCount": 74,
     "note": "每一条规则句（L1–L63）要么被至少一行台账逐字认领，要么带理由声明为结构行；行覆盖由 check-rules-coverage 强制（VMU_RULES_LINE_UNCLAIMED），不再只检查“行有证据”。2026-10-28 审计后：86 行台账，7 行 PARTIAL（D5/D7/E10/E33/E34/E35/E36），此前“82/82 全绿”是假绿。",
     "structuralLines": [

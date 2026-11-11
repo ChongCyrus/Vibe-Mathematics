@@ -128,11 +128,18 @@ const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 
 // ─── the rule document (really read, not assumed) ─────────────────────────────────────────────────────────────
 
-// One resolution order for every reader of the external document: the NEW `source.path`, then the portable
-// `source.pathRelative`, then the legacy absolute `source.file`. A ledger being migrated may carry any of them.
+// One resolution order for every reader of the rule document: the version-controlled `source.pathRelative`
+// FIRST, then the machine-local `source.path`, then the legacy absolute `source.file`. Two reasons, both
+// measured:
+//   1. A clean checkout (CI run 43080516326) has no absolute master, so a ledger that can only be read on the
+//      machine holding the master cannot close at all - the closing gate was passing here and unrunnable there.
+//   2. This machine runs `core.autocrlf=true`, so the same document exists as CRLF outside the repo and as LF
+//      inside it (.gitattributes: `*.md text eol=lf`). Two byte forms, two sha256 values, one ledger. Reading
+//      the committed copy gives ONE fact for both readers; the copy-versus-master identity is a pin test's job
+//      (tests/rules-source-reproducible.test.mjs), not the gate's, because a gate must read what it ships.
 function resolveRuleDoc(source) {
   const candidates = []
-  for (const key of ['path', 'pathRelative', 'file']) {
+  for (const key of ['pathRelative', 'path', 'file']) {
     const value = source && typeof source[key] === 'string' ? source[key].trim() : ''
     if (value) candidates.push({ key, value })
   }
