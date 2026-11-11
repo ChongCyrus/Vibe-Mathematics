@@ -933,7 +933,8 @@
     "tests/vmu-run79-review-fingerprint.test.mjs",
     "scripts/sim/audit/timing.mjs",
     "scripts/sim/audit/cpu-probe.mjs",
-    "scripts/sim/audit/calibration-work.mjs"
+    "scripts/sim/audit/calibration-work.mjs",
+    "tests/audit-doc-lint-reproducible.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

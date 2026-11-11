@@ -1,6 +1,6 @@
 # vmu 04 · 设置（Settings）手册
 
-> 状态：**草案 v0.1**（schema 语法细节待 `02-dsh-official-guidelines.md` 落地后校正）
+> 状态：**草案 v0.1**（schema 语法细节待仓外 `_oneoff/vmu/design/02-dsh-official-guidelines.md` 落地后校正）
 > 上位：`01-philosophy.md`（R3 四可 / R4 单一源）、`02-architecture.md`（L2 层）
 > 读者：**使用者**（改机制）与**实现者**（加参数）
 

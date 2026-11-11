@@ -101,8 +101,9 @@ for (const [k, t] of texts) {
 
 // D4/D5 交叉引用 ＋ **文件名引用**（独立批评者第 5 轮：16 卷曾引用 `06-prompting.md` / `07-archival.md` /
 // `08-meetings.md`，三个文件都不存在，而 D4/D5 只看 `NN-§` 编号 ⇒ 悬空文件名整类漏网 ✗）。判据是"该文件名
-// 必须真实存在于**已知文档树**"（设计卷 ＋ 仓库内 md ＋ 仓库外的侦察文档 ✓），而不是"必须等于同号设计卷"
-// —— 后者会把对 `_oneoff/vmu/design/*.md` 的合法引用误判为悬空 ✗。
+// 必须在**本仓库内**真实存在"（设计卷 ＋ 仓库内 md），而不是"必须等于同号设计卷"——后者会把对别卷的合法引用
+// 误判为悬空 ✗。但"存在"**也不许**由仓外文件来满足：一个只在带着仓外材料的机器上通过的判据不是判据
+// （RUN 272 的第一次 CI 红正是这类，见下方 KNOWN_MD 的边界说明）。
 const KNOWN_MD = new Set()
 const scanMd = (d, n) => {
   if (n > 4) return
@@ -117,9 +118,16 @@ const scanMd = (d, n) => {
 }
 scanMd(DOCS, 0)
 scanMd(path.join(DOCS, '..', '..'), 0)
-// The design reconnaissance docs live OUTSIDE the repository, at the WORKSPACE root's `_oneoff/vmu/design`
-// (moved there by ruling). The scan is best-effort: absent on a clean clone, and its absence must not redden D4.
-scanMd(path.resolve(HERE, '..', '..', '_oneoff', 'vmu', 'design'), 0)
+// THE SCAN STOPS AT THE REPOSITORY BOUNDARY (RUN 272, CI run 43073739104). The design reconnaissance docs live
+// OUTSIDE the repository, at the workspace root's `_oneoff/vmu/design` (moved there by ruling), and an earlier
+// version of this file scanned that directory too. That made the linter pass on the machine carrying those files
+// and red D4 on a clean clone (`01-v5r-reuse-map.md` / `02-dsh-official-guidelines.md` resolved only through
+// `_oneoff`): the gate was reading a fact version control did not carry — the first CI red this repository ever
+// had, and it was a fact about the gate, not about the product. A gate that borrows a fact from the machine is
+// not a gate, so the scan no longer leaves the repository, and a citation of an out-of-repo design volume must
+// carry its workspace path (`_oneoff/vmu/design/NN-….md`); `fileRefRe` below only matches a bare `NN-name.md`,
+// so a path-qualified citation cannot masquerade as an in-repo document.
+
 const fileRefRe = /`([0-9]{2}-[A-Za-z0-9-]+\.md)`/g
 for (const [k, t] of texts) {
   for (const m of t.matchAll(fileRefRe)) {
