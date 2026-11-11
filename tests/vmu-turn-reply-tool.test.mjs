@@ -9,8 +9,17 @@
 //   ③ both, non-conflicting ⇒ merged, and the receipt STAMPS source:'tool+text' (one answer, two carriers);
 //   ④ both, conflicting     ⇒ named refusal VMU_TURN_REPLY_CONFLICT naming the field, and NOTHING dispatched;
 //   ⑤ neither               ⇒ VMU_TURN_NO_FENCE whose message names both channels and whose hint gives both forms;
-//   ⑥ tool called outside a member turn ⇒ VMU_TURN_NO_PENDING_MEMBER (no turn is invented);
+//   ⑥ two faces of the report channel: a MEMBER caller is refused op:"reply" by name (VMU_NOT_PERMITTED; the hint
+//      names the reachable action op:"status" and says the office relays), while the OFFICE still relays a member turn
+//      through the same instance — and a vote carried by that reply is counted exactly once (TB-2730: one turn, one
+//      channel);
 //   ⑦ tooth-proof: tearing the mechanism out turns at least three of these checks red (method documented below).
+//
+// WHY ⑥ CHANGED (TB-2733 / P1, measured on the 78th live run): the old ⑥ asserted `ok:true` for a MEMBER caller in the
+// SAME kernel instance. That configuration does not exist in production: a member's own session has no pending turn on
+// the office's instance (run 78: r-3's own session read turns:0 from op:"status"), so its op:"reply" ends in
+// VMU_TURN_NO_PENDING_MEMBER there, and on the caller path the OFFICE is the one relaying. The old assertion measured
+// this test's own assembly, not the product; it is replaced by the two claims above, both reachable in production.
 //
 // Run: node tests/vmu-turn-reply-tool.test.mjs   (last line: === VMU TURN REPLY TOOL: N passed, M failed ===)
 
@@ -216,18 +225,48 @@ console.log('=== VMU TURN REPLY TOOL (' + FIELDS.length + ' field owners + ' + R
   ok(typeof viaTool.hint === 'string' && viaTool.hint.includes('awaiting:true') && viaTool.hint.includes('fenced-json'),
     '⑥ the refusal hint keeps the KERNEL wording (the tool passes it through, it does not re-decide)', viaTool.hint)
 
-  // and the counterpart: with a turn genuinely open, a MEMBER caller may report through the same spec (G6 guard opened
-  // for op:"reply" only - step/drive stay root-only).
-  const seam2 = deliverByReturning()
-  const w = makeGov({ deliver: seam2 })
-  await w.gov.step({ members: [{ id: 'm1' }], phase: 'normal' })
-  const memberSpec = makeSpec(facade(w.gov))
+  // (a) A MEMBER caller is refused op:"reply" BY NAME. The report channel is the office relay on the caller path; a
+  // member's own session has no pending turn here (RUN 78 measured turns:0 from op:"status"), so "works from a member
+  // session" was never a production fact. The hint must stay executable by the member: name op:"status", name who the
+  // report goes through, and never send the member to a configuration it cannot change (tools.allow).
+  const memberSpec = makeSpec(facade(gov))
   const memberRes = await memberSpec.run({ op: 'reply', report: { say: 'from the member itself' } }, { agent: { id: 'child-1' } })
-  ok(memberRes && memberRes.ok === true && memberRes.accepted === true,
-    '⑥ ★ a MEMBER caller can report (op:"reply" is member-safe), unlike step/drive', memberRes)
+  ok(memberRes && memberRes.ok === false && memberRes.code === 'VMU_NOT_PERMITTED',
+    '⑥a ★★ a MEMBER caller is refused op:"reply" by name (the report channel belongs to the office relay)', memberRes)
+  ok(typeof memberRes.hint === 'string' && memberRes.hint.includes('REACHABLE INSTEAD:')
+    && memberRes.hint.includes('op:"status"') && !memberRes.hint.includes('tools.allow'),
+    '⑥a ★ the refusal hint names a REACHABLE action (op:"status") and no configuration the member cannot change', memberRes.hint)
+  ok(typeof memberRes.hint === 'string' && /office/i.test(memberRes.hint) && /relay/i.test(memberRes.hint),
+    '⑥a ★ and it says WHO the report goes through (the office relays it on the member behalf)', memberRes.hint)
   const memberStep = await memberSpec.run({ op: 'step' }, { agent: { id: 'child-1' } })
   ok(memberStep && memberStep.ok === false && memberStep.code === 'VMU_NOT_PERMITTED',
-    '⑥ ★★ …while step from a member is still VMU_NOT_PERMITTED (the engine stays root-only)', memberStep)
+    '⑥a ★★ …and step from a member is still VMU_NOT_PERMITTED (the engine stays root-only)', memberStep)
+
+  // (b) THE OFFICE RELAY, through the same instance. Two claims that F75-06/TB-2730 depend on: the report lands on the
+  // MEMBER (not on the office caller), and the vote it carries is counted only when the vote tool was NOT mounted in the
+  // member's own session — a turn whose own session had the tool is not allowed a second channel to the same tally.
+  const relay = async (visible) => {
+    const w = makeGov({ deliver: deliverByReturning() })
+    w.gov.setVisibleToolsProvider(visible)
+    await w.gov.step({ members: [{ id: 'm1' }], phase: 'normal' })
+    const officeSpec = makeSpec(facade(w.gov))
+    const relayed = await officeSpec.run({ op: 'reply', reply_for: 'm1', report: { say: 'relayed by the office', vote_solved: true } }, { agent: { id: 'session-root' } })
+    const done = await w.gov.step({ members: [{ id: 'm1' }], phase: 'normal' })
+    const cv = w.gov.status({ roster: ['m1'], may: () => true }).closureVote
+    return { relayed, done, cv }
+  }
+  const onlyChannel = await relay(() => [])
+  const secondChannel = await relay(() => ['vibe_vmu_vote', 'vibe_vmu_turn'])
+  ok(onlyChannel.relayed && onlyChannel.relayed.ok === true && onlyChannel.relayed.accepted === true
+    && onlyChannel.relayed.readback && onlyChannel.relayed.readback.member === 'm1',
+    '⑥b ★★ the OFFICE can still relay a member turn through the same instance, attributed to the MEMBER', onlyChannel.relayed)
+  ok(onlyChannel.done && onlyChannel.done.ok === true && onlyChannel.done.receipt && onlyChannel.done.receipt.completed === true,
+    '⑥b ★ the relayed turn completes on the next step', onlyChannel.done && { ok: onlyChannel.done.ok, code: onlyChannel.done.code })
+  ok(onlyChannel.cv && onlyChannel.cv.votesCast === 1 && JSON.stringify(onlyChannel.cv.for) === JSON.stringify(['m1']),
+    '⑥b ★ the relayed reply vote IS counted when the vote tool was not mounted (the reply is the only channel)', onlyChannel.cv && { votesCast: onlyChannel.cv.votesCast, for: onlyChannel.cv.for })
+  ok(secondChannel.relayed && secondChannel.relayed.ok === true && secondChannel.cv && secondChannel.cv.votesCast === 0,
+    '⑥b ★★ …and it is NOT counted when the vote tool WAS mounted in the member session (TB-2730: one turn, one channel)',
+    { relayed: secondChannel.relayed && { ok: secondChannel.relayed.ok, accepted: secondChannel.relayed.accepted }, votesCast: secondChannel.cv && secondChannel.cv.votesCast })
 }
 
 // ⑦ TOOTH-PROOF. The mechanism has teeth only if REMOVING it turns checks red. Method (deliberately NOT applied to the
@@ -236,8 +275,11 @@ console.log('=== VMU TURN REPLY TOOL (' + FIELDS.length + ' field owners + ' + R
 //       `structuredReply` from the returned object; delete `replyFromChannels`' report branch (leave `parse(raw)`);
 //       delete the `awaitingStructuredReport()` guard at the top of `step`; delete `consumePending` from
 //       deliverByReturning.  ⇒ ①'s readback/completion checks, ③'s merge, ⑥'s member acceptance all go red.
-//   (b) in vibe-math-vmu/tools/turn.js: delete the `op === 'reply'` block and the `op !== 'reply'` allowance in the G6
-//       guard.  ⇒ ⑥'s tool-level checks go red.
+//   (b) in vibe-math-vmu/tools/turn.js: delete the G6 guard's refusal branch (`if (memberCaller && !memberAllowed) …
+//       return refused('VMU_NOT_PERMITTED', …)`).  ⇒ ⑥a's refusal checks go red (a member would reach the report).
+//   (c) in vibe-math-vmu/kernel/turn/index.js, inside `supplyStructuredReply`: drop the attribution by recording
+//       `member: null` instead of `member: open.member`.  ⇒ ⑥b's readback attribution goes red (the relay would no
+//       longer belong to the member).
 // Here the tear is a Proxy that hides the three verbs (a), which is exactly the state (a)'s deletion produces.
 const tornKernel = (gov) => new Proxy(gov, {
   get(target, key) {

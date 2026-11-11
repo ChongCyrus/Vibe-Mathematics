@@ -1031,6 +1031,21 @@ function typeMatchRowOf(typeInput, typeMatchedBy) {
           : 'the row records the caller\'s type word but not how it matched (a writer that did not report the path); `type` is the resolved id')))
   return { typeInput: input, typeMatchedBy: matchedBy, typeMatchedByMeans: means }
 }
+// ★★★ ROUND 78 / TB-2731 (FEEDBACK78 D2): the MEETING ROW is the durable record of "what did the caller type", and
+// until now it stored only the RESOLVED id — the input word and the path that matched it lived in the open receipt and
+// nowhere else, so a replay could not answer "was this meeting opened with an alias?". The row now carries both
+// (`typeInput`/`typeMatchedBy`, written by openSeq beside `type`), and this projection is the ONE read face over it: a
+// row recorded BEFORE this round has neither key, so it reads null + `typeMatchMeans` (an honest UNKNOWN), never a
+// blank that could be mistaken for "the caller typed nothing".
+const TYPE_ROW_LEGACY_MEANS = 'this meeting row was recorded BEFORE RUN 78/TB-2731, so the type word the caller typed and the path it matched were not stored on the meeting: both are UNKNOWN (null), not empty. `type` above is the resolved id and is not in doubt; recovering the original word would need the open receipt or the chair\'s turn transcript, which this read does not have'
+function typeProvenanceOf(m) {
+  if (!m || (m.typeInput === undefined && m.typeMatchedBy === undefined)) {
+    return { typeInput: null, typeMatchedBy: null, typeMatchMeans: TYPE_ROW_LEGACY_MEANS }
+  }
+  const row = typeMatchRowOf(m.typeInput, m.typeMatchedBy)
+  return { typeInput: row.typeInput, typeMatchedBy: row.typeMatchedBy, typeMatchMeans: row.typeMatchedByMeans }
+}
+
 /** The READ face over a stored receipt row: an OLD row (no `typeInput`/`typeMatchedBy`, or the RUN 77 `""` pair) is
  *  served with null + the means sentence instead of a blank that reads like a value; a NEW row round-trips unchanged. */
 function receiptRowRead(r) {
@@ -1145,10 +1160,16 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
    * face (one value, explained as one value) plus `agendaItems`: the SAME string split on the separators the write face
    * itself joins with, whitespace trimmed, order preserved.
    */
-  const AGENDA_ITEM_SEPARATORS = /[;；、,\n]/
+  // ★★★ RUN 78 (FEEDBACK78 待定位节 / TB-2734, MEASURED): the split ALSO carried `、` and `,`, which the write face never
+  // joins with. Measured: agenda "学术交流：抽屉配对 (2k-1,2k) 互质表述与证明规格" read back as TWO items — in mathematics
+  // the comma is a TUPLE separator: `(2k-1,2k)` is ONE proposition, not two agenda lines. A reading is honest only when
+  // it is the INVERSE of the write, so the set is exactly what the "; " join can produce: `;`, `；`, newline. The comma
+  // and the enumeration mark `、` stay INSIDE an item (the old split was defensible for prose lists and wrong for the
+  // subject this repository is about).
+  const AGENDA_ITEM_SEPARATORS = /[;；\n]/
   const agendaItemsOf = (text) => String(text === null || text === undefined ? '' : text)
     .split(AGENDA_ITEM_SEPARATORS).map((x) => x.trim()).filter((x) => x !== '')
-  const AGENDA_ITEMS_MEANS = 'the SAME agenda string split on `;` `；` `、` `,` and newlines, each item trimmed, order preserved. The convene face joins an agenda ARRAY with "; ", so this is how a caller reads its items back; the STRING is the truth and this is a reading of it — a prose agenda that itself uses one of those separators will read as several items'
+  const AGENDA_ITEMS_MEANS = 'the SAME agenda string split on `;`, `；` and newlines only — the exact separators the convene face can produce, since it joins an agenda ARRAY with "; ". Each item is trimmed and order is preserved. The comma and `、` are NOT separators: `(2k-1,2k)` is one mathematical tuple inside one item, and a prose list that used either character reads as ONE item (RUN 78 / TB-2734). The STRING is the truth and this is a reading of it'
   // ★★★ ROUND 240 (FEEDBACK63 ①6, MEASURED): THE FORMAL AGENDA HAD A NAME AND NO WRITER. `formalAgendaItems` was
   // computed from `m.formalAgenda` / `m.formal_agenda`, but nothing wrote either key: `openSeq()` took only a
   // `materials` line and the pack passed `formal_agenda:true` as a boolean that reached no kernel field at all. So
@@ -4170,6 +4191,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       })
       return {
         ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state,
+        // ★★★ ROUND 78 / TB-2731 (FEEDBACK78 D2): the same input-provenance block the open receipt prints, read from
+        // the DURABLE row (old rows: null + `typeMatchMeans`, never a guess).
+        ...typeProvenanceOf(m),
         // ★ ROUND 19: the twin is named on the read face (see `archivedTwin` above). `false` means "one object, one
         // name" — nothing to explain; `true` means the archive ALSO holds this id, and the state above is the LIVE
         // object's, i.e. a closure was recorded and a live meeting reuses the name.
@@ -4262,6 +4286,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // left to be inferred from `state`, because state alone reads the same on a live twin and on the archive.
       const archivedRead = !live.has(String(m.id)) && String(m.state) === 'closed'
       return { ok: true, meeting: m.id, type: m.type, state: m.state,
+        // ★★★ ROUND 78 / TB-2731 (FEEDBACK78 D2): the status face members read carries the SAME input-provenance block
+        // as summary() and the open receipt — one projection (`typeProvenanceOf`), so no face can drop it.
+        ...typeProvenanceOf(m),
         archived: archivedRead,
         archivedMeans: archivedRead === false ? null : 'this meeting was CLOSED and its record now lives in the archive; this view is a READ of the recorded closure (nothing here may be acted on — the meeting is over). Rule L53 takes the final ruling after the debate ends, which is why this read exists',
         // ★★★ RUN 45: this view is what `vibe_vmu_meeting {action:"status"}` returns for a SERVICE id, and until now it
@@ -4920,6 +4947,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     }
     const m = {
       id: mid, type: String(type), kind: kindRef, chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
+      // ★★★ ROUND 78 / TB-2731 (FEEDBACK78 D2): the DURABLE row keeps the INPUT provenance, not just the resolved id —
+      // the open receipt already printed it, but a replay reads the ledger, not the receipt. `typeMatchRowOf` is the one
+      // normaliser (canonical null for "no word", never ""), so the row and the receipt cannot disagree.
+      typeInput: typeMatch.typeInput, typeMatchedBy: typeMatch.typeMatchedBy,
       roster: rosterList, present: new Set(chair === null ? [] : [String(chair)]),
       // ★★ RUN 225-B: the late-admission policy is a carried fact of THIS meeting (see LATE_ADMISSION_MEANS), the door
       // list starts empty (members are only ever held there by attend() under "chair"), and every admission decision is

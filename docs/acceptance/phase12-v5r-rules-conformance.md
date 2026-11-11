@@ -18438,3 +18438,74 @@ tests/vmu-run259-audit14.test.mjs expected 0 got 1`），而且在人工加压�
    一条口径：**「去重」删掉的必须是重复，不是某类席位唯一的一份。** 删之前要问的不是「这句话出现过几次」，而是「**写它的那个人**在它实际读的那份提示词里还看得到吗」。
 
 **355.13.8 冷全量 T1 与本节读数。** 冷全量 T1：**`TOTAL 864 PASS 864 FAIL 0`**（**`778`** suites + **`86`** probes，wall **`660.7s`**）；五门禁 `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0 problem, 1 warning C10)` / `RULE PARITY: PASS` / `PROMPT BUDGET: PASS (1 warning SEAT_PROMPT_OVER_T99: chair/meeting 35 932 < cap 36 500)`；`regen-all --check` **17/17**；portability `PASS (0 blockers)`。本节所在提交 **`RUN 271 收口提交`**；本节写入后 conformance 行数 **`18441`**。
+
+## §355.14 RUN 78 缺陷批次收口：一次真机四类缺陷，两种「读数不在读者手里」
+
+第 78 次真机（build `54e53f28`，17 回合、5 席、`memberShare 0.9583`）把验点从 13 条扩到 14 条。结论是 `11 PASS / 2 FAIL / 1 NO-EVIDENCE`：两红都是**回执对读者说的话与实际记录不一致**，一条无证据是**同一个事实在耐久行里没落地**。
+
+### 355.14.1 读数（本节所有数字都取自 `D:/_tmp/slv-phase5/slvp258-ws`）
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVER EXIT=0 after 97.8 min`，tokens `30 841 286`，`llm-retry=0` |
+| 产物 | `Paper/paper-p1/paper-p1.pdf` 130 411 B，sha256 `ba02d477…f202d84ea` = 归档行 `rec-32.body.pdfSha256` |
+| 过程 | 17 回合（t-1..t-17）、`hired:["r-acad","r-1","r-2","r-3"]` + hire `r-temp`、1 次 caller 代转（t-3） |
+| 会议 | m1(academic) / m2(closure) / m-alias-78(`type:"结题"`) |
+| 结题票 | 4/4，`confirmed:true` |
+| 成员工作占比 | `memberActs 23 / officeRelayedActs 1 / provenActs 24 / memberShare 0.9583` |
+| 论文链 | start(rec-13) → parts 16/18/20 → 互审 22/24/26 → final 首试被 `VMU_OFFICE_CONSULT_REQUIRED`(`consult-0001-529a`) 挡 → consult 后过（xelatex）→ render(md 29/tex 30/meta 31) |
+| 环境异常 | `VMU_ENGINE_UNAVAILABLE` ×1（t-4，child `stopReason=error`），重试成 t-5 |
+
+### 355.14.2 两条红：判据问的层与回执答的层不同
+
+**V9（reply 的 `vote_solved` 被计票）**。t-3/t-6/t-7 的 reply 各带一条 `vote_solved`，回执写着 `effects:[{kind:"closure-vote",member:"r-1",solved:true,source:"reply",durable:true}]`，`votesCast` 从 1 涨到 2，全程**没有** `kept:false` 行。提示词第 69 次真机之后刚教过「结题票唯一入口是工具」——于是这条看起来是「承诺没兑现」。
+
+真正的根因在更下面一层：`vibe-math-vmu/kernel/turn/index.js` 的 `visibleToolsByMember`（读点是 `get(id) || []`） 只在宿主 provider 返回数组时被写；所办代传回合 `resolveMemberAgent` 抛错，`catch { visible = null }` 把它吞成空表，读点 `get(id) || []` 于是读成「这个成员没挂投票工具」⇒ 走回退计票。**「没有事实」与「事实是空的」在同一个数据结构里长得一样**。这不是缺一道硬门，是那把尺子把「读不到」读成「读到了零」。
+
+修法（TB-2730）：记**按回合**的三态挂载事实 `mountedToolsByTurn`（`provable`+真工具表 / `provable:false`+why / 无条目），`put` 时随台账行走；计票只发生在「可证该回合没挂投票工具」这一态（`keptWhy:'tool-not-mounted'`），其余四态各自具名：`tool-used-this-turn` / `tool-visible` / `tool-visibility-unprovable` / `legacy-row`（外加无 turnId 的兼容路径 `no-turn-row-compat`）。回执不再说「工具可见时忽略」这种只有一句话的承诺，而是逐条说**哪一个事实赢了**。
+
+**V2（`notices` 缺第四键）**。验点要求台账行的 `turnReceipts[].notices` 是四键 `{lines,rendered,blockChars,namedEmpty}`；实测只有三键，报告据此写下「产品源码全文没有 namedEmpty」——**这句话是错的**，也是本轮最值得记的一条：`namedEmpty` 在装配回执（装配回执）里早就有，台账行搬运白名单只搬三键，`turnReceiptsMeans`的说明句也只写三键。**同一个读数在三层各有一次落地：生产者、装配回执、台账行。缺缺口必须按层报，否则修的人会去改一个没坏的地方。**
+
+修法（TB-2730 同一支）：台账行补第四键（非 boolean ⇒ `null`，不用 `false` 冒充「假的」），means 改四键并写明三层。
+
+### 355.14.3 一条无证据：事实存在，但没有一个面能让读者读到它
+
+**V6（会议耐久行的 provenance）**。中文别名开会成功：回执 `typeInput:"结题"` / `typeMatchedBy:"alias"` / `type:"closure"`，`state.json` 的 receipts 账里三键一致。但 `state.json` 的**会议耐久行**只有 `type`（缺两键），而唯一能读 receipts 的 `receiptsView`**没有任何工具面暴露**。于是「读者能不能核对别名解析」这件事，答案是「能，只要它能读 `state.json`」——那不是读者的手。
+
+修法（TB-2731）：耐久会议行写 `typeInput`/`typeMatchedBy`（旧行 `null` + means），并在 `packs/v5r/tools.js` 的 meeting 面加只读 `action:"receiptsView"`（`limit` 1..200，缺省 50，越界具名拒、不 clamp）。判据要求**三处相等**（回执 / `state.json` 耐久行 / 工具面），第三处必须走工具面——否则又变成「有事实、无入口」。
+
+### 355.14.4 提示词的四条错（D4–D7 与 D8）
+
+| # | 位置 | 错在哪 | 修法 |
+| --- | --- | --- | --- |
+| D4 | `packs/v5r/prompts/v5r-core.js`（`v5r-fixture-tools` 段） | 教「看回执的 `libraryRoot`」，实际键是 `roots.libraryRoot`。r-1 因此写错 `proof_ref`，`rec-4` 作废 | 改成 `roots.libraryRoot` |
+| D5 | 同文件的结题票句 | 承诺「工具可见时 reply 的 `vote_solved` 记 `kept:false`」，实测相反（RUN 78 之前那句话描述的是一个不存在的世界） | **先删承诺**，等 TB-2730 落地为真再按真实条件写回（本轮已写回：只有 `keptWhy:"tool-not-mounted"` 才计票） |
+| D6 | `v5r-blocks-b.js`（结题规则段） | 结题规则写成「达到 m 且无反对」；产品是「全体有表决权者一致」（`castMeaning="every enfranchised member judged it solved"`，4/4 才 `cast:true`，m=3 只是 `voteFloor.effective`） | 改成全体一致，并说明 m 只是下限 |
+| D7 | `v5r-core.js` 的回执句与应答通道句 | 同一份提示词里「**不要**调用 `op:"reply"`」与「用一次 `op:"reply"` 交回」自相矛盾；activation 路径是对的，caller 路径是错的 | 按投递路径分流：activation 只说「你的回复就是本回合输出」，caller 才教 reply |
+| D8 | `vibe-math-vmu/tools/turn.js` 的成员面 | 成员面挂着 `vibe_vmu_turn`，但成员 `op:"step"` 必被 `VMU_NOT_PERMITTED` 拒，hint 却让成员「从 `tools.allow` 移除」——成员没有这个权限。r-3 在 t-17 实测 | 成员面收窄到 `{op:"status"}`（一份常量驱动四个出口），hint 给可照抄的 `op:"status"` |
+
+D5 的处理值得单独记一句：**错的承诺留在树里过夜，读它的成员就按它行动**。所以宁可先删（回执暂时少一句话），也不要留一句「将来会成立」的话。
+
+### 355.14.5 两条小读数：逗号不是分隔符，render 不知道自己写了哪几行
+
+- 议程 `(2k-1,2k)` 被切成两条：`AGENDA_ITEM_SEPARATORS`（`vibe-math-vmu/kernel/meetings.js:1169`）原来认 `、` 与 `,`。数学里逗号是**元组分隔符**。改为只认 `;`/`；`/换行，并把 means 写成「逗号与 `、` NOT separators，`(2k-1,2k)` 是一个元组」。
+- render 回执只有 `wroteToLedger:["md","tex","meta"]`（kind 列表），读者想知道「刚写的那三行」得另跑一次 list。改为 `recordIds:{md,tex,meta}`——**这次** `records.put` 返回的 id，每个都能 `records.get` 到。
+
+### 355.14.6 收口轮自己撞出来的六条 T1 红
+
+全量 T1 首跑 `TOTAL 869 PASS 861 FAIL 8`。八红里五红是本轮语义变更的下游，三红是判据自己坏了：
+
+- **`audit-prompt-names` BLOCKERS 2**：提示词教 `keptWhy`／`fieldsIgnored`，而语料里没有这两个键（harvester 只捕获顶层键）。真正的修法是让回执真的有 `keptWhy`——`fieldsIgnored[]` 行过去只有 `{field, reason}`，`keptWhy` 只在 `bookkeeping` 里，读者读不到。改成 `{field, reason, keptWhy}` 并把 means 说清五值含义后，BLOCKERS 0。语料侧的嵌套键盲区单独立 **TB-2736**，不在收口轮里动语料。
+- **`audit-declaration-criterion` 3 个新增空洞断言**：`every()` 在空集合上为 TRUE，而守卫写在断言外面一行。改成 `arr.length > 0 && arr.every(...)`（守卫属于它保护的那条断言）。
+- **`vmu-doc-prompt-sync` 1 红**：文档引用的提示词原句在 D7 改写后变了（「这四种都是」→「都是」）。文档里的引文是判据输入，改提示词就要同步引文。
+- **`vmu-turn-vote-survives-refusal` 等六套**：它们靠「成员表为空 ⇒ 回退计票」这条默认成立，而现在「不可证」不再等于「可证为空」。修法是显式声明该回合的挂载事实（`kernel.turn.setVisibleToolsProvider`），并补一条**负向**断言：把 provider 改成返回 `['vibe_vmu_vote']` 时同一 fixture 必须 `kept:false`+`keptWhy:'tool-visible'` 且零记录。**把默认成立的前提写成事实，不是给判据开口子。**
+
+本轮读数：`TOTAL TOTAL 869 PASS 869 FAIL 0`（suites `783` · probes `86`，wall `640.3s（k=3）`，k=3），本节所在提交 `RUN 271 收口提交`；本文件行数 `18512`。
+
+### 355.14.7 这一轮学到的
+
+1. **「没有事实」与「事实是空的」必须用两个形状表示**。一个 `null` 被读成 `[]`，就能让一台真机在四十七分钟里把幽灵票记成真票。
+2. **同一读数在三层各有一次落地，缺缺口要按层报**。否则修的人去改生产者，而洞在搬运。
+3. **有事实不等于有入口**。耐久行里 9 个键，读者只能读 3 个，那 6 个在验收口径里就是没有。
+4. **文档里的引文是判据输入**。改一句话，要同步所有引用它的地方，否则判据会在下一次全量里替你发现。
+5. **错的承诺比缺的承诺更坏**：先删，再按真实条件写回。

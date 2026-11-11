@@ -86,7 +86,11 @@ console.log('\n=== 1. RELATIVE `at` IS ADDED TO THE INJECTED CLOCK (not to Date.
     ok(o.scheduledFor !== Date.now() + 60_000, 'and NOT against Date.now(): the two clocks are far apart here, and the offset followed the kernel one',
       { scheduledFor: o.scheduledFor, wallPlus: Date.now() + 60_000 })
   } else {
-    ok(true, 'skipped the wall-clock negative (this machine\'s wall clock is close to the injected clock)')
+    // NOT a skip-as-pass: assert the PREMISE that made the negative unobservable, so the branch can still go red
+    // (a machine whose wall clock drifted away from the injected one would flip this).
+    ok(Math.abs(Date.now() - K) <= 120_000,
+      'the wall clock is within 2 min of the injected clock here, so Date.now()+60s and clock+60s coincide and the old defect is not observable on this machine (the assertion above still proves the offset followed the kernel clock)',
+      { wallClock: Date.now(), injected: K, delta: Date.now() - K })
   }
   const v = t.meetingView({ meeting: o.meeting })
   ok(v.state === 'scheduled' && v.scheduledFor === K + 60_000, 'the READ face carries the same scheduled instant', v && { state: v.state, scheduledFor: v.scheduledFor })
@@ -236,14 +240,21 @@ console.log('\n=== 3. THE CHAIR\'S BATCH ORDER IS A WRITE, AND THE RECEIPT SAYS 
     ok(openFloor !== null && openFloor.code === 'VMU_STATE', 'an OPEN floor (no queue) is refused by name', openFloor && openFloor.code)
     has(openFloor && openFloor.hint, 'flow(', 'the open-floor refusal names the act that selects a queue-bearing mode')
   } else {
-    ok(true, 'skipped the open-floor branch (flow() was refused in this settings shape: ' + JSON.stringify(flowed.ok ? flows(flowed.value) : String(flowed.error && flowed.error.code)) + ')')
+    // NOT a skip-as-pass: assert the PREMISE (the flow was refused BY NAME) instead of claiming a pass for a branch
+    // that never ran. If flow() started succeeding here the settings shape moved and we must hear about it.
+    ok(flowed.ok === false && flowed.error && typeof flowed.error.code === 'string',
+      'flow() is refused by name in this settings shape, which is the premise for the open-floor branch above',
+      { ok: flowed.ok, code: flowed.error && flowed.error.code })
   }
   const noChair = t.open({ type: 'ordinary', roster: ['acad', 'r-1'], at: 1000 })
   if (noChair.ok === true) {
     const e = errOf(() => t.order({ meeting: noChair.meeting, members: ['r-1'], by: 'acad' }))
     ok(e !== null && e.code === 'VMU_ENGINE_UNAVAILABLE', 'a meeting with NO chair can never be ordered (no invented authority)', e && e.code)
   } else {
-    ok(true, 'skipped the no-chair branch (open() refused a chairless meeting: ' + JSON.stringify(noChair.code) + ')')
+    // NOT a skip-as-pass: assert the PREMISE (a chairless meeting is refused BY NAME) rather than claiming a pass.
+    ok(noChair.ok === false && typeof noChair.code === 'string',
+      'a chairless meeting is refused by name, which is the premise for the no-chair branch above',
+      { ok: noChair.ok, code: noChair.code })
   }
 }
 function flows(r) { return { ok: r.ok, code: r.code || null } }

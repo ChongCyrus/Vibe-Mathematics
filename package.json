@@ -915,7 +915,12 @@
     "tests/vmu-run77-meeting-receipt-type.test.mjs",
     "tests/vmu-run77-prompt-corrections.test.mjs",
     "tests/vmu-run77-reader-readings.test.mjs",
-    "tests/vmu-run77-written-from.test.mjs"
+    "tests/vmu-run77-written-from.test.mjs",
+    "tests/vmu-run78-closure-vote-channel.test.mjs",
+    "tests/vmu-run78-meeting-provenance.test.mjs",
+    "tests/vmu-run78-member-turn-face.test.mjs",
+    "tests/vmu-run78-prompt-corrections.test.mjs",
+    "tests/vmu-run78-small-readings.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

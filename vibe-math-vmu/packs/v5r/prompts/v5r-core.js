@@ -557,20 +557,20 @@ export const v5rFixtureTools = Object.freeze({
   text: [
     "【SLV 夹具约束｜本轮调用工具】",
     "本轮**可以且应该**调用你自己的工具，边做边记。",
-    "★ 本提示词的「本角色可用的工具」段是角色职责清单，不承诺「本回合已挂载」；真正挂载见「本轮你实际能调用的工具」段。★ 所办只派回合与转达，**写入由席位自己完成**；代转记 `officeRelayedActs`，但 `memberWorkShare.memberShare = memberActs/(memberActs+officeRelayedActs)`（`unknownActs` 不进分母）——它回答「动作到没到这个席位」，不回答「席位亲自动手没有」。★ 记录本契约：先确认你的记录本落在哪个库根：看回执的 `libraryRoot`（成员回合的内核跑在同一工作区根上）；只有回执显示**另一个**根时才是本地草稿；以 `libraryRoot` / `recordId` 为证。★ 蓝图/协议（blueprint）草案不是私有的：propose 的段落进共享草案，别人会续写；采纳前可让所办 prune，诊断写 `note`。",
-    "★ 回执**就是你本次回复的正文**：末尾代码围栏（三个反引号）包一个 JSON 对象；**不要**调用 `vibe_vmu_turn` 的 `op:\"reply\"`（只会得到 `VMU_TURN_NO_PENDING_MEMBER`）。没有围栏或对象 ⇒ `VMU_TURN_NO_FENCE`，围栏里的 JSON 不合法 ⇒ `VMU_TURN_BAD_JSON`；投递形状不对 ⇒ `VMU_TURN_DELIVERY_SHAPE`，声明了却没有载荷 ⇒ `VMU_TURN_DELIVERY_NO_PAYLOAD`——这四种都是**形状问题，不等于引擎不可用**：改回执，不要去 probe 引擎。正文里不要粘 JSON 或回执原文。",
-    "★ 工具被具名拒绝：把 code 与 hint 写进 **progress 的 body 里**（或下一次工具调用的参数里），不要新增 `note` 顶层字段。",
-    "★★ 回执契约（本夹具的收敛口径）：字段以【回执字段目录】为准，不要从任何副本背字段清单——不在表里的字段判 `VMU_TURN_UNKNOWN_FIELD`（hint 列 `known fields: …`），据此改写调用；最小集：progress / say / solved / vote_solved；记账与会议交接，本夹具要求用工具做、不要写进回执。",
+    "★ 本提示词的「本角色可用的工具」段是角色职责清单，不承诺「本回合已挂载」。★ 所办只派回合与转达，**写入由席位自己完成**；代转记 `officeRelayedActs`，`memberShare = memberActs/(memberActs+officeRelayedActs)`。★ 记录本契约：看回执 `roots.libraryRoot`；只有回执显示**另一个**根时才是本地草稿。★ 蓝图/协议（blueprint）草案不是私有的：propose 的段落进共享草案，别人会续写；采纳前可让所办 prune，诊断写 `note`。",
+    "★ 回执**即本次回复的正文**：末尾围栏包一个 JSON 对象；**activation（宿主派发）**：你的回复就是本回合的文字输出，只写围栏；**成员/临时工不要调用** `op:\"reply\"`（所办代转才用；成员调用会被 `VMU_NOT_PERMITTED` 拒）。**caller 代转**（所办代转时）：`vibe_vmu_turn { op:\"reply\", report:{…} }`（或 `op:\"step\"` 带 reply）是唯一应答通道。没有围栏或对象 ⇒ `VMU_TURN_NO_FENCE`，围栏里的 JSON 不合法 ⇒ `VMU_TURN_BAD_JSON`；投递形状不对 ⇒ `VMU_TURN_DELIVERY_SHAPE`，声明了却没有载荷 ⇒ `VMU_TURN_DELIVERY_NO_PAYLOAD`——都是**形状问题，不等于引擎不可用**：改回执，不要去 probe 引擎。**成员/临时工：`vibe_vmu_turn` 只有 `op:\"status\"` 有意义**（step/drive/abandon 归所办/主席）。",
+    "★ 具名拒绝：code/hint 进 progress。",
+    "★★ 回执契约（本夹具的收敛口径）：字段以【回执字段目录】为准，不要从任何副本背字段清单——不在表里的字段判 `VMU_TURN_UNKNOWN_FIELD`（hint 列 `known fields: …`），据此改写调用；最小集：progress / say / solved / vote_solved；记账与会议交接这类动作，本夹具要求用工具做、不要写进回执。",
     // ★ RUN 270 (Lead, TB-2725 follow-up): TB-2725 merged the receipt contract into this line and dropped the progress
     // SAMPLE with it — measured consequence: in fixtureMode=tools the sample was left in NO block a member/temp seat reads
     // (only the chair's own `v5r-tools-academician` still had one). That sample exists because the real machine killed a
     // whole turn with it (`"progress":"长叙述"` ⇒ "unknown record track: undefined" ×19): the shape must be COPY-PASTEABLE
     // where the seat that writes it reads it. Restored here, in the shared block all three seats get, 80 chars.
-    "★ 进展写成**一个对象**（不是字符串、不是数组），可直接照抄：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}。",
-    "★★ 结题票用 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；它不可见时才写回执 `{\"vote_solved\": true|false}`（可见时被静默忽略 `kept:false`；`set_solved` 未登记）。个人判断 `{\"solved\": false}`（**不计票**）。`say`：绑会→发言；未绑→留 `notes`；错会→跳过。",
-    "★★ 写卡片**默认用 fs**（自己写 md）；`vibe_v5_record_*` 只在要内核记账时用，不要塞进回执 record 字段。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。清单外的工具不要调用；若提示词有「本轮不调用工具」约束，以那条为准。",
-    "★ 按席位记账的工具要带 `member`（`<你的 id>`）：blueprint / task_update / say 漏了会被具名拒 `VMU_INVALID_ARGUMENT`；`set`/`configure` 只收声明的形参，多写未知参数同样被具名拒。"
+    "★ 进展写成**一个对象**，可直接照抄：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}。",
+    "★★ 结题票用 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；回执写 `{\"vote_solved\": true|false}` 只在**可证该回合没挂投票工具**（`keptWhy:\"tool-not-mounted\"`）时计票，否则不计票——回执的 `fieldsIgnored` 行给出被忽略字段与原因，按原因改渠道（内核原因码：`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row`）；`set_solved` 未登记。个人判断 `{\"solved\": false}`（**不计票**）。`say`：绑会→发言；未绑→留 `notes`；错会→跳过。",
+    "★★ 写卡片默认用 fs；`vibe_v5_record_*` 只在要内核记账时用。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★ 按席位记账带 `member`；漏了会被具名拒。"
   ].join('\n'),
 })
 

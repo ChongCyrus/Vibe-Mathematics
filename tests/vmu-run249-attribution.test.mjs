@@ -15,7 +15,7 @@
 //             two numbers and no field saying which RECORD wrote the file on disk. `diskFileFromRecord` says it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -280,6 +280,8 @@ test('§5 F-08 — the paper status names WHICH record wrote the file on disk', 
 
 test('§6 cleanup', () => {
   rmSync(root, { recursive: true, force: true })
-  ok(true, '§6 the temp instance was removed')
+  // The cleanup step used to end with `ok(true, ...)` — an always-pass assertion that could not fail even if the
+  // temp instance survived. Assert the postcondition instead: the directory this suite created is really gone.
+  ok(!existsSync(root), '§6 the temp instance was removed (the directory no longer exists)', { root, stillThere: existsSync(root) })
   console.log('RUN 249-B assertions:', n)
 })

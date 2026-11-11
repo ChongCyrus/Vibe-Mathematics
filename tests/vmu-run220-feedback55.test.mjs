@@ -77,8 +77,12 @@ const boot = async (config = {}) => {
 
 console.log('=== 0. THE SENTENCES ARE IN THE SOURCE ===')
 
-ok(SRC_CORE.includes('先确认你的记录本落在哪个库根'),
-  '★ ① the record-book contract asks which ROOT the record book landed on, instead of asserting privacy', SRC_CORE.includes('先确认'))
+// ★ RUN 78 / TB-2732 (D4) refreshed the sentence: the prompt used to say "先确认你的记录本落在哪个库根" and now
+//   names the receipt field that answers it (`roots.libraryRoot`) — run 78 measured r-1 reading a bare `libraryRoot`
+//   and writing a wrong `proof_ref`. The FACT this pin guards is unchanged: the contract asks which ROOT the record
+//   book landed on instead of asserting privacy; only the wording moved, so the pin follows the wording, not the line.
+ok(SRC_CORE.includes('记录本契约：看回执 `roots.libraryRoot`') && SRC_CORE.includes('记录本契约'),
+  '★ ① the record-book contract asks which ROOT the record book landed on, instead of asserting privacy', SRC_CORE.includes('记录本契约'))
 hasNot(SRC_CORE, '研究所的正式记录本读不到它',
   '★ ① the false sentence ("the institute cannot read your record book") is GONE — run 56 read rec-21 across kernels')
 has(SRC_CORE, 'libraryRoot',

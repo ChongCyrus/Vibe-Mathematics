@@ -1877,7 +1877,17 @@ export function createPaperFlow({
     if (wantsTex) wrote.tex = records.put({ track: TRACK, kind: 'paper-tex', title: recordName(state.target, 'tex'), body: tex, by: author })
     wrote.meta = records.put({ track: TRACK, kind: 'paper-meta', title: recordName(state.target, 'meta'), body: JSON.stringify(meta), by: author })
     const artifacts = PaperArtifacts({ target })
-    return { ok: artifacts.complete, target: state.target, wrote: Object.keys(wrote), artifacts, missing: artifacts.missing, pdf: artifacts.pdf,
+    // ★★★ RUN 78 (FEEDBACK78 待定位节 / TB-2734, MEASURED): the render receipt listed the ROW KINDS it wrote
+    // (`wrote: ["md","tex","meta"]`) and threw away the ids `records.put` had just returned, so a reader who wanted to
+    // check the three rows had to call `read_library {track:"paper"}` and guess which three of them this render made.
+    // The ids travel now — taken from THIS call's put results, never re-looked-up afterwards (a list would have to
+    // guess between revisions and concurrent renders). `wrote` keeps the kinds: the two questions are different.
+    const wroteIds = {}
+    for (const kind of Object.keys(wrote)) {
+      const row = wrote[kind]
+      wroteIds[kind] = row && row.id !== undefined && row.id !== null ? String(row.id) : null
+    }
+    return { ok: artifacts.complete, target: state.target, wrote: Object.keys(wrote), wroteIds, artifacts, missing: artifacts.missing, pdf: artifacts.pdf,
       // ★★★ RUN 217: what the renderer had to repair, or refused to - see `math.means`.
       math: texBody.math }
   }

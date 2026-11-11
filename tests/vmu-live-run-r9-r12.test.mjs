@@ -28,12 +28,19 @@ const ok = (cond, label, detail) => {
   return false
 }
 
-const makeKernel = (settings = {}) => createKernel({
-  clock: () => 1000,
-  settings,
-  deliverTurn: deliverByReturning(),
-  slots: [{ id: 'member', capacity: 0, permissions: ['speak', 'vote'] }, { id: 'chair', capacity: 1, permissions: ['convene'] }],
-})
+const makeKernel = (settings = {}) => {
+  const kernel = createKernel({
+    clock: () => 1000,
+    settings,
+    deliverTurn: deliverByReturning(),
+    slots: [{ id: 'member', capacity: 0, permissions: ['speak', 'vote'] }, { id: 'chair', capacity: 1, permissions: ['convene'] }],
+  })
+  // ★ RUN 78 / TB-2730: this suite's members vote through the reply because no vote tool is mounted for them.
+  // Before RUN 78 an empty per-member table meant that by default; after RUN 78 the fact must be PROVABLE, so
+  // the test declares the empty mounted table instead of relying on the old silent default.
+  kernel.turn.setVisibleToolsProvider(() => [])
+  return kernel
+}
 
 // ── R9: the speech reading ────────────────────────────────────────────────────────────────────────────────────────
 console.log('=== R9. a speech receipt says whether ms:0 means "unbounded" or "no time" ===')

@@ -38,3 +38,20 @@
 | 7 | 临时工参会 | convene 段与 hiring 段各写一次「不参会/无表决权」 | 「临时工：可读可群聊（`vibe_v5_say`），不入会、不投票」只留一处 | 同一事实两处措辞不同，读者无法判断哪句是权威 |
 | 8 | 主席 `close` 前 | 只说 closeRequiresChair，未说未到场者会让 close 失败 | 补「有 roster 未到场者时，`close` 前先问 `status.present`」 | 主席一回合把 m1/m2/m3 全 close，r-1 `attend` 得 `VMU_NO_SUCH_OBJECT`（RUN 77） |
 | 9 | park 之后 | 只说先答→abandon→再派，未说解析失败会释放 park | 补「解析失败会释放 park（下条 `step` 开新回合）」 | RUN 77 t-9 `VMU_TURN_NO_FENCE` 后 park 被释放、下一条 step 开了 t-10，读者以为还在同一个 park |
+
+## TB-2732 补记：RUN 78 七处「照提示词做会做错」的更正（判据在 `tests/vmu-run78-prompt-corrections.test.mjs`）
+
+| # | 事件点 | 旧句（会误导） | 新句 | 为什么（真机证据） |
+| --- | --- | --- | --- | --- |
+| D4 | 找记录本库根时 | 「看回执的 `libraryRoot`」 | 「看回执 `roots.libraryRoot`」 | 回执顶层键是 `roots.libraryRoot`；r-1 按旧句把 proof_ref 写错位置、rec-4 作废（RUN 78） |
+| D5 | 会议回合投结题票 | 「工具可见时回执的 `vote_solved` 被静默忽略（`kept:false`）」 | 「结题票用 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；回执写 `{"vote_solved": true|false}` 只在**可证该回合没挂投票工具**（`keptWhy:"tool-not-mounted"`）时计票，否则 `kept:false`——看 `keptWhy` 改渠道」 | TB-2730 已落地：**可证空表**才是唯一计票态；其余四值均不计票（TB-2732 先删旧承诺，TB-2730 落地后写回真实条件） |
+| D6 | 会议结题判定 | 「表决人数达到法定人数 m = min(…) 且无人投反对」 | 「全体有表决权者一律投 true；m 是辩论裁决下限，不是结题分母」 | `closureVote.castMeaning`：4/4 才 `cast:true`；m=3 只是裁决 floor——旧句会让主席在 3/4 时就以为能结题 |
+| D7 | 交回执时 | 一处「不要调用 `op:"reply"`」、一处「用一次 `op:"reply"` 交回」 | 按投递路径分流：activation ⇒ 只写围栏；caller 代转 ⇒ `vibe_vmu_turn { op:"reply", report:{…} }`（或 `op:"step"` 带 reply） | 两条路径的应答通道不同，同一句笼统禁令会让 caller 派发的席位不知道该怎么交回 |
+| C7 | 论文 `final` 撞问询门 | 只在 paper-final 相位教 `VMU_OFFICE_CONSULT_REQUIRED` | chair **normal** 可读段保留该码与 `consult` 出口教学（唯一一处） | 相位限定段的「等于没教」；parity S4b/S5a 也依赖 normal 文本命中 |
+| C9 | 所办职责 | fixture-tools / seat-act-boundary / charter-org / report-duty 各写一遍「只派回合与转达」 | 只留 fixture-tools 一句权威句，charter-org 删「立所、雇佣」复述 | 同一事实四处措辞不同，读者无法判断权威；重复也挤占预算 |
+| C10 | 成员/临时工拿 `vibe_vmu_turn` | 工具面挂了它，暗示成员能自己 step | 「成员/临时工：`vibe_vmu_turn` 只有 `op:"status"` 有意义（step/drive/abandon 是所办/主席的动作）」 | 成员跑不了 step（产品侧归 TB-2733）；提示词不再暗示 |
+
+## TB-2730 补记：D5 方向写回 + 成员面 `op:"reply"` 限定（判据在 `tests/vmu-run78-prompt-corrections.test.mjs` §2/§4）
+
+- **D5 的正确方向是「可证空表才计票」，RUN 78 的缺陷是把「不可证」读成了「可证空表」**（`kernel/turn/index.js:4304-4329`：`tool-not-mounted` ⇒ `kept:true` + recordClosureVote；`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row` ⇒ `kept:false`）。提示词现在只说这条事实与五个 `keptWhy` 值，不再承诺笼统的静默忽略。
+- 成员/临时工面：`op:"reply"` 的教法从「唯一应答通道」改为**显式禁止**（所办代转才用；成员调用会被 `VMU_NOT_PERMITTED` 拒），caller 句加「（所办代转时）」限定——配合 TB-2733/P1 把成员 `vibe_vmu_turn` 动作集收窄到 `{op:"status"}`。

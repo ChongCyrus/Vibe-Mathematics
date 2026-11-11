@@ -261,6 +261,32 @@ try {
     ok(closureDet && closureDet.ok === true && closureDet.detail === 'closure',
       '§0d11 the pre-existing closure slice still works (this round did not trade one detail for another)')
   }
+
+  // ── §A2 THE FOURTH KEY REACHES THE LEDGER ROW (TB-2730 / RUN 78 V2) ─────────────────────────────────────
+  // ★ THREE LAYERS, ONE READING (the §355 lesson): the PRODUCER (`assemble`, this section's `notices`) has carried
+  // `namedEmpty` since this ticket's A repair; the assembly receipt exposed it; the LEDGER row lost it in TRANSPORT.
+  // RUN 78 adds the transport, so the row a status reader sees carries the same four keys. This is the same fact as §A,
+  // read at the layer the office actually opens — the defect here was never "the field was not computed".
+  section('§A2 the ledger row carries the fourth notice key (the transport, not the producer)')
+  {
+    // a runnable kernel (its own delivery seam) so the turn SETTLES and writes its evidence row through the loop
+    const root = await mkRoot()
+    const K = (await import('../vibe-math-vmu/kernel/index.js')).createKernel({
+      root, clock: () => 1000, settings: {},
+      deliverTurn: async () => ({ reply: ['```json', J({ progress: 'run77 §A2' }), '```'].join('\n'), deliveryPath: 'fake-delegated' }),
+    })
+    await K.store.open()
+    const r = await K.turn.run({ member: 'm-1', phase: 'normal', round: 1, role: 'researcher', roleLabel: '常驻研究员', why: 'run77 §A2 ledger transport' })
+    const id = r && r.turn && typeof r.turn === 'object' ? String(r.turn.id) : null
+    const rows = K.turn.status({ roster: ['m-1'] }).turnReceipts || []
+    const row = id ? (rows.find((x) => String(x.turn) === id) || null) : (rows.length ? rows[rows.length - 1] : null)
+    ok(r && r.ok === true && row && row.notices && typeof row.notices.namedEmpty === 'boolean',
+      '§A2a turnReceipts[].notices carries a BOOLEAN namedEmpty (before RUN 78 the whitelist dropped the key)', row && row.notices)
+    ok(row && row.notices && row.notices.namedEmpty === (row.notices.lines === 0),
+      '§A2b on a row the RUN 77+ producer wrote the fourth key agrees with `lines` (an empty queue is the named empty)', row && row.notices)
+    ok(turnSource.includes('namedEmpty: typeof patch.notices.namedEmpty === \'boolean\''),
+      '§A2c the ledger whitelist names the fourth key itself (transport is a line of code, not a promise)')
+  }
 } finally {
   for (const root of roots) await rm(root, { recursive: true, force: true })
 }

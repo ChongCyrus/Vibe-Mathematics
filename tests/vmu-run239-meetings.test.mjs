@@ -12,8 +12,10 @@
  *     他本人（此前回执根本没有 spokeBy，只能再读一次会议）。
  *  §3 `close()` 回执与返回、以及关闭后的 `summary()`（archive 行）同源；关闭不会重置「谁发过言」。
  *  §4 议程有两个名字、没有条目：pack 的参数叫 `agenda`，内核字段叫 `materials`，读面回显成一整串无名文本。
- *     现在 `agenda`/`materials` 同值同解释，`agendaItems` 是同一串按写入面自己用的分隔符（`;` `；` `、` `,` 换行）
+ *     现在 `agenda`/`materials` 同值同解释，`agendaItems` 是同一串按写入面**能产出的**分隔符（`;` `；` 换行）
  *     切开、去空白、保序；`agendaItemsMeans`/`materialsMeans` 各说清自己是什么。
+ *     ★ RUN 78 / TB-2734 修正：旧实现还认 `、` 与 `,`，而写面只把数组议程用 "; " 拼成一行 ⇒ 这两个字符不是 join 的逆，
+ *     且数学里逗号是元组分隔符（`(2k-1,2k)` 被切成两条）。本套件的夹具与源码 pin 已按新世界更新（§0/§4）。
  *  §5 逐条正式议程：内核没有人写 `formalAgenda`（pack 的 `formal_agenda` 是布尔），所以正常会议是 `null` + 一句
  *     「null 是没有条目清单，不是空议程」；真带数组时（另一写入方存进 fold 的行）拆成 `{index,id,text}`，空文本丢弃、
  *     顺序保留、`index` 是它在记录里的位置。
@@ -48,7 +50,12 @@ const mk = (settings = {}) => {
   })
 }
 const MEET = { type: 'ordinary', chair: 'acad', roster: ['acad', 'r-1', 'r-2'] }
-const AGENDA = 'item one; item two、item three, item four\nitem five'
+// ★ RUN 78 / TB-2734: this fixture USED to be 'item one; item two、item three, item four\nitem five' and got its five
+// items only because the READ split treats `、` and `,` as separators. That is exactly the defect RUN 78 measured: the
+// write face joins an agenda array with "; ", so `、`/`,` were never separators the join could produce — and `(2k-1,2k)`
+// was cut in half. The old expectation ("five items") described a world where a mathematical comma was an agenda line.
+// The five items now come only from the two separators the write face can actually produce.
+const AGENDA = 'item one; item two; item three; item four\nitem five'
 const SPOKE_FAMILY = ['speeches', 'speechesMeans', 'turnsAccounted', 'turnsUnattributed', 'turnsUnattributedMeans',
   'spokeBy', 'spokeByCount', 'spokeByMeans', 'omittedKeys', 'omittedMeans']
 const AGENDA_FAMILY = ['agenda', 'agendaItems', 'agendaItemsMeans', 'materials', 'materialsMeans',
@@ -69,7 +76,13 @@ console.log('=== 0. the two read faces are built from ONE projection (source pin
     { spreads: countIn(src, '...spokeBlockOf(m)') })
   ok(countIn(src, '...agendaBlockOf(m)') === 2 && countIn(src, 'const agendaBlockOf = (m)') === 1,
     '★ the agenda block is built once and spread on both read faces', { spreads: countIn(src, '...agendaBlockOf(m)') })
-  ok(countIn(src, 'const AGENDA_ITEM_SEPARATORS = /[;；、,\\n]/') === 1, '★ the split uses the separators the write face itself joins with (; ； 、 , newline)')
+  // ★ RUN 78 / TB-2734: the pin is the FACT (the splitter accepts exactly `;`, `；`, newline), not the prose of a
+  // comment. The old pin asserted a class that also held `、` and `,`; that world is gone because the write face never
+  // joins with either character, and a mathematical tuple `(2k-1,2k)` must stay inside one item.
+  ok(countIn(src, 'const AGENDA_ITEM_SEPARATORS = /[;；\\n]/') === 1,
+    '★ the split accepts ONLY the separators the write face can produce: ; ； newline (RUN 78 / TB-2734)')
+  ok(countIn(src, 'const AGENDA_ITEM_SEPARATORS = /[;；\\n]/') === 1 && !/AGENDA_ITEM_SEPARATORS = \/\[[^\]]*[,、][^\]]*\]\//.test(src),
+    '★★ and it does NOT accept the comma or 、 — a tuple separator is not an agenda separator', { commaFree: !/AGENDA_ITEM_SEPARATORS = \/\[[^\]]*[,、][^\]]*\]\//.test(src) })
   ok(countIn(src, 'omittedKeys: []') === 1, '★ `omittedKeys: []` is the assertion "no face prunes"; a face that must drop a key has to name it')
 }
 
@@ -155,9 +168,26 @@ console.log('\n=== 4. `agenda` and `materials` are one value, and its items are 
   ok(sum.agenda === AGENDA && sum.materials === AGENDA,
     '★★ BOTH names carry the SAME agenda string (the second name is for readers already parsing `materials`)', { agenda: sum.agenda, materials: sum.materials })
   ok(sum.agendaItems.length === 5 && sum.agendaItems.join('|') === 'item one|item two|item three|item four|item five',
-    '★★ the stored one-line agenda is readable as its ITEMS (split on ; ； 、 , and newline, trimmed, order kept)', sum && sum.agendaItems)
-  ok(sum.agendaItems.every((x) => x === x.trim() && x !== ''), '★ no item keeps surrounding whitespace and no empty item is emitted')
-  has(sum.agendaItemsMeans, 'order preserved', '★ agendaItems says how it was derived (a reading of the string, not a second record)')
+    '★★ the stored one-line agenda is readable as its ITEMS (split on ; ； and newline only, trimmed, order kept) — RUN 78: `、`/`,` are NOT separators, so this fixture supplies its five items only through the two the write face joins with',
+    sum && sum.agendaItems)
+  // ★ RUN 78 / TB-2734: the measured shape — a mathematical tuple comma must survive INSIDE one item.
+  {
+    const m = mk({})
+    const mo = m.open(Object.assign({}, MEET, { materials: '确认命题(2k-1,2k); 分配复核' }))
+    const ms = m.summary({ meeting: mo.meeting })
+    ok(ms.agendaItems.length === 2 && ms.agendaItems[0] === '确认命题(2k-1,2k)',
+      '★★★ RUN 78: the comma inside (2k-1,2k) is a TUPLE separator, not an agenda separator — the item survives whole',
+      { items: ms.agendaItems })
+  }
+  // ★ RULE E: every() is TRUE on an empty list, so the non-empty guard belongs to the SAME assertion it protects
+  ok(sum.agendaItems.length > 0 && sum.agendaItems.every((x) => x === x.trim() && x !== ''),
+    '★ no item keeps surrounding whitespace and no empty item is emitted (asserted on a NON-EMPTY list)', sum.agendaItems)
+  // ★ RUN 78 / TB-2734: the sentence was re-worded to name the comma decision, so the old pin's exact phrase `order
+  // preserved` no longer exists. The FACT it guarded (means explains how the list was derived, order kept) is now pinned
+  // on the new sentence, which additionally has to say that `、`/`,` are not separators — the old sentence named them AS
+  // separators, which is the world RUN 78 measured as wrong.
+  has(sum.agendaItemsMeans, 'order is preserved', '★ agendaItems says how it was derived (a reading of the string, not a second record)')
+  has(sum.agendaItemsMeans, 'NOT separators', '★★ and the sentence names the comma decision: 、/, stay inside one item (RUN 78)')
   has(sum.materialsMeans, 'agenda', '★★ materialsMeans says plainly that `materials` IS the agenda — a reader of the old name is not missing a fact')
   ok(view.agenda === sum.agenda && view.agendaItems.join('|') === sum.agendaItems.join('|'),
     '★★ the status view reads the SAME agenda and the SAME items', { agenda: view.agenda, items: view.agendaItems })

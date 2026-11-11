@@ -8,6 +8,18 @@
 // kernel had a chance to accept it - the same contract-versus-implementation gap this repo keeps paying for.
 import { FIELD_OWNERS, REPLY_FIELDS } from '../kernel/turn/index.js'
 
+// ★★★★★★★ TB-2733 / RUN 78 D8 (FEEDBACK78): A MEMBER'S TURN FACE MUST ADVERTISE THE OPS IT CAN ACTUALLY RUN.
+// RUN 78: the member wire carried the WHOLE turn engine (the host has no seat table for host faces, so nothing narrows
+// this face for a member), member r-3 called op:"step" at t-17, got VMU_NOT_PERMITTED, and the hint told it to "remove
+// vibe_vmu_turn from tools.allow" - a lever a member cannot pull, and one the office had never set. A refusal whose
+// remedy is unreachable is the defect, not the refusal.
+// ONE constant drives FOUR exits: the op description's member sentence, the runtime guard, the refusal hint, and the
+// status receipt. Copying the list four times is how wire/guard/receipt drift apart (TB-2710, TB-2712, TB-2720); adding
+// an op for a member is ONE edit here and every exit moves with it. The member set is { status } by the TB-2733 ruling:
+// reading your OWN last settled turn is a delivered capability (RUN 75 F75-06); running the engine belongs to the office.
+export const MEMBER_TURN_OPS = Object.freeze(['status'])
+export const memberOpsText = () => 'members may call only ' + MEMBER_TURN_OPS.map((o) => 'op:"' + o + '"').join(' or ') + ' (read your own turns)'
+
 const REPORT_FIELDS_DOC = REPLY_FIELDS
   .map((f) => (FIELD_OWNERS[f] ? f + '→' + FIELD_OWNERS[f].face + '.' + FIELD_OWNERS[f].op : f + '→书账'))
   .join('；')
@@ -329,7 +341,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       }
     }
     return { ok: true, status, turns: perTurn, skippedTotals,
-      ...(memberRead ? { lastTurn, lastTurnMeans: 'READ-ONLY durable projection of YOUR OWN last turn (turns fold + member_sessions): id = turn id, codes = refusal codes recorded at settlement, skipped = fields kept but not executed, emptyReply = the loop settled with no usable reply, status = how it ended, at = when it opened. `turns` above is THIS kernel instance\'s memory and is empty in your own session — this line is the cross-instance answer. You cannot step/abandon/prompt from here.' } : {}),
+      ...(memberRead ? { lastTurn, memberOps: MEMBER_TURN_OPS.slice(), memberOpsMeans: memberOpsText() + '; this list is the ONE constant that also builds the guard and the refusal hint - an op not listed here is refused by VMU_NOT_PERMITTED with a reachable next step', lastTurnMeans: 'READ-ONLY durable projection of YOUR OWN last turn (turns fold + member_sessions): id = turn id, codes = refusal codes recorded at settlement, skipped = fields kept but not executed, emptyReply = the loop settled with no usable reply, status = how it ended, at = when it opened. `turns` above is THIS kernel instance\'s memory and is empty in your own session — this line is the cross-instance answer. You cannot step/abandon/prompt from here.' } : {}),
       turnsMeans: 'HOST BOOKKEEPING of each turn the loop settled (or still has open), NOT the member\'s intent: executed = reply fields dispatched and the face.op channel, skipped = fields kept but not executed (each with a code), writes = tool writes with their record ids, codes = refusal codes, unavailable = what this kernel CANNOT see (e.g. tool calls a member made in its own child session). `openedBy` says which door opened the turn: drive (the caller\'s step/drive), activation (the background pump), wait (a meeting wake), null (unknown/legacy). Bounded to the last rows; an empty list means no turn settled in THIS kernel session, not that nothing happened.',
       ...(status.turnReceiptsMeans === undefined ? {} : { turnsUnavailableMeans: status.turnReceiptsMeans }) }
   }
@@ -580,11 +592,11 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       const op = String((args && args.op) || 'status')
       const caller = agentIdOf(exec)
       const memberCaller = isMemberCaller(caller)
-      const memberAllowed = op === 'status' || op === 'reply'
+      const memberAllowed = MEMBER_TURN_OPS.includes(op)
       if (memberCaller && !memberAllowed) {
         return Promise.resolve(refused('VMU_NOT_PERMITTED',
           'a member turn cannot run the institute turn engine (op: ' + op + ')',
-          'remove vibe_vmu_turn from tools.allow: the turn engine belongs to the root/office; a member reports with op:"status" (read) or op:"reply" (report), and acts through the faces its role grants'))
+          'this face cannot run the turn engine from a member session. ' + memberOpsText() + '. REACHABLE INSTEAD: vibe_vmu_turn { op: "status" } - it answers at once with lastTurn (your own last settled turn: id, codes, status, at) and never waits behind a step. Running rounds belongs to the root/office, and your report reaches them through the office: they relay it on your behalf, so do not call op:"reply" from your own session - no turn is waiting for it here'))
       }
       // ★★★★★★★ RUN 245 (audit round 12 H1): THE OBSERVATION AND THE RELEASE NEVER WAIT BEHIND THE THING THEY OBSERVE.
       // run 241 added `turnLoop` (a reading) and `op:"abandon"` (a release) for a turn whose delivery never returns —
@@ -614,7 +626,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // and a real "properties" object - the model (correctly) put its arguments INSIDE that object, so top-level keys like
       // tools:'none' never reached coreTurn. It is a param map now, exactly like every other tool.
       parameters: {
-        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数／prompt＝分页读回本进程交出的成员提示词原文（step 回执里的 memberPrompt 会被回执上限截断，这里不会）／abandon＝关掉正在进行、永远不会自己结算的那一轮（回执把它记成 status:abandoned，并释放重入锁；不名字＝关在途那一轮）／reopen-closure＝开一个新的结题票窗口（旧票留档不再计数；只有所办能开，因为只有它知道所在问的是新问题）', { required: true }),
+        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数／prompt＝分页读回本进程交出的成员提示词原文（step 回执里的 memberPrompt 会被回执上限截断，这里不会）／abandon＝关掉正在进行、永远不会自己结算的那一轮（回执把它记成 status:abandoned，并释放重入锁；不名字＝关在途那一轮）／reopen-closure＝开一个新的结题票窗口（旧票留档不再计数；只有所办能开，因为只有它知道所在问的是新问题）' + '｜成员：' + memberOpsText() + '（其余动作由所办/主席执行；被拒时 hint 给出可照抄的下一步）', { required: true }),
         turn: param('string', '仅 prompt：要读哪一轮的提示词（省略＝最近一轮）'),
         offset: param('integer', '仅 prompt：从第几个字符开始（省略＝0）'),
         limit: param('integer', '仅 prompt：本页最多多少字符（省略＝6000，上限 9000；被夹到上限时回执 limitClamped:true）'),

@@ -1277,7 +1277,9 @@ const WORK_SHARE_CLASSIFIED_BY = Object.freeze({
  * member act at all, so the office could read a timeout as a turn that happened. These four whys are the decidable
  * classes; the seam error, the turn row and `deliveryLastFail` all name the SAME one.
  */
-export const DELIVERY_UNAVAILABLE_WHYS = Object.freeze(['timeout', 'error', 'not-configured', 'engine-lost-reply'])
+// ★★★ TB-2734 (3) / TB-2730 / RUN 78: FIVE classes, because "nothing was configured" and "the child ran and failed"
+// are different facts with the same surface: both arrive as VMU_ENGINE_UNAVAILABLE and used to be read as not-configured.
+export const DELIVERY_UNAVAILABLE_WHYS = Object.freeze(['timeout', 'error', 'not-configured', 'engine-lost-reply', 'child-error'])
 export function deliveryUnavailableWhyOf(e) {
   const code = e && typeof e.code === 'string' ? e.code : ''
   const message = e && typeof e.message === 'string' ? e.message : ''
@@ -1285,13 +1287,21 @@ export function deliveryUnavailableWhyOf(e) {
   // The engine accepted the turn and lost the reply (RUN 65: 1 125 039 ms, sub-session wrote but could not return the
   // text). That is NOT a timeout and must not be smoothed into one.
   if (code === 'VMU_ENGINE_UNAVAILABLE' && message.indexOf('handed back no reply') !== -1) return 'engine-lost-reply'
+  // ★ TB-2734 (3) / TB-2730 / RUN 78: the child RUN itself ended with stopReason="error". The host ACCEPTED the turn
+  // (configuration was fine) and the child failed; the throw site (:919-921) words it "the host accepted the activation
+  // but the child returned no text" / "...; blockTypes=[...] stopReason=error". Reading that as not-configured told the
+  // office "nothing was set up" while the 78th run's t-4 showed a configured, running, FAILING child.
+  if (code === 'VMU_ENGINE_UNAVAILABLE' && (message.indexOf('the child returned no text') !== -1 || message.indexOf('stopReason=error') !== -1)) return 'child-error'
   // Nothing configured: no seam, no host root Agent, no usable factory, no delivery deadline (docs/26 §2 stage 3).
   if (code === 'VMU_ENGINE_UNAVAILABLE' || code === 'VMU_INVALID_ARGUMENT') return 'not-configured'
   return 'error'
 }
 export function deliveryUnavailableMeansOf(why) {
   const named = DELIVERY_UNAVAILABLE_WHYS.indexOf(why) !== -1 ? why : 'error'
-  return '投递不可用（why:' + named + '）：本轮成员未运行，任何写入都不是成员在自己的会话里完成的（所办代转或不可证），所以 workShareOf 把这一行的 write 计入 unknownActs，不算成员发言。'
+  const detail = named === 'child-error'
+    ? '（why:child-error 专指「配置没问题、子会话跑了但自己以 stopReason="error" 结束」——不是没配置，别再读成 not-configured；not-configured 才是「没有可用的投递通道」。）'
+    : (named === 'not-configured' ? '（why:not-configured 专指「没有可用的投递通道/没装根 Agent/没有可用投递截止时间」，不是子会话失败。）' : '')
+  return '投递不可用（why:' + named + '）：本轮成员未运行，任何写入都不是成员在自己的会话里完成的（所办代转或不可证），所以 workShareOf 把这一行的 write 计入 unknownActs，不算成员发言。' + detail
 }
 export function workShareOf({ turns = [] } = {}) {
   const rows = Array.isArray(turns) ? turns : []
@@ -2885,10 +2895,16 @@ export function createTurnOrchestrator({
       // receipt's own cut; `replyFull*` are the archive's real file facts; `replyArchiveWhy` names the case when the full
       // text is NOT on disk (no seam wired, seam refused) and is null when there is nothing to warn about.
       if (patch.notices && typeof patch.notices === 'object') {
+        // ★★★ TB-2730 / RUN 78 (V2): THE FOURTH KEY WAS LOST IN TRANSPORT, NOT IN PRODUCTION. `assemble()` (this file,
+        // :3214) has always produced `notices: {lines, rendered, blockChars, namedEmpty}`; the ledger whitelist below
+        // copied only three, so `turnReceipts[].notices` could not say whether a 0-line block was the NAMED empty
+        // sentence or nothing at all — the very distinction RUN 77 (TB-2724 A) introduced. Carry it: a boolean when the
+        // producer gave one, null when this row predates the key (null = "cannot prove", never "false").
         next.notices = {
           lines: Number.isFinite(patch.notices.lines) ? Math.max(0, Math.floor(patch.notices.lines)) : 0,
           rendered: patch.notices.rendered === true,
           blockChars: Number.isFinite(patch.notices.blockChars) ? Math.max(0, Math.floor(patch.notices.blockChars)) : 0,
+          namedEmpty: typeof patch.notices.namedEmpty === 'boolean' ? patch.notices.namedEmpty : null,
         }
       }
       if (typeof patch.truncated === 'boolean') next.truncated = patch.truncated
@@ -3192,11 +3208,35 @@ export function createTurnOrchestrator({
     let withVisible = assembledText
     // ★ PHASE 7 (goal 3): the REAL visible tool names from the host's schemas - never from a declaration. An absent or
     // empty answer adds NOTHING (zero mechanism: no empty header).
+    // ★★★ TB-2730 / RUN 78 (D1): record the PER-TURN mounted-tools fact next to the old per-member table (kept because
+    // the bare `apply()` compatibility path and older rows still read it). Three states, never a silent empty array.
+    let mountedFact = { provable: false, tools: null, why: 'no-visible-tools-provider' }
     if (typeof visibleToolsFor === 'function') {
       let visible = null
-      try { visible = visibleToolsFor(turn.member) } catch { visible = null }
-      if (Array.isArray(visible)) { visibleToolsByMember.set(String(turn.member), visible.slice()); toolVotedThisTurn.delete(String(turn.member)) }
-      if (Array.isArray(visible) && visible.length > 0) withVisible += "\n\n【本轮可用工具】" + visible.slice(0, 80).join('、')
+      try {
+        visible = visibleToolsFor(turn.member)
+      } catch (e) {
+        visible = null
+        const code = e && e.code ? String(e.code) : ''
+        const message = e && e.message ? String(e.message) : String(e)
+        mountedFact = { provable: false, tools: null, why: 'provider-threw:' + (code || message).slice(0, 200) }
+      }
+      if (Array.isArray(visible)) {
+        visibleToolsByMember.set(String(turn.member), visible.slice())
+        toolVotedThisTurn.delete(String(turn.member))
+        mountedFact = { provable: true, tools: visible.slice(), why: null }
+        if (visible.length > 0) withVisible += "\n\n【本轮可用工具】" + visible.slice(0, 80).join('、')
+      } else if (mountedFact.why === 'no-visible-tools-provider') {
+        mountedFact = { provable: false, tools: null, why: 'provider-returned-' + (visible === null ? 'null' : typeof visible) }
+      }
+    }
+    if (turn && typeof turn.id === 'string' && turn.id !== '') {
+      mountedToolsByTurn.set(String(turn.id), mountedFact)
+      while (mountedToolsByTurn.size > MOUNTED_TOOLS_TURNS_CAP) {
+        const oldest = mountedToolsByTurn.keys().next()
+        if (oldest.done) break
+        mountedToolsByTurn.delete(oldest.value)
+      }
     }
     // ★ PHASE 9 / round 7: the per-turn instruction (`why`, the thing `step` was asked to make the member do) used to
     // live only on the turn object and in the HOST wake spec — it never entered the prompt, so an instruction-only
@@ -4050,10 +4090,17 @@ export function createTurnOrchestrator({
   // later found the meeting, the Lean jobs and the ruling cards in the shared records. `EXECUTED_MEANS` says what the
   // count is, but nothing said WHERE the work is readable — so the same paragraph is carried by every receipt shape.
   const MEMBER_ACTS_MEANS = 'this receipt counts what the turn DISPATCHED (reply fields), not what the member did: a member works in its OWN session, so a proof it wrote, a meeting it convened, a Lean job it started, a record it filed or a chat line it sent does NOT appear here. Read those from the shared records instead — `vibe_vmu_chat` for what it said (the READ action is `list`, not `read`), `vibe_vmu_meeting { action: "status" }` for the meeting OBJECT (state/roster/chair — it does NOT answer the vote tally; read votes from the `tally`/`closureReading` of the verdict receipt), `vibe_v5_read_library { id }` for the cards it filed, `vibe_v5_lean_job` for the jobs it ran (a jobId, or none for the list). `executed:0` therefore means "no reply field was dispatched", never "the member did nothing"'
+  // ★★★★★★★ TB-2730 / RUN 78 follow-up: THE ROW NOW CARRIES `keptWhy`, NOT ONLY A PROSE `reason`. READ 78's prompt
+  // teaches the reader "the receipt's fieldsIgnored row gives the ignored field AND the reason" and, after the fix, the
+  // DECIDING FACT is a machine name (`tool-visible` / `tool-not-mounted` / `tool-visibility-unprovable` / `legacy-row` /
+  // `tool-used-this-turn`) that the prompt points at by name (`keptWhy:"tool-not-mounted"`). A name the reader is told to
+  // look for must be a key it can read: prose `reason` alone made that sentence false, and `tests/audit-prompt-names.mjs`
+  // said so by counting `keptWhy` as a coverage gap without a producer. `kept` stays an always-true `false` here (this
+  // list IS the refused ones) — the honest addition is the name of the fact that won.
   const fieldsIgnoredOf = (r) => (Array.isArray(r && r.bookkeeping)
-    ? r.bookkeeping.filter((b) => b && b.kept === false).map((b) => ({ field: String(b.field), reason: b.reason === undefined ? null : String(b.reason) }))
+    ? r.bookkeeping.filter((b) => b && b.kept === false).map((b) => ({ field: String(b.field), reason: b.reason === undefined ? null : String(b.reason), keptWhy: b.keptWhy === undefined ? null : String(b.keptWhy) }))
     : [])
-  const FIELDS_IGNORED_MEANS = 'these fields arrived in the reply and were NOT recorded: `reason` says why (the closure vote is the usual case — in a turn where `vibe_vmu_vote` is visible the judgement is recorded through the TOOL, not through the reply field, so the vote is not lost, it is somewhere else). `fields` is what the reply carried; this list is what did not survive it'
+  const FIELDS_IGNORED_MEANS = 'these fields arrived in the reply and were NOT recorded: `reason` says why and `keptWhy` names the fact that decided it (the closure vote is the usual case — `tool-visible` means `vibe_vmu_vote` was mounted so the judgement belongs to the TOOL, `tool-not-mounted` means the reply WAS the only channel and the value was adopted, `tool-visibility-unprovable`/`legacy-row` mean this loop has no reading of what that turn mounted and a vote is NOT counted rather than guessed). `fields` is what the reply carried; this list is what did not survive it'
   // ★★★★★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #1, MEASURED): THE THREE FIELD COUNTS NOW TRAVEL ON EVERY
   // SUCCESS RECEIPT, not only on the whole-turn failure.
   //
@@ -4127,6 +4174,17 @@ export function createTurnOrchestrator({
   }
   const visibleToolsByMember = new Map() // ★ last assembled visible set per member (this turn)
   const toolVotedThisTurn = new Set()    // ★ members who already voted THROUGH THE TOOL this turn
+  // ★★★ TB-2730 / RUN 78 (D1): WHAT THIS TURN ACTUALLY MOUNTED, PER TURN ID, as a DECIDABLE fact. The reply's
+  // `vote_solved` used to be gated on `visibleToolsByMember` — a per-MEMBER table whose only writer is an assembly
+  // where the host provider returned an array. A turn the office drove, or relayed (deliveryPath "caller"), has no live
+  // member Agent (host.js#setVisibleToolsProvider throws through `resolveMemberAgent`), so the table stayed empty and
+  // the read `get(id) || []` was indistinguishable from "the member really had no vote tool". That empty array is what
+  // let a relayed reply's vote be COUNTED on the 78th run while the one-turn-one-channel rule was supposed to keep it.
+  // Now each assembly records, keyed by TURN, one of: provable:true + the real host table; provable:false + the why
+  // this loop cannot prove it; or NO ENTRY = this loop never assembled that turn (a legacy row from another process).
+  // `apply` decides the vote channel from that fact only.
+  const mountedToolsByTurn = new Map() // turnId -> { provable: boolean, tools: string[] | null, why: string | null }
+  const MOUNTED_TOOLS_TURNS_CAP = 512
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
   /**
    * ★ PHASE 8 / round 37: THE ONE CLOSURE-VOTE WRITER. Both inputs — a reply's `vote_solved` field and the
@@ -4238,16 +4296,44 @@ export function createTurnOrchestrator({
         // because a closure vote is a judgement and inventing one is the worst outcome available here.
         const rawVote = typeof r.vote_solved === 'string' ? r.vote_solved.trim().toLowerCase() : r.vote_solved
         const id = String(memberId)
+        // ★★★★★★★ TB-2730 / RUN 78 (D1) — THE CLOSURE-VOTE CHANNEL IS DECIDED BY A PROVABLE FACT, NOT BY A STATIC
+        // TABLE. The 78th live run: t-3/t-6/t-7 were relayed turns whose replies carried vote_solved, the receipt kept
+        // `effects:[{kind:"closure-vote", ..., source:"reply", durable:true}]`, votesCast went 1 -> 2, and NO kept:false
+        // row appeared — the one-turn-one-channel gate had nothing to stand on (no live member Agent => the per-member
+        // table was never written => `|| []` read as "no vote tool", so the reply vote was adopted). The states below are
+        // measured facts about THIS turn; `kept` rows say which fact won, by name.
+        const turnIdForVote = opts && opts.turnId !== undefined && opts.turnId !== null && String(opts.turnId).trim() !== ''
+          ? String(opts.turnId).trim()
+          : null
+        const mounted = turnIdForVote !== null ? (mountedToolsByTurn.get(turnIdForVote) || null) : null
         const visible = visibleToolsByMember.get(id) || []
-        const voteFaceVisible = visible.includes('vibe_vmu_vote')
-        if (voteFaceVisible || toolVotedThisTurn.has(id)) {
-          // ★ PHASE 8 / round 39: ONE TURN, ONE CHANNEL. If the vote tool is visible (or was already used), the reply
-          // field is NOT recorded; the latest-wins ACROSS turns is untouched.
-          bookkeeping.push({ field: 'vote_solved', kept: false, reason: 'vibe_vmu_vote is available this turn; the reply vote_solved is ignored (use the tool)' })
+        const toolVoteUsed = toolVotedThisTurn.has(id)
+        if (toolVoteUsed) {
+          bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-used-this-turn', reason: 'vibe_vmu_vote was already used this turn; the reply vote_solved is ignored (ONE TURN, ONE CHANNEL)' })
+        } else if (turnIdForVote === null) {
+          // ★ COMPATIBILITY, NAMED: a bare `apply()` with no turn row (the tool face's own path and the unit tests that
+          // predate this gate). Production replies ALWAYS travel through dispatchReply (:4729) with `turnId: turn.id`, so
+          // this branch is not reachable from a member's reply; it exists because the pre-2730 rule is what those callers
+          // were tested against, and changing it would be a second, unrelated change. The row still says the fact by name.
+          if (visible.includes('vibe_vmu_vote')) {
+            bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visible', reason: 'vibe_vmu_vote is available this turn; the reply vote_solved is ignored (use the tool)' })
+          } else {
+            recordClosureVote(memberId, rawVote)
+            context.set(field, r[field])
+            bookkeeping.push({ field: 'vote_solved', kept: true, keptWhy: 'no-turn-row-compat', adoptedBecause: 'no turn id reached apply(): this is the direct/tool path, where the pre-2730 rule (adopt unless the member table names the vote tool) still holds' })
+          }
+        } else if (mounted === null) {
+          bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'legacy-row', reason: 'this loop never assembled turn ' + turnIdForVote + ', so it has no reading of what that turn mounted; a reply vote is unprovable and is NOT counted' })
+        } else if (mounted.provable !== true) {
+          bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-unprovable', reason: 'this loop cannot prove what turn ' + turnIdForVote + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '); a reply vote is NOT counted — relaying it would be a ghost vote' })
+        } else if (mounted.tools.indexOf('vibe_vmu_vote') !== -1) {
+          bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visible', reason: 'vibe_vmu_vote WAS mounted for turn ' + turnIdForVote + ' (measured from the host table); the reply vote_solved is ignored (use the tool)' })
         } else {
-          // ★ ROUND 18: pass the RAW value through. Turning it into a boolean HERE was what made the translation
-          //   invisible: by the time the writer saw it there was no way to tell true from 'true'.
+          // ★ the only state that adopts: a PROVABLE turn whose mounted table really lacks the vote tool. The row names
+          // both the fact and why adopting here is not a guess.
           recordClosureVote(memberId, rawVote)
+          context.set(field, r[field])
+          bookkeeping.push({ field: 'vote_solved', kept: true, keptWhy: 'tool-not-mounted', adoptedBecause: 'turn ' + turnIdForVote + ' mounted ' + mounted.tools.length + ' host tool(s) and NONE of them is vibe_vmu_vote — the reply is then the member’s only channel, and the value is passed through raw' })
         }
       }
       if (bookkeeping.some((b) => b.field === field)) continue
@@ -6890,7 +6976,7 @@ export function createTurnOrchestrator({
       skippedTotals: skippedTotalsReading(),
       skippedTotalsMeans: 'the SUM the per-turn ledger could not give without paging: `fields` counts skipped-field EVENTS across the retained turn rows (same field skipped twice counts twice), `fieldsDispatchThrown` the subset whose dispatch threw, `turnsWithSkips` the rows that skipped at least one field. `scope:"retained-turn-rows"` is the bound, and `evictedSkippedUnknown:true` means rows have already been dropped, so `fields` is only the retained part - not a session total and not an upper bound',
       turnLoopMeans: 'THIS IS THE LOOP\'S OWN FACT, not a copy of the durable fold: `inFlight` true means one turn is holding the single-turn slot right now, `inFlightForMs` says for how long, and past `abandonAfterMs` this loop closes that turn BY NAME (or immediately with op:"abandon"). A reader who sees inFlight:true while the durable fold says nothing is pending is looking at exactly the run-64 contradiction - the fix is op:"abandon", not a retry',
-      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null). RUN 250: each row ALSO carries the prompt/delivery evidence the run receipt shows - `notices` is {lines, rendered, blockChars} for the block that was in that turn\'s prompt (so "did the delivery render" is checkable per turn, not by scanning the workspace), `truncated`/`excerptLen` describe the receipt\'s own cut, `emptyReply`/`replyBytes` describe what the member wrote, and when a reply was cut past `vmu.turn.replyLimitChars` the full text lives at `replyFullPath` with `replyFullSha256`/`replyFullBytes` (verify them against the real file). null is a NAMED absence - "this loop has no reading for it (yet)"; `replyArchiveWhy` names why a cut reply has no full-text file (no archive seam wired, or the seam refused), and null there means there was nothing to warn about. RUN 251 (task-77): two more sentences a reader needs. (a) NAMES: the ONE authoritative names for the receipt cut are `truncated` and `excerptLen` — `replyTruncated` and `replyExcerpt` are the turn RECEIPT\'s older names for the same facts, kept here by name so old readers can find them and deliberately NOT duplicated as row keys; `excerptLen` is the CHARACTER COUNT of the cut (the excerpt TEXT itself is the receipt\'s `replyExcerpt`). (b) WHERE: row-level keys are `truncated`, `excerptLen`, `emptyReply`, `replyBytes`, `replyFullPath`, `replyFullSha256`, `replyFullBytes`, `replyArchiveWhy`; the block reading is the NESTED object `notices` = {lines, rendered, blockChars}, so `lines` is a key of `row.notices`, not of the row. `emptyReply` is about the reply TEXT (empty or whitespace-only = true; the tool channel is a separate channel, so `source`/`fields` still say what a parked report carried) — it never means "the parsed object had no usable value": a prose answer that parsed to nothing is emptyReply:false with replyBytes > 0. RUN 257 (task-90): `deliveryPath` is WHO RAN THE TURN as the delivery seam reported it - "caller" means the CALLING session played this member turn (an office relay), any other named path (activation/continuation/one-shot/a host seam name) means the seat own session ran it, and null means the ledger does not say (legacy row or a silent seam) - so a reader can tell the two apart without re-running the turn. Those row paths are what `memberWorkShare` classifies; its `means` states the ratio and the unknown rule.',
+      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null). RUN 250: each row ALSO carries the prompt/delivery evidence the run receipt shows - `notices` is {lines, rendered, blockChars, namedEmpty} for the block that was in that turn\'s prompt (so "did the delivery render" is checkable per turn, not by scanning the workspace; RUN 78 / TB-2730 V2: the FOURTH key is carried from the same assembly receipt — `namedEmpty: true` iff the block was the named-empty sentence, so on a row the RUN 78+ producer wrote `namedEmpty === (lines === 0)`, and `null` means the row predates that key and this loop cannot prove it), `truncated`/`excerptLen` describe the receipt\'s own cut, `emptyReply`/`replyBytes` describe what the member wrote, and when a reply was cut past `vmu.turn.replyLimitChars` the full text lives at `replyFullPath` with `replyFullSha256`/`replyFullBytes` (verify them against the real file). null is a NAMED absence - "this loop has no reading for it (yet)"; `replyArchiveWhy` names why a cut reply has no full-text file (no archive seam wired, or the seam refused), and null there means there was nothing to warn about. RUN 251 (task-77): two more sentences a reader needs. (a) NAMES: the ONE authoritative names for the receipt cut are `truncated` and `excerptLen` — `replyTruncated` and `replyExcerpt` are the turn RECEIPT\'s older names for the same facts, kept here by name so old readers can find them and deliberately NOT duplicated as row keys; `excerptLen` is the CHARACTER COUNT of the cut (the excerpt TEXT itself is the receipt\'s `replyExcerpt`). (b) WHERE: row-level keys are `truncated`, `excerptLen`, `emptyReply`, `replyBytes`, `replyFullPath`, `replyFullSha256`, `replyFullBytes`, `replyArchiveWhy`; the block reading is the NESTED object `notices` = {lines, rendered, blockChars, namedEmpty}, so `lines` is a key of `row.notices`, not of the row. `emptyReply` is about the reply TEXT (empty or whitespace-only = true; the tool channel is a separate channel, so `source`/`fields` still say what a parked report carried) — it never means "the parsed object had no usable value": a prose answer that parsed to nothing is emptyReply:false with replyBytes > 0. RUN 257 (task-90): `deliveryPath` is WHO RAN THE TURN as the delivery seam reported it - "caller" means the CALLING session played this member turn (an office relay), any other named path (activation/continuation/one-shot/a host seam name) means the seat own session ran it, and null means the ledger does not say (legacy row or a silent seam) - so a reader can tell the two apart without re-running the turn. Those row paths are what `memberWorkShare` classifies; its `means` states the ratio and the unknown rule.',
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.

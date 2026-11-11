@@ -214,8 +214,14 @@ try {
     ok(row !== null, '§4b the office face carries a row for the settled turn')
     const missing = EVIDENCE_KEYS.filter((key) => !row || !Object.prototype.hasOwnProperty.call(row, key) || row[key] === undefined)
     ok(missing.length === 0, '§4c every evidence key reaches the office face (none is undefined)', missing)
-    ok(row && row.notices && typeof row.notices === 'object' && JSON.stringify(Object.keys(row.notices).sort()) === '["blockChars","lines","rendered"]',
-      '§4d the block reading is the NESTED object notices {lines, rendered, blockChars}', row && row.notices)
+    // ★ TB-2730 / RUN 78 (V2): the ledger row transports FOUR notice keys now. Before RUN 78 the whitelist copied
+    // only {lines, rendered, blockChars} and this pin was exact-three; `namedEmpty` was computed by the assembler
+    // since RUN 77 but lost in TRANSPORT, so the office could not tell a named empty block from none at this layer.
+    // The three keys this suite cares about stay exactly as they were; the addition is asserted positively.
+    ok(row && row.notices && typeof row.notices === 'object' && JSON.stringify(Object.keys(row.notices).sort()) === '["blockChars","lines","namedEmpty","rendered"]',
+      '§4d the block reading is the NESTED object notices {lines, rendered, blockChars, namedEmpty}', row && row.notices)
+    ok(row && row.notices && typeof row.notices.namedEmpty === 'boolean' && row.notices.namedEmpty === (row.notices.lines === 0),
+      '§4d2 and the fourth key is a BOOLEAN that agrees with `lines` (the RUN 78 transport)', row && row.notices)
     ok(row && row.notices.lines === 1 && row.notices.rendered === true && row.notices.blockChars > 0,
       '§4e the office can see that one delivery line rendered, and its size', row && row.notices)
     ok(row && !Object.prototype.hasOwnProperty.call(row, 'lines') && !Object.prototype.hasOwnProperty.call(row, 'rendered'),

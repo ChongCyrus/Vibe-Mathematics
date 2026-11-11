@@ -41,6 +41,9 @@ console.log('=== 2. AND THE WHOLE CHAIN WORKS: step hands a prompt back, the rep
     clock: () => 1000, settings: {}, deliverTurn: seam,
     slots: [{ id: 'member', capacity: 0, permissions: ['speak', 'vote'] }],
   })
+  // ★ RUN 78 / TB-2730: the caller-supplied reply is the member's ONLY vote channel here; declare the empty
+  // mounted table (provable) instead of relying on the pre-RUN-78 default that read an empty table as provable.
+  kernel.turn.setVisibleToolsProvider(() => [])
   const first = await kernel.turn.step({ members: [{ id: 'm1', role: 'member' }], phase: 'founding' })
   ok(first.ok === true && first.awaiting === true, 'the round hands the member prompt back', { awaiting: first.awaiting })
   const supplied = kernel.turn.supplyMemberReply('{"say":"ok","vote_solved":true}')
@@ -55,6 +58,9 @@ console.log('=== 2. AND THE WHOLE CHAIN WORKS: step hands a prompt back, the rep
     clock: () => 1000, settings: {}, deliverTurn: real,
     slots: [{ id: 'member', capacity: 0, permissions: ['speak', 'vote'] }],
   })
+  // ★ RUN 78 / TB-2730: the caller-supplied reply is the member's ONLY vote channel here; declare the empty
+  // mounted table (provable) instead of relying on the pre-RUN-78 default that read an empty table as provable.
+  k2.turn.setVisibleToolsProvider(() => [])
   await k2.members.hire({ id: 'm1', slot: 'member' })
   const handed = await k2.turn.step({ members: [{ id: 'm1', role: 'member' }], phase: 'founding' })
   ok(handed.ok === true && handed.awaiting === true && handed.memberPrompt && handed.memberPrompt.member === 'm1',

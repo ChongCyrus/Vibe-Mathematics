@@ -48,7 +48,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     //   VMU_TURN_NO_PENDING_MEMBER and kernel/turn/index.js:445-450 appends the same delivery note.
     //   ★ ROUND 35 inverted this correction's direction: it had told members the fence was only for subagents.
     text: [
-      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏只适用于子代理交付」说反了：成员回合由宿主派发，没有待回回合，`op:"reply"` 只会得到 VMU_TURN_NO_PENDING_MEMBER——可用通道就是回复正文末尾那段 json 围栏（坏 ⇒ VMU_TURN_BAD_JSON）；两通道同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议举手/邀请用 vibe_vmu_meeting。',
+      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏只适用于子代理交付」说反了：成员回合由宿主派发，没有待回回合，`op:"reply"` 只会得到 VMU_TURN_NO_PENDING_MEMBER——可用通道就是回复正文末尾那段 json 围栏（坏 ⇒ VMU_TURN_BAD_JSON）；成员/临时工不要调用（所办代转才用）；两通道同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议举手/邀请用 vibe_vmu_meeting。',
     ].join('\n'),
   }),
   Object.freeze({

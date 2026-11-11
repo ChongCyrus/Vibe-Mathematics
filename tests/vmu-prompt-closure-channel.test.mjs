@@ -110,8 +110,13 @@ const sections = PACK.sections
     ok(bad.length === 0, 'RULE C holds in the assembled prompt of ' + seat.role, bad.slice(0, 2))
   }
   const chair = texts.find((t) => t.seat === 'chair').text
-  ok(chair.includes('vibe_vmu_vote') && chair.includes('唯一入口') && chair.includes('静默忽略'),
-    'the assembled prompt says the TOOL is the one entry and that a visible tool silently ignores the reply vote')
+  // OLD WORLD: TB-2725 promised a blanket silent-ignore, TB-2732 D5 removed it (RUN 78 measured it false).
+  // TB-2730 has shipped the real rule: reply vote_solved counts only when the turn provably did not mount the tool;
+  // otherwise the receipt says kept:false + keptWhy. The prompt must explain that pair, not a blanket claim.
+  ok(chair.includes('vibe_vmu_vote') && chair.includes('唯一入口') && chair.includes('fieldsIgnored') && chair.includes('按原因改渠道'),
+    'the assembled prompt says the TOOL is the one entry and points at the receipt fieldsIgnored reason for the ignored reply vote')
+  ok(!chair.includes('静默忽略'),
+    'the blanket silent-ignore promise is gone from the assembled text (TB-2730 owns the product fix)')
   ok(chair.includes('（**不计票**）'), 'and that a bare solved does NOT count')
   ok(!chair.includes('"solved": false}（结题表决'), 'the old ambiguous sample is gone from the assembled text')
   // The charter's receipt catalogue still declares `solved` — correctly, as the per-round judgement.

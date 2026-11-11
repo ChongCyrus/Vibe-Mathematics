@@ -18,12 +18,21 @@ const normalSum = Object.values(normalCombos).reduce((a, b) => a + b, 0)
 
 console.log('### RUN 77 / TB-2725 — the six prompt corrections, asserted on assembled text')
 
-test('§1 #6 the closure vote: the tool is the one entry; the reply field is only a fallback and is silently ignored when the tool is visible', () => {
+test('§1 #6 the closure vote: the tool is the one entry; the reply field is only a fallback', () => {
+  // OLD WORLD: TB-2725 promised a blanket silent-ignore ("a visible vibe_vmu_vote ignores the reply vote"), then TB-2732
+  // D5 removed it because RUN 78 measured the promise false. TB-2730 has now shipped the real rule: the reply field
+  // counts ONLY when the turn provably did not mount the tool (kept:true / keptWhy:"tool-not-mounted"); otherwise the
+  // receipt records kept:false + keptWhy, and the prompt must point readers at that pair instead of a blanket claim.
   for (const [slot, text] of Object.entries(normal)) {
     assert.ok(text.includes('vibe_vmu_vote'), slot + ': names the vote tool')
     assert.ok(text.includes('唯一入口'), slot + ': says it is the one entry')
-    assert.ok(text.includes('静默忽略') && text.includes('kept:false'), slot + ': says a visible tool silently ignores the reply field')
-    assert.ok(!text.includes('只有它计结题票'), slot + ': the false claim "only it counts the closure vote" is gone')
+    assert.ok(text.includes('fieldsIgnored'), slot + ': names the receipt surface that says why the reply vote was ignored')
+    assert.ok(text.includes('按原因改渠道'), slot + ': tells the reader to change channel by that reason')
+    for (const why of ['tool-not-mounted', 'tool-visible', 'tool-used-this-turn', 'tool-visibility-unprovable', 'legacy-row']) {
+      assert.ok(text.includes(why), slot + ': the reason code ' + why + ' is named')
+    }
+    assert.ok(!text.includes('静默忽略'), slot + ': no blanket silent-ignore promise in the shipped prompt')
+    assert.ok(!text.includes('只有它计结题票'), slot + ': the false claim "only the reply field counts" stays gone')
     assert.ok(!text.includes('结题表决用 `{"vote_solved": true|false}`'), slot + ': the old tool-less instruction is gone')
   }
 })
@@ -77,10 +86,13 @@ test('§6 #9 a failed reply releases the park; the next step opens a new turn', 
 // sake (in fixtureMode=tools no block a member/temp seat reads had a sample at all). Recorded per seat in
 // `tests/vmu-run247-prompt-dedup.test.mjs` and `tests/vmu-run256-prompts-compress.test.mjs`; here only the ceiling moves.
 const RUN270_PROGRESS_SAMPLE = { chair: 112, sum: 336 }
-test('§7 the corrections did not grow the prompts: three-seat normal sum ≤ the TB-2725 baseline (77844) + the RUN 270 sample', () => {
+// TB-2732 (RUN 78) is a net-zero task: seven corrections paid for by merging restatements; measured per seat in
+// `tests/vmu-run247-prompt-dedup.test.mjs` and `tests/vmu-run256-prompts-compress.test.mjs`.
+const TB2732_DEDUP = { chair: -8, member: -8, temp: -8, sum: -24 }
+test('§7 the corrections did not grow the prompts: three-seat normal sum ≤ the TB-2725 baseline (77844) + the RUN 270 sample + the TB-2732 dedup', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
-  const sumCeiling = 77844 + RUN270_PROGRESS_SAMPLE.sum
-  const chairCeiling = 29455 + RUN270_PROGRESS_SAMPLE.chair
+  const sumCeiling = 77844 + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum
+  const chairCeiling = 29455 + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair
   assert.ok(normalSum <= sumCeiling, 'three-seat normal sum ' + normalSum + ' ≤ ' + sumCeiling)
   assert.ok(normalCombos.chair <= chairCeiling, 'chair/normal ' + normalCombos.chair + ' ≤ ' + chairCeiling)
 })

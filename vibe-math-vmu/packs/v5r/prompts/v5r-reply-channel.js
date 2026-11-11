@@ -122,7 +122,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'solved', face: null, op: null, common: true,
     note: '你这一轮的个人判断（框架据此了解全所收敛度）' }),
   Object.freeze({ field: 'vote_solved', face: null, op: null,
-    note: '结题票用工具 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；只有它不可见时才写本字段（可见时被静默忽略 `kept:false`；`set_solved` 未登记）。' }),
+    note: '结题票用工具 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；回执字段只在**可证该回合未挂投票工具**时计票（`kept:true`/`keptWhy:"tool-not-mounted"`），否则 `kept:false`——`keptWhy` 具名原因（`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row`），照它改渠道；`set_solved` 未登记。' }),
   Object.freeze({ field: 'prioritize', face: null, op: null,
     note: '{order:[{task_id,priority}],why}：优先级（院士席牵头，记在轮次状态里）' }),
   Object.freeze({ field: 'hire', face: null, op: null,
@@ -173,7 +173,7 @@ export function replyChannelLines() {
     '【本轮怎么交回】① 回复正文末尾一段代码围栏（三个反引号，标记可省）包一个 JSON 对象，这是唯一可靠通道；裸对象也能解析，但围栏最稳。' +
     '② 围栏前可写说明，解析器取**最后一个**可解析围栏。③ **不要调用** `' + f.unreachable.tool +
     ' { op: "' + f.unreachable.op + '", … }`：成员回合由宿主派发（activation），没有待回的回合，该通道不可达，只会得到 ' +
-    '`' + f.unreachable.code + '`。④ 具名失败：`' + f.refusals.noFence +
+    '`' + f.unreachable.code + '`（成员/临时工调用会被 `VMU_NOT_PERMITTED` 拒）。④ 具名失败：`' + f.refusals.noFence +
     '`／`' + f.refusals.badJson + '`／`' + f.refusals.replyConflict + '`。',
   ]
 }
@@ -230,7 +230,7 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
     // ★★★ RUN 239 / FEEDBACK62 #1: the same wording rule lived in the full catalogue. The rule is not "don't write the
     // same thing twice" (a member cannot know what the kernel considers the same) — it is ONE ROW PER TRACK PER TURN,
     // and the second writer is skipped by name citing the row that already holds it.
-    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键（字符串 progress 会被内核映射成一行；一回合同一 track 只留一行，第二个写具名跳过并点名已有行 id）。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":{"track":"progress","title":"…","body":"…"},"solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
+    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达（成员不要调；所办代转才用）；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键（字符串 progress 会被内核映射成一行；一回合同一 track 只留一行，第二个写具名跳过并点名已有行 id）。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":{"track":"progress","title":"…","body":"…"},"solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
   }
   return lines
 }

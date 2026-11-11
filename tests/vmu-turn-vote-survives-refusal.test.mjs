@@ -30,6 +30,11 @@ const setup = () => {
     clock: () => 1000, settings: {}, deliverTurn: seam,
     slots: [{ id: 'member', capacity: 0, permissions: ['speak', 'vote'] }, { id: 'chair', capacity: 1, permissions: ['convene'] }],
   })
+  // ★ RUN 78 / TB-2730: the reply's `vote_solved` is now judged by the PER-TURN mounted-tools fact. Before
+  // RUN 78 an empty per-member table was read as "no vote tool mounted" by default; after RUN 78 a turn with no
+  // recorded fact is `legacy-row` and is NOT counted. This suite's premise is a member whose only channel is the
+  // reply, so the mounted table is declared as a FACT (provable, empty) instead of relying on that old default.
+  kernel.turn.setVisibleToolsProvider(() => [])
   const specs = toolSpecs({ kernel, settings: {}, turnTool: true, meetingTool: true, controlTool: true })
   return { seam, kernel, spec: (n) => specs.find((s) => s.name === n) }
 }
@@ -99,5 +104,23 @@ console.log('=== 3. AND THE COUNT IS A JUDGEMENT, NOT A TRUTHINESS TEST ===')
     { recorded: recorded(k2) })
 }
 
+console.log('=== 4. AND THE CHANNEL GATE IS REAL: with the vote tool MOUNTED the reply vote is NOT counted ===')
+{
+  const s3 = setup()
+  // the same fixture, one fact different: this turn PROVABLY had the vote tool, so the reply field is the channel
+  // the framework ignores (`kept:false`, `tool-visible`). Without this lamp the positive lamp above could pass by
+  // counting every reply vote, which is the RUN 78 defect itself.
+  s3.kernel.turn.setVisibleToolsProvider(() => ['vibe_vmu_vote'])
+  await s3.spec(TOOL_NAMES.control).run({ action: 'hire', member_id: 'm1', slot: 'member', institution: 'I' })
+  await s3.spec(TOOL_NAMES.control).run({ action: 'hire', member_id: 'm2', slot: 'member', institution: 'I' })
+  const reply = JSON.stringify({ vote_solved: true })
+  s3.seam.supply(reply)
+  await s3.spec(TOOL_NAMES.turn).run({ op: 'step', phase: 'founding', reply })
+  const st3 = s3.kernel.status({ detail: 'summary' })
+  ok(JSON.stringify(recorded(s3.kernel)) === '{}',
+    'the mounted vote tool means the reply vote is NOT recorded (the gate did not merely disappear)', { recorded: recorded(s3.kernel) })
+  ok(st3.closureVote.votesCast === 0,
+    'and the tally did not move - an ignored reply field is not a counted vote', { votesCast: st3.closureVote.votesCast })
+}
 console.log('=== TURN VOTE SURVIVES REFUSAL: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

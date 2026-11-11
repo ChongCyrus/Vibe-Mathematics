@@ -5136,3 +5136,17 @@ proceed() only applies to a meeting WAITING for its scheduled start: m1 is sched
 - **补：预算按实测抬，不按红抬。** 变异批从 43 涨到 52 条，单跑 155 s 在 gate 并发下被 180 s 默认值杀掉（自身计数全绿）⇒ `TIMEOUT_OVERRIDES = 400000`（2.58×）+ LPT 权重 155；`sim-gate` 那两段超允许量是**我在 T1 期间自己跑探针造成的假红**，静默重跑 8 360 ms / 42 655 ms 全绿，**不重钉 baseline**。
 - **口径：一条规则要被三处点名才算落地——机制、回执、读者手里的那份文本；缺一处，缺陷会在下一轮以「没触发」的形状回来。**
 本轮到 T1 **`TOTAL 864 PASS 864 FAIL 0`**（`778` suites + `86` probes，wall `660.7s`）、五门禁 PASS，提交 `RUN 271 收口提交`。
+
+## ROUND 271 —— 没有事实与事实是空的，必须长得不一样
+
+- **第 78 次真机**：17 回合、5 席、PDF 130 411 B、结题票 4/4、`memberShare 0.9583`；14 验点 = 11 PASS / 2 FAIL / 1 NO-EVIDENCE。
+- **幽灵票的根因不是缺一道门，是尺子把「读不到」读成「读到了零」**：`visibleToolsByMember` 只在 provider 返回数组时写，代传回合抛错被 `catch { visible = null }` 吞掉，读点 `get(id) || []` 于是得到「没挂投票工具」⇒ reply 的 `vote_solved` 被计票。改成按回合的三态挂载事实：`provable` 真表 / `provable:false` 带 why / 无条目，计票只发生在「可证为空」这一态，其余四态各自具名（`tool-used-this-turn` / `tool-visible` / `tool-visibility-unprovable` / `legacy-row`）。
+- **同一个读数在三层各有一次落地**：`namedEmpty` 在装配回执里有、在台账行搬运白名单里没有、在 means 的句子里也没有——于是报告写下「产品没有这个键」。缺缺口必须按层报（生产者 / 装配回执 / 台账行），否则修的人会去改一个没坏的地方。
+- **有事实不等于有入口**：中文别名的 `typeInput`/`typeMatchedBy` 只活在 `state.json` 的 receipts 账里，而读它的 `receiptsView` 没有任何工具面。验收口径里那等于没有——所以给 meeting 面加了只读 `action:"receiptsView"`，判据要求三处相等且第三处必须走工具面。
+- **错的承诺比缺的承诺更坏**：`v5r-core.js` 承诺「工具可见时 reply 的 `vote_solved` 记 `kept:false`」，而实测相反。先删掉这句话（回执暂时少一句），等机制真的成立再按真实条件写回。
+- **数学里的逗号是元组分隔符**：议程 `(2k-1,2k)` 被 `AGENDA_ITEM_SEPARATORS` 切成两条。分隔符只认 `;`/`；`/换行，means 明说「逗号与 `、` 不是分隔符」。
+- **render 回执要说「这次写了哪几行」**：`wroteToLedger:["md","tex","meta"]` 只是 kind 列表，读者还得再 list 一次；改成 `recordIds:{md,tex,meta}`（本次 `records.put` 的返回值），每个都 `records.get` 得到。
+- **成员面的工具不是能力，是拒绝**：成员面挂着 `vibe_vmu_turn` 但 `op:"step"` 必被拒，hint 还让成员去改自己没权限的 `tools.allow`。收窄到 `{op:"status"}`，一份常量驱动四个出口（描述/守卫/hint/回执），hint 给可照抄的调用。
+- **判据自己也会坏**：`every()` 在空集合上为 TRUE（守卫要写在同一条断言里）；文档引用提示词原句，改句就要改引文；「成员表为空 ⇒ 回退计票」这种默认成立的前提，在语义收紧后会变成「不可证」——显式声明前提，并补一条负向断言证明门还在。
+- **不要再把「语料里没有」读成「产品没有」**：审计的 coverage-gap 是语料盲区（harvester 只捕获顶层键），不是产品缺口。语料侧单独立 TB-2736。
+- 本轮到 T1 `TOTAL 869 PASS 869 FAIL 0`（suites `783` · probes `86`，wall `640.3s`，k=3），cold release sweep 全绿；conformance §355.14 记本轮。

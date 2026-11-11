@@ -841,7 +841,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
         '★ 席位不参会（temp：attend 被拒）时 `input`/`hand` 被拒——走 `vibe_v5_say`。',
         '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。院士用 `vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "<被邀者 id>", by: "<你的 id>", why: "<为何请他发言>" }` 请人发言（**`by` 必填且必须是主席自己**：服务会议缺 `by` ⇒ `VMU_INVALID_ARGUMENT`、`by` 不是主席 ⇒ `VMU_NOT_PERMITTED`；`why` 必填；批量用 `members: [ … ]` 按给定顺序入队）——邀请≠签到，被邀者仍须自己 `attend` 才计法定人数。',
-        '**沉默不等于投票**：`vote_solved` 必须显式给出——认为已解决就填 "vote_solved": true；结题要求**表决人数达到法定人数 m = min(所办设定的上限, 院士+常驻研究员人数)**（以状态块「法定票数」为准）**且无人投反对**；缺 `vote_solved` 会**阻止结题**，未表态名单会被列出。；**结题票三处对照**：投票**动作**走会议骨架 `vibe_vmu_vote`，你的 reply 里写**字段** `vote_solved`，`set_solved` **未登记**（旧任务书写法，写进回执整轮判未知字段）。',
+        '**沉默不等于投票**：`vote_solved` 必须显式给出——认为已解决就填 "vote_solved": true；结题要求**全体有表决权者一律投 true**（`closureVote.castMeaning`：分母=全体有表决权席，不含 temp）；m 是辩论裁决下限，不是结题分母（`[表决] m=` 同理；`[结题] x/y` 分母同）；缺 `vote_solved` 会**阻止结题**，未表态名单会被列出。**结题票三处对照**：动作走 `vibe_vmu_vote`，reply 写字段 `vote_solved`，`set_solved` **未登记**。',
         '**辩论的最终裁决也受同一个 m 约束**：`vibe_v5_verdict_final` 的签署人数＝交来裁决的成员数＋签字的院士；低于 m 会**具名拒** `VMU_MEETING_QUORUM_LOST`（hint 给 `vibe_v5_verdict_ask` 与缺谁）。只有主席**故意**在不足 m 的席位上裁决时才用 `partial: true` + `why`；回执会写 `floor.gate.escapedBy: "partial"` 与 `satisfiedBy: false`，把例外留在记录上。',
         'input：发言；vote_solved：明确的结题判断，沉默不计赞成。',
       ].join('\n'),

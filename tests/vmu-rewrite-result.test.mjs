@@ -143,6 +143,10 @@ const REPLY = '{"vote_solved": false}'
 const MIDDLEWARE = (id, decision, caps) => ({ id, kind: 'module', order: 10, on: ['turn/reply-parsed'], failure: 'closed', capabilities: caps, handler: () => decision })
 const bootKernel = (entries = []) => {
   const kernel = createKernel({ settings: {}, deliverTurn: async () => REPLY })
+  // ★ RUN 78 / TB-2730: a rewritten reply still has ONE channel - the reply - and this suite asserts the rewritten
+  // value lands. That needs a PROVABLE mounted fact (an empty table); before RUN 78 the empty per-member table was
+  // read as provable by default, which is exactly what RUN 78 stopped doing.
+  kernel.turn.setVisibleToolsProvider(() => [])
   for (const e of entries) kernel.bus.add(e)
   return kernel
 }
@@ -178,6 +182,22 @@ console.log('=== 8. ★★ REAL ASSEMBLY: THE HOOK FIRES AND THE DISPATCHER APPL
     JSON.stringify({ votes: Object.fromEntries(rewrittenState.closureVoteVotes), solved: rewrittenState.solvedThisRound }))
 }
 
+console.log('=== 8b. AND THE CHANNEL GATE STILL HOLDS OVER A REWRITE: a mounted vote tool means the rewritten vote is ignored ===')
+{
+  const guarded = bootKernel([MIDDLEWARE('k10-rewrite-gated', { rewriteResult: '{"vote_solved": true, "solved": true}' }, ['rewrite-result'])])
+  // one fact changes: the turn PROVABLY mounted the vote tool. The rewrite still happens (the middleware is not what
+  // is gated) but the reply-supplied vote must not be counted (`kept:false`, `tool-visible`) - that is the RUN 78 gate.
+  guarded.turn.setVisibleToolsProvider(() => ['vibe_vmu_vote'])
+  const outG = await guarded.turn.run({ member: 'm-1', phase: 'founding' })
+  const stateG = guarded.turn.status({ roster: ['m-1'], permission: 'vote' })
+  ok(stateG.closureVoteVotes.size === 0,
+    'a mounted vote tool ⇒ the rewritten reply vote is NOT recorded (no ghost vote through the rewrite path)',
+    JSON.stringify({ votes: Object.fromEntries(stateG.closureVoteVotes) }))
+  const keptRows = Array.isArray(outG.bookkeeping) ? outG.bookkeeping : []
+  ok(keptRows.some((b) => b && b.field === 'vote_solved' && b.kept === false && b.keptWhy === 'tool-visible'),
+    'and the receipt names the channel decision (`kept:false`, `keptWhy:\'tool-visible\'`) instead of silently dropping it',
+    JSON.stringify(keptRows))
+}
 console.log('=== 9. ★ ZERO MECHANISM: NOBODY REWRITES ⇒ THE RECEIPT IS THE SAME AS WITH NO MIDDLEWARE ===')
 {
   const plain = bootKernel([])
