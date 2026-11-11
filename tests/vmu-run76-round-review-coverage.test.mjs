@@ -197,6 +197,14 @@ ok(!!cov3 && typeof cov3.invalidatedByRoundMeans === 'string' && cov3.invalidate
 
 // ── §2. THE SAME READING FLIPS TO covered ONCE THE THREE MEMBERS FILE FOR ROUND 3 ─────────────────────────────
 console.log('=== 2. round 3 三席各投一次 ⇒ covered 三席、missing 为空 ===')
+// TB-2743: a review binds the TEXT (and the round) it judged. Round 3 is writing, so each author
+// re-files the part for THIS round before the three round-3 votes — the prose is the same, but the
+// slot now carries round 3, which is what makes the verdicts below votes on the CURRENT text.
+for (const [member, title] of [[ACAD, '§1 引言'], [R1, '§2 方法'], [R2, '§3 结论']]) {
+  const refiled = (await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: T, member, part: title, body: title + ' 的正文。' })).parsed
+  ok(!!refiled && refiled.ok === true && refiled.part && Number(refiled.part.round) === 3,
+    '前置(RULE E)：' + member + ' 为 round 3 重新提交了正文（本轮票才有当前正文可判）', refiled && refiled.part && { round: refiled.part.round, recordId: refiled.part.recordId })
+}
 const open3 = (await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: T })).parsed
 eq(open3 && open3.advance && open3.advance.to, 'reviewing', '前置(RULE E)：round 3 进入 reviewing')
 eq(open3 && open3.advance && Number(open3.advance.round), 3, '前置(RULE E)：round 3 的轮次号不动')
@@ -205,6 +213,9 @@ const v3B = (await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: T, 
 const v3C = (await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: T, member: R2, deliverable: true, notes: 'round 3 可交付' })).parsed
 ok([v3A, v3B, v3C].every((v) => v && v.ok === true && typeof (v.review && v.review.recordId) === 'string'),
   '前置(RULE E)：round 3 三票都写成了', [v3A, v3B, v3C].map((v) => v && v.review && v.review.recordId))
+ok([v3A, v3B, v3C].every((v) => v && v.review && Number(v.review.judgedPartRound) === 3 && typeof v.review.judgedPartFingerprint === 'string'),
+  '★★ 正：round 3 的每张票都绑定了它判的那份正文（指纹 + round 3），不是只记票',
+  [v3A, v3B, v3C].map((v) => v && v.review && { round: v.review.judgedPartRound, fp: v.review.judgedPartFingerprint }))
 const coveredWant = new Map([[ACAD, v3A.review.recordId], [R1, v3B.review.recordId], [R2, v3C.review.recordId]])
 const done = (await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: T })).parsed
 const advDone = done && done.advance

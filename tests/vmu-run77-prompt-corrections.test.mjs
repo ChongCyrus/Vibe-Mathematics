@@ -89,10 +89,17 @@ const RUN270_PROGRESS_SAMPLE = { chair: 112, sum: 336 }
 // TB-2732 (RUN 78) is a net-zero task: seven corrections paid for by merging restatements; measured per seat in
 // `tests/vmu-run247-prompt-dedup.test.mjs` and `tests/vmu-run256-prompts-compress.test.mjs`.
 const TB2732_DEDUP = { chair: -8, member: -8, temp: -8, sum: -24 }
-test('§7 the corrections did not grow the prompts: three-seat normal sum ≤ the TB-2725 baseline (77844) + the RUN 270 sample + the TB-2732 dedup', () => {
+// TB-2741 (RUN 79) is likewise net-zero: ten corrections paid for by merging restatements; measured per seat in
+// `tests/vmu-run247-prompt-dedup.test.mjs` and `tests/vmu-run256-prompts-compress.test.mjs`.
+const TB2741_CORRECTIONS = { chair: -22, member: -22, temp: -22, sum: -66 }
+// RUN 272 (Lead) — +30 per seat, three clauses a seat must read: the `（旧任务书简写）` label this very suite pins
+// against a short-name relapse (+8), 「形状问题不等于引擎不可用」 restored inside the shape-code sentence (+14), and
+// 「别自己数人头」 restored beside the closure-vote denominator (+8). Measured 29499 per seat / 78168 for three.
+const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
+test('§7 the corrections did not grow the prompts: three-seat normal sum ≤ the TB-2725 baseline (77844) + the RUN 270 sample + the TB-2732 / TB-2741 dedups + the RUN 272 restores', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
-  const sumCeiling = 77844 + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum
-  const chairCeiling = 29455 + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair
+  const sumCeiling = 77844 + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum
+  const chairCeiling = 29455 + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair
   assert.ok(normalSum <= sumCeiling, 'three-seat normal sum ' + normalSum + ' ≤ ' + sumCeiling)
   assert.ok(normalCombos.chair <= chairCeiling, 'chair/normal ' + normalCombos.chair + ' ≤ ' + chairCeiling)
 })

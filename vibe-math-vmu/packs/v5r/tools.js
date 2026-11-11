@@ -4444,10 +4444,14 @@ async function toolMeetingRulings(args = {}, { kernel } = {}) {
  * ★★★ ROUND 78 / TB-2731 (FEEDBACK78 D3) — THE RECEIPT RING, REACHABLE FROM A TOOL FACE.
  * `kernel.meetings.receiptsView()` has existed since ROUND 77, but NO tool face exposed it, so a real run that needed
  * the recorded receipts could only record NO-EVIDENCE: a read that lives only in the kernel is not reachable by the
- * members and the office, who speak through tools. This face reads the SAME ring (no second store, no re-derivation),
- * bounds `limit` to the ring's own capacity, and REFUSES an out-of-range value by name instead of clamping it — a
- * clamp answers a different question than the one asked. The rows it returns are the kernel's own projection, so a
- * legacy open row (no `typeInput`/`typeMatchedBy`) reads null + `typeMatchedByMeans` here exactly as it does there.
+ * members and the office, who speak through tools. ★ ROUND 79 / TB-2740 (FEEDBACK79 B2): that face then read the
+ * kernel's IN-PROCESS ring, which dies with the kernel that wrote it — the office kernel read `{receipts:[],available:0}`
+ * for a meeting the chair's CHILD kernel had convened. The kernel's `receiptsView` now reads the DURABLE meetings fold
+ * first (shared through the store root) and falls back to its own ring only when the fold seam is absent; this tool
+ * passes that answer through unchanged, including `readFrom` and `inProcessRingCount`, so the two numbers are never
+ * conflated. It bounds `limit` to 200 and REFUSES an out-of-range value by name instead of clamping it — a clamp
+ * answers a different question than the one asked. A legacy open row (no `typeInput`/`typeMatchedBy`) reads null +
+ * `typeMatchedByMeans` here exactly as it does there.
  */
 function toolMeetingReceiptsView(args = {}, { kernel } = {}) {
   const meetings = kernel && kernel.meetings
@@ -4466,7 +4470,7 @@ function toolMeetingReceiptsView(args = {}, { kernel } = {}) {
     limit = n
   }
   const read = limit === null ? meetings.receiptsView() : meetings.receiptsView({ limit })
-  return Object.assign({ tool: 'vibe_v5_meeting', action: 'receiptsView', receiptRingMeans: 'the meetings service\'s OWN receipt ring, newest last: each row is a recorded act (its `action`, `at`, `meeting` and the act\'s readings), `count` is how many rows this read returned, `available` how many the ring held, `dropped` how many the limit left out, and `ringDropped` how many rows the bounded ring itself has discarded since the kernel started. This is a READ: nothing is replayed, nothing is re-recorded. An open row carries the input provenance (`typeInput`/`typeMatchedBy`), with null + `typeMatchedByMeans` for rows recorded before RUN 77/78' }, read)
+  return Object.assign({ tool: 'vibe_v5_meeting', action: 'receiptsView', receiptRingMeans: 'the meetings service\'s receipt LEDGER: the kernel reads the DURABLE meetings fold first (every kernel sharing this store root sees the same receipts) and falls back to its own in-process ring only when the fold seam is absent — `readFrom` says which answered, `available` is how many rows that source held, `count` how many this read returned, `dropped` = available − count, `ringDropped` how many rows the bounded ring discarded, and `inProcessRingCount` THIS kernel instance\'s own ring length (reported separately, never used to overwrite the fold). This is a READ: nothing is replayed, nothing is re-recorded. An open row carries the input provenance (`typeInput`/`typeMatchedBy`), with null + `typeMatchedByMeans` for rows recorded before RUN 77/78' }, read)
 }
 
 // ★★ ROUND 103 / F-103a: THE CEILING IS A SETTING, SO THE NOTE MUST READ IT. Run 103 measured `extendlimit ms:10000000`
@@ -4682,8 +4686,12 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // splitting on that separator is the inverse of the join, not a new segmentation rule. This does NOT claim the kernel
   // keeps N items — the kernel face owns that reading (lane-g2 adds kernel `agendaItems`); `agendaItemsSource` says
   // which door produced this list.
+  // ★ ROUND 79 / TB-2740 (FEEDBACK79 B9): the STRING path is now challenged on its own, so its separators are DECLARED:
+  // `;`, `；` and a newline split; `,` and `、` do NOT (a purpose like "确认 (2k−1,2k) 的界" is ONE item — a comma is
+  // punctuation inside a sentence, and `、` is a list marker inside Chinese prose, not an agenda boundary). An ARRAY
+  // agenda keeps its elements VERBATIM: its items are never re-split by any separator.
   if (agendaItems.length === 0 && agendaText.trim() !== '') {
-    agendaItems = agendaText.split('; ').map((x) => x.trim()).filter((x) => x !== '')
+    agendaItems = agendaText.split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== '')
   }
   if (!has(args.agenda)) {
     throw refuse('VMU_INVALID_ARGUMENT',
@@ -5037,6 +5045,13 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       ? 'argument-array'
       : (agendaGiven && String(args.agenda).trim().charAt(0) === '[' ? 'argument-json-array' : 'argument-line'),
     agendaItemsSourceMeans: '`agendaItems` are the lines THIS face joined into the stored materials (an array agenda keeps its items; a one-line agenda is split on the "; " separator the join itself uses). The kernel meeting object keeps its own agenda items (ids ag-1..., closable one at a time) and the kernel face reads them back — this field never claims to be that ledger.',
+    // ★ ROUND 79 / TB-2740 (FEEDBACK79 B9): WHICH SHAPE the caller passed, and the separator rules that applied — the
+    // two convenes of RUN 79 both passed ARRAYS, so 「逗号不是分隔符」 was never challenged on the string path. A reader
+    // must be able to tell the paths apart without re-reading the transcript.
+    agendaInputShape: Array.isArray(args.agenda) ? 'array' : 'string',
+    agendaSplitMeans: Array.isArray(args.agenda)
+      ? 'the caller passed an ARRAY: its elements ARE the agenda items, in order, and are NOT re-split on any separator (a comma or a 、 inside an element stays inside that element)'
+      : 'the caller passed ONE STRING: it was split on `;`, `；` and newlines only — `,` and `、` are NOT separators (a purpose like "确认 (2k−1,2k) 的界" is ONE item), and empty pieces after trimming are dropped',
     formalAgenda: args.formal_agenda !== undefined && args.formal_agenda !== null && args.formal_agenda !== false,
     // ★ RUN 240-I: the read faces' own fields, spread from the kernel's opening receipt, so a caller compares THIS
     // receipt with the stored meeting instead of being told a boolean it can no longer check.
@@ -6429,6 +6444,18 @@ function toolchainAbsentMeans(list) {
 const ENVIRONMENT_KEYS = Object.freeze(['latex'])
 const environmentObserved = new WeakMap()
 
+/**
+ * ★★★ TB-2743 (item B) — the ONE mapping from "was the engine question asked, and what did it find" to the three named
+ * values. Exported because the criterion suite must pin all three shapes; the `status` face only ever observes one.
+ *   · `ran-present` — a compile/finalisation asked and the engine was available;
+ *   · `ran-absent`  — a compile/finalisation asked and the toolchain was not usable;
+ *   · `not-run`     — nobody asked: absence is UNKNOWN (the empty `toolchainAbsent` list is NOT a verdict).
+ */
+export function toolchainProbeOf({ latexAvailable = null, asked = false } = {}) {
+  if (latexAvailable === true) return 'ran-present'
+  return asked === true ? 'ran-absent' : 'not-run'
+}
+
 function environmentReadingsOf(observed, fallback) {
   const memo = fallback && typeof fallback === 'object' ? fallback : null
   const known = !!(observed && typeof observed === 'object')
@@ -6451,7 +6478,20 @@ function environmentReadingsOf(observed, fallback) {
     : (latexAvailable === true
       ? 'the engine ran in this session, so ' + ENVIRONMENT_KEYS.join(', ') + ' was not absent when this assembly asked: this is an OBSERVATION from a compile/finalisation, not an installation claim made by a read'
       : 'this session has not asked the engine question yet (no compile/finalisation observed one): absent unknown, never "none installed" — `latexAvailable:null` names the absence of a verdict, and `toolchainAbsent:[]` means not-reported, not installed')
-  return { toolchainAbsent, pdfEnvironmentMissing, latexAvailable, environmentMeans: means }
+  // ★★★ TB-2743 (item B, MEASURED shape): "NOT TESTED" IS NOT "ABSENT". A read that never asked the engine question
+  // printed `toolchainAbsent: []` and a reader took the empty list as "the toolchain is installed and fine". The empty
+  // list was the absence of a MEASUREMENT. `toolchainProbe` names which of the two facts this session actually holds:
+  // `not-run` (nobody asked), `ran-absent` (a compile/finalisation ran and did not find the toolchain), `ran-present` (a
+  // compile ran and the engine was there). It is a READING of what happened, never a completion claim.
+  const priorProbe = memo && typeof memo.toolchainProbe === 'string' ? memo.toolchainProbe : null
+  const asked = known || (priorProbe !== null && priorProbe !== 'not-run')
+  const toolchainProbe = toolchainProbeOf({ latexAvailable, asked })
+  const toolchainProbeMeans = toolchainProbe === 'not-run'
+    ? 'toolchainProbe:"not-run" together with toolchainAbsent:[] means the compiler question was NOT ASKED in this session — NOT that the toolchain is installed: nothing was measured, so absence is UNKNOWN. Run `vibe_vmu_env { action: "probe", need: "' + ENGINE_NEED + '" }` (or a compile) to turn this into a verdict'
+    : (toolchainProbe === 'ran-absent'
+      ? 'toolchainProbe:"ran-absent": a compile/finalisation DID ask the engine question and the toolchain was not usable (' + (toolchainAbsent.join(', ') || 'no usable latex engine') + ') — this IS a measured absence, not an opinion'
+      : 'toolchainProbe:"ran-present": a compile/finalisation DID ask, and the engine was available then; this is an OBSERVATION from that run, not an installation claim made by a read')
+  return { toolchainAbsent, pdfEnvironmentMissing, latexAvailable, toolchainProbe, toolchainProbeMeans, environmentMeans: means }
 }
 
 function environmentReadingsAt(kernelObj, observed = null) {
@@ -6807,6 +6847,9 @@ async function toolPaper(args = {}, { kernel } = {}) {
         toolchainAbsent: envRead.toolchainAbsent,
         pdfEnvironmentMissing: envRead.pdfEnvironmentMissing,
         latexAvailable: envRead.latexAvailable,
+        // ★★★ TB-2743 (item B): `toolchainAbsent: []` beside `not-run` means NOT TESTED, never "installed and fine".
+        toolchainProbe: envRead.toolchainProbe,
+        toolchainProbeMeans: envRead.toolchainProbeMeans,
         toolchainAbsentMeans: envRead.environmentMeans,
         // ★★ RUN 183 (run 29 / FEEDBACK29 D9, MEASURED): a finalized paper read `complete:true` beside `pdf:null` and
         //   a reader took it as "no PDF but the paper is complete". `complete` speaks only about the ARCHIVE artifacts
@@ -6838,7 +6881,26 @@ async function toolPaper(args = {}, { kernel } = {}) {
           // `compiledPdfRow`, which OPENS each candidate row, so the error cannot be repeated one call deeper.
           let ledger = compiledRow
           if (!ledger) {
+            // ★★★ TB-2743 (item B): `produced:false` alone made "the paper was never finalised", "there is nothing to
+            // compile" and "the toolchain is missing" read as ONE fact. `blockedBy` names which gate the file is behind,
+            // in the order the flow passes them, so the fix is the named one rather than a guess.
+            const blockedState = got && got.state ? got.state : null
+            const blockedStatus = blockedState && blockedState.status !== undefined && blockedState.status !== null ? String(blockedState.status) : ''
+            const blockedPartKeys = blockedState && blockedState.parts && typeof blockedState.parts === 'object' ? Object.keys(blockedState.parts) : []
+            const blockedBy = blockedStatus !== 'finalized'
+              ? 'not-finalized'
+              : (blockedPartKeys.length === 0
+                ? 'no-parts'
+                : (Array.isArray(envRead.toolchainAbsent) && envRead.toolchainAbsent.length > 0 ? 'toolchain-absent' : 'compile-not-run'))
+            const blockedByMeans = blockedBy === 'not-finalized'
+              ? 'the paper is not finalized yet (status: ' + (blockedStatus === '' ? 'unknown' : blockedStatus) + '): a PDF is produced by `final` (or by `compile` on an already-finalized paper), so there is nothing to look for yet — this is NOT a toolchain verdict'
+              : (blockedBy === 'no-parts'
+                ? 'the paper is finalized but carries NO parts, so there is no prose to typeset: record parts first (vibe_v5_paper { action: "part", … }) — this is NOT a toolchain verdict'
+                : (blockedBy === 'toolchain-absent'
+                  ? 'the paper was finalized and parts exist, but the compile found the LaTeX toolchain unusable (' + envRead.toolchainAbsent.join(', ') + '): a MEASURED absence, see `toolchainProbe:"ran-absent"`'
+                  : 'the paper was finalized and parts exist, and the compile was never observed producing a PDF (toolchainProbe:' + String(envRead.toolchainProbe) + '): re-run vibe_v5_paper { action: "compile", target: "' + stateTarget + '" } and read its receipt'))
             return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, pdfSha256: null, engine: null,
+              blockedBy, blockedByMeans,
               // ★★★ RUN 249 (F-08): no ledger row ⇒ NO record can name the file on disk. Stated as a field (not silence)
               // so a reader never has to infer "recordId:null" means "the file exists but no row wrote it".
               diskFileFromRecord: null, diskFileBytes: null,

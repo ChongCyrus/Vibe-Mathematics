@@ -74,7 +74,7 @@
     },
     {
       "file": "vibe-math-vmu/kernel/index.js",
-      "line": 2316,
+      "line": 2320,
       "name": "open",
       "why": "kernel author: the ledger refuses outside a member-scoped turn; the hint cites kernel/turn/index.js open(), an internal constructor the kernel author calls.",
       "owner": "kernel-core"

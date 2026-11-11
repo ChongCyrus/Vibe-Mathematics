@@ -54,11 +54,19 @@ const kernel = handle.kernel
 for (const [id, slot] of [['r-chair', 'chair'], ['r-1', 'member'], ['r-2', 'member']]) await kernel.members.hire({ id, slot })
 const paper = createPaperSubsystem({ kernel, clock: () => 1000 })
 
-/** Walk the state machine forward until the paper is awaiting its editor (the round cap is a legitimate route). */
-const toAwaitingEditor = async (target, { onReviewing = null } = {}) => {
-  for (let i = 0; i < 12; i += 1) {
+/** Walk the state machine forward until the paper is awaiting its editor (the round cap is a legitimate route).
+ *  `refile` re-records the given parts at the START of every writing round: a review binds the text AND the round it
+ *  judged (TB-2743), so a fixture that bounces rounds must re-file the prose for the round whose votes should count —
+ *  otherwise every later vote is (correctly) read as judging an earlier round. */
+const toAwaitingEditor = async (target, { onReviewing = null, refile = null } = {}) => {
+  for (let i = 0; i < 16; i += 1) {
     const st = paper.state(target).state
     if (st.status === 'awaiting-editor') return st
+    if (st.status === 'writing' && refile !== null) {
+      for (const [member, item] of Object.entries(refile)) {
+        await paper.recordPart({ target, member, title: item.title, solution: item.solution, evidence: item.evidence })
+      }
+    }
     if (st.status === 'reviewing' && typeof onReviewing === 'function') await onReviewing(st)
     await paper.advance({ target })
   }
@@ -120,6 +128,10 @@ console.log('§3 F3 — a paper with only ONE distinct cross-reviewer is refused
   // 轮次上限是合法的收尾路（规则 53：轮数由院士定，写死上限会死循环）；它到 awaiting-editor 时 refusers 是记着的，
   // 而 final 仍然要过互审闸 —— 这里测的是后者：一个 cross reviewer 不是两个。
   const st = await toAwaitingEditor(T, {
+    refile: {
+      'r-1': { title: 'p1', solution: '正文一。', evidence: ['r-1 的命题卡'] },
+      'r-2': { title: 'p2', solution: '正文二。', evidence: ['r-2 的命题卡'] },
+    },
     onReviewing: async (inner) => {
       if (inner.round === 3) await paper.recordReview({ target: T, member: 'r-1', of: 'r-2', deliverable: true })
     },

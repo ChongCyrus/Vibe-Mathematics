@@ -258,7 +258,10 @@ const FACTS = Object.freeze([
     what: '提示词点名的回复拒因码在核心里可抛',
     needle: 'VMU_TURN_NO_FENCE',
     claim: {
-      re: /没有围栏或对象 ⇒ `(VMU_TURN_NO_FENCE)`，围栏里的 JSON 不合法 ⇒ `(VMU_TURN_BAD_JSON)`/,
+      // TB-2741 / RUN 79: the sentence this fact reads was REWRITTEN (the old "没有围栏或对象 ⇒ …" wording was replaced
+      // by the honest shape-problem sentence name-listing the four codes). The FACT is unchanged — the prompt names reply
+      // refusal codes and every one it names must be throwable — so only the sentence it reads follows the new wording.
+      re: /形状问题（`(VMU_TURN_NO_FENCE)`\/围栏 JSON 不合法=`(VMU_TURN_BAD_JSON)`\//,
       pick: () => ['VMU_TURN_BAD_JSON', 'VMU_TURN_NO_FENCE'],
       /** The prompt names only the codes it teaches; the question is whether EVERY named code can actually be thrown. */
       subset: true,

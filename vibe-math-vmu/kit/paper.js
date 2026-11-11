@@ -974,13 +974,19 @@ export function createPaperFlow({
       const participants = Array.isArray(state && state.participants) ? state.participants : []
       for (const id of participants) {
         const snap = reviews[id]
-        if (snap && snap.deliverable === true && str(snap.of) && str(snap.of) !== str(id)) continue
+        // ★★★ TB-2743: an appended cross-reviewer must hold a vote on the CURRENT text, not on a replaced part.
+        if (snap && snap.deliverable === true && str(snap.of) && str(snap.of) !== str(id) && judgedPartReading(state, snap).fresh) continue
         const found = reviewRowOf(state, id)
         if (!found) continue
         const b = found.body || {}
         if (Number(b.round) !== Number(state.round)) continue
         if (b.deliverable !== true || String(b.of || '') === String(id)) continue
-        reviews[id] = { recordId: found.recordId, fingerprint: null, deliverable: true, of: b.of, round: b.round, comments: str(b.comments) }
+        // ★★★ TB-2743: the durable row heals the cache ONLY while it is bound to the text the part carries now; a stale
+        // round-N row that judged round-(N-1) prose stays out of the crossers list (and is named by the gate refusal).
+        const judged = judgedPartReading(state, b)
+        if (!judged.fresh) continue
+        reviews[id] = { recordId: found.recordId, fingerprint: null, deliverable: true, of: b.of, round: b.round, comments: str(b.comments),
+          judgedPartFingerprint: judged.boundFingerprint, judgedPartRound: judged.boundRound, stalePart: false }
       }
     }
     const ids = Object.keys(reviews)
@@ -991,6 +997,8 @@ export function createPaperFlow({
       const of = str(reviewed.of)
       if (!of || of === str(id)) continue
       if (deliverableOnly && reviewed.deliverable !== true) continue
+      // ★★★ TB-2743: `deliverable` is not enough — the vote must be bound to the text the part carries now.
+      if (deliverableOnly && !judgedPartReading(state, reviewed).fresh) continue
       if (!out.includes(str(id))) out.push(str(id))
     }
     return out
@@ -1019,6 +1027,69 @@ export function createPaperFlow({
       uncoveredMeans: uncovered.length === 0
         ? 'empty ON PURPOSE: every part on this paper is assigned to a reviewer who is NOT its author, so no section is unread'
         : 'NOT empty: these authors wrote a part that NO assigned reviewer will read this round (' + uncovered.join(', ') + ') — their section was not cross-read, and no verdict about it was owed' }
+  }
+
+  function partSlotOf(state, member) {
+    const slots = state && state.parts && typeof state.parts === 'object' ? state.parts : null
+    if (!slots) return null
+    const slot = slots[str(member)]
+    return slot && typeof slot === 'object' ? slot : null
+  }
+
+  /** the EXISTING part fingerprint (the record fingerprint `recordPart` stored in the slot), never a new hash. */
+  function partFingerprintOf(state, member) {
+    const slot = partSlotOf(state, member)
+    if (!slot) return null
+    const fp = slot.fingerprint
+    return fp === undefined || fp === null || fp === '' ? null : String(fp)
+  }
+
+  /** the round whose TEXT the slot holds (`recordPart` stamps both `round` and `at` with `state.round`). */
+  function partRoundOf(state, member) {
+    const slot = partSlotOf(state, member)
+    if (!slot) return null
+    const r = slot.round === undefined || slot.round === null ? slot.at : slot.round
+    return r === undefined || r === null || !Number.isFinite(Number(r)) ? null : Number(r)
+  }
+
+  /**
+   * ★★★ TB-2743 (RUN 79 / B5 REVIEW ROUND 2, MEASURED): A VOTE MUST BIND THE TEXT IT JUDGED, NOT ONLY THE AUTHOR.
+   * Run 79, round 2: r-1 filed `deliverable:true` with `of:"r-2"` (`rec-34`), `advance` counted it as a cross-review,
+   * and the part it claimed to have judged was STILL the round-1 text (`rec-20`, fingerprint 65cccd… unchanged). Nothing
+   * in the row said which text was read, so the gate counted a verdict about prose nobody had put in front of it. The
+   * reading below binds a review row to the part SLOT it judged (the existing record fingerprint + the round that text
+   * was recorded in); a row is FRESH only when both still match the slot on file. Two absences are the SAME fact — a
+   * paper with no part text under `of` has no fingerprint to change, so a legacy row is fresh there.
+   */
+  function judgedPartReading(state, rowBody) {
+    const body = rowBody && typeof rowBody === 'object' ? rowBody : {}
+    const of = body.of === undefined || body.of === null ? '' : str(body.of)
+    const currentFingerprint = of === '' ? null : partFingerprintOf(state, of)
+    const boundFingerprint = body.judgedPartFingerprint === undefined || body.judgedPartFingerprint === null ? null : String(body.judgedPartFingerprint)
+    const boundRound = body.judgedPartRound === undefined || body.judgedPartRound === null ? null : Number(body.judgedPartRound)
+    const currentRound = Number(state.round)
+    const partChanged = boundFingerprint !== currentFingerprint
+    const roundChanged = !(boundRound === null || (Number.isFinite(boundRound) && boundRound === currentRound))
+    return { of, bound: body.judgedPartFingerprint !== undefined,
+      boundFingerprint, currentFingerprint, boundRound, currentRound,
+      partChanged, roundChanged, fresh: !partChanged && !roundChanged }
+  }
+
+  /** the ONE shape both doors print for a vote that judged text the part no longer carries (null when the vote is fresh). */
+  function staleReviewReading(state, member, row) {
+    const found = row === undefined ? reviewRowOf(state, member) : row
+    const body = (found && found.body) || null
+    if (!body) return null
+    const judged = judgedPartReading(state, body)
+    if (judged.fresh) return null
+    return { by: str(member), of: judged.of === '' ? null : judged.of,
+      judgedPartFingerprint: judged.boundFingerprint, currentFingerprint: judged.currentFingerprint,
+      judgedPartRound: judged.boundRound, currentRound: judged.currentRound,
+      recordId: (found && found.recordId) || null,
+      why: judged.partChanged ? 'part-text-changed' : 'round-changed',
+      whyMeans: judged.partChanged
+        ? 'the text of the judged part changed after this vote was cast: the vote is bound to fingerprint ' + String(judged.boundFingerprint) + ', and the part on file now carries ' + String(judged.currentFingerprint) + ' — this is a DIFFERENT text, so the vote is not counted'
+        : 'the vote was cast in round ' + String(judged.boundRound) + ' while the paper is in round ' + String(judged.currentRound) }
   }
 
   /**
@@ -1054,26 +1125,38 @@ export function createPaperFlow({
     const covered = []
     const missing = []
     const invalidatedByRound = []
+    // ★★★ TB-2743: a vote that votes deliverable ON THIS ROUND but judged an EARLIER TEXT of the part is neither
+    // coverage nor a refusal — it is STALE, and it is named here (with both fingerprints) so the reading cannot hide it.
+    const staleReviews = []
     for (const member of expected) {
       let found = null
       try { found = reviewRowOf(state, member) } catch (e) { found = null }
       const body = found && found.body ? found.body : null
       const rowRound = body && body.round !== undefined && body.round !== null && Number.isFinite(Number(body.round)) ? Number(body.round) : null
-      const countsForThisRound = !!(body && rowRound === round && body.deliverable === true && str(body.of === undefined || body.of === null ? '' : body.of) !== member)
+      const votedThisRound = !!(body && rowRound === round && body.deliverable === true && str(body.of === undefined || body.of === null ? '' : body.of) !== member)
+      const judged = body ? judgedPartReading(state, body) : null
+      const countsForThisRound = votedThisRound && judged !== null && judged.fresh
       if (countsForThisRound) { covered.push({ member, recordId: found.recordId || null, round }); continue }
       missing.push(member)
+      if (votedThisRound && judged !== null && !judged.fresh) {
+        const stale = staleReviewReading(state, member, found)
+        if (stale) staleReviews.push(stale)
+      }
       if (body && rowRound !== null && rowRound !== round) {
         invalidatedByRound.push({ member, recordId: found.recordId || null, round: rowRound, why: 'previous-round',
           whyMeans: 'why:"previous-round" means the newest durable review row for this member belongs to round ' + String(rowRound) + ', not the paper\'s current round (' + String(round) + '): that row is durable HISTORY — a review judges the prose of its own round — so it is NOT counted for round ' + String(round) + ' and the member must file a verdict again after reading the current text' })
       }
     }
-    return { round, expected, covered, missing, invalidatedByRound,
+    return { round, expected, covered, missing, invalidatedByRound, staleReviews,
+      staleReviewsMeans: staleReviews.length === 0
+        ? 'empty ON PURPOSE: every counted vote for this round judged the TEXT the part carries now (its fingerprint and round still match the part slot), so no verdict is bound to prose that was replaced'
+        : 'NOT empty: these votes said deliverable THIS round but judged an EARLIER TEXT of the part — each entry names the member (by), the judged author (of), the fingerprint the vote is bound to, the fingerprint the part carries NOW, and both rounds. They are NOT counted as coverage and are NOT refusals: re-file a verdict after reading the current part (vibe_v5_paper { action: "review", target: "<paper>", member: "<by>", of: "<of>", deliverable: true })',
       expectedMeans: 'the members who OWE a counted cross-review verdict for round ' + String(round) + ' (rule: ' + rule + ' — '
         + (rule === 'assignment' ? 'the paper\'s own `reviewOf` rotation assigns each of them another member\'s part'
           : rule === 'authored-parts' ? 'no `reviewOf` assignment is on the record, so the members who wrote a part owe the review of each other\'s prose'
             : 'this paper has no parts and no assignment yet, so every participant owes one')
         + (exempt.length > 0 ? '); EXEMPT this round (' + exempt.join(', ') + '): no other member\'s part exists for them to review. A member is never expected to review their own part' : ')'),
-      coveredMeans: 'these members hold a COUNTED deliverable cross-review verdict for round ' + String(round) + ': each entry names the member, the durable review recordId whose body carries the verdict, and the round that row was written in — `round` here always equals the paper\'s round (a row from another round appears in `invalidatedByRound`, never here)',
+      coveredMeans: 'these members hold a COUNTED deliverable cross-review verdict for round ' + String(round) + ': each entry names the member, the durable review recordId whose body carries the verdict, and the round that row was written in — `round` here always equals the paper\'s round (a row from another round appears in `invalidatedByRound`, never here); a vote that voted deliverable this round but is bound to an EARLIER TEXT of the part is NOT counted here — it is named in `staleReviews` with both fingerprints',
       missingMeans: 'these EXPECTED members hold NO counted deliverable verdict for round ' + String(round) + ': the row may not exist yet, may vote deliverable:false, or may belong to an earlier round (that last case is named line by line in `invalidatedByRound`). While this list is non-empty the paper cannot reach unanimity — `advance` will keep it in reviewing or send it back to writing, and this reading says who it is waiting for',
       invalidatedByRoundMeans: invalidatedByRound.length === 0
         ? 'empty ON PURPOSE: no expected member holds a review row from an earlier round, so no verdict was invalidated by a round boundary'
@@ -1100,19 +1183,39 @@ export function createPaperFlow({
     // the pre-F6 reading — every participant owes a cross review — because there is nothing to assign and no section to
     // point `of` at. The single-participant floor is untouched: one participant can never produce a cross review.
     const required = assigned.length > 0 ? assigned : (authored.length > 0 ? authored : participants)
-    const crossers = required.filter((id) => {
-      const found = reviewRowOf(state, id)
-      const b = (found && found.body) || null
-      return !!(b && Number(b.round) === Number(state.round) && b.deliverable === true && String(b.of || '') !== String(id))
-    })
+    const rowOf = (id) => { const found = reviewRowOf(state, id); return (found && found.body) || null }
+    const votedThisRound = (b, id) => !!(b && Number(b.round) === Number(state.round) && b.deliverable === true && String(b.of || '') !== String(id))
+    // ★★★ TB-2743: THE COUNT NOW BINDS THE TEXT. A row that says deliverable THIS round but judged an EARLIER TEXT of
+    // the part is not a crosser: the gate must wait for a vote on the current prose, and the refusal must NAME it (both
+    // fingerprints) instead of reporting "these members never reviewed" — the row exists and looks right, which is
+    // exactly the shape run 79 filed while the part still carried the round-1 text.
+    const crossers = required.filter((id) => { const b = rowOf(id); return votedThisRound(b, id) && judgedPartReading(state, b).fresh })
+    const stalePartIds = required.filter((id) => { const b = rowOf(id); return votedThisRound(b, id) && !judgedPartReading(state, b).fresh })
     if (required.length > 0 && crossers.length === required.length) return crossers
     // ★★ RUN 162: state BOTH readings, so a mismatch between the cache and the record is visible in the refusal
     // instead of presenting itself as "the members never reviewed" (run 10 lost an hour to exactly that).
-    const onDisk = participants.filter((id) => {
-      const found = reviewRowOf(state, id)
-      const b = (found && found.body) || null
-      return !!(b && Number(b.round) === Number(state.round) && b.deliverable === true && String(b.of || '') !== String(id))
-    })
+    const onDisk = participants.filter((id) => votedThisRound(rowOf(id), id))
+    const staleReviews = stalePartIds.map((id) => staleReviewReading(state, id)).filter((r) => r !== null)
+    const unexplained = required.filter((id) => !crossers.includes(id) && !stalePartIds.includes(id))
+    // ★★★ TB-2743: THE HINT HAS TO BE WALKABLE, and the two stale shapes need DIFFERENT repairs. When a part was
+    // REPLACED inside the same round, re-filing the vote on the current text is enough. When the part itself is from an
+    // EARLIER round (run 79: a round-2 vote on round-1 text, fingerprint unchanged), re-filing the same vote would be
+    // refused again: this round has to produce its own text first. The repair below names every step, and each step is a
+    // move the CURRENT stage accepts (review:false in reviewing; advance bounces to writing; part in writing; advance
+    // returns to reviewing; then the fresh vote).
+    const staleReviewHint = (() => {
+      if (staleReviews.length === 0) return null
+      const first = staleReviews[0]
+      const reviewCall = (by, of, deliverable) => 'vibe_v5_paper { action: "review", target: "' + str(state.target) + '", member: "' + String(by) + '", of: "' + String(of || '') + '", deliverable: ' + (deliverable ? 'true' : 'false') + ' }'
+      if (first.why === 'round-changed') {
+        return 'REACHABLE INSTEAD（五步，每步都是当前阶段接受的调用；跳过任何一步会再次得到本拒绝）: ① 让该评审先把这一轮判回写作：' + reviewCall(first.by, first.of, false)
+          + ' ② 关闭本轮、回到写作：vibe_v5_paper { action: "advance", target: "' + str(state.target) + '" }'
+          + ' ③ 每一位作者都按当前轮重写自己的部分（一位作者的调用如下，另一位同理）：vibe_v5_paper { action: "part", target: "' + str(state.target) + '", member: "' + String(first.of || '') + '", title: "…", solution: "…" }'
+          + ' ④ 重新进入互审：vibe_v5_paper { action: "advance", target: "' + str(state.target) + '" }'
+          + ' ⑤ 对新正文投这一票：' + reviewCall(first.by, first.of, true)
+      }
+      return 'REACHABLE INSTEAD: 让对应席位对新正文再投一次（' + reviewCall(first.by, first.of, true) + '）— the old vote is not lost and not counted: it is bound to the OLD text, so the same member re-files after reading the current part'
+    })()
     // ★★ RUN 167 F6: ONE participant is not a count problem, it is a shape problem — no assignment, and an `of`-less
     // review cannot turn a paper reviewed by its only author into a cross-reviewed one. Refuse by name (with the facts a
     // caller can act on) instead of letting it reach the editor through the round cap.
@@ -1120,14 +1223,28 @@ export function createPaperFlow({
       throw refuse('VMU_INVALID_ARGUMENT',
         '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）',
         '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审',
-        { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2 })
+        { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2, staleReviews })
+    }
+    // all missing votes are STALE-PART votes and nothing else is pending ⇒ refuse BY NAME, do not burn a round.
+    if (staleReviews.length > 0 && unexplained.length === 0) {
+      const describeStale = (r) => {
+        if (r.why === 'round-changed') {
+          return String(r.by) + ' 的票投在第 ' + Number(state.round) + ' 轮，但它审的部分仍是第 ' + String(r.judgedPartRound) + ' 轮写的（指纹 ' + String(r.judgedPartFingerprint === null ? '（无）' : r.judgedPartFingerprint) + ' 未变——缺陷在轮次而不是字节：这一轮从未产出被它评审的正文）'
+        }
+        return String(r.by) + ' 的票绑在指纹 ' + String(r.judgedPartFingerprint === null ? '（无）' : r.judgedPartFingerprint) + ' 上，而 ' + String(r.of || '') + ' 的部分现在是指纹 ' + String(r.currentFingerprint === null ? '（无）' : r.currentFingerprint)
+      }
+      throw refuse('VMU_REVIEW_STALE',
+        '互审票评审的不是当前正文：' + staleReviews.map(describeStale).join('；')
+          + '（a review vote binds the TEXT it judged, not only the author: these votes judged an earlier version of the part and are NOT counted）',
+        staleReviewHint,
+        { where, staleReviews, currentRound: Number(state.round), crossReviewers: crossers, reviewsOnDisk: onDisk, required: required.length })
     }
     const message = participants.length < 2
       ? '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）'
       : '互审必须由两位不同的、非该作者的成员完成：' + participants.length + ' 位参与者里只有 ' + crossers.length + ' 位审了别人的部分（' + (crossers.join('、') || '无') + '），其余选票没有评审对象，不能算全体一致'
     throw refuse('VMU_INVALID_ARGUMENT', message,
-      '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审',
-      { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2 })
+      staleReviewHint === null ? '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审' : staleReviewHint,
+      { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2, staleReviews })
   }
 
   /** ③ a review: deliverable must be a real boolean ("未表态不算可交付", the original's wording). */
@@ -1166,12 +1283,26 @@ export function createPaperFlow({
     // produced byte-identical bodies: the second paper's review was deduplicated into the first paper's row and its own
     // cross-review gate counted zero reviewers. The row's identity is the paper it reviews, so the paper id is part of
     // the content.
-    const review = { target: str(state.target), member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000) }
+    // ★★★ TB-2743 (RUN 79 / B5 review round 2, MEASURED): THE VOTE BINDS THE TEXT IT JUDGED. `of` names an AUTHOR, and
+    // run 79 proved that is not enough: r-1 voted deliverable on r-2 (`rec-34`) in round 2 while the part it pointed at was
+    // still the round-1 text (`rec-20`) — the receipt was well-formed and the verdict was about prose nobody had read.
+    // The row now records which TEXT was judged: the EXISTING record fingerprint of the part slot and the round that text
+    // was recorded in. `advance`/`status` count the vote only while both still match the slot (see `judgedPartReading`).
+    const judgedPartFingerprint = ofId === '' ? null : partFingerprintOf(state, ofId)
+    const judgedPartRound = ofId === '' ? null : partRoundOf(state, ofId)
+    const staleAtVote = judgedPartRound !== null && judgedPartRound !== Number(state.round)
+    const review = { target: str(state.target), member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000),
+      judgedPartFingerprint, judgedPartRound }
     const put = records.put({ track: TRACK, kind: 'paper-review', title: recordName(state.target, 'review|' + review.member), body: JSON.stringify(review), by: author })
-    state.reviews[review.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, deliverable: review.deliverable, of: review.of, round: state.round }
+    state.reviews[review.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, deliverable: review.deliverable, of: review.of, round: state.round,
+      judgedPartFingerprint, judgedPartRound, stalePart: staleAtVote }
     state.updatedRound = state.round
     writeState(state)
     return { ok: true, recorded: review.member, of: review.of, deliverable: review.deliverable, round: state.round,
+      judgedPartFingerprint, judgedPartRound, stalePart: staleAtVote,
+      judgedPartMeans: judgedPartFingerprint === null
+        ? 'this vote is bound to NO part text under `of` (that slot holds no recorded part yet), so there is no fingerprint to go stale — the round still has to match (`advance`/`status` state the binding either way)'
+        : 'this vote binds the TEXT it judged: `of` names the author, `judgedPartFingerprint` is that part record fingerprint AT VOTE TIME and `judgedPartRound` the round whose text it was. If the part is replaced later this vote is STALE: `advance`/`status` name it in `staleReviews` instead of counting it against prose it never saw' + (staleAtVote ? ' — ★ this vote ALREADY judged an older round than the paper is in, so it will be stale immediately: read the current part and re-file' : ''),
       // ★★ RUN 170 (run 16 / FEEDBACK16 F16-8): `part` answered with the row it wrote and `review` did not, so the one
       // receipt that files the gate's evidence was the only one a caller could not point at afterwards.
       recordId: put && put.id ? put.id : null, fingerprint: put && put.fingerprint ? put.fingerprint : null }
@@ -1250,7 +1381,10 @@ export function createPaperFlow({
       // row (and the cache is re-healed), so a lost snapshot write can no longer invent a disagreement.
       const readReview = (member) => {
         const snap = state.reviews[member]
-        if (snap && snap.deliverable === true) return { deliverable: true, comments: str(snap.comments), source: 'state', recordId: snap.recordId || null }
+        // ★★★ TB-2743: the CACHE is not enough either — the part may have been replaced AFTER the cached vote, so a
+        // cached deliverable row is returned only while the text it is bound to is still the text on file. Otherwise the
+        // durable row is read below (which is where the stale reading and its fingerprints come from).
+        if (snap && snap.deliverable === true && judgedPartReading(state, snap).fresh) return { deliverable: true, comments: str(snap.comments), source: 'state', recordId: snap.recordId || null }
         const want = recordName(state.target, 'review|' + member)
         let rows = []
         try { const got = records.list({ track: TRACK, limit: 2000 }); rows = Array.isArray(got.items) ? got.items : [] } catch { rows = [] }
@@ -1275,7 +1409,21 @@ export function createPaperFlow({
             rowDeliverable: body.deliverable === true, rowRound: body.round, rowOf: body.of === undefined ? null : str(body.of),
             means: 'the newest review row for this member belongs to round ' + body.round + ' (rowDeliverable:' + (body.deliverable === true) + '); it is STALE for round ' + state.round + ' and is not counted — that is a ROUND MISMATCH, not a member refusing' }
         }
-        state.reviews[member] = { recordId: row.id, fingerprint: row.fingerprint || null, deliverable: body.deliverable === true, of: body.of, round: body.round, comments: str(body.comments) }
+        // ★★★ TB-2743: the row belongs to THIS round but is bound to an EARLIER TEXT of the part. That is not a round
+        // mismatch and not a refusal: the member voted deliverable about prose that has since been replaced. It travels
+        // as its own source, with BOTH fingerprints, and is not counted (the gate waits for a vote on the current text).
+        // A `deliverable:false` vote is NOT affected: refusing to accept stale prose is a valid dissent that needs no
+        // freshness, and treating it as stale would swallow the very refusal that sends the paper back to writing.
+        const judged = judgedPartReading(state, body)
+        if (body.deliverable === true && !judged.fresh) {
+          return { deliverable: false, comments: 'the review row for this round judged an earlier text of the part ' + (judged.of || ''), source: 'durable-stale-part', recordId: row.id,
+            stalePart: true, rowDeliverable: body.deliverable === true, rowRound: body.round, rowOf: judged.of || null,
+            judgedPartFingerprint: judged.boundFingerprint, currentFingerprint: judged.currentFingerprint,
+            judgedPartRound: judged.boundRound,
+            means: 'the newest review row for this member belongs to round ' + body.round + ' (rowDeliverable:' + (body.deliverable === true) + ') but it is BOUND to part fingerprint ' + String(judged.boundFingerprint) + ' while the part on file now carries ' + String(judged.currentFingerprint) + ': the text it judged was replaced, so the vote is STALE — not counted, and not a refusal. The member re-files after reading the current part' }
+        }
+        state.reviews[member] = { recordId: row.id, fingerprint: row.fingerprint || null, deliverable: body.deliverable === true, of: body.of, round: body.round, comments: str(body.comments),
+          judgedPartFingerprint: judged.boundFingerprint, judgedPartRound: judged.boundRound, stalePart: false }
         return { deliverable: body.deliverable === true, comments: str(body.comments), source: 'durable', recordId: row.id }
       }
       // ★★ RUN 167 (FEEDBACK14 F6): only a member whose reviewOf names ANOTHER participant's part owes a verdict.
@@ -1288,6 +1436,9 @@ export function createPaperFlow({
         // ★ RUN 172: a stale row's own reading travels with the verdict, so `deliverable:false` cannot be misread as a
         // vote the member never cast (FEEDBACK17 P1-C).
         if (v.rowDeliverable !== undefined) { row.rowDeliverable = v.rowDeliverable; row.rowRound = v.rowRound; row.rowOf = v.rowOf; row.means = v.means }
+        // ★★★ TB-2743: a stale-TEXT vote travels under its own name with both fingerprints, so a reader can tell it
+        // from a round mismatch and from a refusal without opening the row.
+        if (v.stalePart === true) { row.stalePart = true; row.judgedPartFingerprint = v.judgedPartFingerprint; row.currentFingerprint = v.currentFingerprint; row.judgedPartRound = v.judgedPartRound }
         return row
       })
       // ★★ RUN 199 (run 39 / FEEDBACK38 1.3, MEASURED): THIS LIST CONFLATED TWO FACTS. Run 39 read
@@ -1296,9 +1447,12 @@ export function createPaperFlow({
       // refusing") and their last counted answer was deliverable:true. A member who has not been asked yet, or whose only
       // row belongs to another round, has NOT refused — the gate must wait for them, not treat them as dissent. The three
       // facts now travel under three names, and unanimity requires all three to be empty.
-      const refusers = verdicts.filter((v) => v.deliverable !== true && v.source !== 'none' && v.source !== 'durable-other-round').map((v) => v.member)
+      const refusers = verdicts.filter((v) => v.deliverable !== true && v.source !== 'none' && v.source !== 'durable-other-round' && v.source !== 'durable-stale-part').map((v) => v.member)
       const stale = verdicts.filter((v) => v.source === 'durable-other-round').map((v) => v.member)
       const notYetReviewed = verdicts.filter((v) => v.source === 'none').map((v) => v.member)
+      // ★★★ TB-2743: a deliverable vote bound to text the part no longer carries is a STALE-PART vote — not a refusal,
+      // not a "not yet asked". Unanimity does not count it; `requireCrossReview` refuses by name when it is the only gap.
+      const stalePartReviews = verdicts.filter((v) => v.source === 'durable-stale-part').map((v) => v.member)
       const pendingNames = stale.concat(notYetReviewed)
       if (refusers.length === 0 && pendingNames.length === 0) {
         // ★ F3a: "everyone voted deliverable" is NOT enough when nobody reviewed anybody else's part. With one participant
@@ -1331,6 +1485,9 @@ export function createPaperFlow({
       }).concat(pendingNames.map((id) => {
         const v = verdicts.filter((x) => x.member === id)[0] || {}
         return id + '：' + (v.source === 'durable-other-round' ? '最近一条评审行属于别的轮次（ROUND MISMATCH，不计为拒收）' : '还没有本轮的评审行（未表态，不计为拒收）')
+      })).concat(stalePartReviews.map((id) => {
+        const v = verdicts.filter((x) => x.member === id)[0] || {}
+        return id + '：本轮的票绑的是旧正文（STALE PART：judgedPartFingerprint ' + String(v.judgedPartFingerprint === null || v.judgedPartFingerprint === undefined ? '（无）' : v.judgedPartFingerprint) + ' ≠ 当前 ' + String(v.currentFingerprint === null || v.currentFingerprint === undefined ? '（无）' : v.currentFingerprint) + '，不计为拒收也不计为覆盖）'
       })).join('；') }
       state.disagreement = (state.disagreement || []).concat([entry])
       // ★★ RUN 201 (run 40 / FEEDBACK39 1.3): the receipt said "goes back to writing" and did not say the ROUND moved,
@@ -1344,7 +1501,10 @@ export function createPaperFlow({
         // `refusers:["r-1"]` with no sentence saying what the list means or what happens next.
         return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'writing', round: state.round, roundFrom, roundTo: state.round,
           roundMeans: 'the round ADVANCED (' + String(roundFrom) + ' → ' + String(state.round) + ') and the paper went back to writing: this is not a retry of round ' + String(roundFrom) + ', it is the next round with the disagreement recorded',
-          unanimous: false, refusers, stale, notYetReviewed,
+          unanimous: false, refusers, stale, notYetReviewed, stalePartReviews,
+          stalePartReviewsMeans: stalePartReviews.length === 0
+            ? 'empty ON PURPOSE: no required reviewer filed a deliverable vote bound to text the part no longer carries'
+            : 'NOT empty: these members voted deliverable on a TEXT of the part that has since been replaced (' + stalePartReviews.join(', ') + ') — their verdict is bound to the old fingerprint, so it counts neither as coverage nor as a refusal: they must re-file on the current part',
           refusersMeans: refusers.length === 0
             ? 'empty ON PURPOSE: nobody refused — the round is held open because reviewer(s) ' + (pendingNames.join(', ')) + ' have no counted verdict for this round (see stale and notYetReviewed), so the paper goes back to writing instead of being called unanimous'
             : 'NOT empty: these participants answered something other than deliverable on another member\'s part (' + refusers.join(', ') + '), so this round did NOT reach unanimity and the paper goes back to writing',
@@ -1371,7 +1531,11 @@ export function createPaperFlow({
         ...roundReading(roundFromCapped, 'reviewing', 'awaiting-editor'),
         crossReview: crossReviewCoverage(state),
         refusersMeans: 'NOT empty: the reviews did not reach deliverable for every participant within ' + roundsCap() + ' round(s), so the editor is handed the paper WITH this disagreement on the record (a later round can still agree); refusers holds the votes that said no, stale/notYetReviewed hold the members who were never counted',
-        stale, notYetReviewed, capped: true, warnings: state.warnings, reviewsRead }
+        stale, notYetReviewed, stalePartReviews,
+        stalePartReviewsMeans: stalePartReviews.length === 0
+          ? 'empty ON PURPOSE: no required reviewer filed a deliverable vote bound to text the part no longer carries'
+          : 'NOT empty: these members voted deliverable on a TEXT of the part that has since been replaced (' + stalePartReviews.join(', ') + ') — that verdict is bound to the old fingerprint and counts neither as coverage nor as a refusal; re-file on the current part',
+        capped: true, warnings: state.warnings, reviewsRead }
     }
     return { ok: true, moved: false, stageMoved: false, state: state.status, note: 'the flow is ' + state.status + '; only writing/reviewing advance on their own (finalize it, or start a new paper)',
       // ★★★ RUN 212 (run 49 / FEEDBACK48 1.3, MEASURED): the consult prediction was printed only by advances that MOVED,

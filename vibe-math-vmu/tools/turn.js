@@ -51,6 +51,19 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         p.turnIdRegistry = 'turn-store'
         p.turnIdMeans = 'turn ids are minted by the TURN store (`t-<n>`); the TASK board mints `t-<n>` from ITS own counter, so a bare id is ambiguous across receipts — this field names the table, and `task.idRegistry` names the other one'
       }
+      // ★★★ TB-2739 (E) / RUN 79: A RECEIPT THAT HANDS OVER A PROMPT MUST SAY WHETHER THE STATUS BLOCK IS IN IT. The
+      // 79th live run's office paged the same text and reported the block absent while the code has two routes that put
+      // it in; the reader had to grep a capture to form an opinion. The assembly now computes the reading on the exact
+      // string delivery receives (`kernel.turn.statusBlockReading`), and it rides on the prompt object here, so "is the
+      // board in what this member was told" is a receipt field and not an inference.
+      if (p && typeof p === 'object' && p.statusBlock === undefined && typeof p.turnId === 'string'
+        && kernel.turn && typeof kernel.turn.statusBlockReading === 'function') {
+        const reading = kernel.turn.statusBlockReading(p.turnId)
+        if (reading && typeof reading === 'object') {
+          p.statusBlock = reading
+          p.statusBlockMeans = 'the assembly measured this on the text it handed to delivery: `included` is whether the composed status text occurs in that string (true = the member was told; false = a framework defect), `appendedLiterally` says which of the two routes put it there, and `chars` is how long the block was. A resumed turn reuses the caller-held prompt and assembles nothing, so it reports no reading rather than a guess'
+        }
+      }
       return out
     }
     const rememberPrompt = (out) => {
@@ -110,6 +123,8 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     const coreTurnInner = async (args = {}, exec = null) => {
       void exec
       if (!kernel.turn) return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn loop')
+      // The face refuses a MISSING op by name (VMU_TURN_OP_MISSING, see coreTurn); this default now only covers a direct
+      // call into the inner core, and it is never how a tool call is answered.
       const op = String(args.op || 'status')
       // ★★★ TASK-173 / TB-2690 (F75-12): THE DELIVERY MODE HAS A PER-CALL DOOR ON THIS FACE. `vmu.turn.deliverMode` is
       // resolved once at construction (`host-deliver.js`), and a config-declared mode shadows it - so the 75th live run's
@@ -208,8 +223,38 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       const openedByArg = typeof args.opened_by === 'string' && args.opened_by.trim() !== '' ? args.opened_by.trim() : null
       if (op === 'prompt') {
         const want = args.turn === undefined || args.turn === null || args.turn === '' ? null : String(args.turn)
+        // ★★★ TB-2739 (C) / RUN 79 (B4): `member` IS A SELECTOR, NOT DECORATION. Measured live: the office called
+        // `{op:"prompt", member:"r-temp", limit:9000}` and got the prompt of `t-13` — a turn that belonged to ANOTHER
+        // seat — while the receipt filled `actedForMember:"r-temp"` as if the page had been the temp's. A caller that
+        // names a seat asked for THAT seat's prompt; answering with a neighbour's text and echoing the name back turns a
+        // wrong answer into a confident one. So the seat selects its own most recent retained prompt, and when both a
+        // turn id and a seat are named they must AGREE (a mismatch is refused by name with a route to the right id).
+        const wantMember = typeof args.member === 'string' && args.member.trim() !== '' ? args.member.trim() : null
         let id = want
         let text = null
+        let promptFor = null
+        if (wantMember !== null) {
+          const promptOfOne = (tid) => (kernel.turn && typeof kernel.turn.promptOf === 'function' ? kernel.turn.promptOf(tid) : null)
+          if (want !== null) {
+            const named = promptOfOne(want)
+            const turnMember = named && typeof named.member === 'string' ? named.member : null
+            if (turnMember !== null && turnMember !== wantMember) {
+              return refused('VMU_INVALID_ARGUMENT', 'turn ' + want + ' is seat ' + turnMember + '\'s prompt, not ' + wantMember + '\'s: naming both a turn and a seat asks for two different pages',
+                'REACHABLE INSTEAD: drop `member` to read ' + want + ' (it belongs to ' + turnMember + '), or drop `turn` to read ' + wantMember + '\'s most recent prompt')
+            }
+          } else {
+            const ids = kernel.turn && typeof kernel.turn.promptTurns === 'function' ? kernel.turn.promptTurns() : []
+            const mine = ids.filter((tid) => { const hit = promptOfOne(tid); return hit && hit.member === wantMember })
+            if (mine.length === 0) {
+              const seated = ids.map((tid) => { const hit = promptOfOne(tid); return hit && hit.member }).filter(Boolean)
+              return refused('VMU_NO_SUCH_OBJECT', 'no assembled member prompt is retained for seat ' + wantMember,
+                'retained seats: ' + (Array.from(new Set(seated)).join(', ') || '(none in this process: the kernel archive is bounded to its own cap, and the tool-face cache to ' + PROMPT_CACHE_LIMIT + ')'))
+            }
+            id = mine[mine.length - 1]
+            text = promptOfOne(id) ? promptOfOne(id).text : null
+          }
+          promptFor = { member: wantMember, turnId: id, turnMember: wantMember, means: 'the seat you named selected its OWN most recent retained prompt: `turnMember` is the seat the archive says assembled this text, so a page can never answer with a neighbour\'s biography' }
+        }
         // ★ LIVE RUN 51 item 3: THE KERNEL KEEPS THE ASSEMBLED TEXT ON EVERY DELIVERY PATH. This face caches it only when
         // the receipt carries `memberPrompt.text`, which an ACTIVATION receipt never does (the text went to the child
         // session), so after four settled rounds the cache was empty and `op:"prompt"` refused while the tool promises
@@ -258,11 +303,27 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             'page from 0 and follow nextOffset to the end')
         }
         const end = Math.min(text.length, offset + limit)
+        // ★★★ TB-2739 (E) / RUN 79: THE PAGE SAYS WHETHER THE STATUS BLOCK IS IN THE TEXT IT IS PAGING. The 79th live
+        // run's office read this page and reported that neither `[状态板]` nor `[蓝图]` appeared in a 26 641-character
+        // prompt, while the assembly has two routes that put the block in (a pack section, or the literal append at
+        // `assemble()`); a reader cannot settle that from a capture, and a page that does not say is a page that invites a
+        // guess. The reading comes from the KERNEL archive, which is written from the same string delivery receives;
+        // `null` says the face cache answered without that fact and which route did.
+        const archived = kernel.turn && typeof kernel.turn.promptOf === 'function' ? kernel.turn.promptOf(id) : null
+        const statusBlockIncluded = archived && typeof archived.statusBlockIncluded === 'boolean' ? archived.statusBlockIncluded : null
         return { ok: true, turn: id, chars: text.length, offset, limit,
           limitClamped: limit !== askedLimit, end, done: end >= text.length,
           nextOffset: end >= text.length ? null : end,
           text: text.slice(offset, end),
-          pages: Math.ceil(text.length / limit) }
+          pages: Math.ceil(text.length / limit),
+          statusBlockIncluded,
+          statusBlockChars: archived && Number.isFinite(Number(archived.statusBlockChars)) ? Number(archived.statusBlockChars) : null,
+          statusBlockMeans: statusBlockIncluded === null
+            ? 'NOT RECORDED for this prompt: the reading is kept by the KERNEL archive and this answer came from the tool-face cache, so this page cannot say whether the status block is in the characters above. Re-read with `turn:"<id>"` after the same turn settles, or read the assembly receipt (op:"step") which carries `memberPrompt.statusBlock`'
+            : 'read from the kernel archive, which stores the EXACT string the delivery seam received: true means the status text (' + String(archived.statusBlockChars) + ' characters) is inside `text`, so the member was handed it; false means the assembly produced a prompt without the block it composed - a framework defect, not a rendering choice',
+          // null when the caller named no seat (the page answers "the latest prompt"); an object when it did, so the page
+          // can be checked against the seat instead of trusted because the name was echoed back.
+          promptFor }
       }
       if (op === 'status') {
     // ★★★ TB-2724 / RUN 77 (D — the status receipt was 51 988 B against the host's 12 000 B bound): `detail` now
@@ -589,7 +650,34 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // must run it DIRECTLY (not queued): the member's call arrives while its own step is still in flight, and a queued
     // member call is exactly what deadlocked for 175.7s and bypassed role narrowing. `step`/`drive` stay root-only.
     const coreTurn = (args = {}, exec = null) => {
-      const op = String((args && args.op) || 'status')
+      // ★★★★★★★ RUN 79 / TB-2739 (B) — A REQUIRED PARAMETER THAT SILENTLY DEFAULTED. `op` is declared `required: true`
+      // in the published schema, and this face answered a call WITHOUT it as `status`. The real log (run 79, build
+      // 6c689c86, the office session) shows what that costs: three calls carried `member` + `next_step` - arguments that
+      // belong to op:"step" - and omitted `op`; each came back `{"ok":true,"status":{...}}` with `turns` unchanged, so the
+      // receipt said success while the whole intent had been dropped, and the reader concluded "step does nothing, try
+      // drive". The schema promised "required"; the code promised "a default". A promise the code does not keep is the
+      // defect class this round is about, so the face now REFUSES BY NAME and says what the arguments would have meant,
+      // with the three known ways to say it. No new rule is invented: the parameter keeps its declared meaning.
+      const rawOp = args && typeof args.op === 'string' ? args.op.trim() : ''
+      if (rawOp === '') {
+        const given = Object.keys(args || {})
+          .filter((k) => k !== 'op' && args[k] !== undefined && args[k] !== null && !(typeof args[k] === 'string' && args[k].trim() === ''))
+          .sort()
+        const OP_ARG_OWNERS = Object.freeze([
+          { op: 'step', keys: ['members', 'member', 'phase', 'why', 'next_step', 'deliver_mode', 'opened_by', 'meeting', 'tools', 'statusBlock'] },
+          { op: 'drive', keys: ['rounds'] },
+          { op: 'reply', keys: ['reply', 'reply_for', 'report'] },
+          { op: 'prompt', keys: ['turn', 'offset', 'limit'] },
+          { op: 'status', keys: ['detail'] },
+        ])
+        const owners = OP_ARG_OWNERS.filter((o) => o.keys.some((k) => given.indexOf(k) !== -1)).map((o) => 'op:"' + o.op + '"')
+        const carried = given.length === 0 ? 'no arguments at all' : given.map((k) => '`' + k + '`').join(', ')
+        return Promise.resolve(refused('VMU_TURN_OP_MISSING',
+          'this face needs `op`; omitting it is not a default. The call carried ' + carried +
+          (owners.length === 0 ? '' : ' - arguments of ' + owners.join(' / ') + ' - and answering it as a status reading would return ok:true while dropping what you asked for'),
+          'say what the call means. REACHABLE INSTEAD: vibe_vmu_turn { op: "status" } (read the loop: turns, turnReceipts, closureVote - answers at once and never waits) / { op: "step", member: "<seat>", phase: "normal", why: "<why>" } (run exactly one round) / { op: "drive", member: "<seat>", rounds: 1 } (a bounded run) / { op: "prompt", member: "<seat>" } (read back the prompt a seat was handed, paginated) / { op: "abandon" } (release a round that will never settle)'))
+      }
+      const op = rawOp
       const caller = agentIdOf(exec)
       const memberCaller = isMemberCaller(caller)
       const memberAllowed = MEMBER_TURN_OPS.includes(op)
@@ -626,7 +714,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // and a real "properties" object - the model (correctly) put its arguments INSIDE that object, so top-level keys like
       // tools:'none' never reached coreTurn. It is a param map now, exactly like every other tool.
       parameters: {
-        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数／prompt＝分页读回本进程交出的成员提示词原文（step 回执里的 memberPrompt 会被回执上限截断，这里不会）／abandon＝关掉正在进行、永远不会自己结算的那一轮（回执把它记成 status:abandoned，并释放重入锁；不名字＝关在途那一轮）／reopen-closure＝开一个新的结题票窗口（旧票留档不再计数；只有所办能开，因为只有它知道所在问的是新问题）' + '｜成员：' + memberOpsText() + '（其余动作由所办/主席执行；被拒时 hint 给出可照抄的下一步）', { required: true }),
+        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数／prompt＝分页读回本进程交出的成员提示词原文（step 回执里的 memberPrompt 会被回执上限截断，这里不会）／abandon＝关掉正在进行、永远不会自己结算的那一轮（回执把它记成 status:abandoned，并释放重入锁；不名字＝关在途那一轮）／reopen-closure＝开一个新的结题票窗口（旧票留档不再计数；只有所办能开，因为只有它知道所在问的是新问题）。★ 本项是必填、且没有默认值：省略或空白值时这个面会具名拒 VMU_TURN_OP_MISSING（不会当成 status 静默执行），hint 给出可照抄的 status／step／drive 三种说法' + '｜成员：' + memberOpsText() + '（其余动作由所办/主席执行；被拒时 hint 给出可照抄的下一步）', { required: true }),
         turn: param('string', '仅 prompt：要读哪一轮的提示词（省略＝最近一轮）'),
         offset: param('integer', '仅 prompt：从第几个字符开始（省略＝0）'),
         limit: param('integer', '仅 prompt：本页最多多少字符（省略＝6000，上限 9000；被夹到上限时回执 limitClamped:true）'),

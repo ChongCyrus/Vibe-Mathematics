@@ -57,6 +57,7 @@ export const V5R_SEAT_ACT_BOUNDARY_SECTION = Object.freeze({
   text: [
     '【动作边界：你的动作由你本回合做完】',
     '· 你是**执行者**：写卡、发言、投票、签到、写论文、下结论只能由**你自己在本回合**做完，别请所办代办，也别把「已交给所办」当完成（所办只做编排，不代做学术动作）。',
+    '· **按交付方式分支**：activation／continuation／one-shot ⇒ 你自己在本回合写完（围栏即回复）；caller 代转 ⇒ 提醒所办代转，`op:"reply"` 是通道（成员不要自己调）。',
     '· 动作记在别人名下按事实报告；没做完写进 progress。',
   ].join('\n'),
 })

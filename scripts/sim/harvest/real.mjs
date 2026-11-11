@@ -17,8 +17,15 @@
  * OUTPUT (owned paths only):
  *   D:/_tmp/sim/real-receipts.jsonl   one row per vibe_* tool result
  *   D:/_tmp/sim/other-tools.jsonl     one row per non-vibe tool result (so a bypass is visible, not hidden)
- *   D:/_tmp/sim/real-stats.md         counts / refusal codes / key unions / drift / blind spots
- *   D:/_tmp/sim/real-fieldset.json    {tool: {keys: [...]}} for the Lead's parity gate
+ *   D:/_tmp/sim/real-stats.md         counts / refusal codes / key unions / nested paths / drift / blind spots
+ *   D:/_tmp/sim/real-fieldset.json    {tool: {keys: [...], paths: [...]}} for the Lead's parity gate
+ *
+ * TB-2736: `keys` stays the TOP-LEVEL key set (old readers: scripts/sim/scenarios/refusals.mjs,
+ * paper-gates.mjs, fidelity-extra.mjs, tests/sim-vs-real.test.mjs, ...). `paths` is the new, strictly larger
+ * collection: every leaf and container path a real receipt reached, array indices collapsed to `[]`, e.g.
+ * `status.turnReceipts[].notices.blockChars`. A key name and a path are DIFFERENT existences: `lines` at the top
+ * of a receipt does not prove a reader can see `turnReceipts[i].notices.lines`. Capture is depth-limited
+ * (PATH_MAX_DEPTH) and idempotent: the same session is never counted twice, and the roots are merged in one run.
  *
  * Read-only with respect to the repo and the real workspaces. Does not commit anything.
  */
@@ -42,17 +49,64 @@ const BUILD_WHY_GREP = 'grep:BUILD REV (journal predates the run-metadata event)
 const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu';
 const WS_ROOT = process.env.VMU_REAL_WS_ROOT || 'D:/_tmp/slv-phase5';
 const SESSIONS_ROOT = process.env.VMU_SESSIONS_ROOT || path.join(os.homedir(), '.dsh', 'sessions');
+// TB-2736: a caller may name SEVERAL session roots in one harvest (`;`-separated, platform-neutral). The single-root
+// variable stays for every existing caller; when it is not set the run-local root is appended below.
+const SESSIONS_ROOTS = process.env.VMU_SESSIONS_ROOTS
+  ? process.env.VMU_SESSIONS_ROOTS.split(';').map((r) => r.trim()).filter((r) => r !== '')
+  : [SESSIONS_ROOT];
 const OUT_DIR = process.env.VMU_REAL_OUT || 'D:/_tmp/sim';
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+const SESSION_FILE = 'session.v4.jsonl.zstd';
+// TB-2736: a real box may keep DSH sessions in MORE THAN ONE home (the default `~/.dsh/sessions`, plus the
+// per-run `sessions/` directory the driver writes next to the workspaces). One harvest must merge them, in one
+// pass, without hard-coding directory names (the workspace dirs are `slvpNNN-ws` and change every run). A root
+// is REAL only when it contains at least one session journal - existence of a folder alone is not evidence.
+const EXTRA_SESSIONS_ROOT = process.env.VMU_SESSIONS_ROOT || process.env.VMU_SESSIONS_ROOTS ? null : path.join(WS_ROOT, 'sessions');
+const PATH_MAX_DEPTH = 6;
 
 /** The harness names a workspace's session folder after its absolute path: ':' is dropped, '\' and '/' become '-'. */
 function encodeWorkspace(abs) {
   return '--' + abs.replace(/:/g, '').replace(/[\\/]/g, '-') + '--';
 }
 
-function sessionsOfWorkspace(abs) {
-  const dir = path.join(SESSIONS_ROOT, encodeWorkspace(abs));
-  return fs.existsSync(dir) ? dir : null;
+/** Depth-limited walk of a session tree: true when at least one `session.v4.jsonl*` file exists under it. */
+function hasSessionJournal(root) {
+  if (!root || !fs.existsSync(root)) return false;
+  const scan = (dir, depth) => {
+    if (depth > 2) return false;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+    for (const ent of entries) {
+      if (!ent.isDirectory()) { if (ent.name.startsWith(SESSION_FILE)) return true; continue; }
+      if (scan(path.join(dir, ent.name), depth + 1)) return true;
+    }
+    return false;
+  };
+  return scan(root, 0);
+}
+
+/** The roots that really hold journals, in a stable order (default home first, then the run-local tree). */
+function sessionRoots() {
+  const out = [];
+  for (const root of [...SESSIONS_ROOTS, EXTRA_SESSIONS_ROOT]) {
+    if (!root) continue;
+    const abs = path.resolve(root);
+    if (out.some((r) => path.resolve(r) === abs)) continue;
+    if (!hasSessionJournal(abs)) continue;
+    out.push(abs);
+  }
+  return out;
+}
+
+/** Every session directory that could belong to this workspace, across every live root. */
+function sessionsOfWorkspace(abs, roots) {
+  const name = encodeWorkspace(abs);
+  const out = [];
+  for (const root of roots) {
+    const dir = path.join(root, name);
+    if (fs.existsSync(dir)) out.push({ root, dir });
+  }
+  return out;
 }
 
 /** Split a concatenated-frame zstd file and return the decoded text lines of every frame. */
@@ -108,6 +162,31 @@ function keysOf(parsed) {
   return Object.keys(parsed).sort();
 }
 
+/**
+ * Every path a receipt reached, with array indices collapsed: `status.turnReceipts[].notices.blockChars`.
+ * Container paths are included (`status`, `status.turnReceipts[]`, ...), because "the receipt exposes a
+ * `turnReceipts` ARRAY OF OBJECTS each with `notices`" is itself a fact a reader depends on. Depth is capped so a
+ * pathological payload cannot explode the fieldset; the cap is reported in the stats header, not hidden.
+ */
+function pathsOf(parsed, maxDepth = PATH_MAX_DEPTH) {
+  const out = new Set();
+  const walk = (value, depth, prefix) => {
+    if (depth >= maxDepth) return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, depth + 1, prefix + '[]');
+      return;
+    }
+    if (value === null || typeof value !== 'object') return;
+    for (const [k, v] of Object.entries(value)) {
+      const p = prefix === '' ? k : prefix + '.' + k;
+      out.add(p);
+      walk(v, depth + 1, p);
+    }
+  };
+  walk(parsed, 0, '');
+  return [...out].sort();
+}
+
 /** The repo's REGISTERED tool names for this deployment (host kernel faces + v5r pack faces; the kit faces are a subset). */
 async function repoToolNames() {
   const names = new Set();
@@ -153,6 +232,7 @@ async function main() {
     .filter((e) => e.isDirectory() && e.name.endsWith('-ws'))
     .map((e) => path.join(WS_ROOT, e.name))
     .sort();
+  const roots = sessionRoots();
 
   const receiptRows = [];
   const otherRows = [];
@@ -161,22 +241,38 @@ async function main() {
   const receiptsByTool = new Map();
   const codesByTool = new Map();
   const keysByTool = new Map();
+  const pathsByTool = new Map();
   const failedByTool = new Map();
   const truncatedByTool = new Map();
   const unknownToolByTool = new Map();
   const seenWorkspaces = new Set();
+  const seenSessions = new Set();
   let sessionFiles = 0, events = 0, results = 0, orphanResults = 0, badFrames = 0, parseFailed = 0, stampedRows = 0, metaSessions = 0;
+  let rootDirs = 0, duplicateSessions = 0;
 
   const bump = (map, key, n = 1) => map.set(key, (map.get(key) || 0) + n);
 
+  // TB-2736: collect the work first, so one session journal is processed exactly ONCE even when two live roots
+  // both carry a folder for the same workspace (idempotence is a property of the collection, not of luck).
+  const sessionTasks = [];
   for (const ws of workspaces) {
-    const sessDir = sessionsOfWorkspace(ws);
-    if (!sessDir) continue;
     const run = path.basename(ws);
-    for (const sd of fs.readdirSync(sessDir, { withFileTypes: true })) {
-      if (!sd.isDirectory()) continue;
-      const file = path.join(sessDir, sd.name, 'session.v4.jsonl.zstd');
-      if (!fs.existsSync(file)) continue;
+    for (const found of sessionsOfWorkspace(ws, roots)) {
+      rootDirs += 1;
+      for (const sd of fs.readdirSync(found.dir, { withFileTypes: true })) {
+        if (!sd.isDirectory()) continue;
+        const file = path.join(found.dir, sd.name, SESSION_FILE);
+        if (!fs.existsSync(file)) continue;
+        const key = run + '\u0000' + sd.name;
+        if (seenSessions.has(key)) { duplicateSessions += 1; continue; }
+        seenSessions.add(key);
+        sessionTasks.push({ run, sessionId: sd.name, root: found.root, file });
+      }
+    }
+  }
+
+  for (const task of sessionTasks) {
+    const { run, file, sessionId } = task;
       sessionFiles++;
       seenWorkspaces.add(run);
       const eventsOf = [];
@@ -230,7 +326,7 @@ async function main() {
         if (!tool) { orphanResults++; continue; }
         const row = {
           run,
-          sessionId: sd.name,
+          sessionId,
           tool,
           build: sessionBuild,
           buildWhy: sessionBuild === null ? BUILD_WHY_NONE : (sessionBuildWhy || null),
@@ -255,11 +351,15 @@ async function main() {
           let kset = keysByTool.get(tool);
           if (!kset) { kset = new Set(); keysByTool.set(tool, kset); }
           for (const k of row.keys) kset.add(k);
+          // TB-2736: the path set, not just the top-level key set. A truncated (unparsable) receipt contributes no
+          // paths at all - a lower bound is fine, an invented path is not.
+          let pset = pathsByTool.get(tool);
+          if (!pset) { pset = new Set(); pathsByTool.set(tool, pset); }
+          for (const p of pathsOf(parsed)) pset.add(p);
         } else {
           otherRows.push(row);
         }
       }
-    }
   }
 
   const sortObj = (map) => [...map.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
@@ -272,7 +372,7 @@ async function main() {
   const fieldset = {};
   for (const tool of [...keysByTool.keys()].sort()) {
     const keys = [...keysByTool.get(tool)].sort();
-    if (keys.length > 0) fieldset[tool] = { keys };
+    if (keys.length > 0) fieldset[tool] = { keys, paths: [...(pathsByTool.get(tool) || new Set())].sort() };
   }
   fs.writeFileSync(path.join(OUT_DIR, 'real-fieldset.json'), JSON.stringify(fieldset, null, 2) + '\n');
 
@@ -284,7 +384,7 @@ async function main() {
   const lines = [];
   lines.push('# R240-A 真机回执底稿（real receipt harvest）');
   lines.push('');
-  lines.push('> 来源：`' + SESSIONS_ROOT + '` 下 `' + WS_ROOT + '` 各工作区的 DSH 会话日志（只读）。');
+  lines.push('> 来源：' + roots.map((r) => '`' + r + '`').join(' + ') + ' 下 `' + WS_ROOT + '` 各工作区的 DSH 会话日志（只读，一次 harvest 合并多个根）。');
   lines.push('> 采集器：`scripts/sim/harvest/real.mjs`（会话文件是「一帧一行」的 zstd 拼接，必须逐帧解压）。');
   lines.push('');
   lines.push('## 0. 规模');
@@ -292,6 +392,9 @@ async function main() {
   lines.push('| 项 | 值 |');
   lines.push('| --- | --- |');
   lines.push('| 磁盘上的工作区（`' + WS_ROOT + '/*-ws`） | ' + workspacesOnDisk + ' |');
+  lines.push('| 真正含日志的会话根（一次 harvest 内合并） | ' + roots.length + '（' + roots.map((r) => '`' + r + '`').join(' + ') + '） |');
+  lines.push('| 匹配到的会话目录（跨根） | ' + rootDirs + ' |');
+  lines.push('| 跨根重复的会话（同工作区同 sessionId，只算一次） | ' + duplicateSessions + ' |');
   lines.push('| 有会话目录的工作区 | ' + seenWorkspaces.size + ' |');
   lines.push('| 会话文件 | ' + sessionFiles + ' |');
   lines.push('| 事件 | ' + events + ' |');
@@ -367,10 +470,40 @@ async function main() {
   lines.push('');
   lines.push(blind.map((n) => '`' + n + '`').join('、'));
   lines.push('');
+  lines.push('## ⑥ 嵌套路径并集（数组下标折叠成 `[]`，深度上限 ' + PATH_MAX_DEPTH + '）');
+  lines.push('');
+  lines.push('> 顶层键集（③）与路径集是两件事：`lines` 在顶层出现，不证明读者能看到 `turnReceipts[].notices.lines`。');
+  lines.push('> 上限来自 `PATH_MAX_DEPTH=' + PATH_MAX_DEPTH + '`：超过上限的分支不在本表、也不在 fieldset 里，这是下界不是全集。');
+  lines.push('');
+  const pathUnion = new Set();
+  for (const tool of Object.keys(fieldset)) for (const p of fieldset[tool].paths || []) pathUnion.add(p);
+  const isDeep = (p) => p.split('.').length >= 3 || p.includes('[]');
+  const nestedPaths = [...pathUnion].filter(isDeep);
+  lines.push('所有 vibe_* 工具的路径并集（' + pathUnion.size + ' 条，其中 ≥3 段或含数组的 ' + nestedPaths.length + ' 条）。');
+  lines.push('');
+  lines.push('| 工具 | 路径数 | 其中 ≥3 段/含数组 |');
+  lines.push('| --- | --- | --- |');
+  for (const tool of Object.keys(fieldset)) {
+    const ps = fieldset[tool].paths || [];
+    lines.push('| `' + tool + '` | ' + ps.length + ' | ' + ps.filter(isDeep).length + ' |');
+  }
+  lines.push('');
+  const run78Path = 'status.turnReceipts[].notices.blockChars';
+  const hasRun78 = pathUnion.has(run78Path);
+  lines.push('RUN 78 的那条嵌套读数 `' + run78Path + '`：' + (hasRun78
+    ? '**在语料里**（TB-2736：判定走路径集合，不必为它人工登记 provenance）'
+    : '**未出现**（harvest 没走到，审计必须如实说缺；这不等于产品不产出）'));
+  const noticesPaths = [...pathUnion].filter((p) => p.includes('turnReceipts[].notices')).sort();
+  if (noticesPaths.length) { lines.push(''); lines.push('`turnReceipts[].notices` 下真实出现过的路径：' + noticesPaths.map((p) => '`' + p + '`').join('、')); }
+  lines.push('');
   fs.writeFileSync(path.join(OUT_DIR, 'real-stats.md'), lines.join('\n'));
 
   console.log(JSON.stringify({
     workspacesOnDisk,
+    sessionRoots: roots,
+    rootDirs,
+    duplicateSessions,
+    pathsTotal: pathUnion.size,
     workspacesWithSessions: seenWorkspaces.size,
     sessionFiles,
     events,

@@ -27,7 +27,7 @@ const sum = Object.values(combos).reduce((a, b) => a + b, 0)
 // +1566 across the normal prompts, and this round deleted the one real duplication it found — the UNKNOWN_FIELD
 // sentence was stated twice inside the SAME section (once here, once in the receipt-contract line below): −46.
 const RUN2730_REPLY_QUALIFIER = { chair: 28, member: 28, temp: 28, sum: 84 } // TB-2733 prep: the member-facing op:"reply" teaching became an explicit prohibition (VMU_NOT_PERMITTED) and the caller sentence got its office qualifier; the shared fixture block paid for it by trimming restatements (net +24 vs the D5 restore)
-const FIXTURE_TOOLS_MEASURED = 1582 // 1291 + 164 (TB-2692) − 46 (deleted duplication) + 176 (TB-2711 office attribution) − 59 (TB-2725 receipt-contract merge) + 112 (RUN 270: the copy-pasteable progress sample TB-2725 merged away, restored — in fixtureMode=tools it had been left in no block a member/temp seat reads) − 14 (TB-2732: D4/D7/C10 restatements merged; the pinned duty-list caveat stays)
+const FIXTURE_TOOLS_MEASURED = 1388 // 1291 + 164 (TB-2692) − 46 (deleted duplication) + 176 (TB-2711 office attribution) − 59 (TB-2725 receipt-contract merge) + 112 (RUN 270: the copy-pasteable progress sample TB-2725 merged away, restored — in fixtureMode=tools it had been left in no block a member/temp seat reads) − 14 (TB-2732: D4/D7/C10 restatements merged; the pinned duty-list caveat stays) − 177 (TB-2741: RUN-79 corrections merged the receipt-contract / reply-path / vote-channel restatements; the say destinations came back in 25 chars) + 15 (RUN 272: TB-2741's reword had dropped the load-bearing clause 「形状问题不等于引擎不可用」 — a fence/JSON error is not a broken toolchain, and a seat that reads it as one stops working and starts probing the engine; restored inside the same sentence)
 const FIXTURE_TOOLS_MARGIN = Math.max(Math.ceil(FIXTURE_TOOLS_MEASURED * 0.01), 3) // 16
 const FIXTURE_TOOLS_CEILING = FIXTURE_TOOLS_MEASURED + FIXTURE_TOOLS_MARGIN // 1601
 // ★ TB-2707 (2026-11-10) — F75-16 archive sentence: the shared `v5r-turn-channels` block went from the
@@ -52,10 +52,30 @@ const TB2732_DEDUP = { chair: -8, member: -8, temp: -8, sum: -24 } // TB-2732 (R
 // fixtureMode=tools that left member/temp with NO sample anywhere (measured). Restored as one 111-char line (+newline)
 // in the shared `v5r-fixture-tools` block: +112 per seat, +336 for the three normal assemblies.
 const RUN270_PROGRESS_SAMPLE = { chair: 112, member: 112, temp: 112, sum: 336 }
-const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair // 29491
+// ★ TB-2741 (2026-11-11) — RUN 79's ten corrections, net ≤0: proof_ref root example, vote_solved bookkeeping wording,
+// "example not whitelist", no always-renders blueprint promise, per-face phase naming, draft row/file split, merged
+// action boundary, kernel-injected status board, one tool_help authority, next_step as advice. Every added sentence was
+// paid for by merging restatements in the shared fixture / tracks blocks: −4 per seat, −12 for the three normals
+// (measured 29 491→29 469 / 25 993→25 971 / 22 660→22 638).
+const TB2741_CORRECTIONS = { chair: -22, member: -22, temp: -22, sum: -66 }
+// ★ RUN 272 (2026-11-12, Lead) — RUN 79's V1 attribution batch: TB-2741's #5 correction had dropped the parenthetical
+// `（旧任务书简写）` after the legacy short phase name, which is the anchor `tests/vmu-run77-prompt-phase-and-votes`
+// pins (RUN 76's short-name relapse). Restoring it costs 8 chars per seat in the shared `v5r-turn-polls` block
+// (measured 29 469→29 477 / 25 971→25 979 / 22 638→22 646; sum 78 078→78 102). A label that names the trap is not
+// decoration: without it a seat cannot tell a legacy spelling from this face's closed set.
+// ★ RUN 272 measured per seat: +30, three load-bearing clauses TB-2741's dedup had dropped or that the gates
+// caught as unpinned. (a) +8 in the shared polls block: the 「（旧任务书简写）」 label that names the legacy phase spelling
+// (the anchor `tests/vmu-run77-prompt-phase-and-votes` pins against a short-name relapse). (b) +14 in the shared
+// fixture-tools section: 「形状问题不等于引擎不可用」 — a fence/JSON error is not a broken toolchain, and a seat that reads it
+// as one stops working and starts probing the engine. (c) +8 in the same polls block: 「别自己数人头（vote_solved）」 — the
+// closure denominator is the enfranchised seats, so a hand count is wrong in exactly the case the line is about.
+// Every one is a fact a seat must read; none is decoration. 29469+30 = 29499 per seat, 78078+90 = 78168 for the
+// three normals (live, measured after the restore).
+const RUN272_RUN79_RESTORE = { chair: 30, member: 30, temp: 30, sum: 90 }
+const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair // 29499
 const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 295
 const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29795
-const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum // 78144
+const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum // 78168
 const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 782
 const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 78953
 
@@ -81,7 +101,7 @@ test('§1 the shared fixture-tools section: duplicates gone, the pinned contract
   // named refusal and the rest of the contract survive.
   ok(says(chair, 'known fields') && denies(chair, '29 个已登记字段') && says(chair, 'VMU_TURN_UNKNOWN_FIELD'), '§1c the receipt-contract POINTER and the named refusal survive (RUN 257: the copied count is gone)')
   ok(says(chair, 'VMU_TURN_NO_FENCE') && says(chair, 'VMU_TURN_BAD_JSON'), '§1d the two fence refusals survive')
-  ok(says(chair, '{"vote_solved": true|false}') && says(chair, '{"solved": false}'), '§1e the minimal receipts survive')
+  ok(says(chair, '{"solved": false}') && says(chair, '只走工具') && says(chair, 'fieldsIgnored'), '§1e the minimal receipts survive (the tool is the vote channel; the reply field only reports)')
   ok(
     denies(chair, '回执正文里【不要】粘贴 JSON 对象或工具回执原文') &&
       denies(chair, '调用工具后结果立即可见；**回执可以很薄**'),

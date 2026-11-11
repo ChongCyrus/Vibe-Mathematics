@@ -2271,6 +2271,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   }
   const meetingsDomainSeam = store ? {
     read: () => domainRowsOf(store.read('meetings')),
+    // ★ ROUND 79 / TB-2740 (FEEDBACK79 B2): the DURABLE fold is the only CROSS-KERNEL source of the receipt ring —
+    // an in-process ring dies with the kernel that convened, so the office kernel read an empty one. Read-only by
+    // contract: this returns the face env and nothing writes through it (`write` below is unchanged).
+    readFold: () => store.read('meetings'),
     write: (rows) => store.patch('meetings', (env) => {
       if (!env || typeof env !== 'object') return env
       const value = env.value && typeof env.value === 'object' ? env.value : {}
@@ -2317,7 +2321,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         return Promise.reject(e)
       }
       const row = { member, turn: typeof f.id === 'string' ? f.id : null, phase: typeof f.phase === 'string' ? f.phase : null,
-        round: Number.isFinite(Number(f.round)) ? Number(f.round) : null, at: typeof f.at === 'string' ? f.at : null }
+        round: Number.isFinite(Number(f.round)) ? Number(f.round) : null, at: typeof f.at === 'string' ? f.at : null,
+        // ★★★ TB-2735 / RUN 79: WHICH LOOP WROTE THIS ROW. The turn loop reads it back (`epochOf`) to tell "the fact died
+        // with an earlier process" from "this loop never had the fact". Null for rows written before this column existed.
+        loopEpoch: typeof f.loopEpoch === 'string' ? f.loopEpoch : null }
       // ★★★ TB-2694 / F75-06 (MEASURED on the 75th live run): a member calling `vibe_vmu_turn{op:"status"}` from ITS OWN
       // session read `turns:0 / turnReceipts:[]` — that session mounts a SECOND kernel over the same root, so the
       // parent's in-memory ledger is invisible there. This durable row is the only fact every instance can read, so
@@ -2340,7 +2347,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           codes: patch.codes !== null ? patch.codes : (sameTurn && Array.isArray(prev.codes) ? prev.codes : []),
           skipped: patch.skipped !== null ? patch.skipped : (sameTurn && Number.isFinite(Number(prev.skipped)) ? Number(prev.skipped) : 0),
           emptyReply: patch.emptyReply !== null ? patch.emptyReply : (sameTurn && typeof prev.emptyReply === 'boolean' ? prev.emptyReply : null),
-          closedWith: patch.closedWith !== null ? patch.closedWith : (sameTurn && typeof prev.closedWith === 'string' ? prev.closedWith : null) }
+          closedWith: patch.closedWith !== null ? patch.closedWith : (sameTurn && typeof prev.closedWith === 'string' ? prev.closedWith : null),
+          // TB-2735: the epoch is a property of the TURN, so a settlement of the same turn keeps it; a new turn resets it.
+          loopEpoch: row.loopEpoch !== null ? row.loopEpoch : (sameTurn && typeof prev.loopEpoch === 'string' ? prev.loopEpoch : null) }
       }
       // MERGE INSIDE THE FOLD (docs/07 §1-1): computing `next` in the exclusive section is what lets two kernels record
       // two different members in the same tick without either overwriting the other - the mailbox precedent, not a new
@@ -2362,6 +2371,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       let n = 0
       for (const r of rows) if (r && typeof r === 'object' && String(r.member) === who) n += 1
       return n
+    },
+    // ★★★ TB-2735 / RUN 79: the epoch WRITTEN for this turn id, or null when the durable fold holds no row for it.
+    // SYNCHRONOUS by design: the vote gate is inside the reply write-back and must not await a second read. `read` on the
+    // store returns the fold, not a promise - the same fact `count` already relies on.
+    epochOf: (turnId) => {
+      const rows = store.read('turns')
+      if (!Array.isArray(rows)) return null
+      const wanted = String(turnId)
+      for (const r of rows) if (r && typeof r === 'object' && String(r.turn) === wanted) return typeof r.loopEpoch === 'string' ? r.loopEpoch : null
+      return null
     },
   } : null
   meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef, foreignIds: () => [...liveMeetings.keys()],
@@ -2581,7 +2600,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
             // from a restart with the literal verb `restore` as its AUTHOR — one row read `owner:"restore"` while another
             // read `owner:null` for the same fact, and `verified` rows promoted later in the run inherited the verb.
             // ROUND 68 settled this for adoption (an unknown author is not a name); a hydration is the same sentence.
-            records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, finalAck: true, finalAckSource: 'rehydrate', by: row.by === undefined || row.by === null || row.by === '' ? null : String(row.by) })
+            // ★★★ TB-2739 (A) / RUN 79 (V1): the fold row's `writtenFrom` is carried back in, so a restart does not
+            // RE-DERIVE a provenance the write already established (a re-derivation with no ambient reads "named writer +
+            // no caller" = `relayed`, which is how a seat's own write came back as a relay). Absent/invalid stays absent:
+            // then `put` derives it exactly as before, and the row says `unknown` only when nobody could establish it.
+            const foldProvenance = row.writtenFrom === 'own-turn' || row.writtenFrom === 'relayed' || row.writtenFrom === 'unknown' ? row.writtenFrom : null
+            records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, finalAck: true, finalAckSource: 'rehydrate', by: row.by === undefined || row.by === null || row.by === '' ? null : String(row.by), ...(foldProvenance === null ? {} : { writtenFrom: foldProvenance }) })
             restored += 1
           } catch (e) { log('vmu records restore: ' + String((e && e.message) || e)) }
         }
@@ -2667,9 +2691,17 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // rolled a row back one revision when it read its own older picture). The reader now requires the fold row to be
           // STRICTLY newer by (updatedAt, then rev); `rev` is per-kernel (see records.js revMeans), so the instant is the
           // cross-kernel fact and rev only breaks a same-millisecond tie.
+          // ★★★ TB-2739 (A) / RUN 79 (V1, MEASURED): THE FOLD DID NOT CARRY `writtenFrom`. The row recorded the provenance
+          // of its act in memory (`own-turn` for a seat writing inside its own delivered turn), the projection below kept
+          // every other column and dropped that one key, and the NEXT hydration re-derived it from an empty ambient — where
+          // "a named writer + no caller" reads `relayed`. So the same row was `own-turn` for its writer and `relayed` for
+          // the office, and RUN 79's V1 counted relayed rows against member acts: one fact, two answers, the fold in the
+          // middle. Provenance travels with the row it describes, or it is not a row field at all.
+          const foldWrittenFrom = r.writtenFrom === 'own-turn' || r.writtenFrom === 'relayed' || r.writtenFrom === 'unknown' ? r.writtenFrom : null
           rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, state: r.status, restoredAt: r.restoredAt === undefined || r.restoredAt === null ? null : Number(r.restoredAt),
             rev: Number.isInteger(r.rev) ? r.rev : 1,
             updatedAt: Number.isFinite(Number(r.updatedAt)) ? Number(r.updatedAt) : null,
+            writtenFrom: foldWrittenFrom,
             by: r.writer !== undefined && r.writer !== null ? r.writer : (r.owner !== undefined && r.owner !== null ? r.owner : r.by),
             owner: r.owner !== undefined && r.owner !== null ? r.owner : (r.writer !== undefined && r.writer !== null ? r.writer : null) })
         }

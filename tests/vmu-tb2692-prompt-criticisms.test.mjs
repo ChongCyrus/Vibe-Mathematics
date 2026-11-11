@@ -101,7 +101,7 @@ has(chairNormal, 'VMU_NO_SUCH_OBJECT', '§6 no-such-object: the code itself is s
 for (const code of ['VMU_TURN_BAD_JSON', 'VMU_TURN_UNKNOWN_FIELD', 'VMU_TURN_DELIVERY_SHAPE', 'VMU_TURN_DELIVERY_NO_PAYLOAD']) {
   has(chairNormal, code, '§7 shape codes: ' + code + ' is listed')
 }
-has(chairNormal, '形状问题，不等于引擎不可用', '§7 shape codes: shape problems are not engine unavailability')
+has(chairNormal, '不等于引擎不可用', '§7 shape codes: shape problems are not engine unavailability')
 has(chairNormal, '不要去 probe 引擎', '§7 shape codes: the seat is told what NOT to do (probe the engine)')
 
 // ── §8 V8 parked: the codes and the three-step order ───────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ ok(firstLineAfterReview.length > 0 && !firstLineAfterReview.startsWith('--------
 
 // ── §13 the four seats all carry the new teaching (not just the chair) ─────────────────────────────────────
 for (const [label, text] of [['member', memberNormal], ['temp', tempNormal]]) {
-  has(text, '形状问题，不等于引擎不可用', '§13 shape codes reach the ' + label + ' prompt')
+  has(text, '不等于引擎不可用', '§13 shape codes reach the ' + label + ' prompt')
 }
 
 // ── §14 item 9 REJECTED: the notice block is PREPENDED BY THE KERNEL, before any section; no prompt section can ─

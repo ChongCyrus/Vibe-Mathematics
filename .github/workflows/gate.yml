@@ -1,0 +1,241 @@
+name: gate
+
+# WHAT THIS WORKFLOW IS FOR (RUN 79 / TB-2738)
+#
+# It proves that a SECOND, CLEAN machine can run part of the gate: the static gates and the suite itself.
+# It does NOT prove the product is releasable — that stays with the local release gate
+# (scripts/sim/audit/release-ready.mjs) plus the real-machine prerequisites, which a hosted runner cannot have.
+# docs/acceptance/ci-gate.md states that distinction verbatim, and tests/ci-exclusions.test.mjs reads it as an
+# input, so the sentence cannot quietly disappear from the docs while the green check keeps being read as
+# release approval.
+#
+# THREE RULES THIS FILE KEEPS (each has a failure behind it):
+#   · no `continue-on-error` anywhere: a job that may fail is a gate that may be ignored;
+#   · every `uses` is pinned to a major tag (`@v4`), never `@latest`;
+#   · permissions are `contents: read` — the gate has no business writing to the repository.
+#
+# THE FOUR JOBS AND THE ONE FACT THEY SHARE. `partition` publishes a plan; the eight `suite` shards each run one
+# slice of that plan and seal themselves to the SAME run (run id + attempt + plan sha256); `union` reads the
+# artifacts back and proves Σ selected == plan.sums.shards == plan.expected, that no shard is red, and that the
+# three excluded jobs appear in no shard's job list. Artifact names carry `run_id` and `run_attempt` so the union
+# can never sum yesterday's green shard into today's gate. `scripts/ci/union-verify.mjs` holds that arithmetic;
+# this file only wires it, because a proof that lives in YAML is a proof nobody can unit-test.
+#
+# THE FIRST RED MUST BE A FACT ABOUT THE PRODUCT. Before the first real push, refresh the derived counts
+# (`update-doc-counts --write`) until `--check` reports no changes. A CI that reds because our own derived docs
+# are stale trains everyone to ignore red; that is a release-gate failure, not a CI success.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      full_release:
+        description: 'Run the release sweep (GATE_RELEASE=1) instead of the ordinary suite'
+        type: boolean
+        default: false
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+  # Every artifact this run produces carries these two numbers in its NAME, and every shard seals them into its
+  # own metadata. Reusing an artifact from an earlier run is therefore a named failure (RUN-MISMATCH), not a
+  # sum that happens to look right.
+  RUN_ID: ${{ github.run_id }}
+  RUN_ATTEMPT: ${{ github.run_attempt }}
+  HEAD_SHA: ${{ github.sha }}
+
+jobs:
+  static:
+    name: static gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Five independent gates, each of which has caught a different class of mistake locally. They are cheap
+      # (about 97 s measured on the release laptop, almost all of it the pre-flight) and they fail fast: a
+      # broken wiring never reaches the shards.
+      - name: pre-flight (shared surfaces, generated patch, documented counts, doc linter)
+        timeout-minutes: 10
+        run: node scripts/preflight.mjs
+
+      - name: documentation lint
+        timeout-minutes: 3
+        run: node scripts/check-docs.mjs
+
+      - name: rules coverage (every claim resolves; the closing gate)
+        timeout-minutes: 3
+        run: node scripts/check-rules-coverage.mjs --check
+
+      # NOTE: `scripts/check-rule-parity.mjs` takes no `--check` flag — running it IS the check
+      # (`process.argv` there only toggles verbose output). Passing a bogus flag would be a silent no-op, so
+      # the command names the script and nothing else, and the report says so instead of pretending.
+      - name: rule parity (ledger <-> live teaching, four parities)
+        timeout-minutes: 3
+        run: node scripts/check-rule-parity.mjs
+
+      - name: prompt budget
+        timeout-minutes: 3
+        run: node scripts/audit-prompt-budget.mjs --check
+
+  partition:
+    name: shard plan
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The plan asks tests/run-tests.mjs, it does not carry a second job list. `--check` reds when the shard
+      # sizes do not sum to the post-exclusion count, and when a shard would be empty (an empty shard is a green
+      # check that verifies nothing).
+      #
+      # `set -o pipefail` matters: without it the pipeline would report `tee`'s status, so a red plan would be
+      # saved to the artifact and the step would pass — the exact silent failure this job exists to prevent.
+      - name: plan the split and prove the arithmetic
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/shard-plan.mjs --check | tee shard-plan.json
+
+      # Seal the plan to this run BEFORE uploading it. The shards download this metadata and seal themselves
+      # against the same plan sha256, which is what makes "this shard planned another tree" a named red.
+      - name: seal the plan to this run
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/union-verify.mjs write-meta --out meta.json --plan shard-plan.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-plan-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}
+          path: |
+            shard-plan.json
+            meta.json
+          if-no-files-found: error
+
+  suite:
+    name: suite ${{ matrix.shard }}/8
+    needs: partition
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    # GATE_RELEASE is set ONLY for a manual release dispatch with the box ticked. An ordinary push must never
+    # silently run the release sweep (it is slower and its results mean something else).
+    env:
+      GATE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.full_release && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: fetch this run's plan
+        uses: actions/download-artifact@v4
+        with:
+          name: shard-plan-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}
+
+      # One slice. The runner prints `shard=i/8 selected=K of M` on its header, its TOTAL line and inside
+      # `--json`, so the number a shard reports is the number the union compares — not a number the workflow
+      # derives again. `--json` goes to a file because it IS the artifact; the human log goes to stderr.
+      #
+      # The step exits with the runner's exit code. A shard that failed must fail the job: the union also reds on
+      # `fail>0`, but two independent statements about the same fact are how a gate stays honest.
+      - name: run shard ${{ matrix.shard }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          rc=0
+          node tests/run-tests.mjs --shard ${{ matrix.shard }}/8 --json --no-temp-hygiene \
+            --exclude sim-gate.test.mjs \
+            --exclude audit-math-computation-sensitivity.mjs \
+            --exclude mutation-evidence.test.mjs \
+            > shard-report.json 2> shard-log.txt || rc=$?
+          cat shard-log.txt
+          cat shard-report.json
+          exit "$rc"
+
+      # Even a shard that crashed must upload what it has: the union needs to see the failure, not infer it from
+      # an absent artifact. `always()` keeps this step running after the red one above.
+      - name: seal the shard to this run and this plan
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/union-verify.mjs write-meta --out shard-meta.json --plan shard-plan.json
+
+      - name: upload shard ${{ matrix.shard }}
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}-${{ matrix.shard }}
+          path: |
+            shard-report.json
+            shard-log.txt
+            shard-meta.json
+          if-no-files-found: warn
+
+  union:
+    name: union equals the plan
+    needs: suite
+    # Run even when a shard failed: the union must say WHICH shard is red and how the numbers disagree. Skipping
+    # it on failure would hide the diagnosis behind "one of the eight failed".
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The pattern matches this run's plan and this run's eight shards (names embed run_id + attempt). Any
+      # artifact from an earlier run is not even downloaded, and the verifier still checks each downloaded
+      # artifact's own name and metadata against the expected run.
+      - name: fetch every artifact of this run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}*'
+          path: artifacts
+
+      # Six statements, one proof:
+      #   1. the plan and all eight shards exist and belong to THIS run (and to THIS plan, by sha256);
+      #   2. each reported selected == plan.shards[i-1].count, each reported total == plan.expected;
+      #   3. Σ selected == plan.sums.shards == plan.expected (all three printed when they disagree);
+      #   4. every shard reports FAIL 0;
+      #   5. no excluded label appears in any shard's job list (a set assertion, not a count);
+      #   6. the shard job lists are disjoint and together hold exactly plan.expected jobs.
+      # The summary is teed to an artifact so a red is readable after the log rolls away — with pipefail, so the
+      # job still reds.
+      - name: prove the union
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/union-verify.mjs \
+            --dir artifacts \
+            --expected-run "$RUN_ID" \
+            --expected-attempt "$RUN_ATTEMPT" | tee union-summary.json
+
+      - name: upload the proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: union-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}
+          path: union-summary.json
+          if-no-files-found: warn

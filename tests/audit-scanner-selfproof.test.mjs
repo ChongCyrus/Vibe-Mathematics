@@ -49,6 +49,12 @@ const UNPROVEN = new Set([
   // Phase-12 lane file (member scope declaration): direct behaviour assertions over an exported table, no scan to
   // prove. Registered rather than pretended; delete this row the day it grows a runnable --self-test.
   'audit-member-scope.test',
+  // Round TB-2736 (nested corpus paths): behaviour, not a scan — it drives a real kernel, harvests the receipt
+  // into a temp corpus, then runs the real audit over it and shows the audit goes red again when the path is not
+  // captured. The three lamps for the harvester/audit edits were run by hand on a tree copy, so they are not in-file
+  // negative controls; a runnable `--self-test` would only replay what §2a-§2g already assert. Delete this row the
+  // day the suite grows one (or a `.mutants.mjs` sibling).
+  'audit-corpus-nested-keys.test',
   // Round task-7 (settings hot-truth): there is no SCANNER here to prove — the file reads the exported settings table and
   // asserts each construction-only key's declared class, and its §3 TEETH assertions are the in-file negative controls
   // (a H1 row for the same key must be caught, H2/H3 must pass, a planned row is exempt). Its §4 is an even stronger

@@ -240,6 +240,16 @@
 
 ★ **耐久会议行本身也带这份出处（RUN 78 · TB-2731）**：TB-2726 只把三键写进了回执环，会议的**耐久行**（`<root>/vmu/state.json` 的 `keys.meetings.value.data.live` 里那一条会议行）仍只有 `type` 一个词——于是「这次会是不是用别名开的」在审计时只能在回执与主席发言里找。现在 `openSeq` 把 `typeInput`/`typeMatchedBy` 一并写进耐久行：`type` 恒 id，`typeInput` 是调用者原文（不规范化），`typeMatchedBy` 是 `id`｜`alias`｜`default`。读面由**同一个投影** `typeProvenanceOf(m)` 提供，`summary` 与 status 视图各 spread 一次，另带 `typeMatchMeans` 一句话；RUN 78 之前记录的旧行两键读作 `null` + 具名 `typeMatchMeans`（「这一行在本折叠之前记录」），不改写、不猜测、不抛错，`type` 仍可信。**工具面同口径（RUN 78 · D3）**：`vibe_v5_meeting {action:"receiptsView", limit?}` 是只读的第二个读动作（此前只有 `rulings`），回执由内核 `receiptsView` 投影而来：`receipts`（新→旧序，内核环上限 200）、`count`、`available`、`dropped`/`ringDropped`、`receiptRingMeans`；`limit` 只收 1..200 的整数（缺省 50），越界具名拒 `VMU_INVALID_ARGUMENT`（clamp 会回答另一个问题）。于是同一次开会后**三处读数**（convene 回执 / 耐久会议行 / 工具面 `receiptsView`）的 `type`·`typeInput`·`typeMatchedBy` 逐字相等——`tests/vmu-run78-meeting-provenance.test.mjs` 对三种入口各钉一遍，第三处**只走注册工具面、不调内核服务**（服务有读面而工具面无入口，真机就只能记 NO-EVIDENCE），并含旧行 rehydrate 兼容与两盏反关灯。
 
+★ **跨内核读回执：`receiptsView` 读耐久账，不是读本实例的空环（RUN 79 · TB-2740）**：RUN 78 给了工具面入口，但内核仍只读**本实例**的 receipt ring——于是所办（根内核）读主席子内核召集的会议得到 `receipts:[] / available:0`，而 `state.json` 的耐久账里明明躺着三键俱全的行（真机 build `6c689c86`：根内核 `vibe_v5_meeting {action:"receiptsView",limit:10}` ⇒ `count:0`，主席那边的回执却是 `m2`／`closure`／`结题`／`alias`，且与耐久会议行相等）。现在内核 `receiptsView` 先读**耐久折**：`meetingsDomainSeam.readFold()`（只读的 `store.read('meetings')`，`vibe-math-vmu/kernel/index.js:2274-2277`，`write` 一字不动）→ `value.data.receipts`（JSON 字符串或数组），读成功即 `readFrom:"durable-fold"`；接缝缺席、读抛错、无 data 或 JSON 坏 ⇒ 退回本实例环并标 `readFrom:"in-process-ring"`，同时给 `foldWhy` 说明原因（旧读者形状不变）。两个数字必须**分开出现、绝不互相覆盖**：`available` 是**源**（耐久折或环）的条数，`inProcessRingCount` 是本实例环的条数；两者不等时另给 `sourceDivergenceMeans`（「`<N>` durable / `<M>` in-process」＋耐久权威的理由：它是共享记录，环只反映本内核自己的动作），但返回的行**始终取耐久折**——缺省环、以环覆盖折会让兄弟内核的会议在审计里消失。`limit` 语义不变（1..200，缺省 50，越界具名拒 `VMU_INVALID_ARGUMENT`，不 clamp）：`count` 是本次返回行数，`available` 是源总条数，`dropped = available - count`。
+
+| 层 | 位置（`file:line`） | 读者拿到的事实 |
+| --- | --- | --- |
+| 耐久账（跨内核唯一可读源） | `<root>/vmu/state.json` 的 `keys.meetings.value.data.receipts`；唯一生产写点 `vibe-math-vmu/kernel/meetings.js::pushReceipt` | open 行三键 `type`／`typeInput`／`typeMatchedBy` ＋ `typeMatchedByMeans`（RUN 77 起） |
+| 耐久折（只读接缝） | `vibe-math-vmu/kernel/index.js:2274-2277`：`meetingsDomainSeam.readFold` → `store.read('meetings')` | 上面的 `receipts` 数组；**不经此接缝写回**，`meetingmarker` 的 `read()/write()` 行为不变 |
+| 工具面读 | `vibe_v5_meeting {action:"receiptsView", limit?}` → `vibe-math-vmu/packs/v5r/tools.js` 的 `toolMeetingReceiptsView` | 内核回执原样透传 ＋ `readFrom`／`inProcessRingCount`／`receiptRingMeans`／`sourceDivergenceMeans`／`foldWhy` |
+
+**议程的输入形状也要可区分（RUN 79 · TB-2740 C1）**：`vibe_v5_meeting` 的 `agenda` 一直「字符串或数组」两义，回执只用 `agendaItems` 呈现结果，读者分不清「调用者写了一整句含逗号的议程（`,` 不是分隔符）」还是「写了数组」。现在 convene 回执带 `agendaInputShape:"string"|"array"` 与 `agendaSplitMeans`：字符串按 `;`／`；`／换行切分，`,` 与 `、` **不是**分隔符（`确认 (2k−1,2k) 的界,与证明` 是一整项）；数组元素**不二次切分**，纯空白项丢弃。`tests/vmu-run79-receipts-cross-kernel.test.mjs` 用**两个共用同一 store 根的内核实例**钉住三键逐字相等（第三处只走注册工具面），另含旧行 `null`+means、坏接缝降级、`limit` 界、两种 `agenda` 形状与三盏反关灯（改回读环／`available` 用环条数／逗号切分，各自在整树副本上红、还原后 sha256 与 pristine 相同）。
+
 > ★★★ **R30 · 四种回执形状增量（逐条指到 `file:line`；`tests/vmu-run30-findings.test.mjs` 对它们逐条点名 ✓）**
 > - **`vibe_vmu_meeting{action:"close"}`**（`tools/meeting.js:353-368`）：回执并排给 `closureVote`（`cast`／`confirmed`／`votesCast`／`missing`，**同一实例上的一致同意读数**；不可读时是 `{readable:false,why}`）与 `closureVoteNote` —— note 明写它**不是**这次关会的要求、也**没被关会改动**，关会过的是 `enforced` 里点名的**会议策略轨** ⇒ **「closed」不等于「一致判定已解决」**；点名在 `missing` 里的人，正是「声称结题前该去问的人」✓。
 > - **v5r-pack 的 `vibe_v5_verdict_ask`**（`packs/v5r/tools.js:1805-1860`）：`propositionKind`（`card`／`meeting-subject`／`file-ref`／`unverified`）、`propositionVerified`、`fileChecked`、`propositionWhy` 说清**这个 id 被理解成了什么**；`propositionClause` 是**真写进成员邮件正文**的那句话（`packs/v5r/tools.js:1744-1752`；注册卡 ⇒ `null`，因为点名一张已登记的卡不额外声称什么）；`accounting` 把三个数**摆平**：`asked + excluded = accountedCount`（`packs/v5r/tools.js:1793-1803`）；`excluded` 逐条给 `{member, why:"presides"}` —— 主席**签名**这次提问，所以不**回答**它，这是唯一被过滤的原因；`mail` 给真正发出的 `text` 与状态读数（「辩论已结束」只在状态真是 `closed` 时才算**读到的事实**，读不到就写「状态不可读」✓）。命题既不是卡、也不是文件引用、也不是本会辩论对象 ⇒ 具名拒 `VMU_ASK_UNKNOWN_PROPOSITION`（**已登记于 §8 的 R30 批**；抛出点 `packs/v5r/tools.js:1597`／`:1607`）✓。
@@ -398,11 +408,11 @@
 
 | # | 面 | 改前（真机读数） | 改后（契约） |
 |---|---|---|---|
-| D1 ★★★ | 结题票渠道的判据 | `apply` 的 `vote_solved` 分支读 `visibleToolsByMember.get(id) \|\| []`——该表只由「宿主 provider 返回数组」的装配写入；代传回合拿不到活的 member Agent（`host.js:2609-2626` 经 `resolveMemberAgent` 抛错），表为空 ⇒ `[]` 被读成「工具没挂」⇒ else 分支 `recordClosureVote` **计票** | 每个回合在装配时按 `turn.id` 记录**三态可证事实** `mountedToolsByTurn`：`provable:true` + 真实宿主工具表 / `provable:false` + `why`（`provider-threw:<code>`、`provider-returned-null`、`no-visible-tools-provider`）/ **无条目** = 本 loop 从未装配该回合。`apply` 按序判定并逐条具名：`tool-used-this-turn`（本回合已用工具投过）⇒ kept:false；无 `opts.turnId` 的直接 `apply()` ⇒ 保留 RUN 39 旧语义（生产回复恒经 `dispatchReply` 带 turnId，注释写明这是兼容路径）；有 turnId 无事实 ⇒ `legacy-row`；不可证 ⇒ `tool-visibility-unprovable`（reason 带 `mounted-why:*`）；可证且含 `vibe_vmu_vote` ⇒ `tool-visible`；可证且不含 ⇒ **唯一采纳分支** `tool-not-mounted`，行带 `kept:true` + `adoptedBecause`。直接效果：代传/驱动回合的回复投票不再计票，且回执说明原因。 |
+| D1 ★★★ | 结题票渠道的判据 | `apply` 的 `vote_solved` 分支读 `visibleToolsByMember.get(id) \|\| []`——该表只由「宿主 provider 返回数组」的装配写入；代传回合拿不到活的 member Agent（`host.js:2609-2626` 经 `resolveMemberAgent` 抛错），表为空 ⇒ `[]` 被读成「工具没挂」⇒ else 分支 `recordClosureVote` **计票** | 每个回合在装配时按 `turn.id` 记录**三态可证事实** `mountedToolsByTurn`：`provable:true` + 真实宿主工具表 / `provable:false` + `why`（`provider-threw:<code>`、`provider-returned-null`、`no-visible-tools-provider`）/ **无条目**——RUN 79 起「无条目」不再等同于 `legacy-row`：它由 durable `turns` 行上的 `loopEpoch` 与 FIFO 逐出记录再分成三格（见下表 a 的后三行）。`apply` 按序判定并逐条具名：`tool-used-this-turn`（本回合已用工具投过）⇒ kept:false；无 `opts.turnId` 的直接 `apply()` ⇒ 保留 RUN 39 旧语义（生产回复恒经 `dispatchReply` 带 turnId，注释写明这是兼容路径）；有 turnId 无事实 ⇒ `legacy-row`；不可证 ⇒ `tool-visibility-unprovable`（reason 带 `mounted-why:*`）；可证且含 `vibe_vmu_vote` ⇒ `tool-visible`；可证且不含 ⇒ **唯一采纳分支** `tool-not-mounted`，行带 `kept:true` + `adoptedBecause`。直接效果：代传/驱动回合的回复投票不再计票，且回执说明原因。 |
 | V2 ★★★ | 台账行的第四个通知键 | 生产者（`assemble`）自 RUN 77 起就产 `notices:{lines,rendered,blockChars,namedEmpty}`，装配回执也带；台账行 whitelist（`noteTurnReceipt`）只搬三键 ⇒ 行读不出「具名空」 | 白名单原样搬运第四键：`namedEmpty` 为 boolean（RUN 78+ 生产者写的行 `namedEmpty === (lines === 0)`），非 boolean ⇒ `null`（`null` = 该行写于键存在之前，本 loop 无法证明，绝不是 `false`）。`turnReceiptsMeans` 两处句子改四键并新增一句解释三个层各自落地。**教训（§355）：同一个读数在「生产者 / 装配回执 / 台账行」三层各落地一次，报缺口前先问是哪一层丢了，不要把三层混成一层。** |
 | U ★★ | 投递不可用的第五类 | `deliveryUnavailableWhyOf` 把 `VMU_ENGINE_UNAVAILABLE` 且非 `handed back no reply` 的一律归 `not-configured`；子会话 `stopReason="error"` 的抛点（`kernel/turn/index.js:919-921`）正落在此 | `DELIVERY_UNAVAILABLE_WHYS` 增第五值 `child-error`；在 not-configured **之前**判 message 含 `the child returned no text` 或 `stopReason=error` ⇒ `child-error`（配置没问题、子会话跑了但自己失败）。`deliveryUnavailableMeansOf` 对 `child-error` 与 `not-configured` 各给一句区分，seam 错误、回合行、`deliveryLastFail` 仍命名同一个 why（一套分类，三处落地）。 |
 
-运行期断言：`tests/vmu-run78-closure-vote-channel.test.mjs`（**35/0**；§0 源码九条具名形状、§D1 六夹具（工具可见 / 可证空表 / provider 抛错（run-78 形状）/ 非数组 / legacy 行 / 无 turnId 兼容）、§V2 空队列与有队列两世界、§U 五类 + 端到端回合行同名）。`tests/vmu-run77-reader-readings.test.mjs` 增 §A2（43/0），从**台账行**读同一读数，证明三层中的第三层已补。既有套件回归：run169 29/0、run192 3/0、run249 45/0、run250 48/0、run254 52/0、run256 61/0、run257-delivery-unavailable 59/0、run263 50/0。
+运行期断言：`tests/vmu-run78-closure-vote-channel.test.mjs`（**42/0**；§0 源码九条具名形状、§D1 六夹具（工具可见 / 可证空表 / provider 抛错（run-78 形状）/ 非数组 / legacy 行 / 无 turnId 兼容）、§V2 空队列与有队列两世界、§U 五类 + 端到端回合行同名、**§T1 模拟重启 + §T2 模拟逐出（RUN 79 / TB-2735 新增，六夹具期望值未改）**）。另 `tests/vmu-run2735-mounted-facts-durable.test.mjs`（**23/0**：§0 源码九条、§R 重启、§E 逐出 + 新回合仍采纳、§L legacy/兼容两条旧名仍精确、§M durable 行带 epoch）。`tests/vmu-run77-reader-readings.test.mjs` 增 §A2（43/0），从**台账行**读同一读数，证明三层中的第三层已补。既有套件回归：run169 29/0、run192 3/0、run249 45/0、run250 48/0、run254 52/0、run256 61/0、run257-delivery-unavailable 59/0、run263 50/0。
 
 **（a）结题票渠道判定表（三态 × 五 why）**——`apply` 只在这张表的最末一行计票，其余每行都写明「为什么不计」：
 
@@ -410,10 +420,24 @@
 |---|---|---|---|---|
 | 本回合已用 `vibe_vmu_vote` 投过 | `toolVotedThisTurn.has(member)` | `false` | `tool-used-this-turn` | 否（同票不双写） |
 | 无可证事实，但调用方**没有** `opts.turnId` | 直接 `apply()`（run169 的合约） | `true` | `no-turn-row-compat` | **是**（唯一兼容路径；生产回复恒经 `dispatchReply` 带 turnId，故无漏洞） |
-| 有 turnId，但本 loop 从未装配该回合 | `mountedToolsByTurn.get(turnId)` 无条目 | `false` | `legacy-row` | 否（不可证 ⇒ 不采纳；重启后的在飞回合落此格，见 TB-2735） |
+| 无 turnId 形状不符（不是 `t-<n>`） | `!validId` | `false` | `legacy-row` | 否（裸行：从来就没有事实可丢，读者不必找老代码） |
+| 有 turnId，本 loop **开过**该回合但从未装配 | `turns.has(turnId) && !mounted.has(turnId) && !evicted` | `false` | `legacy-row` | 否（本 loop 从未就该回合挂过工具表，不是遗忘） |
+| 有 turnId，durable 行记的 epoch **≠** 本 loop | `turnLedger.epochOf(turnId) !== loopEpoch` | `false` | `tool-visibility-unknown-after-restart` | 否（事实随**上一个进程**一起消失；读者应调低对该回合投票的期待，或让回合重开，而不是去翻旧代码） |
+| 有 turnId，同 epoch、本 loop 开过、FIFO 逐出过 | `epochOf===loopEpoch && turns.has && evictedTurnIds.has` | `false` | `tool-visibility-evicted` | 否（事实被 512 回合上限挤掉；修法是抬 cap，**不是**重启问题） |
 | 有事实但 `provable !== true` | `why` = `provider-threw:<code>` / `provider-returned-null` / `provider-returned-<typeof>` / `no-visible-tools-provider` | `false` | `tool-visibility-unprovable` | 否（**run-78 的洞**：旧代码把这一格读成空表并计票） |
 | 可证且工具表**含** `vibe_vmu_vote` | `provable === true && tools.indexOf(...) !== -1` | `false` | `tool-visible` | 否（硬门：工具可见时回复字段静默忽略） |
 | 可证且工具表**不含** `vibe_vmu_vote` | `provable === true` 且不含 | `true` | `tool-not-mounted` | **是**（唯一采纳分支；行带 `adoptedBecause` 说明「该回合挂了 N 个宿主工具、没有一个是结题票」） |
+
+**（a-1）「无事实」的三格如何被证明（RUN 79 / TB-2735）**——判据不是「map 里没有」，而是 durable 事实：
+
+| 证据 | 位置 | 怎么读 |
+|---|---|---|
+| 每个 loop 的身份 | `kernel/turn/index.js` `loopEpoch = 'loop-' + process.pid + '-' + (++LOOP_EPOCH_SEQ)` | 同进程两个实例不同（计数器），真重启不同（pid）。**不是时钟读数**，不回答「何时」，只回答「是不是我这一个 loop」 |
+| 回合行上的 epoch | durable `turns` 行新增 `loopEpoch` 列（`kernel/index.js#turnLedger.record` 写入，`foldRow` 同回合继承、新回合重置） | `epochOf(turnId)` 同步读 fold：行的 epoch ≠ 本 loop ⇒ 该回合由**上一个进程**装配 |
+| 被逐出的 id | `evictedTurnIds`（`EVICTED_TURN_IDS_CAP = 2048`，只记 id） | 同 epoch + 本 loop 的 `turns` 表有它 + 逐出集合有它 ⇒ FIFO 挤掉，不是重启 |
+| 两者都没有 | — | 真 `legacy-row`：id 形状不符，或本 loop 开了却从未装配——**从来就没有事实** |
+
+读者下一步：看到 `unknown-after-restart` 不要查代码，去查**进程边界**（回合是否在重启前装配、回复是否跨进程迟到）；看到 `tool-visibility-evicted` 不要查代码，去查**容量**（512 回合 FIFO，长跑里超过 512 回合的旧回合必然落此格）；只有 `legacy-row` 才值得怀疑「这一行是谁写的」。三格都 `kept:false` 且都不计票——诚实的是原因，不是结果。
 
 **（b）`namedEmpty` 的三层落地**——同一个读数在**生产者 / 装配回执 / 台账行**三层各落地一次，任何一层缺键都是缺陷，报缺口必须按层报：
 
@@ -890,6 +914,7 @@
 | `VMU_TURN_ASSEMBLY_FAILED` | **管线拒绝了本轮装配** | 轮次编排 26 | ✗（须转述管线的拒因） |
 | `VMU_TURN_FIELD_NOT_APPLICABLE` | **回执带了某个字段，但本回合的 face/tool 根本调不到**（真机 `NO_OPEN_MEETING` 的真实原因：指令没进提示词）；`cause` 保留原会议错误 | 轮次编排 26（`kernel/turn/index.js` ✓） | ✅（hint 指向 `instructionDelivered` 与 per-turn tools allowlist） |
 | `VMU_MEETING_NOT_FOUND` | ★ **RUN 254（FEEDBACK74 #2）**：回合回复的**文本里点名了一个不存在的会议 id**（`m-<id>`），而这一回合本来就是因 `no-meeting-bound` 被跳过的那类；探的**唯一**来源是本回合已装好的会议读面 `map['vmu.meetings'].summary` —— 只有该读面回 `VMU_NO_SUCH_OBJECT` 才判「缺」，读面没装／服务不可用**不算缺**（探不到就不许造幽灵）。命中时 `skipped[]` 的那一行写 `reason:"ghost-meeting"`、`code` 为本码，并带 `meetingId`／`missingMeetings`／`hint`（`REACHABLE INSTEAD: …`）／`means`；id 真实存在（open/scheduled/waiting/archived）则仍是 `no-meeting-bound`，未 open 沿用现码。修复前这一 skip 只有 `reason` 没有码：文本里写错一个 id，回合就静默地等于「没提到会议」，事后无法断言它到底跳过了什么 | 轮次编排 26（`kernel/turn/index.js` 的 `meetingIdsMentioned`／`ghostMeetingOf` 与回合结算的 `skipped` 明细；文档 26 第三章） | ✅（用 `vibe_v5_meeting { op:"status" }` 读出当前会议的真实 id 再写；或省掉 id，让回合自动绑定它所属的会。套件：回合面 `tests/vmu-turn.test.mjs` 覆盖 `no-meeting-bound`，本码是其中新增的具名分支） |
+| `VMU_TURN_OP_MISSING` | ★ **TB-2739 / RUN 79 B8（真机取证）**：★ **`vibe_vmu_turn` 被调用时没带 `op`（或 `op` 只有空白）** —— 参数的 schema 一直写着 `op` 是必填，可面里的默认值把它悄悄当成 `status` 执行：第 79 次真机上所办三次 `{member:"r-1", next_step:"…"}` 就是这样拿回了「成功」的 status 读数、一个回合都没开。★ 现在面在**成员权限闸与队列之前**具名拒本码：message 列出实收参数（`carried`，一个参数都没有时写 `no arguments at all`）并用 `OP_ARG_OWNERS` 表推出「你八成想说的是哪个 op」（`members/member/phase/why/next_step/deliver_mode/opened_by/meeting/tools/statusBlock` ⇒ `step`，`rounds` ⇒ `drive`，`reply/reply_for/report` ⇒ `reply`，`turn/offset/limit` ⇒ `prompt`，`detail` ⇒ `status`），hint 给 `REACHABLE INSTEAD:` 加五种可照抄形状；守卫在队列之前 ⇒ 不会占掉一轮 | 回合面（`vibe-math-vmu/tools/turn.js` 的 `coreTurn`） | ✗（照 hint 补 `op`：读状态 `{ op: "status" }`、开一轮 `{ op: "step", member, phase, why }`、连跑 `{ op: "drive", member, rounds }`。套件：`tests/vmu-run79-step-not-status.test.mjs`，含用第 79 次真日志三条参数逐条重放 + 反关灯还原旧默认值必红） |
 | `VMU_TURN_UNKNOWN_MEMBER` | **显式指定的成员不在在册名单里**（`turnFacts().rosterIds` 有值时判定）—— 拒在**投递之前**，message 点名是哪些 id，hint 打印在册名单；拿不到名册时**不猜** | 轮次编排 26 | ✗（先 hire，或从 hint 列出的 id 里选；否则只会白白烧掉 `vmu.turn.deliveryTimeoutMs`） |
 | `VMU_TURN_REENTRANT` | ★ **PHASE 6 / K2**：★ **已有一个回合在途，★ 第二次 `run()` 会嵌套** —— ★ 本循环的**归因／成员回复槽／通告队列都是单回合状态**，★ 嵌套会覆盖 | 轮次编排 26 | ✗（★ **等在途回合结算后再调**；★ `drive()`／`step()` 已按顺序调用，★ 不受影响 ✓） |
 | `VMU_TURN_DELIVERY_FAILED` | ★ **R242**：★ **成员回合的交付 seam 抛了错而那个错自己没有码** —— 账上不写一个空码，写这个；★ 它出现在回合行（`turnReceipts[].closedWith`）与 `counts.deliveryLastFail` 里，`status` 是 `undelivered`、`settledBy` 是 `delivery-threw`；★ 有码的错**原样保留那个码**，本码只是兜底 | 回合循环（`kernel/turn/index.js`） | ✗（读 `writesWindow` 看这一轮在成员自己的内核里到底写过什么，再判它是否什么都没做） |
@@ -1429,6 +1454,7 @@
 | `VMU_SCHEDULE_TZ_UNKNOWN` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_SCHEDULE_WINDOW_INVALID` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
 | `VMU_SEARCH_UNEXPLAINED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 07 | ⛔ |
+| `VMU_SESSIONS_ROOTS` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 26 | ⛔ |
 | `VMU_SIGNATURE_INVALID` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 20 | ⛔ |
 | `VMU_SKILL_DEGRADED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
 | `VMU_SKILL_EVIDENCE_REQUIRED` | **规划码**（设计阶段登记；语义与触发时机见该卷 ✓，未实现） | 卷 17 | ⛔ |
@@ -1465,7 +1491,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **513** 个码，**逐行**给出状态 ✓：其中 **472** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **514** 个码，**逐行**给出状态 ✓：其中 **473** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **41** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1956,6 +1982,7 @@
 | `VMU_TURN_FIELD_NOT_APPLICABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_NO_FENCE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_NO_PENDING_MEMBER` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
+| `VMU_TURN_OP_MISSING` | **已实现 ✓** | `vibe-math-vmu/tools/turn.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_PARKED_NEEDS_OWNER` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/tools/turn.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_REENTRANT` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v3/middleware/verify.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_REPLY_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
@@ -1991,8 +2018,11 @@
 <!-- PLANNED-CODES:END -->
 
 | **`VMU_IO_FAILED`** | **写盘/IO 失败**（与"状态不对"**区分**：调用方应重试或改路径，而不是改状态机 ✗） | 耐久/记录/归档 | ✅（**R-c 已裁定：新增** ✓，替代把 `V5_WRITE_FAILED` 混入 `VMU_STATE` ✗） |
+| **TB-2743 · `VMU_REVIEW_STALE`** | **互审票绑的是旧正文**：票上的 `judgedPartFingerprint` / `judgedPartRound` 与该 part 槽位**现在**的指纹/轮次不一致 ⇒ 这张票**不计覆盖、也不计为拒收**，具名进 `perRoundReviewCoverage.staleReviews`（每条带 `by`/`of`/两枚指纹/两轮/`why`）；当陈旧票是「这一轮还差谁」的**唯一**原因时，`advance` 与 `final` 两门都具名拒，hint 给可照抄的修法（`part-text-changed` ⇒ 一行重投；`round-changed` ⇒ 五步：先由陈旧评审人投一次 `false`、`advance` 回到 writing、每位作者为**当前轮**重交 `part`、`advance`、最后重投 `true`） | `vibe-math-vmu/kit/paper.js` 的 `requireCrossReview`（`advance` 与 `final` 共用）；读数为 `perRoundReviewCoverageOfState` 的 `staleReviews`/`staleReviewsMeans`；票行字段见 `recordReview`（`judgedPartFingerprint`/`judgedPartRound`/`stalePart`） | ✅（须给 `staleReviews` 每条的两枚指纹与两轮；hint 带 ASCII `REACHABLE INSTEAD:` 且点名的调用**真可执行**；验证：`tests/vmu-run79-review-fingerprint.test.mjs`） |
 
 > **登记纪律（门禁 D14）**：文档/代码中出现的每个 `VMU_*` 都**必须**在本表登记；**未登记即红** ✗。新增码 ⇒ **只增不改语义**（改语义＝新码，见 §7）✓。
+
+> **TB-2743 · 论文面的两个「未测 ≠ 没有」读数（不是错误码，登记在契约卷里）**：`vibe_v5_paper { action: "status" }` 的 `toolchainProbe` 恰取三值 —— `"not-run"`（**没问过**，此时 `toolchainAbsent:[]` **不代表没有工具链**，修法：`vibe_vmu_env { action: "probe", need: "xelatex" }`——引擎 need 只能取 `settings/env-needs.js` 注册表里的真值（`xelatex` / `latexmk` / `pdflatex` / `lualatex` / `tectonic`），`latex` 不在表内、照抄会得到 `VMU_ENV_UNKNOWN_NEED`）、`"ran-absent"`（**问过且实测不可用**）、`"ran-present"`（问过且可用；这是观测，不是安装承诺）；三值各配一句 `toolchainProbeMeans`。`pdfCompiled.produced:false` 时 `blockedBy` 恰取 `"not-finalized"` / `"no-parts"` / `"toolchain-absent"` / `"compile-not-run"` 之一并配 `blockedByMeans`——**不许用一个裸 `false` 让读者自己猜是哪一种**。验证：`tests/vmu-run79-review-fingerprint.test.mjs` §B。
 
 **pack 自有域码规范（R-d 已裁定 ✓）**：整合包若需要机构级错误码，**必须**用 `VMU_PACK_<PACKID>_<REASON>` 形状 ✗不得直接占用 `VMU_*` 的框架命名空间（否则"框架拒"与"机构拒"不可分 ✗）✓；并且**必须在 pack manifest 的 `codes[]` 里登记每个码＋一行语义** ✓（加载期校验：未登记即拒 ✓）。框架码与 pack 码因此**前缀可分** ✓。
 

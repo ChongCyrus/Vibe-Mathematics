@@ -185,6 +185,21 @@
       "path": "scripts/sim/redteam/data/rich-fields.jsonl",
       "why": "frozen field corpus (67 tools) captured from real-run receipts; a measurement input, not product code",
       "owner": "audit-r14 (TB-2689)"
+    },
+    {
+      "path": "tests/ci-exclusions.test.mjs",
+      "why": "the CI gate proves itself against this checkout only: it reads ci-exclusions.json, .github/workflows/gate.yml and docs/acceptance/ci-gate.md, none of which ship in the tarball",
+      "owner": "blueprint-md (TB-2738)"
+    },
+    {
+      "path": "tests/audit-corpus-nested-keys.test.mjs",
+      "owner": "blueprint-md (TB-2736)",
+      "why": "reads the real-receipt corpus at D:/_tmp/sim (real-fieldset.json) and spawns the harvester over its own temp session roots; without that dev corpus it must be a RED, so it is dev-only rather than shipped"
+    },
+    {
+      "path": "tests/run79-brief-corrections.test.mjs",
+      "owner": "doc-lane (TB-2742)",
+      "why": "the run brief lives outside the repo (D:/_tmp/slv-phase5/task-sim80.txt, overridable with VMU_BRIEF_TEMPLATE_PATH); shipping a test whose input is a host file would turn every installed copy red for a missing file it never had"
     }
   ]
 }

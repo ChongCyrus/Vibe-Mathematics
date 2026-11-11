@@ -2264,6 +2264,15 @@ const replyLimitOf = (settings) => {
 const replyTextIsEmpty = (text) => (typeof text === 'string' ? text.trim() === '' : true)
 const EMPTY_REPLY_MEANS = 'emptyReply describes the reply TEXT of this turn, not the parsed fields and not whether the turn ran: true means that text was empty or whitespace-only (0 characters of speech reached this receipt through the text channel — the tool channel is reported separately by source/fields, so a silent text can still carry fields, and the turn can still read applied); false means the member wrote text, even if it parsed to no usable value (an answer like {"solved":false} is speech; whether it did anything is in fields/executed/writes) and even if the receipt had to cut it (then truncated:true, excerptLen is the cut, and the full text is at replyFullPath). replyBytes says how much text carried it'
 
+// ★★★ TB-2735 / RUN 79: A LOOP EPOCH, SO "I NEVER SAW IT" CAN SAY WHICH KIND OF NEVER.
+//
+// `mountedToolsByTurn` is process memory with a 512-turn FIFO. After a restart or an eviction the fact is gone, and
+// before this change both looked like `legacy-row` - the reader was told to hunt for an older code path that does not
+// exist. The fix is one more FACT, not a new gate: every loop stamps the durable turn row it writes with an epoch made
+// of the process id and a per-process counter. A reply that arrives with a turn id this loop did not assemble can then be
+// classified from durable evidence instead of from "my map has nothing".
+let LOOP_EPOCH_SEQ = 0
+
 export function createTurnOrchestrator({
   // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
   // which is this preset's stated design: "default zero mechanism, mechanisms provided as packs".
@@ -2364,6 +2373,12 @@ export function createTurnOrchestrator({
   // a member who plainly has one. The id is minted here, at the ONE place a turn spec is created, per orchestrator.
   let turnSeq = 0
   const turns = new Map()
+  // ★★★ TB-2735 / RUN 79: THIS LOOP'S IDENTITY. Two kernels in the same Node process must differ (the counter), and a
+  // real restart must differ too (the pid). It is NOT a clock read and it is not proof of wall time - it only answers
+  // "was this turn assembled by the loop that is reading the reply now", which is exactly the question the vote gate
+  // needs. `loopStartedAt` is the human-readable companion for the reason sentence; it comes from the injected clock.
+  const loopEpoch = 'loop-' + String(typeof process !== 'undefined' && process && process.pid ? process.pid : 'pid-unknown') + '-' + String(++LOOP_EPOCH_SEQ)
+  const loopStartedAt = isoStampOf(clock())
   // ★ LIVE RUN 12 (the institute's own report, item 1): the status read `assembled:2, delivered:0, parsed:0, refused:0,
   // dispatched:0, notExecuted:0`. Every counter was zero and NONE of them owned the two stalled turns: `delivered`
   // only increments AFTER the seam settles, so a delivery that THREW (a timeout is a throw) left no trace anywhere.
@@ -2429,7 +2444,7 @@ export function createTurnOrchestrator({
     if (!turnLedger || typeof turnLedger.record !== 'function') return
     let pending = null
     try {
-      pending = turnLedger.record({ id: turn.id, member: turn.member, phase: turn.phase, round: turn.round, at: turn.at })
+      pending = turnLedger.record({ id: turn.id, member: turn.member, phase: turn.phase, round: turn.round, at: turn.at, loopEpoch: loopEpoch })
     } catch (e) {
       // A seam that throws SYNCHRONOUSLY is the same event as one that rejects: counted, attributed, and never allowed
       // to break `open()` (a turn that exists in memory must stay usable; the READER side simply will not see it).
@@ -2462,7 +2477,7 @@ export function createTurnOrchestrator({
   const noteSettledTurn = (row) => {
     if (!turnLedger || typeof turnLedger.record !== 'function') return
     if (!row || typeof row.turn !== 'string' || row.turn === '') return
-    const fact = { id: row.turn, member: row.member, phase: row.phase, at: typeof row.openedAt === 'string' ? row.openedAt : null,
+    const fact = { id: row.turn, member: row.member, phase: row.phase, at: typeof row.openedAt === 'string' ? row.openedAt : null, loopEpoch: loopEpoch,
       status: typeof row.status === 'string' ? row.status : null,
       codes: Array.isArray(row.codes) ? row.codes : [],
       skipped: Array.isArray(row.skipped) ? row.skipped.length : 0,
@@ -2538,11 +2553,26 @@ export function createTurnOrchestrator({
    */
   const PROMPT_ARCHIVE_CAP = 12
   const promptArchive = new Map()
-  const archivePrompt = (turnId, member, text) => {
+  // ★ TB-2739 (E): the assembly's own status-block reading, kept per turn so EVERY receipt that hands a caller a prompt
+  // (step/drive/awaiting) can say whether the block is inside the text — the same answer `op:"prompt"` gives from the
+  // archive, because both are written from the one string delivery receives.
+  const statusBlockReadings = new Map()
+  const rememberStatusBlockReading = (turnId, reading) => {
+    const id = turnId === undefined || turnId === null || turnId === '' ? null : String(turnId)
+    if (id === null || !reading || typeof reading !== 'object') return null
+    statusBlockReadings.set(id, reading)
+    while (statusBlockReadings.size > PROMPT_ARCHIVE_CAP) statusBlockReadings.delete(statusBlockReadings.keys().next().value)
+    return id
+  }
+  const archivePrompt = (turnId, member, text, statusBlock = null) => {
     const id = turnId === undefined || turnId === null || turnId === '' ? null : String(turnId)
     if (id === null || typeof text !== 'string' || text === '') return null
     promptArchive.delete(id)
-    promptArchive.set(id, { turnId: id, member: member === undefined || member === null ? null : String(member), chars: text.length, text })
+    // ★ TB-2739 (E): the archive keeps the ASSEMBLY'S OWN READING next to the text, so `op:"prompt"` can say whether
+    // the block is in the characters it just handed back instead of leaving the reader to grep for a marker.
+    promptArchive.set(id, { turnId: id, member: member === undefined || member === null ? null : String(member), chars: text.length, text,
+      statusBlockIncluded: statusBlock !== null && typeof statusBlock === 'object' ? statusBlock.included === true : null,
+      statusBlockChars: statusBlock !== null && typeof statusBlock === 'object' && Number.isFinite(Number(statusBlock.chars)) ? Number(statusBlock.chars) : null })
     while (promptArchive.size > PROMPT_ARCHIVE_CAP) promptArchive.delete(promptArchive.keys().next().value)
     return id
   }
@@ -3235,7 +3265,14 @@ export function createTurnOrchestrator({
       while (mountedToolsByTurn.size > MOUNTED_TOOLS_TURNS_CAP) {
         const oldest = mountedToolsByTurn.keys().next()
         if (oldest.done) break
-        mountedToolsByTurn.delete(oldest.value)
+        const evicted = String(oldest.value)
+        mountedToolsByTurn.delete(evicted)
+        evictedTurnIds.add(evicted)
+        while (evictedTurnIds.size > EVICTED_TURN_IDS_CAP) {
+          const stale = evictedTurnIds.values().next()
+          if (stale.done) break
+          evictedTurnIds.delete(stale.value)
+        }
       }
     }
     // ★ PHASE 9 / round 7: the per-turn instruction (`why`, the thing `step` was asked to make the member do) used to
@@ -3245,8 +3282,22 @@ export function createTurnOrchestrator({
       ? turn.why.trim()
       : (typeof turn.nextStep === 'string' && turn.nextStep.trim() !== '' ? turn.nextStep.trim() : '')
     if (instruction) withVisible += '\n\n【本轮指令】' + instruction.slice(0, 4000)
+    // ★★★ TB-2739 (E) / RUN 79 (MEASURED, against the code and against the live run): WHETHER THE STATUS BLOCK IS IN
+    // THE TEXT THE MEMBER WILL READ IS A READING, NOT A BELIEF. The 79th live run's taskbook asserted the `[状态板]` and
+    // `[蓝图]` lines are always rendered, and the office then paged the t-13 prompt (26 641 characters) and reported
+    // neither marker anywhere in it. Reading the code, that text CANNOT lack the block on either route: the pack renders
+    // `{{ statusBlock }}` through a section, and when no section rendered it, line 3220 appends it under 【本轮状态块】.
+    // So the two readings disagree and only one can be true — and the office had to grep a capture to form an opinion.
+    // This field answers the question at the place it is decided: measured on `withVisible` (the SAME string that is
+    // archived and delivered), with the length of the block that was merged in. `included:false` is then a defect with a
+    // name (`why`), not a sentence a member quotes from a prompt.
+    const statusBlockIncluded = statusWithNotices !== '' && withVisible.includes(statusWithNotices)
     return { ok: true, text: withVisible, sources: out.sources || [], truncation: out.truncation || null,
       instructionDelivered: instruction !== '',
+      statusBlock: { included: statusBlockIncluded, chars: statusWithNotices.length,
+        appendedLiterally: statusBlockIncluded && !out.text.includes(statusWithNotices),
+        why: statusWithNotices === '' ? 'no-status-text-composed' : (statusBlockIncluded ? 'in-the-assembled-text' : 'missing-from-the-assembled-text'),
+        means: 'computed on the exact string this assembly hands to delivery (archived verbatim), so it answers "is the block in the member prompt" without reading a capture: included=false means the assembly produced a prompt whose text does not contain the status text it composed, which is a framework defect and not a style choice' },
       // ★★★ RUN 249 (task-69 / F-11): THE RECEIPT SAYS WHAT THE NOTICE CHANNEL DID. The 69th live run had 7 unread
       // mails and the office could only find out that the block never rendered by grepping the capture. The assembly
       // now reports the count it drained, whether a block was rendered, and its characters — so "delivered to the
@@ -4185,6 +4236,11 @@ export function createTurnOrchestrator({
   // `apply` decides the vote channel from that fact only.
   const mountedToolsByTurn = new Map() // turnId -> { provable: boolean, tools: string[] | null, why: string | null }
   const MOUNTED_TOOLS_TURNS_CAP = 512
+  // ★★★ TB-2735 / RUN 79: EVICTION IS NOT A RESTART. The bounded table above forgets the OLDEST fact when it overflows;
+  // that absence is repair-able by raising the cap, while a restart boundary is a design trade-off. Remember the evicted
+  // turn ids (ids only - no tools, no member) so `apply` can name the right cause instead of blaming an old row.
+  const evictedTurnIds = new Set()
+  const EVICTED_TURN_IDS_CAP = 2048
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
   /**
    * ★ PHASE 8 / round 37: THE ONE CLOSURE-VOTE WRITER. Both inputs — a reply's `vote_solved` field and the
@@ -4323,7 +4379,24 @@ export function createTurnOrchestrator({
             bookkeeping.push({ field: 'vote_solved', kept: true, keptWhy: 'no-turn-row-compat', adoptedBecause: 'no turn id reached apply(): this is the direct/tool path, where the pre-2730 rule (adopt unless the member table names the vote tool) still holds' })
           }
         } else if (mounted === null) {
-          bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'legacy-row', reason: 'this loop never assembled turn ' + turnIdForVote + ', so it has no reading of what that turn mounted; a reply vote is unprovable and is NOT counted' })
+          // ★★★ TB-2735 / RUN 79: "I HAVE NO FACT" IS THREE DIFFERENT FACTS.
+          // The durable row this loop wrote for the turn (if any) carries the loop epoch. That lets the branch name the
+          // cause from evidence: a row from another epoch = the fact died with an earlier process; the same epoch plus a
+          // remembered FIFO eviction = the fact was displaced by the 512-turn cap; neither = there was never a fact to
+          // lose (a bare row, or a turn this loop opened but never assembled). All three are unprovable and none counts
+          // a reply vote - only the reason the reader goes and checks changes.
+          const validId = /^t-\d+$/.test(turnIdForVote)
+          let durableEpoch = null
+          try { durableEpoch = turnLedger && typeof turnLedger.epochOf === 'function' ? turnLedger.epochOf(turnIdForVote) : null } catch (e) { durableEpoch = null }
+          const knownHere = turns.has(turnIdForVote)
+          const restarted = durableEpoch !== null ? durableEpoch !== loopEpoch : !knownHere
+          if (validId && restarted) {
+            bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-unknown-after-restart', reason: 'turn ' + turnIdForVote + ' was assembled by an EARLIER kernel process, not this one (the durable row says ' + String(durableEpoch) + ', this loop is ' + loopEpoch + ' and started ' + loopStartedAt + '); its mounted-tools fact went with that process, so a reply vote is unprovable and is NOT counted' })
+          } else if (validId && knownHere && evictedTurnIds.has(turnIdForVote)) {
+            bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-evicted', reason: 'turn ' + turnIdForVote + ' WAS assembled by this loop, but its mounted-tools fact fell out of the bounded ' + MOUNTED_TOOLS_TURNS_CAP + '-turn table (FIFO eviction, NOT a restart); unprovable now, so it is NOT counted' })
+          } else {
+            bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'legacy-row', reason: 'this loop holds no mounted-tools fact for turn ' + turnIdForVote + ' and cannot show it ever had one (bare row / never assembled in this loop); a reply vote is unprovable and is NOT counted' })
+          }
         } else if (mounted.provable !== true) {
           bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-unprovable', reason: 'this loop cannot prove what turn ' + turnIdForVote + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '); a reply vote is NOT counted — relaying it would be a ghost vote' })
         } else if (mounted.tools.indexOf('vibe_vmu_vote') !== -1) {
@@ -4975,7 +5048,8 @@ export function createTurnOrchestrator({
         ? { text: resumeSource.text, sources: [], notices: resumeSource.notices || null, instructionDelivered: resumeSource.instructionDelivered === true, resumed: true, sourcesCount: Number(resumeSource.sources) || 0 }
         : await assemble(turn)
       const asmSources = resumeSource ? (Number(asm.sourcesCount) || 0) : asm.sources.length
-      if (!resumeSource) archivePrompt(turn && turn.id, turn && turn.member, asm && asm.text)
+      if (!resumeSource) archivePrompt(turn && turn.id, turn && turn.member, asm && asm.text, asm && asm.statusBlock)
+      if (!resumeSource) rememberStatusBlockReading(turn && turn.id, asm && asm.statusBlock)
       const raw = await deliverTurn(turn, asm.text)
       // ★★★★★★★ RUN 245 (audit round 12 H2): THE ANSWER OF AN ABANDONED TURN IS NOT APPLIED. `op:"abandon"` is the
       // release path for a delivery that never returns; when that delivery DOES return after the release, the member
@@ -6875,9 +6949,22 @@ export function createTurnOrchestrator({
      * not retained - the caller then names the retained ids with `promptTurns()` instead of guessing.
      */
     promptOf: (turnId) => {
-      const id = turnId === undefined || turnId === null ? null : String(turnId)
+      const id = turnId === undefined || turnId === null || turnId === '' ? null : String(turnId)
       if (id === null) return null
       const hit = promptArchive.get(id)
+      if (!hit) return null
+      const reading = statusBlockReadings.get(id)
+      return Object.assign({}, hit, reading ? { statusBlock: Object.assign({}, reading) } : {})
+    },
+    /**
+     * ★ TB-2739 (E): THE ASSEMBLY'S OWN STATUS-BLOCK READING FOR ONE TURN. `null` is a real answer (a resumed turn reuses
+     * the prompt the caller already holds, so this kernel assembled nothing new). Every receipt that hands a caller a
+     * prompt reads this instead of grepping the text for a marker.
+     */
+    statusBlockReading: (turnId) => {
+      const id = turnId === undefined || turnId === null || turnId === '' ? null : String(turnId)
+      if (id === null) return null
+      const hit = statusBlockReadings.get(id)
       return hit ? Object.assign({}, hit) : null
     },
     promptTurns: () => Array.from(promptArchive.keys()),    memberSession: (member) => memberSessions.get(String(member)) || null,

@@ -122,7 +122,12 @@ fails). Budgets are 15 / 45 / 75 / 15 s per segment and **the 150 s total is a b
 segment fails on its own budget first, and a timeout names the segment plus its measured and budgeted time.
 A cap alone would let the gate get quietly dearer, so each segment is also compared against the baseline
 in `docs/acceptance/sim-gate-scope.md` (its `gate-baselines` line is machine-read by the gate) and may not
-cost more than 1.25x it; past that the report says WHICH segment and by how many milliseconds.
+cost more than 1.25x it; past that the report says WHICH segment and by how many milliseconds. **That cost is
+USER CPU, not wall clock** (TB-2728): `scripts/sim/audit/cpu-probe.mjs` is loaded through
+`NODE_OPTIONS=--import` into every node process the gate starts and appends each process's `process.cpuUsage().user`
+at exit, so a segment costs what its whole process tree actually burned. Wall time and total (user+system) CPU are
+printed for context only, because system time grows when the box is busy -- judging it would make a busy machine a
+red gate. The calibration column (`contention=1.69x`) is a report, not a divisor.
 
 What the gate proves and what it cannot prove is the one file `docs/acceptance/sim-gate-scope.md`
 (three tables: provable by sim, only provable on a real run, tools already compared field-by-field

@@ -55,3 +55,20 @@
 
 - **D5 的正确方向是「可证空表才计票」，RUN 78 的缺陷是把「不可证」读成了「可证空表」**（`kernel/turn/index.js:4304-4329`：`tool-not-mounted` ⇒ `kept:true` + recordClosureVote；`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row` ⇒ `kept:false`）。提示词现在只说这条事实与五个 `keptWhy` 值，不再承诺笼统的静默忽略。
 - 成员/临时工面：`op:"reply"` 的教法从「唯一应答通道」改为**显式禁止**（所办代转才用；成员调用会被 `VMU_NOT_PERMITTED` 拒），caller 句加「（所办代转时）」限定——配合 TB-2733/P1 把成员 `vibe_vmu_turn` 动作集收窄到 `{op:"status"}`。
+
+## TB-2741 补记：RUN 79 十条提示词更正（判据在 `tests/vmu-run79-prompt-corrections.test.mjs`）
+
+| # | 场景 | 旧句（错/误导） | 新句（可执行） | 为什么 |
+|---|---|---|---|---|
+| 1 | 写证明前 | `Members/acad/Progress/progress.md`（非名册 id、无库根） | `<roots.libraryRoot>/Members/<你的 id>/Proofs/…` + 「`proof_ref` 的基准是库根」 | 名册 id 是 `r-acad`；`proof_ref` 按库根解析，照抄示例会 `missing`（rec-3/rec-8） |
+| 2 | 会议结题投票 | 「结题票用 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）」+「只有可证没挂才计票」并列 | 「结题票**只走工具** `vibe_vmu_vote`；`vote_solved` 是**书账字段，永不单独计票**（可证空表 `tool-not-mounted` 才计入）；被忽略看 `fieldsIgnored`」 | 旧句让读者以为 reply 写 `vote_solved` 算票，实测被丢（`kept:false`） |
+| 3 | 交回执 | 「最小集：progress / say / solved / vote_solved」 | 「**示例（不是白名单）**：…」 | 字段目录随部署变化，最小集会被读成白名单 |
+| 4 | 读状态板 | 「**`[蓝图]` 恒渲染**」 | 「`[蓝图]` 行由内核注入；读不到用 `vibe_vmu_turn { op:"status", detail:"board" }` 的 `liveReadings.blueprint`；**不会因为**缺块当没有」 | 装配里没有该块（RUN 79 实测 26 641 字符里没有），承诺两头都不成立 |
+| 5 | 派回合 / 会议回合 | 「phase 是闭集，只有四个全名」（不分面） | 「**派回合面**：phase 闭集四个全名；`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面」 | 两个面的 phase 枚举不同，混讲会让会议回合读者套错闭集 |
+| 6 | 写蓝图草案 | 「蓝图草案不是私有的：propose 的段落进共享草案」（与「草案是你自己的文件」并存） | 「草案不是私有的——**共享的是行、私有的是文件**：propose 的段落进共享草案、别人会续写；md 是你自己的文件（只有你能改）；只有院士席能 adopt」 | 两处并存让作者分不清谁能改哪半 |
+| 7 | 交付 / 代转 | 动作边界三处各写一遍 | fixture-tools 一句权威句（所办只派回合与转达、写入由席位自己完成、activation/caller 两路、caller 句带「（所办代转时）」）；【动作边界】只讲按交付方式分支 | 重复处措辞漂移，且成员面会读到 caller 通道 |
+| 8 | 读状态板 | `[状态板]` 教法散在 turn-board 与 tracks 两段 | 并成一节：先说由内核注入，再给「读数｜来源｜取值时刻」三列与具名理由 | 两段讲同一块，读者要自己拼 |
+| 9 | 用 `tool_help` | 提示词复述 `source`/`count`/`declaredCount` 语义多处 | 只留一处权威指向工具 description；`source` 是**读数来源**（null=未测量），null 不是「该席位没有工具」 | 工具 description 才是权威，复述会随部署漂移 |
+| 10 | 看 `next_step` | 「本所没有**外部**派活」（被读成 next_step 即命令） | 「所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定」 | 旧句把编排建议读成外部命令，压制所内自主 |
+
+注：第 1 条 `proof_ref` 基准句保留「库根」字面（§4.1 已读得到的五处不动）；第 4 条与装配侧（rec-a）对齐后由机制保证，提示词只保留「读不到时怎么取」。

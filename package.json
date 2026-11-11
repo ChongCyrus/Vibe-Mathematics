@@ -920,7 +920,20 @@
     "tests/vmu-run78-meeting-provenance.test.mjs",
     "tests/vmu-run78-member-turn-face.test.mjs",
     "tests/vmu-run78-prompt-corrections.test.mjs",
-    "tests/vmu-run78-small-readings.test.mjs"
+    "tests/vmu-run78-small-readings.test.mjs",
+    "tests/shard-partition.test.mjs",
+    "tests/vmu-run2735-mounted-facts-durable.test.mjs",
+    "tests/vmu-run79-prompt-corrections.test.mjs",
+    "tests/vmu-run79-receipts-cross-kernel.test.mjs",
+    "tests/vmu-run79-written-from-fold.test.mjs",
+    "tests/vmu-run79-step-not-status.test.mjs",
+    "tests/vmu-run79-prompt-member.test.mjs",
+    "tests/vmu-run79-closure-detail.test.mjs",
+    "tests/vmu-run79-status-block-reading.test.mjs",
+    "tests/vmu-run79-review-fingerprint.test.mjs",
+    "scripts/sim/audit/timing.mjs",
+    "scripts/sim/audit/cpu-probe.mjs",
+    "scripts/sim/audit/calibration-work.mjs"
   ],
   "license": "MIT",
   "keywords": [

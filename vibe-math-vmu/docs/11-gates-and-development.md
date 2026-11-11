@@ -229,11 +229,11 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 466 / suites 354 / probes 112`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 476 / suites 364 / probes 112`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **844 作业**（781 套件 + 63 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **857 作业**（794 套件 + 63 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
@@ -352,6 +352,23 @@ node scripts/release-check.mjs             # 发布前清单
 **它不证明**：模型是否按提示词行事、真实子会话交付与 token 计量、真实引擎输出正确性、长时挂起/并发、跨设备路径与时区。三张边界表与复现命令的唯一出处是 `docs/acceptance/sim-gate-scope.md`（本仓库根），不要在这里复制数字。
 
 **三种破坏必须让它变红**（门禁内各有一条自证，不需要手动改产品）：① 场景 `expectedRefusals` 改成「全赦免」⇒ 多出的拒绝不被赦免（`advisory`/`unpredicted`），exit 1；② 某行 `receiptSpan` 偏 1 字节 ⇒ 逐字节比对命中；③ `SIM_SELFTEST_FAILURE=<CODE>` ⇒ 头部 `scenario self-checks: 1 FAILED`。
+
+### 7.1d 全量门禁分片（`--shard i/N`）：切的是**划分**，不是**筛选**（TB-2737）
+
+**用法**：`node tests/run-tests.mjs --shard 3/8`（或 `GATE_SHARD=3/8`；两者同时给时命令行优先）。`--shard-plan` 只打印这一片的成员与来源，**不跑任何作业**（判据 `tests/shard-partition.test.mjs` 只用它取作业清单，不在判据里复制一份"会腐的清单"）。**切分点**：scope ＋ `--only/--exclude` **之后**、`lptOrder()` **之前**，按 label-ASC 基准序取 `k % N === i-1`。
+
+**为什么必须在 `lptOrder()` 之前切**：`lptOrder()` 是**执行顺序**（实测时长降序），不是作业集合。用它切片会让每一片的成员依赖**权重表与测出权重的那台机器**：两片不再互补，一次权重更新就会把作业从一片悄悄挪到另一片，而"各片之和 == 总数"这条唯一的安全证明也不会再被发现失效。
+
+**三条"必须有名字"的拒绝**（都 exit 2，且不复用泛化文案）：
+- `SHARD-EMPTY`：这一片 0 个作业。空片在 CI 里会**显示成绿色**却什么也没证明，所以它必须红且点名 `i/N`、`selected 0 of M`；**不许**复用 `no suites matched`（那条的语义是"过滤器没匹配到"，修法完全不同）。
+- `SHARD-INCREMENTAL-UNSUPPORTED`：增量会**跳过**作业，被跳过的作业不在任何一片里 ⇒ 各片之和 ≠ 总数 ⇒ 判据失效。
+- `SHARD-SCOPE-UNSUPPORTED`：curated scope 会缩小分母，各片之和等于**子集**而不是全量。
+
+**自证**：分片运行时，两行 scope 头和 `TOTAL` 行都带 `shard=i/N selected=K of M`，`--json` 带 `shard:{index,count,selected,total}`——否则一份分片日志可以被当成全量日志。三个**机器/报告模式**（`--counts`／`--self-check`／`--scope-report`）**不分片**：它们在 stderr 声明 `IGNORED`，stdout 与不带 `--shard` 逐字节相同（`--counts` 数的是仓库，不是一片）。
+
+**分片不是放行的替代**：`release-ready.mjs` 仍要求本地全量 + 真机前置；把 N 片并行跑绿只说明**全量跑完了**，不改变"证据必须来自当前树"那条闸。
+
+**两条给下游的提醒**（都踩过或差点踩）：①`--only`／`--exclude` 命中 0 个作业时 runner 是 **exit 2 ＋ `no suites matched`**，stdout **不是**「0 条 JSON」而是空——任何拿 stdout 当 JSON 解析的下游（CI 的 plan、脚本管道）会在这里读到空字符串，必须按退出码先行判断；②写判据时，**判据自身的不稳定性也是判据缺陷**：`--self-check` 会打印随机临时文件名与毫秒计时（`after 315ms`、`0.2s`），逐字比较前必须归一化这些 token，否则换台机器/换个负载就假红（TB-2720 同族：尺子量了别的东西）。
 
 ---
 

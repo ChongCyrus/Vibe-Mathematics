@@ -59,7 +59,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // Old wording: `vibe_v5_tool_help({"tool":"工具名称"})` (v5r-blocks-b.js:235 and 46 generated fixtures).
     // Real mechanism: packs/v5r/tools.js:243-265 — only `member`; the answer is kernel.toolsView for that seat.
     text: [
-      '【更正·工具查询】vibe_v5_tool_help 的真实签名只有 {member}（必填，回答该席位现在真能调用的工具表），没有 tool 参数；只传 {"tool":"…"} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。查用法读工具的 description。',
+      '【更正·工具查询】vibe_v5_tool_help 只收 {member}（必填）；只传 {"tool":"…"} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。两种读数与用法见工具 description。',
     ].join('\n'),
   }),
   Object.freeze({

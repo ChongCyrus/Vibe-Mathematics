@@ -4122,13 +4122,29 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       return Object.assign({ ok: true, enforced, enforcedScope: ENFORCED_SCOPE }, quorumOf(m))
     },
 
-    /** READ-ONLY: the receipt ring (bounded; drops counted). */
+    /** READ-ONLY: the receipt ledger — the DURABLE fold when the seam exposes it (cross-kernel truth), else this instance's ring. */
     receiptsView({ limit = 50 } = {}) {
       const capN = Number.isInteger(limit) && limit > 0 ? limit : 50
+      // ★★★ ROUND 79 / TB-2740: read the DURABLE meetings fold FIRST — that is the only source a sibling kernel wrote
+      // to. The in-process ring is a SUPPLEMENT, never an override: when the two disagree both numbers are reported
+      // side by side (`available` = durable rows; `inProcessRingCount` = this instance's ring) and the durable row wins,
+      // because the ring dies with the kernel that wrote it while the fold is the institution's record.
+      const fold = durableReceiptFold()
+      const fromFold = fold !== null && fold.present === true
+      const source = fromFold ? fold.rows : receipts
       // ★★★ ROUND 77 / TB-2726: OLD open rows (no type provenance, or the defect's `""` pair) are read as null + a
       // means sentence instead of a blank that looks like a value; a row written since RUN 77 round-trips unchanged.
-      const kept = receipts.slice(Math.max(0, receipts.length - capN)).map((r) => receiptRowRead(r))
-      return { ok: true, receipts: kept, count: kept.length, available: receipts.length, dropped: receipts.length - kept.length, ringDropped: receiptDropped.n, enforcedScope: ENFORCED_SCOPE }
+      const kept = source.slice(Math.max(0, source.length - capN)).map((r) => receiptRowRead(r))
+      const readFrom = fromFold ? 'durable-fold' : 'in-process-ring'
+      const receiptRingMeans = fromFold
+        ? 'read from the DURABLE meetings fold (`state.json` keys.meetings), which every kernel sharing this store root can read: '
+          + '`available` is HOW MANY RECEIPTS THE DURABLE FOLD HOLDS (not the ring capacity), `count` is how many rows this read returned, '
+          + '`dropped` = available − count (the `limit` left them out), and `inProcessRingCount` is THIS kernel instance\'s own ring — reported separately, '
+          + 'never used to overwrite the fold. A sibling kernel that convened the meeting still appears here.'
+        : 'read from THIS kernel instance\'s in-process ring (the durable fold seam is not exposed by this build / fixture): '
+          + '`available` is the ring length, `count` how many rows this read returned, `dropped` = available − count. '
+          + 'A meeting convened by ANOTHER kernel is NOT visible here — that is why the durable fold is the real read.'
+      return { ok: true, receipts: kept, count: kept.length, available: source.length, dropped: source.length - kept.length, ringDropped: receiptDropped.n, readFrom, inProcessRingCount: receipts.length, receiptRingMeans, ...(fromFold && fold.rows.length !== receipts.length ? { sourceDivergenceMeans: 'the durable fold and this instance\'s ring disagree (' + fold.rows.length + ' durable / ' + receipts.length + ' in-process): the durable fold is authoritative because it is the shared record; the ring only reflects THIS kernel\'s acts' } : {}), ...(fold && fold.why ? { foldWhy: fold.why } : {}), enforcedScope: ENFORCED_SCOPE }
     },
 
     /** ★ PHASE 7: one meeting's OBSERVABLE state — who records (chair/secretary) and every motion's state. */
@@ -4622,6 +4638,27 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   function pushReceipt(receipt) {
     receipts.push(receipt)
     while (receipts.length > RING) { receipts.shift(); receiptDropped.n += 1 }
+  }
+  // ★★★ ROUND 79 / TB-2740 (FEEDBACK79 B2, MEASURED): the receipt ring is PER KERNEL INSTANCE. The office kernel
+  // called `vibe_v5_meeting {action:"receiptsView"}` and got `{receipts:[],count:0,available:0}` for a meeting the
+  // chair's CHILD kernel had convened — so a read face that cannot see another kernel's act is NO-EVIDENCE in a real
+  // run. The durable meetings fold is the one source both kernels share; `durable.readFold()` is read-only and
+  // OPTIONAL (older kernels and unit fixtures build `createMeetings` without it), and its absence falls back to the
+  // in-process ring — the receipt then NAMES which source answered instead of pretending they are the same thing.
+  function durableReceiptFold() {
+    if (!durable || typeof durable.readFold !== 'function') return null
+    let env = null
+    try { env = durable.readFold() } catch (e) {
+      return { present: false, rows: [], why: 'the durable fold could not be read: ' + String((e && e.message) || e) }
+    }
+    const value = env && typeof env === 'object' && env.value && typeof env.value === 'object' ? env.value : null
+    const data = value && value.data && typeof value.data === 'object' ? value.data : null
+    if (!data) return { present: false, rows: [], why: 'the durable fold carries no meetings data yet (nothing was ever written through)' }
+    let raw = data.receipts
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw) } catch (e) { return { present: false, rows: [], why: 'the durable receipts are unreadable: ' + String((e && e.message) || e) } }
+    }
+    return { present: true, rows: Array.isArray(raw) ? raw : [] }
   }
   function declaredKeys() {
     const all = SETTING_DEFS.map(d => d.key).filter(key => key.startsWith('vmu.meetings.'))

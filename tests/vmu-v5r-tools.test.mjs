@@ -584,6 +584,13 @@ try {
   const adv2 = paper.advance({ target: TARGET })
   ok(adv2 && adv2.moved === true && adv2.to === 'writing' && adv2.round === 2,
     '★ advance: 正 — one non-deliverable review sends the paper back to writing for round 2 (the disagreement is recorded)', adv2 && adv2.refusers)
+  // ★ RUN 272 / TB-2743: a review vote binds the TEXT it judged — part fingerprint AND the round that text was
+  // written in. This fixture used to advance the paper back to writing for round 2, then review the round-1 parts as
+  // if round 2 had produced them; the gate now names that as the defect it is (「缺陷在轮次而不是字节：这一轮从未产出
+  // 被它评审的正文」) and refuses to count the stale votes. So round 2 must really produce its text: both participants
+  // re-record BEFORE the paper moves to reviewing again.
+  paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的证明骨架（第 2 轮：补 n=5）', solution: '把 A 拆成两个引理，并补 n=5 的情形', evidence: ['r-1 的命题卡', 'r-2 的反例 n=5'] })
+  paper.recordPart({ target: TARGET, member: 'r-2', title: '引理 A 的第二种证法（第 2 轮）', solution: '用归纳法（已按 r-1 的评审补 n=5 归纳基）', evidence: ['r-2 的命题卡'] })
   paper.advance({ target: TARGET })
   paper.recordReview({ target: TARGET, member: 'r-1', deliverable: true, comments: '已补 n=5' })
   paper.recordReview({ target: TARGET, member: 'r-2', deliverable: true, comments: '可交付' })

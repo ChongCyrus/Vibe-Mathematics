@@ -136,6 +136,31 @@ const flag = (name) => {
 const has = (name) => argv.includes('--' + name)
 const only = flag('only')
 const exclude = flag('exclude')
+// ── SHARDING (`--shard i/N`, 1-based; env `GATE_SHARD=i/N`; the CLI wins when both are given) ────────────
+// A shard is a PARTITION of the sweep, not a filter: every job belongs to exactly one shard and the union of
+// the shards is the unsharded job list. That equality is the only thing that makes parallel execution safe to
+// read, so `tests/shard-partition.test.mjs` asserts it (and reads the members from THIS runner's own plan
+// instead of a copied list, because a copied list rots the moment a suite is added).
+// A malformed `i/N` is a NAMED refusal rather than a silent full sweep: a typo must never turn a slice into
+// the whole gate (or into an empty green shard). Exit 2 = usage, like the other argument refusals.
+const parseShard = () => {
+  const fromCli = flag('shard')
+  const raw = fromCli.length ? fromCli[0] : String(process.env.GATE_SHARD || '')
+  if (!String(raw).trim()) return null
+  const m = /^(\d+)\s*\/\s*(\d+)$/.exec(String(raw).trim())
+  const index = m ? Number(m[1]) : NaN
+  const count = m ? Number(m[2]) : NaN
+  if (!m || !Number.isInteger(index) || !Number.isInteger(count) || count < 1 || index < 1 || index > count) {
+    console.error('SHARD-INVALID: --shard expects i/N with 1 <= i <= N (got ' + JSON.stringify(String(raw)) + ')')
+    process.exit(2)
+  }
+  return { index, count }
+}
+const SHARD = parseShard()
+if (has('shard-plan') && SHARD === null) {
+  console.error('SHARD-INVALID: --shard-plan needs --shard i/N - it prints the slice a run WOULD take, so it cannot guess one')
+  process.exit(2)
+}
 // TEMP HYGIENE (task-12): a suite killed by the per-suite timeout cannot clean up, and some suites
 // create many workspace dirs per run — measured here: %TEMP% held 160,923 top-level entries, 144,404 of
 // them stale suite dirs (oldest ~2 weeks). Sweep the stale ones (top level, EXTRACTED suite prefixes,
@@ -146,8 +171,10 @@ const exclude = flag('exclude')
 // family runs repeatedly, the second is called by scripts/update-doc-counts.mjs on every check - a sweep
 // there is a surprising side effect (and a slow one). `--scope-report` reports the derived classification
 // and must be equally side-effect free (it is the surface tests/audit-scope-classification.test.mjs reads).
+// `--shard-plan` prints a partition and runs nothing, so it joins them: a planning call that sweeps temp
+// directories is a surprising side effect, and the partition judge calls it dozens of times per second.
 // Only a genuine test sweep cleans up.
-if (!has('no-temp-hygiene') && !has('self-check') && !has('counts') && !has('scope-report')) {
+if (!has('no-temp-hygiene') && !has('self-check') && !has('counts') && !has('scope-report') && !has('shard-plan')) {
   try {
     const { suitePrefixes, sweep, preferredTempRoot, useTempRoot, listProcesses, suspectProcesses } = await import('../scripts/clean-temp.mjs')
     if (useTempRoot(preferredTempRoot())) console.error('run-tests: temp root -> ' + process.env.TEMP + ' (roomier drive preferred; D:\\_tmp when present)')
@@ -1194,13 +1221,72 @@ const filters = []
 let suites = applyScope(deriveJobs(), SCOPE)
 if (only.length) { suites = suites.filter((j) => only.some((o) => label(j).includes(o))); filters.push('--only ' + only.join('|')) }
 if (exclude.length) { suites = suites.filter((j) => !exclude.some((o) => label(j).includes(o))); filters.push('--exclude ' + exclude.join('|')) }
-suites = lptOrder(suites)
+// The generic refusal stays HERE, on the filtered list and before any slicing: it means "the FILTERS matched
+// nothing", which is a different fact from "this shard is empty" (that one is named below, because an empty
+// shard is a configuration that would otherwise show up GREEN in CI while proving nothing).
 if (!suites.length) {
   console.error('no suites matched: requested-scope=' + GATE_SCOPE + '  effective-scope=' + SCOPE
     + (filters.length ? '  filters=[' + filters.join(' ') + ']' : '')
     + ' => 0 jobs (the filters intersect the requested scope; nothing to run)')
   process.exit(2)
 }
+// ── THE SHARD CUT: after scope + --only/--exclude, BEFORE `lptOrder()` ──────────────────────────────────
+// `lptOrder()` is an EXECUTION order (measured duration DESC). Cutting after it would make a shard's membership
+// depend on the weight table and on whichever machine measured it: two shards would stop being complements,
+// and a weight update would silently move jobs between CI runners. Cut in the DETERMINISTIC BASE ORDER instead
+// (`deriveJobs()` is label ASC; `applyScope` and the CLI filters preserve it), taking the jobs whose position k
+// satisfies `k % N === i-1`. That formula IS the partition contract: every job appears in exactly one shard,
+// and the union is the unsharded list - asserted by tests/shard-partition.test.mjs, never assumed.
+// The three machine/report modes are NOT sharded: they report the repository (or its scoped classification),
+// not a slice. `--shard` is named as IGNORED there so a reader cannot mistake a full report for a shard's, and
+// their stdout stays byte-identical with and without `--shard` (the judge asserts exactly that).
+let shardInfo = null
+if (SHARD !== null) {
+  const reportModes = ['counts', 'self-check', 'scope-report'].filter((m) => has(m))
+  if (reportModes.length) {
+    console.error('run-tests: shard=' + SHARD.index + '/' + SHARD.count + ' IGNORED (--' + reportModes.join(', --')
+      + ' reports the repository, not a shard; the output below is the unsharded answer)')
+  } else {
+    // WHY the two combinations below are REFUSED, not "supported with a caveat":
+    // `GATE_INCREMENTAL=1` SKIPS jobs, and a skipped job is absent from its shard - so "the shards sum to the
+    // total", the only property that proves the partition safe, becomes false, and a green shard could be green
+    // because its work never ran. A curated scope shrinks the denominator the same way (the shards would sum to
+    // a subset, not the full sweep). Both refuse BY NAME because a silent fallback is exactly how a partial
+    // sweep gets read as a full one.
+    if (GATE_SCOPE !== 'full') {
+      console.error('SHARD-SCOPE-UNSUPPORTED: --shard partitions the FULL sweep; GATE_SCOPE=' + GATE_SCOPE
+        + ' would make the shards sum to a curated subset, not the full job list. Run the shards with GATE_SCOPE=full.')
+      process.exit(2)
+    }
+    if (String(process.env.GATE_INCREMENTAL || '') === '1') {
+      console.error('SHARD-INCREMENTAL-UNSUPPORTED: --shard cannot be combined with GATE_INCREMENTAL=1 - incremental '
+        + 'SKIPS jobs, so the shards would no longer sum to the full job list and a green shard could be green because '
+        + 'its work never ran. Run the shards with the incremental plan off (GATE_RELEASE=1 also disables it).')
+      process.exit(2)
+    }
+    const base = suites.slice()
+    const selected = base.filter((j, k) => k % SHARD.count === SHARD.index - 1)
+    if (!selected.length) {
+      console.error('SHARD-EMPTY: --shard ' + SHARD.index + '/' + SHARD.count + ' selected 0 of ' + base.length
+        + ' job(s) - an EMPTY shard would show up GREEN in CI while proving nothing, so this exits 2 instead of using '
+        + 'the generic "no suites matched" (that one means the FILTERS matched nothing). Check that N <= the job count.')
+      process.exit(2)
+    }
+    shardInfo = { index: SHARD.index, count: SHARD.count, selected: selected.length, total: base.length }
+    suites = selected
+    if (has('shard-plan')) {
+      // The judge's ONLY source of shard membership: the runner's own answer, in the deterministic base order
+      // (before LPT), so a partition can be verified without running a single job.
+      console.log(JSON.stringify({
+        shard: shardInfo,
+        baseOrder: 'label ASC (deriveJobs(), after scope + --only/--exclude, before lptOrder)',
+        jobs: suites.map((j) => label(j)),
+      }, null, 2))
+      process.exit(0)
+    }
+  }
+}
+suites = lptOrder(suites)
 // The scope/concurrency header goes to STDERR so `--counts` and `--json` keep stdout machine-readable.
 // THE LEGACY LINE IS KEPT BYTE-FOR-BYTE (guards parse it); the SCOPE LINE below is the authoritative one:
 // it always prints the REQUESTED scope, the EFFECTIVE scope and the FINAL job count TOGETHER, so a reader can
@@ -1212,9 +1298,14 @@ if (legacySkipped > 0) {
     + 'archived; the maintained surface is vibe-math-vmu + its v5r pack). They live in tests/legacy/ (the '
     + 'directory IS the list). Run them with GATE_LEGACY=1.')
 }
-console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency)
+// SELF-PROOF for a shard: `shard=i/N selected=K of M` is appended to BOTH header lines and to the TOTAL line,
+// so a shard's log can never be passed off as a full sweep (and a shard that selected everything says so too).
+const shardProof = shardInfo
+  ? '  shard=' + shardInfo.index + '/' + shardInfo.count + ' selected=' + shardInfo.selected + ' of ' + shardInfo.total
+  : ''
+console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency + shardProof)
 console.error('run-tests: requested-scope=' + GATE_SCOPE + '  effective-scope=' + SCOPE + '  final-jobs=' + suites.length
-  + (filters.length ? '  filters=[' + filters.join(' ') + ']' : ''))
+  + (filters.length ? '  filters=[' + filters.join(' ') + ']' : '') + shardProof)
 // The override itself was already NAMED where the scope was decided (above, so `--self-check` sees it too);
 // this header is the one line that always carries requested scope + effective scope + final job count.
 // SCOPE GUARDS (checked on EVERY run, not only under --self-check, because the gate is where a curated
@@ -1572,6 +1663,8 @@ if (asJson) {
     incremental: incremental.enabled,
     incrementalSkipped: skippedResults.length,
     incrementalBaseline: incremental.enabled ? incremental.baseline : null,
+    // A machine report carries the shard identity too: `null` means the WHOLE sweep ran (not "an unknown slice").
+    shard: shardInfo,
     // A machine report must carry the same honesty the human TOTAL line does: hits/misses and the cache dir.
     mutantCache: {
       enabled: mutantCache.enabled,
@@ -1594,6 +1687,7 @@ if (asJson) {
   console.log('TOTAL ' + results.length + '  PASS ' + (results.length - bad.length) + '  FAIL ' + bad.length
     + (skippedResults.length ? '  SKIP ' + skippedResults.length + ' (incremental)' : '')
     + '  (suites ' + suiteCount + ' · probes ' + (results.length - suiteCount) + ')'
+    + shardProof
     // HONESTY LINE: a cached sweep must never read like an executed one. Hits and misses are always both shown,
     // and the hit count is the number of families whose execution was REPLACED by a stored verdict.
     + (mutantCache.enabled ? '  ·  mutant cache: ' + mutantCache.hits + ' hit / ' + mutantCache.misses + ' miss' : ''))

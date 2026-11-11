@@ -122,7 +122,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'solved', face: null, op: null, common: true,
     note: '你这一轮的个人判断（框架据此了解全所收敛度）' }),
   Object.freeze({ field: 'vote_solved', face: null, op: null,
-    note: '结题票用工具 `vibe_vmu_vote`（唯一入口，计 `vote_solved`）；回执字段只在**可证该回合未挂投票工具**时计票（`kept:true`/`keptWhy:"tool-not-mounted"`），否则 `kept:false`——`keptWhy` 具名原因（`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row`），照它改渠道；`set_solved` 未登记。' }),
+    note: '结题票用工具 `vibe_vmu_vote`（唯一入口）；本字段是**书账记录，永不单独计票**——唯一例外是 `keptWhy:"tool-not-mounted"`（可证该回合未挂投票工具）时计入；其余被忽略时 `kept:false`——看 `fieldsIgnored` 原因（`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row`），照它改渠道；`set_solved` 未登记。' }),
   Object.freeze({ field: 'prioritize', face: null, op: null,
     note: '{order:[{task_id,priority}],why}：优先级（院士席牵头，记在轮次状态里）' }),
   Object.freeze({ field: 'hire', face: null, op: null,
@@ -170,10 +170,10 @@ export function replyChannelLines() {
   // 20 062 chars against T99's 20 000 cap while that sentence was in, so the truth belongs where the lie was — the section
   // that was wrong now carries it, in fewer characters than a second copy would have cost.
   return [
-    '【本轮怎么交回】① 回复正文末尾一段代码围栏（三个反引号，标记可省）包一个 JSON 对象，这是唯一可靠通道；裸对象也能解析，但围栏最稳。' +
+    '【本轮怎么交回】① 回复正文末尾一段代码围栏包一个 JSON 对象，' +
     '② 围栏前可写说明，解析器取**最后一个**可解析围栏。③ **不要调用** `' + f.unreachable.tool +
     ' { op: "' + f.unreachable.op + '", … }`：成员回合由宿主派发（activation），没有待回的回合，该通道不可达，只会得到 ' +
-    '`' + f.unreachable.code + '`（成员/临时工调用会被 `VMU_NOT_PERMITTED` 拒）。④ 具名失败：`' + f.refusals.noFence +
+    '`' + f.unreachable.code + '`。④ 具名失败：`' + f.refusals.noFence +
     '`／`' + f.refusals.badJson + '`／`' + f.refusals.replyConflict + '`。',
   ]
 }
@@ -221,7 +221,7 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
   // without its semantics is what let "solved" be read as the counted closure vote (the closure recipe's whole point).
   const SOLVED_ROW = REPLY_FIELD_ROWS.find((r) => r.field === 'solved')
   lines.push('· 最小合法形状（可直接照抄）：{"say": "…", "solved": false} —— `solved` ' +
-    escape(SOLVED_ROW.note) + '；计票的是 `vote_solved`')
+    escape(SOLVED_ROW.note) + '；结题票只走 `vibe_vmu_vote`（`vote_solved` 是书账）')
   if (mode === 'full') {
     // THE OLD SHAPE, NAMED AS WRONG. Two wordings shipped for years and both are now wrong in different ways: the tool call
     // is unreachable (above), and a nested `report:` key no longer exists because the fenced object IS the report. Naming

@@ -18509,3 +18509,74 @@ D5 的处理值得单独记一句：**错的承诺留在树里过夜，读它的
 3. **有事实不等于有入口**。耐久行里 9 个键，读者只能读 3 个，那 6 个在验收口径里就是没有。
 4. **文档里的引文是判据输入**。改一句话，要同步所有引用它的地方，否则判据会在下一次全量里替你发现。
 5. **错的承诺比缺的承诺更坏**：先删，再按真实条件写回。
+
+## §355.15 RUN 79 缺陷批次收口：三条真机红只剩一条「读错了页」，而被删掉的句子在 T1 里长回了红
+
+第 79 次真机（build `6c689c86`，20 回合、5 席、`memberShare 0.9286`）判出 `9 PASS / 3 FAIL / 2 NO-EVIDENCE`。三条红全部有了归属：V6（`receiptsView` 回空 ring）由 TB-2740 换成耐久折入；V1（`activation` 回合的工具面写被记 `relayed`）由 TB-2739 的 A 项把 provenance 送进折里；V3 经分页复核从「产品缺陷」降级为「证据口径错」——产品改为自报块读数，第 80 次真机现场收口。两条无证据不是「没跑」，是论文链被编排卡在 `reviewing`，模板侧已由 TB-2742 修正（100 分钟、必须 `finalized`+`render`）。
+
+真正撑起这一轮的是四条此前从未测过的工程，以及一个反方向的教训：TB-2741 的十条提示词更正为了净零预算把两句**承载事实**的话删成了「净零」，T1 用五条红把它们抓回来——预算账能算平，事实不能算平。
+
+### 355.15.1 读数（材料在 `D:/_tmp/slv-phase5/slvp259-ws`，核于本节落盘时的工作树）
+
+| 项 | 值 |
+|---|---|
+| 驱动 | build `6c689c86`（tarball 7.94 MB），20 回合（19 `activation` + 1 `caller` t-13） |
+| 席位 | 5 席：`hired:["r-acad","r-1","r-2","r-3"]` + hire `r-temp` |
+| 会议 | m1 `type:"academic"`（5 条议程）、m2 `typeInput:"结题"` / `typeMatchedBy:"alias"` / `type:"closure"` |
+| 结题票 | 4/4（`notEligible:[{member:"r-temp",why:"no-closure-vote-permission"}]`） |
+| 成员工作占比 | `memberActs 13 / officeRelayedActs 1 / unknownActs 0 / acts 14 / provenActs 14 / memberShare 0.9286` |
+| 读数面 | board `originalBytes 9009` vs full `39984`（board `truncated:false`、full `truncated:true`） |
+| 判定 | V1–V14 = PASS 9（V2/V4/V5/V7/V9/V10/V11/V12/V14）/ FAIL 3（V1/V3/V6）/ NO-EVIDENCE 2（V8/V13，均 `RUN-DID-NOT-REACH`） |
+
+### 355.15.2 三条真机红：两条换了读数面/读数链，一条是读错了页
+
+**V6（`receiptsView` 回空 ring）已关（TB-2740）**。现场是「chair 子内核开会、它的 receipts 在耐久里，所办侧工具面读回来却是 `{"receipts":[],"count":0,"available":0,"ringDropped":0}`」。根因是读点只读进程内 ring：召集发生在另一个内核里，ring 在那边。修法是给读点一条只读的耐久折入 seam（`vibe-math-vmu/kernel/index.js:2277` 的 `readFold: () => store.read('meetings')`，不新增写路径），`receiptsView` 从耐久折入时回 `readFrom:"durable-fold"`、`available` = 源条数、`inProcessRingCount` 单独报进程内条数，两者不一致时给 `sourceDivergenceMeans` 与 `foldWhy`（`vibe-math-vmu/kernel/meetings.js:4130-4147`）。判据 `tests/vmu-run79-receipts-cross-kernel.test.mjs`（75/0）要求「子内核查不见、所办工具面读得到、`state.json` 三键相等」，并保留三盏 anti-lamp-off（真拷贝 + sha256 还原）。
+
+**V1（归属写 `writtenFrom:"relayed"`）已关（TB-2739 A）**。现场是 3 个 `deliveryPath:"activation"` 的回合里，席位自己写的行被记成 `relayed`（`rec-18`/`rec-23`/`rec-25`），而同一所的 `memberWorkShare` 又按行上 `deliveryPath` 算成 13/14——**汇总与行证不同源**。根因不在推导规则（`derivedWrittenFrom` 没改），而在**运输**：耐久折的行投影丢 `writtenFrom`、回灌不带它、跨内核采纳兄弟实例的重写行也不回写它，于是重启/跨内核之后一律重推成「有具名写者、无 caller」⇒ `relayed`。三处各补一个三值守卫（`own-turn`｜`relayed`｜`unknown`，其它值不写）：`vibe-math-vmu/kernel/index.js:2694-2706`（`snapshotRecords()` 行投影 `writtenFrom: foldWrittenFrom`）、`:2603-2608`（`hydrateRecords()` 的 `records.put` 尾随 `...(foldProvenance === null ? {} : { writtenFrom: foldProvenance })`）、`vibe-math-vmu/kernel/records.js` 的 `synchronize()` refresh 分支（`if (provenanceOfRow !== null) held.writtenFrom = provenanceOfRow`）与 added 分支（`putInternal` 的 `owner:` 行尾 spread 同一守卫）。判据 `tests/vmu-run79-written-from-fold.test.mjs` 48/0：§1 重启读回 `own-turn`、§2 首采纳、§3 改写采纳（要先让 reader **自己写一次**，因为 TB-2697 的 in-flight pending 会让「只读持有」的 reader 一直 `heldBack`——这是既有机制，场景注释写明）、§4 推导不变（无名写者 `unknown`、非法值具名拒）、§5 三盏反关灯全部真红且还原 sha256 逐字节一致。
+
+**V3（`op:"prompt"` 正文缺 `[状态板]`/`[蓝图]`）是「分页读了缺口」，不是产品缺陷**。第 79 次报告称 t-13 的 `op:"prompt"` 正文 26 641 字符里没有真块。复核：用分页读全的判据复现，整条装配正文 25 280 字符，真块（以 `[状态] 你是` 开头）落在 **11 739**，而 `[状态板]` 这个教学散文标签出现在 **3 810**；79 次现场只读了 **0 / 17 400 / 26 400** 三页，**9 000–17 400 这一整段从未读过**，真块正在这一带。所以「正文里既无 `[状态板]` 也无 `[蓝图]`」的证据是残缺的：命中的 `[状态板]` 全部来自教学句，真块没读到。教训一句话：**`op:"prompt"` 的分页不是全文，用页内 grep 判定「有没有某块」必错**。处置是让产品自报而不是让读者猜：`memberPrompt.statusBlock = {included, chars, appendedLiterally, why, means}`（`vibe-math-vmu/kernel/turn/index.js:3294-3299`），`op:"prompt"` 页回执带 `statusBlockIncluded`/`statusBlockChars`/`statusBlockMeans`（`vibe-math-vmu/kernel/turn/index.js:2559-2576`、`:6950-6975`；`vibe-math-vmu/tools/turn.js` 的 `op:"prompt"` 页），内核 `kernel.turn.statusBlockReading(turnId)` 在未知 turn 回 `null` 而不是猜。判据 `tests/vmu-run79-status-block-reading.test.mjs` 24/0，其中 §4e 是元判据：**必须分页读到 `done` 再把整串拼起来判，分页不全就不许下结论**；§4f 要求整串里同时有 `[状态] 你是` 与 `[状态板]`。
+
+**V8/V13 是编排缺口，不是产品缺口**。两轮互审各一票 `deliverable:false` 之后，论文停在 `reviewing`：没有 final、没有 compile/render、没有 PDF。旧模板「到 60 分钟必须收口」逼着主持人在论文链未完成时去走结题。TB-2742 把模板改成「结题前必须让论文链走到 `finalized` 与 `render`，被反对票挡住就退回改写，最多三轮；时间预算 100 分钟；结题票与论文链是两个门槛，票满不等于本轮成功」。
+
+### 355.15.3 被预算账压掉的两句事实，T1 用五条红换回来了
+
+TB-2741 的十条更正净 −66 字符（三席 normal 78 144→78 078），账是平的；但平账的方式删掉了两句读者必须知道的事实，而 T1 的五条红正是它们的回执：
+
+- **「形状问题不等于引擎不可用」**（`tests/vmu-tb2692-prompt-criticisms.test.mjs` §7/§13 各两条红 + `tests/vmu-doc-prompt-sync.test.mjs` §16 row 7）。原句被压成「形状问题（码表）改回执，别 probe 引擎」——动作还在，**理由没了**。理由才是这条教学的目的：`fence`/`JSON`/投递载荷这类错误是**回执形状**问题，读者若读成「引擎坏了」会停止工作去 probe 工具链。恢复为「…**不等于引擎不可用**：改回执，不要去 probe 引擎。」（+14/席）。
+- **「别自己数人头」**（`tests/vmu-tb2692-prompt-criticisms.test.mjs` §4 + `vmu-doc-prompt-sync` §16 row 3）。结题票分母是「有表决权席、不含 temp」；删掉这句，读者在 `temp` 入席时手算就会得出与内核不一致的 `2/5` 型读数——正是 RUN 74 教错过的那个错。恢复在原句尾（+8/席）。
+- **「（旧任务书简写）」**（`tests/vmu-run77-prompt-phase-and-votes.test.mjs` 的红）。这个括注是 RUN 76 短名 relapse 的判据锚：删了它，`phase` 的旧简写与这个面的闭集就分不清了（+8/席）。
+
+三句合计 +30/席、+90/三席，实测 29 499 / 78 168，记账写进 `tests/vmu-run256-prompts-compress.test.mjs` 的 `RUN272_RUN79_RESTORE` 与 `tests/vmu-run77-prompt-corrections.test.mjs` 的同名常量，cap 未动（chair/meeting 35 936 ≤ 36 500）。教训：**净零预算能算平字数，算不平事实**——删句之前要先问「这句话承载的是措辞还是条件」。
+
+同一轮里另有一处同类的判据腐烂：TB-2743 在 `toolchainProbeMeans` 里手写了假 need id `latex`（`latex` 是环境读数标签，不是 env-need），`tests/vmu-run257-refusal-hints.test.mjs` 立刻红；改成从 `ENGINE_NEED` 同源派生（`vibe-math-vmu/packs/v5r/tools.js:6490`），文档同步 `need: "xelatex"`。以及 `vibe-math-vmu/kernel/index.js` 因本轮新增行导致 hint 白名单行号漂移（2 316→2 320），`tests/vmu-run2704-hints-name-real-commands.test.mjs` 的「登记项必须在原位」把它抓出来——**白名单也要按内容重锚，不是按历史行号**。
+
+### 355.15.4 四条「没测到」的工程：从「没有事实」到「事实是哪一种缺席」
+
+**挂载事实的三态（TB-2735）**。第 78 次真机的幽灵票修法是「按回合记挂载事实」，但进程重启、FIFO 逐出、以及「这一 loop 从没装配过」三种情况此前共用一句 `legacy-row`。现在每种缺席都有自己的名字：durable 行的 `loopEpoch` 不是本 loop 的 ⇒ `tool-visibility-unknown-after-restart`；本 loop 装配过但已出 512 格 FIFO（逐出 id 单独记在 2 048 格表里）⇒ `tool-visibility-evicted`；本 loop 无记录且证不了曾有过 ⇒ `legacy-row`。三格都 `kept:false`、都不计票，读者改的只是「去哪查」。（`vibe-math-vmu/kernel/turn/index.js:2380`、`:2447`、`:4209`、`:4214`、`:4363-4369`；`vibe-math-vmu/kernel/index.js:2325-2327`、`:2378-2382`。）判据 `tests/vmu-run2735-mounted-facts-durable.test.mjs` 23/0、`tests/vmu-run78-closure-vote-channel.test.mjs` 42/0。
+
+**语料路径的深度（TB-2736）**。「同名键在别处」曾被当成覆盖证据：提示词问 `status.turnReceipts[].notices.lines`，而语料里顶层也有 `lines`，审计便放行。修法是把判据从「键名集合」改成「**路径集合**」：harvester 记嵌套路径（数组下标折叠成 `[]`，最多 `PATH_MAX_DEPTH = 6` 层），审计只认「这一条路径真的被语料携带」，同名叶子不算。（`scripts/sim/harvest/real.mjs:54` 多根 `VMU_SESSIONS_ROOTS`、`:65`、`:171`；`tests/audit-prompt-names.mjs:112-118`、`:123-137`、`:176-183`。）TB-2736 交付实测：`fields=0`、`PATHS 8256 (nested=3304)`、`READINGS 37 gap=0`，记录在 `docs/acceptance/corpus-capture-plan.md`（UNVERIFIED：本轮未复跑 harvester——它会重写 `D:/_tmp/sim/real-fieldset.json`，放行闸与其他车道在用；上述是 TB-2736 交付时的实测），判据 `tests/audit-corpus-nested-keys.test.mjs` 30/0。
+
+**分片（TB-2737）**。全量 T1 一台机器跑不完，切片的危险不是「切不动」而是「切重了/切漏了还报绿」。切点在 `scope` 与 `--only`/`--exclude` 之后、`lptOrder()` 之前，按 label 升序 `k % N === i-1` 取片；空片给具名 `SHARD-EMPTY`（exit 2），`--shard-plan` 打印每片 selected 与 total。实测 `--shard 1/3 --shard-plan` 三片各 292、total 876（876 = 3×292，并集相等）；`--shard 999/1000` 与 `--shard 0/8` 分别以 `SHARD-EMPTY`、`SHARD-INVALID` 退出。（`tests/run-tests.mjs:139-161`、`:1233-1251`。）手工重放：三片 10/9/9 = 28 全绿；判据侧由 `tests/shard-partition.test.mjs` 9/0 覆盖，其中 §6 要求真实分片在 TOTAL、`--json`、headers 三处都自证 `shard=i/N selected=K of M`。
+
+**CI 分片门禁（TB-2738）**。CI 绿只说明「另一台干净机器也能绿」，它不该被读成可发布：可发布只由本地 `release-ready.mjs` + 真机前置决定。`.github/workflows/gate.yml` 把「shape（static）→ 分区（partition）→ 8 片套件（suite）→ 并集（union）」四类 job 串起来，文件头写明没有 `continue-on-error`，`permissions: contents: read`；`ci-exclusions.json` 只有 3 条排除（墙钟预算、CPU 阈值、整树拷贝），各带 `why` 与 `localGuard`；`scripts/ci/shard-plan.mjs` 不抄套件名单，只读 runner 的选择；`scripts/ci/union-verify.mjs` 校验 Σ selected == plan 的 expected、无红片、排除项不在任何片，并认 `MISSING-SHARD`/`SHARD-RED`/`EXCLUSION-PRESENT`/`RUN-MISMATCH`/`HEAD-MISMATCH`/`DUPLICATE-JOB`/`UNION-SET-MISMATCH`。判据 `tests/ci-exclusions.test.mjs` 100/0。
+
+**段预算从墙钟换成 CPU 尺子（TB-2728）**。段预算原先量墙钟，量到的是**争用**而不是**工作量**：同一段在 T1 并行时 17 029 ms、静默时 8 400 ms。现在量「该段整棵进程树的 **user CPU**」：`scripts/sim/audit/cpu-probe.mjs` 经 `NODE_OPTIONS=--import` 装进门禁的每个 node 进程，退出时把 `process.cpuUsage().user` 追加到 `$VMU_GATE_CPU_DIR/cpu.jsonl`，段跑完把新增行求和；墙钟与 total CPU 只打印不进断言，`SEG_MS` 仍是硬超时兜底，`drift=1.25`/`floor=1500` 语义不变；校准用冻结工作量 `items=160000`（不符即 `CALIBRATION-WORK-CHANGED`），`calib-ref=5754`（4 核安静窗口 ×3 取中位；band [3000,9000]）。机器行 `docs/acceptance/sim-gate-scope.md:10`：`drift=1.25 floor=1500 calib-ref=5754 end-to-end=2233 meeting-matrix=9577 audit/all=40126 determinism=5170`。三次静默 `sim gate: 101 passed, 0 failed`；**在 3 个 CPU 霸占进程下三次仍然全绿**（matrix cost 10 078/10 031/9 875，允许 11 971），而同条件旧墙钟尺子是 12.7–13.0 k 超限——这就是「换尺子」与「放宽阈值」的区别。四盏反关灯全真红（漂移关掉 99/2、探针归零四条具名 `measured USER CPU cost (0 ms …)`、ref 减半撞 band 守卫、3 个霸占进程下仍绿属正向对照）。残余如实记：安静侧仍有约 1.3–1.7× 的机器漂移（基线取中位），`meeting-matrix` 在争用下 user CPU 仍 +5–16%（余量 1.9 s）。
+
+### 355.15.5 判据工程：借别人的红绿做自己的期望值，会把「别人坏了」记成「自己坏了」
+
+这一轮最典型的一次假红出现在分片判据上：`tests/shard-partition.test.mjs` §6 用 `--only audit-portability.mjs` 跑一个单 job 分片并要求「这一片是绿的」，而当时 portability 正被本批新判据 `tests/run79-brief-corrections.test.mjs:28` 的绝对宿主路径（`const PROOF_DIR = 'D:/_tmp/tb2742'`）打成 `VERDICT: FAIL (1 blockers)`，于是 §6 红、报告看起来像「分片坏了」。修法不是放松 §6，而是把那条路径改成可覆盖且默认由 `REPO` 拼出（`process.env.VMU_BRIEF_PROOF_DIR || join(REPO, '..', '..', '_tmp', 'tb2742')` + 同行 `PORTABLE-ALLOW`）。修后：`node tests/run79-brief-corrections.test.mjs` 23/0、`node tests/audit-portability.mjs` = `VERDICT: PASS (0 blockers) | legacy 91 | warn 4`、`node tests/shard-partition.test.mjs` 9/0。
+
+同一轮里 CI 并集判据补了两族灯，把「手工反关灯」变成判据输入：RED E（plan 的 `meta.headSha` 改成 `deadbeef…` 而 union 以 `HEAD_SHA=cafebabe` 跑 ⇒ 必须红并点名 `HEAD-MISMATCH`，同 head 仍绿）、RED F（把某个带参 job 的 `args` 丢掉、还原成「整条 label 塞进 file」的旧形状 ⇒ 必须红并点名 `UNION-SET-MISMATCH`），另加两条形状灯：演练行不得把参数塞进 `file`；用 `{file,args}` 重建的 label 集合必须逐条等于 runner 自己的选择。判据 `tests/ci-exclusions.test.mjs` 100/0。Lead 手工反关灯（把 `labelOfRun()` 改回只取 `file`）的真红是可引用的现场：`DUPLICATE-JOB … audit-registration.mjs, audit-math-computation-parity.mjs, audit-prompt-invariants.mjs, audit-participant-set-parity.mjs` 与 `UNION-SET-MISMATCH … 867 distinct job(s), the plan expects 873`，还原后 sha256 与保留副本逐字节一致。（标注：Lead 手工反关灯；判据侧由 RED F 覆盖。）
+
+同类的第二例：`scripts/ci/union-verify.mjs` 的下载目录原来是 `existsSync ? readdirSync : []` ——「目录不存在」被读成「没有产物 ⇒ 0 片 ⇒ 和为零」。现在目录缺失是具名 `NO-DOWNLOAD-DIR`，读取无 fallback（`scripts/ci/union-verify.mjs:81-88`），`tests/audit-no-silent-reads.test.mjs` 6/0 盯着这条。
+
+教训两句话：**判据的期望值必须是它自己测出来的**——借别人的红/绿、借安装包的路径、借一次真机的历史，都会在对方变动时把噪声记成信号；**「不存在」与「是空的」是两个命题**，合成一个三元表达式就把后者偷换成前者。
+
+### 355.15.6 未闭合与交付读数
+
+- **TB-2739（本批 Lead 自做，impl-a 两次静默死亡后改派）五格全落地**：A 归属同源 `tests/vmu-run79-written-from-fold.test.mjs` 48/0；B `op` 缺失不许静默按 status 答复 `tests/vmu-run79-step-not-status.test.mjs` 52/0（真机三条参数逐条重放，`VMU_TURN_OP_MISSING`，守卫在成员闸与队列之前）；C `op:"prompt"` 认 `member`（`promptFor:{member,turnId,turnMember,means}`，交叉指定具名拒 + `REACHABLE INSTEAD:`）`tests/vmu-run79-prompt-member.test.mjs` 23/0；D `detail:"closure"` 已带 `closureVote.notEligible`（1 546 B vs board 7 509 B）`tests/vmu-run79-closure-detail.test.mjs` 12/0；E 状态板自报见 355.15.2 的 V3 处置。
+- **TB-2743（已交付）**：`toolchainProbe` 三值 `ran-present`/`ran-absent`/`not-run`——`not-run` 明说「这一轮没问引擎问题 ≠ 工具链没装」（`vibe-math-vmu/packs/v5r/tools.js:6454`、`:6483-6492`）；`pdfCompiled.produced:false` 必有 `blockedBy` 具名（`not-finalized`/`no-parts`/`toolchain-absent`）+ `blockedByMeans`（`vibe-math-vmu/packs/v5r/tools.js:6885-6903`）；互审票绑 `judgedPartFingerprint`/`judgedPartRound`，陈旧票进 `staleReviews` 并具名（`vibe-math-vmu/kit/paper.js:989`、`:1068-1073`、`:1130-1151`）。判据 `tests/vmu-run79-review-fingerprint.test.mjs` 80/0。这条判据同时把一件真事钉住：第 79 次现场第 2 轮的互审票判的是第 1 轮的正文（指纹未变），旧实现把这票算作覆盖——现在它会具名拒并给 `REACHABLE INSTEAD:`（让对应席对新正文再投一次），`tests/vmu-v5r-tools.test.mjs` 的 advance 场景因此要在第 2 轮真的产出正文（362/0）。
+- **TB-2742（已交付）**：任务书模板三处更正 + `docs/acceptance/run79-verification.md`；模板第 22 行的 `vibe_v5_hire` 示例补齐四必填参（`to`/`slot`/`purpose`/`initial_task`），`tests/check-task-brief.test.mjs` 54/0 证明了「示例本身就是判据输入」。
+- **TB-2741（已交付）**：十条提示词更正，`tests/vmu-run79-prompt-corrections.test.mjs` 11/0；本批 355.15.3 的两句事实与一个括注是它的净零预算的补账。
+
+本轮读数：TOTAL `882` PASS `882` FAIL 0（suites `796` · probes `86`，wall `713.8s（k=3）`，k=3），提交 `RUN 272 收口提交`；本文件行数 `18582`。

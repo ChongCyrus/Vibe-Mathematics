@@ -78,10 +78,11 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        "【状态板】每轮提示里有一段 `[状态板]`，四个字段各有**唯一来源**，请直接引用它，不要自己另立一套：",
+        "【状态板】每轮提示里有一段 `[状态板]`（**由内核注入**，不是你要写的块），四个字段各有**唯一来源**，请直接引用它，不要自己另立一套：",
         "  · `[总任务]` 来自设置键 `vmu.turn.objective`（未设定时由任务板汇总）；`[规划]` 来自任务板的依赖与顺序；",
         "  · `[各任务完成状态]` 来自任务板（`vibe_v5_task_list`，或按 id 用 `vibe_v5_task_get` 读状态、接受标准、指派人、修订号）；",
         "  · `[当前小任务]` 来自你 progress 轨上最近的一条记录（这轮没写 progress，它就会说来源未提供）。",
+        "  · 每行固定三列「读数｜来源｜取值时刻」：没有时刻就写具名理由，不要留空列。",
         "某一行写成「该来源未提供：<原因>」时，意思是**那个来源这一轮读不到**——不等于「没有任务」：先把来源补齐（写 progress、建或更新任务、请所办说明），下一轮再引用新读数。",
         "  · **`[总任务]` 是本所的总任务**（内核只有一份，不按人分）；你的份额看 ②③ 行首「属于你（<member>，未完成 N 条）」，④ 才是你自己的面板。",
         "  · 席位写法：**院士＝`chair`，常驻研究员＝`member`，临时工＝`temp`**；四行怎么派生、时间怎么读，见【轨迹与状态板】。",
@@ -294,7 +295,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
         '协调需要时可 hire/fire、创建或分派任务（vibe_v5_task_create／vibe_v5_assign）；开会由院士用 vibe_v5_meeting 召集（type 见会议类型目录），具体字段查手册。',
-        '复杂工具首次使用前调 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查方法（只收 member，缺它具名拒）；回执里 `source` 是**读数来源**（`live-seat`／`no-live-agent`），`count:null`/`tools:null`＝无活会话故未测，不是「该席位没有工具」，声明集看 `declaredCount`；简单工具直接用。',
+        '复杂工具首次使用前调 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查方法（只收 member，缺它具名拒）；`source` 是**读数来源**（null=未测量），`count`/`declaredCount` 见工具 description；null 不是「该席位没有工具」。',
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
       ].join('\n'),
     },
@@ -1062,9 +1063,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         "【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（尝试过的路线）｜`obstacles`（阻塞与原因）｜`rejected`（已证伪的路）｜`state`（状态板）。`track:\"state\"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。",
-        "**派回合的 `phase` 是闭集，只有四个全名**：`heartbeat`／`paper-write`／`paper-review`／`paper-final`——`review`／`write`／`final` 是流程词不是 phase（旧任务书简写），写成它们会得到 `VMU_INVALID_ARGUMENT unknown phase`；`paper-review` 回合的产物是**评审票**，结题票 `vote_solved` 不用于评审。",
+        "**派回合的 `phase` 是闭集，只有四个全名**：`heartbeat`／`paper-write`／`paper-review`／`paper-final`——`review`／`write`／`final` 是流程词不是 phase（旧任务书简写），写成它们会得到 `VMU_INVALID_ARGUMENT unknown phase`（派回合面；`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面）；`paper-review` 回合的产物是**评审票**，结题票 `vote_solved` 不用于评审。",
         "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库 `lean_lib`（编译过≠命题真）；论文 = `vibe_v5_paper` 的 part 阶段；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法库卡：`vibe_v5_record_method`。",
-        "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数）；**不在名册**的 id 具名拒。**归属口径**：`memberWorkShare = memberActs/(memberActs+officeRelayedActs)`（`unknownActs` 不进分母）；**代笔回执**带 `memberActed:false`、`actedForMember`、`ranInOwnTurn:false`，落盘行带 `writtenFrom`（`own-turn`｜`relayed`｜`unknown`，问的是「这次写是怎么到这个席位的」）。`[结题]` 票数读 `closureVote.votesCast`/`votesTotal`（分母=有表决权席，不含 temp），别自己数人头。**`[状态板]` 每行固定三列「读数｜来源｜取值时刻」**：没有时刻就写具名理由（如「时间未提供：本回合没有内容时间戳」），不要留空列。**`[蓝图]` 恒渲染**：无现行版时写 `[蓝图] 无现行版（rev 0，md 未落盘）`，这一行不会因为没有内容而整段消失。",
+        "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数）；**不在名册**的 id 具名拒。**归属口径**：`memberWorkShare = memberActs/(memberActs+officeRelayedActs)`（`unknownActs` 不进分母）；**代笔回执**带 `memberActed:false`、`actedForMember`、`ranInOwnTurn:false`，落盘行带 `writtenFrom`（`own-turn`｜`relayed`｜`unknown`，问的是「这次写是怎么到这个席位的」）。`[结题]` 票数读 `closureVote.votesCast`/`votesTotal`（分母=有表决权席，不含 temp），别自己数人头。**`[蓝图]` 行由内核注入**：有就读（无现行版写「无现行版（rev 0，md 未落盘）」）；读不到用 `vibe_vmu_turn{op:\"status\",detail:\"board\"}` 的 `liveReadings.blueprint`，**不会因为**缺块当没有。",
         "  · 读别人的板：`vibe_v5_read_library`（`member`、`track`）；走不通的路写 `rejected`（别把证伪当进展）。",
         "  · **临时工不进成果库**：卡片面对临时工**具名拒**，产出由临时工自己写进回执（指派者只核对、不代写）；过程记录写在回执的 `progress` 字段。",
       ].join('\n'),

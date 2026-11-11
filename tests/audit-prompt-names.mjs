@@ -105,11 +105,35 @@ const COVERAGE_GAP_PROVENANCE = {
   votesTotal: { producedBy: 'vibe_v5_verdict_final / closure vote -> receipt.closureVote.votesTotal (kernel/turn/index.js:2026 reads it from the closure reading; :2059 prints votesCast/votesTotal/votesFor/votesAgainst/votesUnknown in one tally)', simProduced: true, evidence: 'sim probe: closure vote receipt .closureVote.votesTotal (4 seats enfranchised)' },
 }
 
+/**
+ * TB-2736: is a provenance-claimed path carried by the captured corpus? Path-level, not name-level: a wrapper
+ * segment on either side (`receipt.` prefix) is tolerated, an array index is already collapsed to `[]`.
+ */
+function pathCarried(fieldPaths, claimed) {
+  if (!fieldPaths || fieldPaths.size === 0 || typeof claimed !== 'string') return false
+  const candidates = [claimed, claimed.replace(/^receipt\./, '')]
+  for (const c of candidates) {
+    if (fieldPaths.has(c)) return true
+    for (const p of fieldPaths) if (p.endsWith('.' + c)) return true
+  }
+  return false
+}
+
 /** Provenance verdict for a coverage-gap name. Missing/empty producedBy => BLOCKER (no permanent exemptions). */
-function coverageGapVerdict(name) {
+function coverageGapVerdict(name, fieldPaths = null) {
   const p = COVERAGE_GAP_PROVENANCE[name]
   if (!p || typeof p.producedBy !== 'string' || p.producedBy.trim() === '') {
     return { blocker: true, why: 'coverage-gap WITHOUT a producer (add {producedBy, simProduced, evidence})' }
+  }
+  const claimed = declaredPathOf(p.producedBy)
+  // TB-2736: a documented producer is only evidence when the corpus carries the PATH it documents. If the claim
+  // names a receipt path and the corpus does not carry it, the gap is still a gap - this is the case the old
+  // top-level-key fieldset hid (the name existed somewhere, so the gap looked closed).
+  if (claimed !== null && fieldPaths && fieldPaths.size > 0 && !pathCarried(fieldPaths, claimed)) {
+    return { blocker: true, why: 'provenance documents the path ' + claimed + ', and the captured corpus does not carry that path — a same-named key elsewhere is a different existence (TB-2736)' }
+  }
+  if (claimed !== null && pathCarried(fieldPaths, claimed)) {
+    return { blocker: false, resolved: true, why: 'the captured corpus carries the documented path ' + claimed + ' — a path, not a key name, is the existence test (TB-2736)' }
   }
   return { blocker: false, why: 'produced by ' + p.producedBy + (p.simProduced === true ? ' [simProduced]' : ' [NOT produced by any receipt]') }
 }
@@ -149,10 +173,17 @@ function capturedByOk(p) {
   return !!c && ['tool', 'action', 'corpus', 'scenarioStep'].every((k) => typeof c[k] === 'string' && c[k].trim() !== '')
 }
 
-function readingVerdict(name, readable, proven) {
-  if (readable.has(name)) return { verdict: 'pass' }
+function readingVerdict(name, readable, proven, fieldPaths = null) {
   const table = proven || { ...TAUGHT_READING_PROVEN, ...COVERAGE_GAP_PROVENANCE }
   const p = table[name]
+  const claimed = p && typeof p.producedBy === 'string' ? declaredPathOf(p.producedBy) : null
+  // TB-2736: check the PATH first. If the corpus carries the documented path, that path is the proof (the leaf name
+  // is not enough); if it does not carry it, the claim is a blocker even when the same bare name happens to exist.
+  if (claimed !== null && fieldPaths && fieldPaths.size > 0) {
+    if (pathCarried(fieldPaths, claimed)) return { verdict: 'pass', why: 'the captured corpus carries the documented path ' + claimed }
+    return { verdict: 'blocker', why: 'claimed reading ' + name + ' documents the path ' + claimed + ', and the captured corpus does not carry that path — a same-named key elsewhere is a different existence (TB-2736)' }
+  }
+  if (readable.has(name)) return { verdict: 'pass' }
   if (p && typeof p.producedBy === 'string' && p.producedBy.trim() !== '') {
     if (!capturedByOk(p)) return { verdict: 'blocker', why: 'claimed as readable; a producer exists but capturedBy {tool, action, corpus, scenarioStep} is missing — a WARN without a capture plan is a permanent escape hatch' }
     const c = p.capturedBy
@@ -261,15 +292,59 @@ function registryOf(specs, enumWords, enumKeys) {
   return tools
 }
 
+/** Normalise a documented path so `[i]` / `[0]` / `[]` all compare equal: `status.turnReceipts[].notices.lines`. */
+function normalizePath(p) {
+  return String(p).replace(/\[[^\]]*\]/g, '[]')
+}
+
+function pathSegmentsOf(p) {
+  return normalizePath(p).split('.').map((s) => s.replace(/\[\]/g, '')).filter((s) => s !== '')
+}
+
+/**
+ * TB-2736: `keys` is the TOP-LEVEL key set; `paths` is the real path set (array indices collapsed). A name is
+ * readable when it appears at ANY depth of a captured path, and every container segment counts as its own name
+ * (`notices` as a container is a fact separate from a top-level `notices`). The leaf universe grows; that is the
+ * point - a reader that sees `turnReceipts[].notices.lines` must not be told the field does not exist.
+ */
 function fieldNamesOf(fieldset) {
   const names = new Set()
   for (const [tool, v] of Object.entries(fieldset || {})) {
     if (!v || typeof v !== 'object') continue
     const keys = Array.isArray(v.keys) ? v.keys : Array.isArray(v) ? v : []
     for (const k of keys) names.add(String(k))
+    for (const p of Array.isArray(v.paths) ? v.paths : []) for (const seg of pathSegmentsOf(p)) names.add(seg)
   }
   for (const k of ['ok', 'tool', 'code', 'note', 'hint', 'receiptMeta', 'at', 'means', 'why', 'action', 'member', 'id', 'path', 'status']) names.add(k)
   return names
+}
+
+/** Every captured path, normalised. Empty when the fieldset predates TB-2736 - reported, never assumed. */
+function fieldPathsOf(fieldset) {
+  const out = new Set()
+  for (const v of Object.values(fieldset || {})) {
+    if (!v || typeof v !== 'object' || !Array.isArray(v.paths)) continue
+    for (const p of v.paths) out.add(normalizePath(p))
+  }
+  return out
+}
+
+/**
+ * The path a provenance row CLAIMS (`status.turnReceipts[i].notices.blockChars`). This claim is the testable part:
+ * a leaf name can exist at the top of some receipt while the documented container path was never captured. Source
+ * file references (`kit/paper.js`) are filtered out; only receipt-shaped paths are claims.
+ */
+function declaredPathOf(producedBy) {
+  if (typeof producedBy !== 'string') return null
+  const re = /\b([a-z][A-Za-z0-9_]*(?:\[[^\]]*\])?(?:\.[a-z][A-Za-z0-9_]*(?:\[[^\]]*\])?)+)/g
+  const out = []
+  for (const m of producedBy.matchAll(re)) {
+    const norm = normalizePath(m[1])
+    const last = norm.split('.').pop()
+    if (/^(js|mjs|json|md)$/.test(last)) continue
+    if (norm.split('.').length >= 3 || norm.includes('[]')) out.push(norm)
+  }
+  return out.length > 0 ? out[0] : null
 }
 
 /** All tool names mentioned by a text. A trailing `*` marks a family prefix. */
@@ -366,7 +441,8 @@ function scanText(label, text, reg, sources) {
       if (sources.vars.has(c.name)) { bump('VARIABLE', c.name); continue }
       if (sources.codeKeys.has(c.name)) {
         bump('RECEIPT_KEY', c.name)
-        const gap = coverageGapVerdict(c.name)
+        const gap = coverageGapVerdict(c.name, sources.fieldPaths || null)
+        if (gap.resolved === true) continue // TB-2736: the corpus now carries the documented path - not a gap any more
         findings.push({ seat: label, category: 'UNKNOWN_FIELD', klass: 'RECEIPT_KEY', warn: 'coverage-gap', name: c.name, context, note: gap.why, blocker: gap.blocker === true })
         continue
       }
@@ -387,7 +463,7 @@ function scanText(label, text, reg, sources) {
       if (NEGATED_CLAIM.test(quote)) continue // "`x` 是旧称" disclaims readability, it does not claim it
       for (const name of ids) {
         examined.readings++
-        const v = readingVerdict(name, sources.readable)
+        const v = readingVerdict(name, sources.readable, null, sources.fieldPaths || null)
         if (v.verdict === 'pass') { readings.pass++; continue }
         if (v.verdict === 'gap') { readings.gap++; findings.push({ seat: label, category: 'TAUGHT_READING', warn: 'reading-gap', name, context: quote.trim().slice(0, 160), promptQuote: quote.trim(), note: v.why }) }
         else { readings.blockers++; findings.push({ seat: label, category: 'TAUGHT_READING', warn: 'reading-blocker', name, context: quote.trim().slice(0, 160), promptQuote: quote.trim(), note: v.why, blocker: true }) }
@@ -423,8 +499,10 @@ if (SELF_CHECK) {
   const fakeReg = registryOf([
     { name: 'vibe_vmu_records', parameters: { properties: { action: { enum: ['list', 'get'] }, limit: {} } } },
   ], enumWords, enumKeys)
+  const fakeFieldset = { vibe_vmu_records: { keys: ['ok', 'rows', 'total'], paths: ['rows[].total', 'rows[].nested.leaf'] } }
   const fakeSources = {
-    fields: fieldNamesOf({ vibe_vmu_records: { keys: ['ok', 'rows', 'total'] } }),
+    fields: fieldNamesOf(fakeFieldset),
+    fieldPaths: fieldPathsOf(fakeFieldset),
     settingsKeys: new Set(['fakeSetting']),
     enumWords: new Set([...enumWords, 'fakeEnumValue']),
     codeKeys: new Set(['fakeCoverageKey']),
@@ -457,6 +535,13 @@ if (SELF_CHECK) {
     if (r.findings.length !== 0 || r.classes[want] !== 1) { bad++; console.error('SELF-CHECK MISROUTE: ' + name + ' (expected one ' + want + ', got ' + JSON.stringify(r.classes) + ' findings=' + JSON.stringify(r.findings) + ')') }
   }
   // coverage-gap must be a WARN with its own reason, not silently passed
+  // ★ TB-2736: the existence test is the PATH, not the leaf name. BOTH directions: a corpus carrying the documented
+  // path passes even when the leaf is not top-level; a corpus carrying a same-named key somewhere else stays red.
+  const leafTable = { leaf: { producedBy: 'op -> rows[i].nested.leaf' } }
+  if (readingVerdict('leaf', new Set(), leafTable, fakeSources.fieldPaths).verdict !== 'pass') { bad++; console.error('SELF-CHECK MISS: a documented path the corpus carries must pass (TB-2736)') }
+  if (readingVerdict('leaf', new Set(['leaf']), leafTable, new Set(['rows[].total'])).verdict !== 'blocker') { bad++; console.error('SELF-CHECK MISS: a same-named leaf without the documented path must stay a BLOCKER (TB-2736)') }
+  if (coverageGapVerdict('writtenFrom', new Set(['rows[].other'])).blocker !== true) { bad++; console.error('SELF-CHECK MISS: a coverage-gap whose documented path is absent must be a BLOCKER (TB-2736)') }
+  if (coverageGapVerdict('writtenFrom', new Set(['rows[].writtenFrom'])).resolved !== true) { bad++; console.error('SELF-CHECK MISS: a coverage-gap whose documented path is captured must resolve (TB-2736)') }
   const gap = scanText('self', '`fakeCoverageKey`', fakeReg, fakeSources)
   if (gap.findings.length !== 1 || gap.findings[0].warn !== 'coverage-gap') { bad++; console.error('SELF-CHECK MISS: coverage-gap classification') }
   // ★ A coverage-gap WARN must NAME its producer; a gap with no provenance is a BLOCKER. Test BOTH directions so
@@ -480,7 +565,7 @@ if (SELF_CHECK) {
   }
   if (readingVerdict('withPlan', new Set(), fakeTables).verdict !== 'gap') { bad++; console.error('SELF-CHECK MISS: a producer WITH capturedBy must stay a WARN reading-gap') }
   if (readingVerdict('withoutPlan', new Set(), fakeTables).verdict !== 'blocker') { bad++; console.error('SELF-CHECK MISS: a producer WITHOUT capturedBy must be promoted to BLOCKER') }
-  const reReading = { ...fakeSources, readable: new Set() }
+  const reReading = { ...fakeSources, readable: new Set(), fieldPaths: new Set() } // pre-TB-2736 corpus: no path set, falls back to the producer table
   const knownGap = scanText('self', '`notices` 是小节读数', fakeReg, reReading)
   const kg = knownGap.findings.find((f) => f.category === 'TAUGHT_READING')
   if (!kg || kg.warn !== 'reading-gap') { bad++; console.error('SELF-CHECK MISS: a measured producer absent from the corpus must stay a WARN reading-gap') }
@@ -496,15 +581,23 @@ const srcs = []
 walkSources(SOURCE_DIRS, (p, s) => srcs.push(s))
 const codeKeysGlobal = objectKeysOf(srcs)
 
-const fields = (() => {
+const fieldsetReading = (() => {
   if (!existsSync(FIELDSET)) {
     fail('receipt fieldset corpus is missing: ' + FIELDSET + ' (TB-2659: a missing corpus is a FAILURE, never a skip)')
     process.exit(1)
   }
   let fieldset
   try { fieldset = JSON.parse(readFileSync(FIELDSET, 'utf8')) } catch (e) { fail('receipt fieldset is unreadable: ' + FIELDSET + ' :: ' + e.message); process.exit(1) }
-  return fieldNamesOf(fieldset)
+  return { names: fieldNamesOf(fieldset), paths: fieldPathsOf(fieldset) }
 })()
+const fields = fieldsetReading.names
+const fieldPaths = fieldsetReading.paths
+// TB-2736: a top-level-only fieldset cannot tell "captured" from "captured at top level". Refuse to read one as if
+// it could - the honest message is "regenerate the corpus", not a silent pass.
+if (fieldPaths.size === 0) {
+  fail('receipt fieldset carries no nested paths (TB-2736): ' + FIELDSET + ' — regenerate it with scripts/sim/harvest/real.mjs')
+  process.exit(1)
+}
 
 // Sim corpus receipts: the second living source for "can the member actually read this name". A missing corpus is a
 // FAILURE, never a skip (TB-2659).
@@ -551,7 +644,7 @@ try {
   const reg = registryOf(b.specs, enumWords, enumKeys)
   // `c.formalVerify === 'encourage'` and similar comparisons are enum values even when no spec declares them.
   for (const v of literalsOf(srcs)) enumWords.add(v)
-  const sources = { fields, settingsKeys: settings.keys, enumWords, codeKeys: codeKeysGlobal, vars: varsOf(srcs), codeIdents: identsOf(srcs), readable: new Set([...fields, ...corpusKeys]) }
+  const sources = { fields, fieldPaths, settingsKeys: settings.keys, enumWords, codeKeys: codeKeysGlobal, vars: varsOf(srcs), codeIdents: identsOf(srcs), readable: new Set([...fields, ...corpusKeys]) }
   if (reg.size < 20) fail('tool registry looks empty (' + reg.size + ' specs) — refusing to call a vacuous scan a pass')
   const seats = [
     { seat: 'chair', member: 'r-acad' },
@@ -605,6 +698,7 @@ if (JSON_OUT) {
   console.log('CLASSES receipt=' + classTotals.RECEIPT_KEY + ' settings=' + classTotals.SETTINGS_KEY + ' enum=' + classTotals.ENUM_VALUE + ' variable=' + classTotals.VARIABLE + ' unclassified=' + classTotals.unclassified)
   console.log('CLASSES-DISTINCT receipt=' + classSeenTotals.RECEIPT_KEY.size + ' settings=' + classSeenTotals.SETTINGS_KEY.size + ' enum=' + classSeenTotals.ENUM_VALUE.size + ' variable=' + classSeenTotals.VARIABLE.size + ' unclassified=' + classSeenTotals.unclassified.size)
   console.log('SOURCES tools=spec-registry receipt=' + FIELDSET + '+source-keys settings=settings/schema.js enum=spec+domains+source-literals variable=kernel/packs-source')
+  console.log('PATHS ' + fieldPaths.size + ' (nested=' + [...fieldPaths].filter((p) => p.split('.').length >= 3).length + ') captured from real receipts; a name is readable only if a captured PATH carries it (TB-2736)')
   console.log('READINGS claims=' + readingTotals.claims + ' pass=' + readingTotals.pass + ' gap=' + readingTotals.gap + ' blockers=' + readingTotals.blockers + ' patterns=' + Object.keys(patternTotals).map((k) => k + ':' + patternTotals[k]).join(' '))
   console.log('READINGS-DISTINCT names=' + taughtDistinct.names + ' gap=' + taughtDistinct.gap + ' blockers=' + taughtDistinct.blockers)
   console.log('EXAMINED tool-mentions=' + examinedTools + ' params=' + examinedParams + ' enums=' + examinedEnums + ' idents=' + examinedIdents + ' readings=' + examinedReadings)

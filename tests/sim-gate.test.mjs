@@ -41,6 +41,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { requireFile } from './_lib/require-file.mjs'
+import * as ruler from '../scripts/sim/audit/timing.mjs'
 
 // TB-2677: the checkout is derived from this file (a test that only runs on the author machine is not a gate).
 const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]+$/, '')
@@ -48,6 +49,36 @@ const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]+$/, ''
 // is exactly what happened when one run finished in 13.6 s) would otherwise rm each other's corpora mid-flight and
 // manufacture red or absurdly fast readings. Unique dirs make concurrency a scheduling question, not a correctness one.
 const TMP = join(tmpdir(), 'sim-gate-' + process.pid)
+// The CPU probe. Every node process this gate starts carries it through NODE_OPTIONS, so the cost of a segment is the
+// CPU of its WHOLE process tree (audit/all's scenario children included), not the parent's wall clock. See
+// scripts/sim/audit/cpu-probe.mjs for the measurements that made the wall clock unusable as a ruler.
+const CPU_DIR = join(TMP, 'cpu')
+const CPU_PROBE_URL = pathToFileURL(join(REPO, 'scripts/sim/audit/cpu-probe.mjs')).href
+function cpuEnv(base) {
+  const merged = Object.assign({}, process.env, base || {})
+  const existing = typeof merged.NODE_OPTIONS === 'string' && merged.NODE_OPTIONS.trim() !== '' ? merged.NODE_OPTIONS + ' ' : ''
+  merged.NODE_OPTIONS = existing + '--import=' + CPU_PROBE_URL
+  merged.VMU_GATE_CPU_DIR = CPU_DIR
+  return merged
+}
+/** CPU rows written by every process of the tree so far; a missing file (nothing ran yet) is an empty list. */
+function cpuRows() {
+  const file = join(CPU_DIR, 'cpu.jsonl')
+  if (!existsSync(file)) return []
+  return readText(file).split(NL).filter((line) => line.trim() !== '').map((line) => {
+    try { return JSON.parse(line) } catch { return null }
+  }).filter(Boolean)
+}
+/** Sum the probe rows of one segment: USER CPU is the work the gate rules on; system CPU is scheduling churn. */
+function cpuOf(rows) {
+  let userMs = 0
+  let sysMs = 0
+  for (const row of rows) {
+    userMs += Number.isFinite(row.userMs) ? row.userMs : 0
+    sysMs += Number.isFinite(row.sysMs) ? row.sysMs : 0
+  }
+  return { userMs, sysMs, totalMs: userMs + sysMs }
+}
 const KEEP = process.env.SIM_KEEP_CORPUS === '1'
 const NL = String.fromCharCode(10)
 
@@ -129,22 +160,36 @@ function readJsonl(file) {
 
 /** One segment: its own clock, its own timeout, and a name in every failure message. */
 const segments = []
+// The ruler's readings. The gate does not assume the machine is quiet: it measures how fast a FIXED child-process
+// workload runs, at five points spread over the whole gate, and divides each segment's wall time by the worst of
+// them. The workload is spawned with process.execPath -- the same kind of process as the segment -- because the
+// TB-2728 diagnosis showed an in-process CPU counter staying at factor 1.0 while the segment's wall time doubled.
+const calibrationPoints = []
+function calibrateNow(after) {
+  const point = ruler.calibration()
+  calibrationPoints.push(Object.assign({ after }, point))
+  return point
+}
 function runSegment(name, budgetMs, body) {
+  const rowsBefore = cpuRows().length
   const startedAt = Date.now()
   const outcome = body()
   const elapsed = Date.now() - startedAt
   const timedOut = outcome !== null && outcome !== undefined && outcome.timedOut === true
-  segments.push({ name, elapsed, budgetMs, timedOut })
+  // The tree's CPU: every process that exited during this segment, summed. A segment that starts no process (none do)
+  // would report 0 and is refused by the named check below rather than judged on an invented number.
+  const rows = cpuRows().slice(rowsBefore)
+  const burn = cpuOf(rows)
+  segments.push({ name, elapsed, cpuMs: burn.userMs, totalCpuMs: burn.totalMs, sysCpuMs: burn.sysMs, processes: rows.length, budgetMs, timedOut })
   ok(!timedOut, 'segment ' + name + ' finished within its ' + budgetMs + ' ms budget', timedOut ? { elapsed, budgetMs } : undefined)
-  ok(elapsed <= budgetMs, 'segment ' + name + ' elapsed ' + elapsed + ' ms <= ' + budgetMs + ' ms', { name, elapsed, budgetMs })
+  ok(burn.userMs > 0, 'segment ' + name + ' reported a measured USER CPU cost (' + burn.userMs + ' ms over ' + rows.length + ' process(es); total CPU ' + burn.totalMs + ' ms) -- a zero-cost segment would make every rule free', { name, userMs: burn.userMs, totalMs: burn.totalMs, processes: rows.length })
   return outcome
 }
 
 /** Spawn one node process; a timeout is reported, never swallowed. `env` is merged over the inherited environment. */
 function spawnNode(args, timeoutMs, env) {
   const startedAt = Date.now()
-  const options = { cwd: REPO, timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' }
-  if (env) options.env = Object.assign({}, process.env, env)
+  const options = { cwd: REPO, timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, encoding: 'utf8', env: cpuEnv(env) }
   const result = spawnSync(process.execPath, args, options)
   const elapsed = Date.now() - startedAt
   const timedOut = Boolean(result.error && result.error.code === 'ETIMEDOUT')
@@ -165,6 +210,19 @@ ok(existsSync(join(REPO, 'scripts', 'sim', 'run.mjs')), 'the runner exists at sc
 ok(existsSync(join(REPO, 'scripts', 'sim', 'audit', 'all.mjs')), 'the audit suite exists at scripts/sim/audit/all.mjs')
 const nodeMajor = Number(String(process.versions.node).split('.')[0])
 ok(nodeMajor >= 20, 'node ' + process.versions.node + ' supports --import (>= 20.6)', { node: process.versions.node })
+
+// ── 0b) the contention report's pure function refuses a broken yardstick ────────────────────────────────────────
+// The gate RULES on CPU (section 6), so the calibration ratio is printed, never divided into a cost. What can still
+// lie is the printed contention column: no calibration, a missing reference, or a ratio so far from 1 that the frozen
+// workload must have changed. Each way is refused by name here, and the plausible case still just returns a ratio.
+const zeroCalib = ruler.factorOf(0, 350)
+ok(zeroCalib.ok === false && /CALIBRATION-NOT-MEASURED/.test(zeroCalib.why), 'the contention report REFUSES a zero calibration instead of printing a divide-by-zero', zeroCalib)
+const noRef = ruler.factorOf(350, 0)
+ok(noRef.ok === false && /CALIB-REF-MISSING/.test(noRef.why), 'the contention report REFUSES a missing calib-ref (the ratio would have no unit)', noRef)
+const madFactor = ruler.factorOf(3500, 350)
+ok(madFactor.ok === false && /CALIBRATION-IMPLAUSIBLE/.test(madFactor.why), 'the contention report REFUSES an implausible 10x ratio (the calibration work changed, so the ref must be re-pinned)', madFactor)
+const doubled = ruler.factorOf(700, 350)
+ok(doubled.ok === true && doubled.factor === 2, 'the contention report still divides the calibration by its reference (700 ms under a quiet 350 ms ref reads 2.0x)', doubled)
 
 // ── 1) the audit's own predicate, proved in both directions ─────────────────────────────────────────────────────
 // A2's subject is a VALUE, not a word. If this section ever goes green with the old substring predicate, the gate
@@ -210,6 +268,7 @@ const proseReport = AUDIT.audit(proseCorpus)
 ok(proseReport.findings.filter((f) => f.check === 'A2').length === 0, 'A2 leaves a corpus full of explanatory prose GREEN', proseReport.findings.slice(0, 4))
 
 // ── 2) segment one: the whole lifecycle, once, on the real kernel ───────────────────────────────────────────────
+calibrateNow('start')
 const OUT_E2E = join(TMP, 'corpus-e2e')
 const e2eRun = runSegment('end-to-end', SEG_MS.e2e, () => spawnNode(['scripts/sim/run.mjs', '--scenario', 'end-to-end', '--out', OUT_E2E], SEG_MS.e2e))
 ok(e2eRun.status === 0, 'end-to-end exits 0 (a shipped scenario that cannot finish is a gate failure, not a warning)', { status: e2eRun.status, stderr: e2eRun.stderr.slice(-600) })
@@ -376,6 +435,7 @@ const replay = runSegment('determinism', SEG_MS.determinism, () => {
   rmrf(DET_ROOT)
   return spawnNode(['--import', freezeUrl, 'scripts/sim/run.mjs', '--scenario', 'end-to-end', '--out', DET_B, '--root', DET_ROOT], SEG_MS.determinism)
 })
+calibrateNow('end')
 ok(replay.status === 0, 'the frozen replay ran twice and both runs exited 0', { status: replay.status, stderr: replay.stderr.slice(-600) })
 const replayManifest = readJson(join(DET_A, 'manifest.json'), {}) || {}
 // `stamp` in run.mjs is `new Date().toISOString().replace(/[:.]/g, '-')`, so a frozen clock shows up as this exact
@@ -421,18 +481,14 @@ ok(consultIdsA.length > 0, 'replay: the corpus does contain consult ids (measure
 ok(consultIdsA.join(NL) === consultIdsB.join(NL), 'replay: the two runs mint the SAME consult ids in the same order -- the id is deterministic (TB-2634), so a reintroduced Math.random turns this red', { a: consultIdsA.slice(0, 4), b: consultIdsB.slice(0, 4), countA: consultIdsA.length, countB: consultIdsB.length })
 ok(sha256(normalize(replayPairsA)) === sha256(normalize(replayPairsB)), 'replay: the normalized pairs corpus has one sha256, so a future divergence is a red gate', { normalizedSha: sha256(normalize(replayPairsA)).slice(0, 20) })
 
-// ── 6) the budget is a gate too ────────────────────────────────────────────────────────────────────────────────
-const threeSegments = segments.filter((s) => s.name === 'end-to-end' || s.name === 'meeting-matrix' || s.name === 'audit/all')
-const threeTotal = threeSegments.reduce((sum, s) => sum + s.elapsed, 0)
-ok(threeSegments.length === 3, 'the three named segments all ran (none skipped, none replaced)', threeSegments.map((s) => s.name))
-ok(threeSegments.every((s) => s.timedOut === false), 'no segment timed out (a timeout is a failure that names the segment)', threeSegments.filter((s) => s.timedOut))
-ok(threeTotal < THREE_SEGMENT_BUDGET_MS, 'the three segments together cost ' + threeTotal + ' ms < ' + THREE_SEGMENT_BUDGET_MS + ' ms budget', { threeTotal, budget: THREE_SEGMENT_BUDGET_MS, segments: threeSegments })
-ok(segments.some((s) => s.name === 'determinism'), 'the replay segment ran as part of this gate', segments.map((s) => s.name))
-
-// Drift: measured here, judged against docs/acceptance/sim-gate-scope.md. A segment may cost up to driftFactor x its
-// documented baseline; past that the message names the segment and the excess in ms, because "the gate got slower"
-// is useless until someone knows WHICH part got slower. This is a red gate, not a warning: either the code changed
-// or the machine is competing, and both are facts a reader must be told before trusting a green run.
+// ── 6) the budget is a gate too: measured in COST, not in wall time ────────────────────────────────────────────
+// Wall time on a shared box is mostly other people's work: TB-2728 measured a quiet meeting-matrix segment at
+// 8.3-8.7 s and the same code at 17.4-20.5 s with three CPU hogs alongside it. The fix is not a bigger baseline
+// (14000 ms hid a real 60 % regression) but a ruler measured at the same moment: `ruler.calibration()` spawns a
+// FIXED child-process workload after every segment, and each segment's cost is its wall time divided by the worst
+// calibration ratio this gate saw. The child is the same KIND of process as a segment, because the in-process
+// counter stayed at factor 1.0 while the segment doubled. The doc line carries `calib-ref=<median ms>`, measured on
+// the reference machine (see docs/acceptance/sim-gate-scope.md); a missing or unmeasurable ref is a red gate.
 const scopeText = readText(SCOPE_DOC) || ''
 const baselineMatch = /<!--\s*gate-baselines:\s*([^>]+?)\s*-->/.exec(scopeText)
 const baselineSpec = baselineMatch === null ? {} : Object.fromEntries(
@@ -445,9 +501,49 @@ const driftFactor = Number.isFinite(baselineSpec.drift) ? baselineSpec.drift : 1
 const driftFloorMs = Number.isFinite(baselineSpec.floor) ? baselineSpec.floor : 1500
 ok(baselineMatch !== null, 'the documented baseline line exists in docs/acceptance/sim-gate-scope.md', { found: baselineMatch === null ? null : baselineMatch[0] })
 ok(Number.isFinite(baselineSpec.floor) && baselineSpec.floor > 0, 'the documented line carries the sub-5 s noise floor (floor=<ms>), so doc and gate agree on the second allowance term', { floor: baselineSpec.floor, factor: baselineSpec.drift })
-const drift = driftFindings(segments.map((s) => ({ name: s.name, elapsed: s.elapsed })), baselineSpec)
+
+// The ruler. Its reference is read from the same doc line, so a hand-edited baseline and a hand-edited ruler cannot
+// drift apart: halving calib-ref doubles every cost and turns this gate red on the next run (proved below).
+const calibRefMs = Number(baselineSpec['calib-ref'])
+ok(Number.isFinite(calibRefMs) && calibRefMs > 0, 'the documented line carries the calibration reference (calib-ref=<min ms> measured on the reference machine)', { calibRef: baselineSpec['calib-ref'] })
+// A reference is a MEASUREMENT of a frozen workload, not a dial. The frozen job (8000 items) cannot cost 125 ms on any
+// machine that runs this gate; a ref outside the plausible band means someone re-pinned it (or changed the job, which
+// the workload guard also catches). Halving the ref halves every cost -- i.e. it is the one direction that buys a
+// green run -- so this band is what makes that back door red instead of silent (proved in 6b (iv)).
+const CALIB_REF_BAND_MS = [3000, 9000]
+ok(calibRefMs >= CALIB_REF_BAND_MS[0] && calibRefMs <= CALIB_REF_BAND_MS[1], 'calib-ref (' + calibRefMs + ' ms) is a plausible measurement of the frozen workload (band ' + CALIB_REF_BAND_MS.join('-') + ' ms) rather than a hand-tuned dial' + (calibRefMs >= CALIB_REF_BAND_MS[0] && calibRefMs <= CALIB_REF_BAND_MS[1] ? '' : ' -- re-measure the cold calibration workload instead of editing this number'), { calibRefMs, band: CALIB_REF_BAND_MS })
+const badPoints = calibrationPoints.filter((p) => p.ok !== true)
+// The calibration is REPORTED from here on, not obeyed. It answers one question -- how much slower does a fixed
+// child-process workload run in this window -- and that is a useful number to print when a gate is red. It is NOT the
+// divisor: TB-2728 measured that no single ratio can divide out contention, because contention does not take the same
+// fraction from every shape of process. Under three CPU hogs on 4 cores: meeting-matrix's wall went 8.3 s -> 15-22 s
+// (2.3x) while its CPU went 9.7 s -> 12.2 s (+26 %); end-to-end's wall went 1.7 s -> 5.0 s (2.9x) while its CPU went
+// 2.2 s -> 2.4 s (+8 %); a 40k-item calibration child tracked 2.20x, so dividing the 2.3x segment by it still left
+// 39 % over budget, and dividing the 2.9x segment by it swallowed the excess. The cost of a segment is the CPU its
+// process tree actually burned (scripts/sim/audit/cpu-probe.mjs writes that number from every process); wall time is
+// printed as the second output and stays as the hard timeout, which is a safety valve and not a ruler.
+ok(badPoints.length === 0, 'every calibration point measured a number (a red gate must show the contention picture, not hide a broken probe)', badPoints.map((p) => ({ after: p.after, why: p.why })))
+const goodPoints = calibrationPoints.filter((p) => p.ok === true)
+const pointMedianOf = (point) => (point && Number.isFinite(point.medianMs) && point.medianMs > 0 ? point.medianMs : NaN)
+const usablePointMedians = calibrationPoints.map(pointMedianOf).filter((x) => Number.isFinite(x))
+const contentionMs = usablePointMedians.length === 0 ? NaN : usablePointMedians.reduce((a, b) => a + b, 0) / usablePointMedians.length
+const rulerInfo = ruler.factorOf(contentionMs, calibRefMs)
+const measured = segments.map((s) => Object.assign({}, s, { ok: s.cpuMs > 0, costMs: s.cpuMs, contentionFactor: rulerInfo.ok === true ? rulerInfo.factor : null }))
+const unmeasured = measured.filter((s) => s.ok !== true)
+ok(unmeasured.length === 0, 'every segment has a measured cost (wall / contention factor), so no segment is judged on an invented number', unmeasured.map((s) => ({ name: s.name, why: s.why })))
+const threeSegments = measured.filter((s) => s.name === 'end-to-end' || s.name === 'meeting-matrix' || s.name === 'audit/all')
+const threeTotal = threeSegments.reduce((sum, s) => sum + (s.costMs || 0), 0)
+ok(threeSegments.length === 3, 'the three named segments all ran (none skipped, none replaced)', threeSegments.map((s) => s.name))
+ok(threeSegments.every((s) => s.timedOut === false), 'no segment timed out (a timeout is a failure that names the segment)', threeSegments.filter((s) => s.timedOut))
+ok(threeSegments.every((s) => s.costMs <= s.budgetMs), 'each segment costs <= its own ms budget' + (threeSegments.every((s) => s.costMs <= s.budgetMs) ? '' : ' -- ' + threeSegments.filter((s) => s.costMs > s.budgetMs).map((s) => s.name + ': cost ' + s.costMs + ' ms > ' + s.budgetMs + ' ms').join('; ')), { segments: threeSegments.map((s) => ({ name: s.name, costMs: s.costMs, wallMs: s.elapsed, budgetMs: s.budgetMs })) })
+ok(threeTotal < THREE_SEGMENT_BUDGET_MS, 'the three segments together cost ' + threeTotal + ' ms (cost, not wall) < ' + THREE_SEGMENT_BUDGET_MS + ' ms budget', { threeTotal, budget: THREE_SEGMENT_BUDGET_MS, factor: rulerInfo.factor, segments: threeSegments.map((s) => ({ name: s.name, costMs: s.costMs, wallMs: s.elapsed })) })
+ok(measured.some((s) => s.name === 'determinism'), 'the replay segment ran as part of this gate', measured.map((s) => s.name))
+
+// Drift: the row's `elapsed` IS the cost now. The message carries wall and factor too, because the reader must be
+// able to tell "the code got dearer" from "the machine got busier" without re-running anything.
+const drift = driftFindings(measured.map((s) => ({ name: s.name, elapsed: s.costMs })), baselineSpec)
 ok(drift.unbaselined.length === 0, 'every segment this gate ran has a documented baseline to drift against', { unbaselined: drift.unbaselined, names: drift.rows.map((r) => r.name) })
-ok(drift.drifted.length === 0, 'no segment drifted past its documented allowance (baseline x ' + driftFactor + ', floored at baseline + ' + driftFloorMs + ' ms)' + (drift.drifted.length === 0 ? '' : ' -- ' + drift.drifted.map((d) => d.name + ': ' + d.elapsed + ' ms vs baseline ' + d.baseline + ' ms (allowed ' + d.allowed + ' ms, ' + d.excess + ' ms over)').join('; ')), { drift: drift.rows, driftFactor, driftFloorMs })
+ok(drift.drifted.length === 0, 'no segment drifted past its documented allowance (baseline x ' + driftFactor + ', floored at baseline + ' + driftFloorMs + ' ms)' + (drift.drifted.length === 0 ? '' : ' -- ' + drift.drifted.map((d) => d.name + ': cost ' + d.elapsed + ' ms vs baseline ' + d.baseline + ' ms (allowed ' + d.allowed + ' ms, ' + d.excess + ' ms over, factor ' + (Number.isFinite((measured.find((x) => x.name === d.name) || {}).factor) ? measured.find((x) => x.name === d.name).factor.toFixed(2) : 'n/a') + ')').join('; ')), { drift: drift.rows, driftFactor, driftFloorMs, factor: rulerInfo.factor, walls: measured.map((s) => ({ name: s.name, wallMs: s.elapsed })) })
 
 // ── 6b) the drift rule's own self-proof: does the floor still let the COST rule bite? ───────────────────────────
 // Two proofs are needed, and neither may be a tautology:
@@ -466,32 +562,64 @@ ok(drift.drifted.length === 0, 'no segment drifted past its documented allowance
 //        segment is not drift under a 1.25x cost rule, and claiming otherwise would mean "no cost growth at all".
 const slowWrapper = join(TMP, 'slow-segment.mjs')
 writeFileSync(slowWrapper, [
-  '// self-proof wrapper: sleep, then run the real scenario runner so the measured elapsed is real work + the sleep',
-  'await new Promise((r) => setTimeout(r, Number(process.env.SIM_SLOW_MS || 0)))',
+  '// self-proof wrapper: burn (or merely sleep) N ms, then run the real scenario runner. In busy mode the extra time',
+  '// is CPU, which the ruler must count as cost; in sleep mode the extra time is wall-clock starvation, which it',
+  '// must NOT count. The pair is what makes claim (v) a test instead of a sentence.',
+  'const mode = String(process.env.SIM_SLOW_MODE || "busy")',
+  'const dragMs = Number(process.env.SIM_SLOW_MS || 0)',
+  'if (mode === "busy") {',
+  '  const until = Date.now() + dragMs',
+  '  let x = 0',
+  '  while (Date.now() < until) x = (x * 31 + 7) & 0xffffff',
+  '  if (x === 7) process.stdout.write("")',
+  '} else {',
+  '  await new Promise((r) => setTimeout(r, dragMs))',
+  '}',
   'process.argv = [process.argv[0], "run.mjs"].concat(String(process.env.SIM_SLOW_ARGS || "").split(" ").filter(Boolean))',
   'await import(process.env.SIM_SLOW_TARGET)',
   '',
 ].join(NL))
 const e2eBase = Number(baselineSpec['end-to-end'])
 const e2eAllowed = Math.max(Math.round(e2eBase * driftFactor), Math.round(e2eBase + driftFloorMs))
-const dragMs = Math.ceil(e2eAllowed - e2eBase) + 1500
-const slowStart = Date.now()
-const slowRun = spawnSync(process.execPath, [slowWrapper], {
-  cwd: REPO,
-  encoding: 'utf8',
-  timeout: SEG_MS.e2e + 10000,
-  maxBuffer: 64 * 1024 * 1024,
-  env: {
-    ...process.env,
-    SIM_SLOW_MS: String(dragMs),
-    SIM_SLOW_ARGS: '--scenario end-to-end --out ' + join(TMP, 'slow-e2e'),
-    SIM_SLOW_TARGET: pathToFileURL(join(REPO, 'scripts/sim/run.mjs')).href,
-  },
-})
-const slowElapsed = Date.now() - slowStart
-const slowProof = driftFindings([{ name: 'end-to-end', elapsed: slowElapsed }], baselineSpec)
-ok(slowRun.status === 0, 'self-proof (i): the dragged end-to-end run still exits 0, so the slow reading is a real run and not a crashed one', { status: slowRun.status, elapsed: slowElapsed })
-ok(slowProof.drifted.length === 1 && slowProof.drifted[0].name === 'end-to-end', 'self-proof (i): end-to-end dragged past its documented allowance (real run + ' + dragMs + ' ms sleep) is judged a drift (the floor does not swallow a real slowdown)', { elapsed: slowElapsed, baseline: e2eBase, allowed: slowProof.rows[0].allowed, dragMs })
+const e2eCpuBase = measured[0].costMs
+// The drag is derived from the documented allowance and the CPU this run actually measured: to exceed an allowance
+// expressed in CPU, the wrapper must burn (allowance - baseline) + 500 ms of CPU. A fixed 3000 ms stopped proving
+// anything as soon as the numbers moved (the old proof failed while the rule behind it was still correct).
+// 1000 ms of margin: the wrapper's own startup is not part of the e2e child's CPU, so a drag that only just crosses
+// the allowance can land short (measured: 1422 ms of visible growth for a 1985 ms burn, TB-2728 self-proof attempt 1).
+const dragMs = Math.max(250, Math.ceil(e2eAllowed - e2eCpuBase) + 1000)
+/** Run the wrapper in `mode` and return the CPU its tree burned plus the wall it took. */
+function runSlowProof(mode, ms) {
+  const before = cpuRows().length
+  const startedAt = Date.now()
+  const run = spawnSync(process.execPath, [slowWrapper], {
+    cwd: REPO,
+    encoding: 'utf8',
+    timeout: SEG_MS.e2e + 60000,
+    maxBuffer: 64 * 1024 * 1024,
+    env: cpuEnv({
+      SIM_SLOW_MODE: mode,
+      SIM_SLOW_MS: String(ms),
+      SIM_SLOW_ARGS: '--scenario end-to-end --out ' + join(TMP, 'slow-e2e-' + mode),
+      SIM_SLOW_TARGET: pathToFileURL(join(REPO, 'scripts/sim/run.mjs')).href,
+    }),
+  })
+  const elapsed = Date.now() - startedAt
+  const burn = cpuOf(cpuRows().slice(before))
+  return { run, elapsed, cpuMs: burn.userMs, totalCpuMs: burn.totalMs }
+}
+const dragged = runSlowProof('busy', dragMs)
+const draggedProof = driftFindings([{ name: 'end-to-end', elapsed: dragged.cpuMs }], baselineSpec)
+ok(dragged.run.status === 0, 'self-proof (i): the dragged end-to-end run still exits 0, so the slow reading is a real run and not a crashed one', { status: dragged.run.status, elapsed: dragged.elapsed, cpuMs: dragged.cpuMs })
+ok(draggedProof.drifted.length === 1 && draggedProof.drifted[0].name === 'end-to-end', 'self-proof (i): end-to-end with ' + dragMs + ' ms of EXTRA CPU burned (a real run, measured, not synthesised) is judged a drift', { cpuMs: dragged.cpuMs, wallMs: dragged.elapsed, baseline: e2eBase, allowed: draggedProof.rows[0].allowed, dragMs })
+// (v) the complement: the SAME wrapper sleeping the same time adds wall but no CPU, and must stay green. Without this
+// half, "judged by CPU" would be a sentence nobody tests; with it, a future change that quietly goes back to wall time
+// turns this proof red on the spot.
+const slept = runSlowProof('sleep', Math.max(1000, dragMs))
+const sleptProof = driftFindings([{ name: 'end-to-end', elapsed: slept.cpuMs }], baselineSpec)
+ok(slept.run.status === 0, 'self-proof (v): the sleeping wrapper also ran the real end-to-end and exited 0', { status: slept.run.status, elapsed: slept.elapsed, cpuMs: slept.cpuMs })
+ok(slept.elapsed >= Math.max(1000, dragMs) * 0.9, 'self-proof (v): the sleeping wrapper really slept -- its wall grew by ' + slept.elapsed + ' ms while it burned only ' + slept.cpuMs + ' ms of CPU', { wallMs: slept.elapsed, cpuMs: slept.cpuMs, sleptMs: Math.max(1000, dragMs) })
+ok(sleptProof.drifted.length === 0, 'self-proof (v): a segment that is only DESCHEDULED (sleep, no extra CPU) is NOT a drift -- wall time from a busy machine is not a regression', { cpuMs: slept.cpuMs, wallMs: slept.elapsed, baseline: e2eBase, allowed: sleptProof.rows[0].allowed })
 const auditElapsed = (segments.find((s) => s.name === 'audit/all') || {}).elapsed || 0
 const auditBase = Number(baselineSpec['audit/all'])
 // Both shifts are computed FROM the documented baseline: the allowance is defined against the baseline, so a fixed
@@ -507,6 +635,14 @@ ok(auditBase > 0 && bigProof.rows[0].allowed === Math.round(auditBase * driftFac
 ok(bigProof.drifted.length === 1 && bigProof.drifted[0].elapsed === auditBase + pastMs, 'self-proof (ii): audit/all at allowance + 1000 ms (' + pastMs + ' ms over the documented baseline) is a drift', { baseline: auditBase, shifted: auditBase + pastMs, allowed: bigProof.rows[0].allowed, measuredThisRun: auditElapsed })
 ok(bigProof.rows[1].elapsed <= bigProof.rows[1].allowed, 'self-proof (ii): audit/all at +16 % (' + insideMs + ' ms, inside the 1.25x cost tolerance) is NOT a drift -- the absolute floor must not turn a cost gate into "no growth at all"', { elapsed: auditBase + insideMs, allowed: bigProof.rows[1].allowed })
 
+// (iii) the cost cannot be bought by editing a number: costMs IS the measured CPU of the segment's process tree, so
+// neither the calibration ratio nor a wall-clock reading can move it.
+ok(measured.length > 0 && measured.every((s) => s.costMs === s.cpuMs && s.costMs <= s.totalCpuMs), 'self-proof (iii): every segment cost IS its measured USER CPU (costMs === cpuMs <= total CPU), so the ruling number is the work actually done and system time is excluded', { rows: measured.map((s) => ({ name: s.name, costMs: s.costMs, totalCpuMs: s.totalCpuMs, sysCpuMs: s.sysCpuMs })) })
+ok(measured.some((s) => s.costMs !== s.elapsed), 'self-proof (iii): at least one segment cost DIFFERS from its wall clock, so the gate is demonstrably not judging wall time (' + measured.map((s) => s.name + ': cost ' + s.costMs + ' / wall ' + s.elapsed).join('; ') + ')', { rows: measured.map((s) => ({ name: s.name, costMs: s.costMs, wallMs: s.elapsed })) })
+// (iv) the calibration reference is still band-guarded even though it is report-only now: a nonsense ref means the
+// contention column printed with a red gate is nonsense, and the band is what catches a hand-tuned dial.
+ok(calibRefMs / 2 < CALIB_REF_BAND_MS[0], 'self-proof (iv): halving calib-ref lands outside the plausible band, so a hand-tuned reference is refused rather than printed as if it were measured', { halved: calibRefMs / 2, band: CALIB_REF_BAND_MS })
+
 if (!KEEP) {
   rmrf(TMP)
 } else {
@@ -519,7 +655,8 @@ console.log('=== sim gate: ' + passed + ' passed, ' + failed + ' failed ===')
 // timings behind. Without it the only k=3 timing evidence is a red drift line, i.e. we would learn what the
 // segments cost exactly when it is already too late to compare (RUN 269: one 14352 ms meeting-matrix spike
 // under four concurrent lanes, three dedicated k=3 runs green — the number we lacked was the cost, not the verdict).
-console.log('   segments: ' + segments.map((s) => s.name + '=' + s.elapsed + 'ms/' + s.budgetMs + 'ms').join('  '))
+console.log('   segments: ' + measured.map((s) => s.name + '=cost ' + s.costMs + 'ms/' + s.budgetMs + 'ms (wall ' + s.elapsed + 'ms, total cpu ' + s.totalCpuMs + 'ms)').join('  '))
+console.log('   ruler: cost=CPU of each segment tree (not wall)  contention=' + (rulerInfo.factor === null ? 'n/a' : rulerInfo.factor.toFixed(3) + 'x') + '  calib=' + Math.round(contentionMs * 10) / 10 + 'ms (mean of ' + usablePointMedians.length + ' long points)  calib-ref=' + calibRefMs + 'ms  points=' + JSON.stringify(calibrationPoints.map((p) => ({ after: p.after, medianMs: p.medianMs }))))
 if (failed > 0) {
   for (const f of failures) console.log('  failed: ' + f.label)
   process.exitCode = 1

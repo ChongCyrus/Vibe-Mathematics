@@ -56,7 +56,7 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r78-'))
 /** A kernel with no host adapter: exactly the shape a turn has when the office (not the seat's own session) runs it. */
 const FENCE = (obj) => ['```json', JSON.stringify(obj), '```'].join('\n')
 const boot = async (extra = {}) => {
-  const root = await mkRoot()
+  const root = extra.root || await mkRoot()
   // the seam a real host wires; without it a turn cannot run at all (deliverTurn refuses by name)
   const k = createKernel(Object.assign({ root, clock: () => 1000, settings: {}, deliverTurn: async () => ({ reply: FENCE({ progress: 'run78 fixture' }), deliveryPath: 'fake-delegated' }) }, extra))
   await k.store.open()
@@ -265,6 +265,50 @@ try {
       '§Uf the turn row names the same class the seam error names (no second taxonomy)', row && { unavailable: row.deliveryUnavailable, why: row.deliveryUnavailableWhy })
     ok(row && typeof row.deliveryUnavailableMeans === 'string' && row.deliveryUnavailableMeans.includes('child-error'),
       '§Uf2 and the row carries the means that distinguishes it from not-configured', row && row.deliveryUnavailableMeans)
+  }
+
+  // ── §T1 A RESTART (TB-2735) ───────────────────────────────────────────────────────────────────────────────
+  section('§T1 an EARLIER process assembled the turn: the fact died with it, and the row says so')
+  {
+    const { k: k1, root } = await boot()
+    k1.turn.setVisibleToolsProvider(() => [])
+    const first = await openTurn(k1, 'r-1')
+    await k1.turn.assemble(first)
+    const durable = await until(() => {
+      const rows = k1.store.read('turns')
+      return Array.isArray(rows) ? rows.find((x) => x && String(x.turn) === 't-1' && typeof x.loopEpoch === 'string') || null : null
+    })
+    ok(durable !== null && /^loop-\d+-\d+$/.test(durable.loopEpoch),
+      '§T1a the first loop stamped the durable row with its epoch', durable && durable.loopEpoch)
+    const { k: k2 } = await boot({ root })
+    const applied = await k2.turn.apply({ vote_solved: true }, null, 'r-1', { turnId: 't-1' })
+    const rows = bookRow(applied)
+    ok(rows.length === 1 && rows[0].kept === false && rows[0].keptWhy === 'tool-visibility-unknown-after-restart',
+      '§T1b a restarted kernel cannot count the late reply vote, and names the process boundary (not `legacy-row`)', rows)
+    ok(rows[0] && typeof rows[0].reason === 'string' && rows[0].reason.includes('EARLIER kernel process'),
+      '§T1c the reason tells the reader to stop looking for an older code path')
+    ok(closureEffects(applied).length === 0, '§T1d no ghost vote was recorded across the boundary')
+  }
+
+  // ── §T2 AN EVICTION (TB-2735) ────────────────────────────────────────────────────────────────────────────
+  section('§T2 a FIFO-evicted fact is `evicted` — remembered, not a restart, and the newest turn still adopts')
+  {
+    const { k } = await boot()
+    k.turn.setVisibleToolsProvider(() => [])
+    const first = await openTurn(k, 'r-1')
+    await k.turn.assemble(first)
+    let last = null
+    for (let i = 0; i < 512; i++) { const t = await openTurn(k, 'r-1'); await k.turn.assemble(t); last = t }
+    const appliedOld = await k.turn.apply({ vote_solved: true }, null, 'r-1', { turnId: 't-1' })
+    const rowsOld = bookRow(appliedOld)
+    ok(rowsOld.length === 1 && rowsOld[0].kept === false && rowsOld[0].keptWhy === 'tool-visibility-evicted',
+      '§T2a the evicted turn is named `evicted` (the FIFO, not the process), and the vote is not counted', rowsOld)
+    ok(rowsOld[0] && typeof rowsOld[0].reason === 'string' && rowsOld[0].reason.includes('FIFO eviction, NOT a restart'),
+      '§T2b the reason separates the two absences (their remedies differ)')
+    const appliedNew = await k.turn.apply({ vote_solved: true }, null, 'r-1', { turnId: last.id })
+    const rowsNew = bookRow(appliedNew)
+    ok(rowsNew.length === 1 && rowsNew[0].kept === true && rowsNew[0].keptWhy === 'tool-not-mounted',
+      '§T2c the newest turn is still provable and adopts — eviction is local', rowsNew)
   }
 } finally {
   for (const r of roots) { try { await rm(r, { recursive: true, force: true }) } catch { /* best effort */ } }

@@ -1,0 +1,17 @@
+[
+  {
+    "label": "sim-gate.test.mjs",
+    "why": "Its assertions include a meeting-matrix wall-clock budget (14000 ms), which measures the speed of the machine and its load, not whether the engine is correct.",
+    "localGuard": "node tests/sim-gate.test.mjs locally, and scripts/sim/audit/release-ready.mjs runs the sim lane on the release machine where the timing budget is meaningful."
+  },
+  {
+    "label": "audit-math-computation-sensitivity.mjs",
+    "why": "The audit derives its thresholds from measured floating-point sensitivity on the CPU it runs on, so the numbers differ per machine without any code being wrong.",
+    "localGuard": "node tests/audit-math-computation-sensitivity.mjs locally, where the thresholds were measured; scripts/sim/audit/release-ready.mjs refuses a release when the audit itself reports a regression on the release machine."
+  },
+  {
+    "label": "mutation-evidence.test.mjs",
+    "why": "It copies the whole tree and runs real mutations for a couple of minutes, so its cost and its tmpdir layout are properties of the machine, not of the product.",
+    "localGuard": "GATE_RELEASE=1 node tests/run-tests.mjs (the release sweep bypasses the mutation cache) and scripts/sim/audit/release-ready.mjs on the release machine."
+  }
+]

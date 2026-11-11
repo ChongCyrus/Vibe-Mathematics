@@ -2772,6 +2772,14 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           // `expand` said `writer:"r-1"` for a card r-acad had just corrected.
           const ownerOfRow = row.owner !== undefined && row.owner !== null ? row.owner : writer
           if (ownerOfRow !== null) held.owner = String(ownerOfRow)
+          // ★★★ RUN 2739 / TB-2739 (RUN 79 V1): PROVENANCE IS PART OF THE ROW, LIKE `by` AND `owner`. An adopted rewrite
+          // used to restore title/body/tags/rev/updatedAt/by/owner and then let this instance DERIVE `writtenFrom` again
+          // from "a named writer and no caller" -> `relayed`, so a row a seat wrote inside its own delivered turn read
+          // back as relayed through the office (31 relayed rows against 8 real member turns). The provenance cannot be
+          // re-derived here: THIS instance did not dispatch that write, so the fold row is the only witness. Invalid
+          // values are ignored rather than coerced, because a fold written before this key existed says nothing.
+          const provenanceOfRow = WRITTEN_FROM_VALUES.indexOf(row.writtenFrom) === -1 ? null : row.writtenFrom
+          if (provenanceOfRow !== null) held.writtenFrom = provenanceOfRow
           held.fingerprint = fingerprintOf(held)
           if (fpIndex) fpIndex.set(held.fingerprint, held.id)
           refreshed += 1
@@ -2801,6 +2809,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         // tell "the row did not say" from "nothing was ever adopted".
         const writer = row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : null)
         if (writer === null) shared.adoptedNoAuthor += 1
+        // ★★★ RUN 2739 / TB-2739 (RUN 79 V1): a row adopted from the fold has no dispatch here, so `put` would derive
+        // its provenance from "a named writer and no caller". The fold row already carries the answer — hand it over.
+        const provenanceOfRow = WRITTEN_FROM_VALUES.indexOf(row.writtenFrom) === -1 ? null : row.writtenFrom
         // ★★ RUN 240: `by` is the WRITER, `owner` is whose row it is — the fold now carries BOTH, and an adopted row
         // keeps the two apart. A fold written before this change carries only one name under `by`; it is adopted as
         // both, which is the only shaper that row's history allows (and `owner` then equals `writer`, truthfully).
@@ -2809,7 +2820,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           // the writer is carried by `by` on the row; `owner` is accepted as well because that is the name the VIEW
           // exposes it under (a snapshot that copies the view - kernel/index.js does - can only carry `owner`).
           by: writer === null ? null : String(writer),
-          owner: ownerOfRow === null ? undefined : String(ownerOfRow) })
+          owner: ownerOfRow === null ? undefined : String(ownerOfRow),
+          ...(provenanceOfRow === null ? {} : { writtenFrom: provenanceOfRow }) })
         added += 1
       } catch (e) {
         shared.refused += 1
