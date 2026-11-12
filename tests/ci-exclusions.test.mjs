@@ -15,9 +15,10 @@
 // It also runs its own small lamps (fake label, short why, empty guard, empty table, too many shards) so the
 // plan cannot pass by printing a pretty JSON object and exiting 0.
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs' // fs-purpose: the CI suite reads ci-exclusions.json, the plan, the docs, gate.yml and every workflow, and synthesizes artifact dirs
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs' // fs-purpose: the CI suite reads ci-exclusions.json, the plan, the docs, gate.yml and every workflow, and synthesizes artifact dirs
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { requireDir } from './_lib/require-file.mjs'
 import { REPO } from './_lib/repo-root.mjs'
 
 const PLAN = join(REPO, 'scripts', 'ci', 'shard-plan.mjs')
@@ -220,7 +221,10 @@ if (workflow) {
     return problems
   }
   const workflowDir = join(REPO, '.github', 'workflows')
-  const workflowNames = existsSync(workflowDir) ? readdirSync(workflowDir).filter((name) => /\.ya?ml$/.test(name)) : []
+  // The directory MUST exist: enumerating an absent directory yields zero workflows and would pass — exactly the
+  // skip-as-pass shape (`existsSync ? readdirSync : []`) that tests/audit-no-silent-reads.test.mjs reds on for
+  // good reason. requireDir throws a NAMED refusal naming the directory it could not enumerate.
+  const workflowNames = requireDir(workflowDir, 'the CI workflow directory this job-level context scan enumerates').filter((name) => /\.ya?ml$/.test(name))
   ok(workflowNames.length > 0, '★ the workflows directory yields at least one file (a context scan over zero files is not a scan)', workflowNames)
   const contextProblems = workflowNames.flatMap((name) => jobLevelContextProblems(readText(join(workflowDir, name)) || '', '.github/workflows/' + name))
   ok(contextProblems.length === 0, '★★ no job-level env/with references a step-only GitHub context (runner/steps/job): GitHub rejects the whole workflow at parse time', contextProblems)

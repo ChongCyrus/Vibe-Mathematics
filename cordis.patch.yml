@@ -17,6 +17,7 @@
 # Composition source of truth: each preset's frozen vibe-math-vN/agent.cordis.yml. The only
 # differences applied to it here:
 #   · @deepseek-ai/dsh-workflow-worker-thread was removed after 0.1.6; @deepseek-ai/dsh-workflow-ptc replaces it
+#   · @deepseek-ai/dsh-tool-subagent-control/list-agents was removed in 0.2.x (0.2.2-rc.1 exports only '.', './src/*', './package.json', './locale/*.json'; the main entry now registers send_message/interrupt_agent/list_agents together), so the frozen 0.1.x row is dropped from the >= 0.1.7 composition instead of being shipped as a row that can never start ('agent-preset/invalid')
 #   · the legacy `persona.text` key (kept in the frozen file for DSH <= 0.1.2) is unknown from 0.1.3 on — `prefix` carries the same text
 #   · the framework row must name an installed package subpath: a declaration row's `name` is NOT rewritten to a file URL by app-boot (it only recurses into group configs), so a relative path would be resolved against the profile directory
 #   · comment follows the row above (`./vibe-math-vN.js` → the package subpath)
@@ -189,9 +190,6 @@
             config:
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'

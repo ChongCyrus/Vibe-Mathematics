@@ -52,6 +52,11 @@ const TRANSFORMS = [
     replace: "    - id: workflow-ptc\n      name: '@deepseek-ai/dsh-workflow-ptc'\n      config:\n        provider: spawn",
   },
   {
+    why: "@deepseek-ai/dsh-tool-subagent-control/list-agents was removed in 0.2.x (0.2.2-rc.1 exports only '.', './src/*', './package.json', './locale/*.json'; the main entry now registers send_message/interrupt_agent/list_agents together), so the frozen 0.1.x row is dropped from the >= 0.1.7 composition instead of being shipped as a row that can never start ('agent-preset/invalid')",
+    find: "    - id: tool-subagent-list-agents\n      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'\n\n",
+    replace: '',
+  },
+  {
     why: 'the legacy `persona.text` key (kept in the frozen file for DSH <= 0.1.2) is unknown from 0.1.3 on — `prefix` carries the same text',
     find: /\n    text: \|-\n[\s\S]*?\n(?=- id: agent-instructions)/,
     replace: '\n',

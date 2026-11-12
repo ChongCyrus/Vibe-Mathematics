@@ -194,7 +194,37 @@ for (const v of VERSIONS) {
     v + ': the frozen composition still uses the worker-thread engine (what <= 0.1.6 ships)')
   ok(/^ {4}text: \|-/m.test(src) || /^ {2}text: \|-/m.test(src),
     v + ': the frozen composition still carries the legacy persona.text key (DSH <= 0.1.2 needs it)')
+  ok(src.includes("name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'"),
+    v + ': the frozen composition still names the 0.1.x /list-agents subpath row (what <= 0.1.6 ships)')
 }
+
+// ---- 7. DSH 0.2.2 removed a package subpath: it must not reach the SHIPPED composition ---------
+// Measured on the first RUN 81 attempt (2026-11-13): dsh 0.2.2-rc.1's
+// `@deepseek-ai/dsh-tool-subagent-control` exports only `.`, `./src/*`, `./package.json`, `./locale/*.json`
+// — the `/list-agents` subpath is GONE (the main entry registers send_message/interrupt_agent/list_agents),
+// so a row naming it never starts and session/create answers `agent-preset/invalid`. The frozen 0.1.x
+// composition keeps the row (that is what <= 0.1.6 ships); the GENERATOR drops it from the >= 0.1.7
+// composition. The assertions read ROWS, not comments: the patch header documents the removal, so a
+// text-wide grep would count its own note and could never go red.
+const compositionRows = (text) => text.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n')
+const staleSubagentRow = (text) => {
+  const rows = compositionRows(text)
+  return /^\s*- id: tool-subagent-list-agents\s*$/m.test(rows) ||
+    /^\s*name: '@deepseek-ai\/dsh-tool-subagent-control\/[^']+'\s*$/m.test(rows)
+}
+ok(!staleSubagentRow(patch),
+  'shipped composition: NO `@deepseek-ai/dsh-tool-subagent-control/<subpath>` row (0.2.2-rc.1 removed it; such a row is `agent-preset/invalid`)')
+ok(/^\s*name: '@deepseek-ai\/dsh-tool-subagent-control'\s*$/m.test(compositionRows(patch)),
+  'shipped composition: the MAIN `@deepseek-ai/dsh-tool-subagent-control` row is still there (it registers send_message/interrupt_agent/list_agents)')
+ok(!staleSubagentRow(buildPatch()),
+  'generator: buildPatch() itself drops the removed subpath row (the shipped file cannot be green only because it was hand-edited)')
+// ★ the lamp: put the frozen row back into a COPY of the shipped composition — the SAME predicate must go red,
+// so this assertion cannot pass by matching nothing.
+const reinserted = patch.replace(
+  "              - id: tool-subagent-control\n                name: '@deepseek-ai/dsh-tool-subagent-control'",
+  "              - id: tool-subagent-control\n                name: '@deepseek-ai/dsh-tool-subagent-control'\n\n              - id: tool-subagent-list-agents\n                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'")
+ok(reinserted !== patch && staleSubagentRow(reinserted),
+  'lamp: a re-added `/list-agents` row IS caught by the same predicate (red-worthy)')
 
 console.log('')
 console.log('=== PRESET DECLARATIONS: ' + passed + ' passed, ' + failed + ' failed ===')
