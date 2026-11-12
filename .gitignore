@@ -1,5 +1,7 @@
 # Runtime data produced by the framework (never commit)
 VibeMath/
+# Framework runtime root (a probe that forgets tmpRoot() plants it here)
+/vmu/
 *.log
 .DS_Store
 node_modules/

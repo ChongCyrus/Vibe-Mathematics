@@ -3,7 +3,7 @@
  * TB-2604 — sim-vs-real FIELD-LEVEL PARITY DIFF
  *
  * Why this file exists: "the simulator agrees with a live run" was an assertion, and the only machine evidence was a
- * per-tool field UNION (`D:/_tmp/sim/real-fieldset.json`). A union cannot say WHICH field the simulator never
+ * per-tool field UNION (`<sim root>/real-fieldset.json`). A union cannot say WHICH field the simulator never
  * produces, which live value it contradicts, or whether a difference is just an id / a clock. This script turns the
  * claim into a measured diff between the live receipts the real runs really wrote and the receipts the scenarios
  * really produced, pairs them by tool + argument shape (never by step number: the model takes a different route),
@@ -21,7 +21,7 @@
  *   --harvest        instead of diffing, rebuild the rich real corpus from the DSH session journals and write it to
  *                    <out>/real-fields.jsonl (then use that file with --real).
  *
- * OUTPUT (owned paths only): <out>/diff.json + <out>/diff-report.md (default out D:/_tmp/sim/compare).
+ * OUTPUT (owned paths only): <out>/diff.json + <out>/diff-report.md (default out `<temp root>/sim/compare`).
  *
  * THE FOUR CLASSES (per FIELD, aggregated over every pair of calls of that tool):
  *   same       field present on both sides, normalized value sets identical
@@ -44,14 +44,16 @@ import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { tmpRoot as gateTmpRoot } from "../../lib/tmp-root.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..", "..");
 const DEFAULT_DECLARED = path.join(REPO, "scripts", "sim", "audit", "fidelity-declared.json");
-const DEFAULT_OUT = "D:/_tmp/sim/compare"; // PORTABLE-ALLOW: dev corpus output root; overridable with --out, and a missing write target is created or FAILS loudly
-const DEFAULT_REAL = "D:/_tmp/sim/real-receipts.jsonl"; // PORTABLE-ALLOW: dev harvest default; overridable with --real, and a missing real corpus FAILS the compare
-const DEFAULT_SIM = ["D:/_tmp/sim/e2e"]; // PORTABLE-ALLOW: dev corpus default; overridable with --sim, and a missing sim corpus FAILS the compare
-const DEFAULT_WS_ROOT = "D:/_tmp/slv-phase5"; // PORTABLE-ALLOW: dev session-workspace root; overridable with --ws-root, and a missing root FAILS the harvest
+const TMP_ROOT = gateTmpRoot();
+const DEFAULT_OUT = path.join(TMP_ROOT, "sim", "compare"); // overridable with --out, and a missing write target is created or FAILS loudly
+const DEFAULT_REAL = path.join(TMP_ROOT, "sim", "real-receipts.jsonl"); // overridable with --real, and a missing real corpus FAILS the compare
+const DEFAULT_SIM = [path.join(TMP_ROOT, "sim", "e2e")]; // overridable with --sim, and a missing sim corpus FAILS the compare
+const DEFAULT_WS_ROOT = path.join(TMP_ROOT, "slv-phase5"); // overridable with --ws-root, and a missing root FAILS the harvest
 
 const CLASSES = ["same", "onlySim", "onlyReal", "valueDiff"];
 const ATTRIBUTIONS = ["environmental", "timestamp", "id", "真缺陷"];

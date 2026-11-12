@@ -15,10 +15,10 @@
  *   The result text is the tool's returned JSON (a string), which is exactly the receipt.
  *
  * OUTPUT (owned paths only):
- *   D:/_tmp/sim/real-receipts.jsonl   one row per vibe_* tool result
- *   D:/_tmp/sim/other-tools.jsonl     one row per non-vibe tool result (so a bypass is visible, not hidden)
- *   D:/_tmp/sim/real-stats.md         counts / refusal codes / key unions / nested paths / drift / blind spots
- *   D:/_tmp/sim/real-fieldset.json    {tool: {keys: [...], paths: [...]}} for the Lead's parity gate
+ *   <temp root>/sim/real-receipts.jsonl   one row per vibe_* tool result
+ *   <temp root>/sim/other-tools.jsonl     one row per non-vibe tool result (so a bypass is visible, not hidden)
+ *   <temp root>/sim/real-stats.md         counts / refusal codes / key unions / nested paths / drift / blind spots
+ *   <temp root>/sim/real-fieldset.json    {tool: {keys: [...], paths: [...]}} for the Lead's parity gate
  *
  * TB-2736: `keys` stays the TOP-LEVEL key set (old readers: scripts/sim/scenarios/refusals.mjs,
  * paper-gates.mjs, fidelity-extra.mjs, tests/sim-vs-real.test.mjs, ...). `paths` is the new, strictly larger
@@ -33,7 +33,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { tmpRoot as gateTmpRoot } from '../../lib/tmp-root.mjs';
 
 // TB-2637/TB-2641: a corpus row is only comparable to a BUILD. The authoritative source is now the driver's sealed
 // `run-metadata` event, prepended as the FIRST frame of each journal it produced (slv-p14-cc.ps1 -> journal-build-stamp.mjs).
@@ -46,15 +47,18 @@ const BUILD_JSON_RE = /"build"\s*:\s*"([0-9a-f]{7,40})"/;
 const BUILD_WHY_NONE = 'the session journal carries neither a run-metadata event nor a BUILD REV line';
 const BUILD_WHY_GREP = 'grep:BUILD REV (journal predates the run-metadata event)';
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu';
-const WS_ROOT = process.env.VMU_REAL_WS_ROOT || 'D:/_tmp/slv-phase5';
+// DERIVED, never typed: this file lives at <repo>/scripts/sim/harvest/, so three levels up is the checkout root, and
+// `vibe-math-vmu` next to it is the product. A hard-coded drive path here worked on one machine and died on CI
+// (p1-absolute-checkout); later joins below use string concatenation, so the value keeps NO trailing separator.
+const REPO = fileURLToPath(new URL('../../../vibe-math-vmu', import.meta.url));
+const WS_ROOT = process.env.VMU_REAL_WS_ROOT || path.join(gateTmpRoot(), 'slv-phase5');
 const SESSIONS_ROOT = process.env.VMU_SESSIONS_ROOT || path.join(os.homedir(), '.dsh', 'sessions');
 // TB-2736: a caller may name SEVERAL session roots in one harvest (`;`-separated, platform-neutral). The single-root
 // variable stays for every existing caller; when it is not set the run-local root is appended below.
 const SESSIONS_ROOTS = process.env.VMU_SESSIONS_ROOTS
   ? process.env.VMU_SESSIONS_ROOTS.split(';').map((r) => r.trim()).filter((r) => r !== '')
   : [SESSIONS_ROOT];
-const OUT_DIR = process.env.VMU_REAL_OUT || 'D:/_tmp/sim';
+const OUT_DIR = process.env.VMU_REAL_OUT || path.join(gateTmpRoot(), 'sim');
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 const SESSION_FILE = 'session.v4.jsonl.zstd';
 // TB-2736: a real box may keep DSH sessions in MORE THAN ONE home (the default `~/.dsh/sessions`, plus the

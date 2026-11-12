@@ -13,6 +13,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -74,7 +75,7 @@ const deliverySnapshot = (kernel) => {
   return { boxes: st.boxes, members: st.members, pending: st.pending, acked: st.acked, seq: st.seq, notice: st.notice }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run256-mail-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run256-mail-'))
 let b = null
 try {
   b = await boot(root, { packs: ['v5r'] })

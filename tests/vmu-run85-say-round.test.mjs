@@ -37,6 +37,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const CHAT = join(REPO, 'vibe-math-vmu', 'kernel', 'chat.js')
@@ -70,7 +71,7 @@ const mkChat = () => createChat({
   seatsOf: () => ({ chair: ['r-chair'], member: ['r-1', 'r-2'] }),
 })
 
-const BASE = 'D:/_tmp/r85/say-round'
+const BASE = __tmpRoot() + '/r85/say-round'
 await mkdir(BASE, { recursive: true })
 const root = await mkdtemp(join(BASE, 'store-'))
 const SETTINGS = {

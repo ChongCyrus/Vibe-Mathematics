@@ -2,7 +2,7 @@
 // replayed through the real kernel so the next reader does not have to trust the run note.
 //
 // WHY THIS SCENARIO EXISTS
-//   Live run 63 (workspace D:/_tmp/slv-phase5/slvp193-ws, see FEEDBACK63.md and SIM-REPORT63.md) reported ten
+//   Live run 63 (run workspace under the temp root, see FEEDBACK63.md and SIM-REPORT63.md) reported ten
 //   findings against v5r. Eight of them are MECHANISM claims (a receipt says one thing and the record says another,
 //   or a field the office needs is simply not in the receipt), so they can be replayed without a language model:
 //   the scenario drives the same tool calls the members made and records what the kernel returns NOW. This is the

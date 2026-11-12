@@ -935,7 +935,16 @@
     "scripts/sim/audit/cpu-probe.mjs",
     "scripts/sim/audit/calibration-work.mjs",
     "tests/audit-doc-lint-reproducible.test.mjs",
-    "tests/rules-source-reproducible.test.mjs"
+    "tests/rules-source-reproducible.test.mjs",
+    "tests/tmp-root-portable.test.mjs",
+    "scripts/lib/tmp-root.mjs",
+    "tests/_lib/scratch.mjs",
+    "tests/ci-exclusions-honest.test.mjs",
+    "docs/acceptance/ci-gate.md",
+    "scripts/sim/redteam/corpus-copy.mjs",
+    "tests/sim-redteam-copy-mtime.test.mjs",
+    "tests/vmu-run80-mechanism.test.mjs",
+    "tests/vmu-run80-prompt-corrections.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

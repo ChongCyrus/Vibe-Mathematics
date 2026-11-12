@@ -21,6 +21,8 @@
 //     `VMU_TASK_DEPENDENCY_CYCLE` with the path, never a bare "still has unfinished blockers" that implies waiting works;
 //   · an unblocked task keeps today's semantics exactly (same receipt, same by/bySource), and a terminal task keeps its
 //     own `VMU_STATE` refusal — the dependency gate is about dependencies, not about state;
+//   · ★ TB-2750 / RUN 80 (F80-1): the claim path also requires a READABLE brief — an unbriefed task is refused BY NAME
+//     `VMU_TASK_BRIEF_MISSING` (never a silent take), and the positive branches below therefore write the brief first;
 //   · the tool face and the kernel agree by construction (the face calls `assign`), so both are asserted here.
 
 import { readFile } from 'node:fs/promises'
@@ -91,17 +93,24 @@ const kernelOf = (tasks) => ({ tasks, settings: {}, settingsView: () => ({}) })
   const l = mk()
   const blocker = await l.create({ title: 'b' })
   const work = await l.create({ title: 'w', deps: [blocker.id] })
+  // ★★★ TB-2750 / RUN 80 (F80-1): taking a task now also requires a READABLE brief. The blocked gate is answered
+  // BEFORE the brief gate (this suite's subject), so the refusals above need no brief; this positive branch does.
+  await l.brief(work.id, 'finish the work once the blocker is done', { by: 'office' })
   await l.transition(blocker.id, 'doing')
   await l.transition(blocker.id, 'done')
-  const r = await l.assign(work.id, 'm-1', { expectedRevision: work.revision, by: 'm-1', bySource: 'caller' })
+  const fresh = (await l.list()).filter((t) => t.id === work.id)[0]
+  const r = await l.assign(work.id, 'm-1', { expectedRevision: fresh.revision, by: 'm-1', bySource: 'caller' })
   ok(r && r.ok === true && r.owner === 'm-1' && r.state === 'assigned', '3. after the blocker is done the claim succeeds',
     JSON.stringify(r && { ok: r.ok, owner: r.owner, state: r.state }))
+  ok(r && r.readable === true && r.contentSource === 'brief' && r.ready === true, '3a. and the receipt says the assignee can READ the work (TB-2750 readiness facts)', r && { readable: r.readable, contentSource: r.contentSource, ready: r.ready })
 }
 
 // ---- 4. unblocked tasks keep today's semantics (the gate must not touch the happy path) -------------
 {
   const l = mk()
   const t = await l.create({ title: 'free' })
+  // ★ TB-2750 / RUN 80 (F80-1): the happy path is unchanged ONCE the brief exists — brief first, then claim.
+  await l.brief(t.id, 'free work, but with a readable statement of it', { by: 'office' })
   const r = await l.assign(t.id, 'm-1', { by: 'm-1', bySource: 'caller' })
   ok(r && r.ok === true && r.owner === 'm-1' && r.state === 'assigned' && r.by === 'm-1' && r.bySource === 'caller',
     '4. an unblocked claim returns the same receipt as before (by/bySource preserved)', JSON.stringify(r))
@@ -192,6 +201,8 @@ const kernelOf = (tasks) => ({ tasks, settings: {}, settingsView: () => ({}) })
     'VMU_TASK_BLOCKED', '9. vibe_v5_task_update {action:"claim"} on a blocked task is refused by the SAME code')
   if (e) ok(has(e.message, blocker.id), '9a. the tool-face refusal still names the blocker', e.message)
 
+  // ★ TB-2750 / RUN 80 (F80-1): the claim also needs a readable brief before the tool face may take the task.
+  await l.brief(work.id, 'claim me through the tool face once the blocker is done', { by: 'office' })
   await l.transition(blocker.id, 'doing')
   await l.transition(blocker.id, 'done')
   const fresh = (await l.list()).filter((t) => t.id === work.id)[0]
@@ -209,6 +220,30 @@ const kernelOf = (tasks) => ({ tasks, settings: {}, settingsView: () => ({}) })
     '10. the reply-field hint still promises the refusal this test verifies (a gate and its promise, pinned together)')
   ok(has(src, 'task_claim: Object.freeze('),
     '10a. the hint is attached to the `task_claim` reply shape, not to some other field')
+}
+
+// ---- 11. the brief gate itself: an UNBRIEFED task cannot be taken, and the refusal names the repair -----
+// TB-2750 / RUN 80 (F80-1). This section exists so the fixture repair above cannot hide the gate: every positive branch
+// writes a brief, so the refusal itself is pinned here (removing the gate, or a fixture that stops briefing, reddens).
+{
+  const l = mk()
+  const t = await l.create({ title: 'created now, briefed next' })
+  const row0 = (await l.list()).filter((x) => x.id === t.id)[0]
+  ok(row0 && row0.ready === false && row0.hasBrief === false && row0.readyCode === 'VMU_TASK_BRIEF_MISSING',
+    '11. an unbriefed task is NOT ready and the row NAMES why (VMU_TASK_BRIEF_MISSING)',
+    row0 && { ready: row0.ready, hasBrief: row0.hasBrief, readyCode: row0.readyCode })
+  const e = await refused(() => l.assign(t.id, 'm-1', { by: 'm-1', bySource: 'caller' }),
+    'VMU_TASK_BRIEF_MISSING', '11a. an assignment without a brief is refused BY NAME')
+  if (e) {
+    ok(has(e.hint, 'action: "brief"'), '11b. the hint names the real repair door (the brief action)', e.hint)
+    ok(has(e.message, 'carries no brief'), '11c. the message names the missing content, not a generic state', e.message)
+    ok(l.list().filter((x) => x.id === t.id)[0].owner === null, '11d. the refused assignment left NO owner on the row')
+  }
+  await l.brief(t.id, 'now the assignee has something to read', { by: 'office' })
+  const r = await l.assign(t.id, 'm-1', { by: 'm-1', bySource: 'caller' })
+  ok(r && r.ok === true && r.readable === true && r.contentSource === 'brief',
+    '11e. the SAME claim goes through once the brief exists (the gate is a brief gate, not a wall)',
+    r && { ok: r.ok, readable: r.readable, contentSource: r.contentSource })
 }
 
 console.log('=== VMU RUN 229 (blocked_by claim gate): ' + passed + ' passed, ' + failed + ' failed ===')

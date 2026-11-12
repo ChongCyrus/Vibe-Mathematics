@@ -11,7 +11,7 @@
 // that had in fact happened, and `sim-harness-shape` could not see the code the simulator carefully preserved.
 //
 // AUDIT-14 P1-1 (RUN 258 / TB-2651): the first fix named the TWO codes to PRESERVE, so every OTHER named code fell
-// through to the retry. MEASURED (`D:\_tmp\audit14b\probe2-codes-clock.mjs`): `VMU_TURN_DELIVERY_TIMEOUT` was issued a
+// through to the retry. MEASURED (`${__tmpRoot()}\audit14b\probe2-codes-clock.mjs`): `VMU_TURN_DELIVERY_TIMEOUT` was issued a
 // SECOND time (`starts:2, delays:1`) and then relabelled — while this file's own timeout paths say a timed-out delivery
 // is the one thing that must never be re-issued. The predicate's question is therefore "MAY THIS START BE ISSUED
 // AGAIN?" and the set it consults is the RETRYABLE class: only the transient host registry refusal (bare throw, or this
@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const TURN_MOD = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')).href)

@@ -21,12 +21,13 @@ import { parse, resolve } from 'node:path'
 // drift, and a drifted copy is exactly how a suite ends up measuring a different tree than the one it lives in.
 import { REPO } from './repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './scratch.mjs'
 export { REPO }
 
 export function corpusRoot() {
   const declared = process.env.VMU_CORPUS_ROOT || process.env.VMU_CORPUS_DIR
   if (declared && String(declared).trim() !== '') return resolve(String(declared).trim())
-  // Windows drive of the checkout, then `/_tmp/sim`: on this tree that is exactly `D:/_tmp/sim`, and on another
+  // Windows drive of the checkout, then `/_tmp/sim`: on this tree that is exactly `${__tmpRoot()}/sim`, and on another
   // checkout of the same drive it is still the same directory the runner writes by default.
   return resolve(parse(REPO).root, '_tmp', 'sim')
 }

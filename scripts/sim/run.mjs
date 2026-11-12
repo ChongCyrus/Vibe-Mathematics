@@ -3,7 +3,7 @@
 //
 //   node scripts/sim/run.mjs                       # mainline, throwaway workspace, prints a summary
 //   node scripts/sim/run.mjs --keep                # keep the workspace, print its path
-//   node scripts/sim/run.mjs --out D:/_tmp/sim/corpus-mainline
+//   node scripts/sim/run.mjs --out <temp root>/sim/corpus-mainline
 //
 // The corpus is the only durable output: receipts (one JSONL line per tool call), prompts (one per seat/phase
 // assembly), the workspace tree with sha256 per file, and a REPORT.md a human can read without rerunning anything.
@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { boot, corpusAt, tmpRoot, REPO } from './harness.mjs'
+import { tmpRoot as gateTmpRoot } from '../lib/tmp-root.mjs'
 // ★ TB-2648 §7 MIXED-GEN — the generator and the criterion share ONE definition of the generation stamp, so there is
 // no second formula to drift apart. `corpus-stamp.mjs` documents why mtimes are not the criterion.
 import { checkCorpus, stampFile, stampPrompts } from './corpus-stamp.mjs'
@@ -416,7 +417,7 @@ async function main() {
     process.exit(2)
   }
   const loaded = await loader()
-  const outDir = opt('out', loaded.corpusDir || join('D:/_tmp/sim', 'corpus-' + scenario + '-' + stamp)) // PORTABLE-ALLOW: dev corpus output default; overridable with --out (or exported corpusDir), and an unwritable dir FAILS the run
+  const outDir = opt('out', loaded.corpusDir || join(gateTmpRoot(), 'sim', 'corpus-' + scenario + '-' + stamp)) // the default root is the ONE temporary root; --out (or an exported corpusDir) still wins, and an unwritable dir FAILS the run
   mkdirSync(outDir, { recursive: true })
   // ★ TB-2648 §7 MIXED-GEN — A REGENERATION STARTS FROM EMPTY, NOT FROM "WRITE THE PARTS THAT CHANGED". Each run writes
   // a self-consistent set of files (receipts, prompts, pairs, manifest) and the mixed-generation criterion compares the

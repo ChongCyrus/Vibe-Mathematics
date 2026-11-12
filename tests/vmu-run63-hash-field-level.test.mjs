@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // vmu RUN 63 / F-55 — THE ABSENCE WAS EXPLAINED IN PROSE, AND STILL MISSING FROM THE FIELD.
 //
-// THE OBSERVED GAP (live run 63, the root session's own report - `D:/_tmp/r63/final*.txt`): the ROUND 62 fix made a
+// THE OBSERVED GAP (live run 63, the root session's own report - `${__tmpRoot()}/r63/final*.txt`): the ROUND 62 fix made a
 // failed Lean job answer `hashUnchangedMeans` with a sentence, and left `hashUnchanged` itself ABSENT from the job
 // object. The root kernel read the receipt field-by-field and wrote down why that is still not enough: three
 // deterministic questions got three unstable answers —
@@ -18,6 +18,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')

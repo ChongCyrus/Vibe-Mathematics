@@ -32,6 +32,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpRoot as gateTmpRoot } from '../../lib/tmp-root.mjs'
 
 const NL = String.fromCharCode(10)
 const CLOCK_START = 1_800_000_000_000
@@ -57,7 +58,7 @@ export const clockState = { now: CLOCK_START }
 export const clock = () => clockState.now
 
 /** The corpus directory this scenario wants by default (`--out` still wins). */
-export const corpusDir = 'D:/_tmp/sim/e2e' // PORTABLE-ALLOW: dev corpus dir; overridable with --out, and an unwritable dir FAILS the run instead of silently writing elsewhere
+export const corpusDir = join(gateTmpRoot(), 'sim', 'e2e') // the corpus default lives under the ONE temporary root; --out still wins, and an unwritable dir FAILS the run instead of silently writing elsewhere
 
 /** Refusals this scenario PREDICTS (evidence, not defects). The E4 office gate is supposed to refuse the first final. */
 export const DECLARED_REFUSALS = Object.freeze([

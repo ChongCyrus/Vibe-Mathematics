@@ -229,11 +229,11 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 478 / suites 366 / probes 112`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 484 / suites 371 / probes 113`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **859 作业**（796 套件 + 63 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **864 作业**（801 套件 + 63 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
@@ -369,6 +369,18 @@ node scripts/release-check.mjs             # 发布前清单
 **分片不是放行的替代**：`release-ready.mjs` 仍要求本地全量 + 真机前置；把 N 片并行跑绿只说明**全量跑完了**，不改变"证据必须来自当前树"那条闸。
 
 **两条给下游的提醒**（都踩过或差点踩）：①`--only`／`--exclude` 命中 0 个作业时 runner 是 **exit 2 ＋ `no suites matched`**，stdout **不是**「0 条 JSON」而是空——任何拿 stdout 当 JSON 解析的下游（CI 的 plan、脚本管道）会在这里读到空字符串，必须按退出码先行判断；②写判据时，**判据自身的不稳定性也是判据缺陷**：`--self-check` 会打印随机临时文件名与毫秒计时（`after 315ms`、`0.2s`），逐字比较前必须归一化这些 token，否则换台机器/换个负载就假红（TB-2720 同族：尺子量了别的东西）。
+
+### 7.1e 临时根：**一把尺子**（TB-2746）
+
+**规则**：`scripts/**` 里任何需要 scratch 空间的代码，根只有 `scripts/lib/tmp-root.mjs` 的 `tmpRoot()`——默认 `join(os.tmpdir(), 'vmu-gate')`，可用 `VMU_TMP_ROOT` 覆盖，**相对路径按名字拒绝**（`VMU_TMP_ROOT_NOT_ABSOLUTE`，message 引用原值）。需要隔离的临时目录用 `scratchDir(prefix)`（`mkdtemp`，两次必不同）；需要固定相对位置的用 `ensureScratch('a/b')`（`mkdir -p`，可重入），**不要**手写 `mkdtempSync(join(<某个盘>, …))`。
+
+**为什么**：CI run `43084472078` 的 8 个分片 + union 全红、43 个文件，最大一类根因是**把操作员机器上的盘符路径写进了代码**（**仓库外**路径：`falsify.mjs` 直接报 `the mutant temp root must be an ABSOLUTE path: D:\_tmp`；另两处 `ENOENT` / `EACCES: mkdir '/_tmp/sim'`）。判据是 `tests/tmp-root-portable.test.mjs`：§0 代码零字面量、§1 默认根在 `os.tmpdir()` 下且可写、§2 覆盖生效＋相对值具名拒、§3 `scratchDir()` 唯一、§4 三盏灯（非可移植默认 / 相对值不拒 / 固定 scratch 名）都必须在树副本上变红。
+
+**证据文件是唯一的例外，而且必须是清单**：`scripts/sim/audit/{action-coverage,action-coverage-report,fidelity-declared,rule-steps,rule-steps-report}` 与 `scripts/sim/redteam/data/corpus/corpus-*/receipts.jsonl` 记录的是**真的在哪算/写出来的**，改写其路径等于伪造记录，所以 §0 用显式 allow-list（每条带理由、条数固定为 9）；allow-list 增长需要一次决定，不是一次编辑。产品树 `vibe-math-vmu/**` 不在本车道写域：判据只**报告**它的命中，不据此判红。
+
+**读判据时的两个坑**：①`tmpRoot()` 返回的目录**不保证唯一**（它就是一个共享根），要唯一性就用 `scratchDir()`；②测试如果覆盖 `VMU_TMP_ROOT`，子进程必须继承该 env（判据用子进程读事实，不是在本进程里改 `process.env` 再自问自答）。
+
+**机器本地证据不搬家、也不假装存在**：`fidelity` 的富栏语料（`<sim root>/compare/real-fields.jsonl`）只存在于采集过真机回执的发布机上，仓库里没有它。发布机跑 `node tests/sim-gate.test.mjs` 时要么 `VMU_TMP_ROOT=<那个临时根>`，要么 `VMU_RICH_REAL=<该文件>`，让证据路径显式来自环境；干净 CI 上没有这份语料，`sim-gate` 由 `ci-exclusions.json` 列为 machine-budget，而 `audit/all` 的 fidelity 判据对缺失语料给出**具名拒绝**（`no <path> — the rich live corpus is the only ruler here`），不静默读空、不当绿。
 
 ---
 

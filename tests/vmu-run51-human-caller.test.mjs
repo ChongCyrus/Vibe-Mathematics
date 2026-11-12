@@ -17,6 +17,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -56,7 +57,7 @@ const waitFor = async (fn, ms = 1500) => {
   do { last = await fn(); if (last && last.ok === true) return last; await new Promise((r) => setTimeout(r, 25)) } while (Date.now() < until)
   return last
 }
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run51-human-caller-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run51-human-caller-'))
 try {
   // ── 1. F-35: a kernel booted BEFORE the open must read the request, then the decision ───────────────────────────
   const a = await boot({ root })

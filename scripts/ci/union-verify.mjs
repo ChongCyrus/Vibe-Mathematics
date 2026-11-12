@@ -18,6 +18,11 @@
 //   6. the shard job lists must be disjoint and their union must have exactly `expected` members. Together with
 //      (3) and (5) this is the partition contract: every job runs in exactly one shard, and none is skipped.
 //
+// HEAD IS THREE STATES, NOT TWO (TB-2748): HEAD-UNSEALED (the plan artifact never named a tree — the seal step
+// was skipped, i.e. an upstream gap), HEAD-UNKNOWN (this union job runs without HEAD_SHA, so it cannot compare),
+// HEAD-MISMATCH (two named trees disagree — the real wrong-tree red). Folding a missing seal into HEAD-MISMATCH
+// sent the reader looking for the wrong tree while the actual cause was an upstream step that never ran.
+//
 // TWO MODES
 //   write-meta --out <file> [--plan <file>]   seal an artifact to this run (env RUN_ID, RUN_ATTEMPT, HEAD_SHA)
 //   --dir <download-dir> [--expected-run] [--expected-attempt]
@@ -122,14 +127,19 @@ function verify() {
   if (expectedAttempt !== null && planMeta !== null && String(planMeta.runAttempt) !== String(expectedAttempt)) {
     addError('RUN-MISMATCH', 'union belongs to attempt ' + expectedAttempt + ' but the plan artifact says ' + planMeta.runAttempt)
   }
-  // ★ the sealed head is redundancy, not a barrier: the artifact names cannot carry another tree's
-  // green shards, but when the union is assembled somewhere else the payload should SAY that the
-  // plan was sealed against a different head instead of leaving it to be inferred from a green sum.
+  // ★ TB-2748: THREE STATES, NOT TWO. "the plan was sealed to another head" and "the plan was never sealed
+  // to any head" are different failures: the first means two jobs disagree about the tree; the second means
+  // the seal step never ran (a skipped/failed upstream job), so there is nothing to disagree WITH. Collapsing
+  // both into HEAD-MISMATCH told the reader to look for a wrong tree when the real problem was a missing
+  // upstream. And a union that runs without HEAD_SHA cannot vouch for any tree: HEAD-UNKNOWN, named.
   const expectedHead = String(process.env.HEAD_SHA || '').trim()
-  if (expectedHead !== '' && planMeta !== null && planMeta.headSha) {
-    if (String(planMeta.headSha) !== expectedHead) {
-      addError('HEAD-MISMATCH', 'the plan artifact is sealed to head ' + prefix(planMeta.headSha) + ' but this job runs head ' + prefix(expectedHead) + ' — a union over another tree cannot vouch for this one')
-    }
+  const sealedHead = planMeta !== null && typeof planMeta.headSha === 'string' ? planMeta.headSha.trim() : ''
+  if (planMeta !== null && sealedHead === '') {
+    addError('HEAD-UNSEALED', 'the plan artifact carries no headSha: the job that wrote it did not seal it to a tree (the seal step was skipped or ran without HEAD_SHA) — this union proves a sum, not a tree, and a missing seal is not a wrong head')
+  } else if (sealedHead !== '' && expectedHead === '') {
+    addError('HEAD-UNKNOWN', 'this union runs without HEAD_SHA, so the sealed head ' + prefix(sealedHead) + ' cannot be compared with the tree it is being read on — a union that cannot name its own tree cannot vouch for it')
+  } else if (sealedHead !== '' && sealedHead !== expectedHead) {
+    addError('HEAD-MISMATCH', 'the plan artifact is sealed to head ' + prefix(sealedHead) + ' but this job runs head ' + prefix(expectedHead) + ' — a union over another tree cannot vouch for this one')
   }
   if (plan === null) {
     return finish(errors, null, null)

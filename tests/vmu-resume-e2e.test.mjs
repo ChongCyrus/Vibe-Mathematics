@@ -40,7 +40,8 @@ import { createBallotBox } from '../vibe-math-vmu/kernel/ballotbox.js'
 import { bindIds, hydrateIds } from '../vibe-math-vmu/kernel/ids.js'
 import { makeHumanSpec } from '../vibe-math-vmu/tools/human.js'
 
-const ROOT = 'D:/_tmp/vmu-goal1-e2e'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+const ROOT = __tmpRoot() + '/vmu-goal1-e2e'
 const line = (s) => console.log('  ' + s)
 let passed = 0
 let failed = 0
@@ -374,7 +375,7 @@ line('durable keys: ' + Object.keys(raw.keys).sort().join(','))
 // explicit flush. This is the cross-face positive control for G7's rewrite: it uses the REAL protocol
 // (`createDurableCommitLog` from kernel/ballot.js) over a fake host store, and touches no other file.
 console.log('\n[7] G7 positive control — durable commit log BOUND: both projection contracts unchanged')
-const QROOT = 'D:/_tmp/vmu-goal1-e2e-queue'
+const QROOT = __tmpRoot() + '/vmu-goal1-e2e-queue'
 rmSync(QROOT, { recursive: true, force: true })
 mkdirSync(QROOT, { recursive: true })
 const commitStore = makeCommitStore()
@@ -430,7 +431,7 @@ ok(qlog2.recover().pending.length === 0 && qin.unackedMail === 1,
 // ready (drain × flush × a second reader sees it) and REPORTS the assembly half as a NAMED gap: a source probe that
 // flips to a positive contract the moment the call site lands. Nothing here claims the assembly flushes until then.
 console.log('\n[8] the exit contract — settle() + flushAll(): the next reader must see it')
-const EROOT = 'D:/_tmp/vmu-goal1-e2e-exit'
+const EROOT = __tmpRoot() + '/vmu-goal1-e2e-exit'
 rmSync(EROOT, { recursive: true, force: true })
 mkdirSync(EROOT, { recursive: true })
 const E = await boot('boot-e1', { root: EROOT })
@@ -501,7 +502,7 @@ if (exitCallers.length > 0) {
 // NO WRAPPED METHOD ⇒ the write-through never fires ⇒ the declared projection is never written. No new registry
 // mechanism is needed; the method list is. (a) proves the defect, (b) proves the fix with the same code path.
 console.log('\n[9] multi-instance faces — the collection IS the registry; the method list is what is missing')
-const MROOT = 'D:/_tmp/vmu-goal1-e2e-meetings'
+const MROOT = __tmpRoot() + '/vmu-goal1-e2e-meetings'
 rmSync(MROOT, { recursive: true, force: true })
 mkdirSync(MROOT, { recursive: true })
 const M1 = await boot('boot-m1', { root: MROOT, meetings: { methods: [] } })
@@ -577,7 +578,7 @@ const fakeCtx = (extra = {}) => {
     }, extra),
   }
 }
-const KROOT = 'D:/_tmp/vmu-goal1-e2e-kernel'
+const KROOT = __tmpRoot() + '/vmu-goal1-e2e-kernel'
 rmSync(KROOT, { recursive: true, force: true })
 mkdirSync(KROOT, { recursive: true })
 /**
@@ -667,7 +668,7 @@ ok(liveBoxesIn(K2.kernel.ballotbox.snapshot()) === 2,
 // every key in `PROJECTION_KEYS`, so that class cannot survive in a shape nobody happened to test. It also proves
 // the tolerance is NARROW: a NON-empty foreign value under the same keys must still be a NAMED gap.
 console.log('\n[11] seed census — every PROJECTION_KEY on a FRESH store must report a clean first run (task-87 C)')
-const SEED_ROOT = 'D:/_tmp/vmu-goal1-e2e-seeds'
+const SEED_ROOT = __tmpRoot() + '/vmu-goal1-e2e-seeds'
 const seedKeys = ['members', 'tasks', 'meetings', 'ballotbox', 'budget', 'phase', 'work', 'chat', 'panel', 'human']
 const seedRows = []
 for (const key of seedKeys) {
@@ -711,7 +712,7 @@ ok(fBudget.ok === false && !!fBudget.gap && fBudget.gap.code === 'VMU_RESUME_PRO
 // which is exactly the contract the face declares, and the reason the assertions below are about the SEAM, not
 // about a mock: a second face instance with no live meetings reads the states from disk.
 console.log('\n[12] F51 domain marker — which meeting is still open, across a restart (task-89)')
-const F51_ROOT = 'D:/_tmp/vmu-goal1-e2e-f51'
+const F51_ROOT = __tmpRoot() + '/vmu-goal1-e2e-f51'
 rmSync(F51_ROOT, { recursive: true, force: true })
 mkdirSync(F51_ROOT, { recursive: true })
 const markerFile = F51_ROOT + '/domain-marker.json'

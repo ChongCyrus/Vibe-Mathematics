@@ -27,7 +27,7 @@
 // Run: node tests/sim-harness-shape.test.mjs   (targeted; part of the T1 sweep, ~10s, no network, no LaTeX)
 
 import { tmpdir } from 'node:os'
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -191,6 +191,12 @@ ok(HARNESS_SRC.includes('err.code = fault.code') && HARNESS_SRC.includes('err.de
 console.log('=== 5. MUTATION: restore the legacy String() flattening and watch this suite go red ===')
 {
   const mutDir = await mkRoot('mutated')
+  // The harness now imports `../lib/tmp-root.mjs` (TB-2746's ONE scratch root). A mutation copy that carries only
+  // `harness.mjs` dies with ERR_MODULE_NOT_FOUND on that import before it can prove anything — the copy must travel
+  // with the sibling module DIRECTORY it needs. Only `scripts/lib` (2 files) is copied, never the whole `scripts/`
+  // tree: the mutation is about replyTextOf, the copy stays small, and this is the same lesson `run-tests.mjs`
+  // records for files that other judges copy.
+  cpSync(join(REPO, 'scripts', 'lib'), join(TMP, 'lib'), { recursive: true })
   // The copy must NOT also copy `settings.mjs`: the mutation only touches replyTextOf, and a copied neighbour would
   // re-resolve `settings.mjs`'s own relative imports against the temp dir (the first version of this section died with
   // ERR_MODULE_NOT_FOUND and proved nothing). Point the copy at the REAL settings module by URL instead.

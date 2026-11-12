@@ -40,6 +40,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { copyCorpus } from './corpus-copy.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..', '..', '..')
@@ -266,12 +267,8 @@ function writeReport(dir, text, ledger) {
 // directory the previous attempt left behind silently keeps that attempt's mutations: A15's "extra corpus dir" then
 // appears in the rebuilt report's own list, the gate correctly sees no difference, and the vector reads as a half-pass
 // for a reason that has nothing to do with the gate. Clearing first makes a rebuild mean the same thing every time.
-function copyCorpus(dest) {
-  fs.rmSync(dest, { recursive: true, force: true })
-  fs.mkdirSync(dest, { recursive: true })
-  fs.cpSync(CORPUS, dest, { recursive: true })
-  return dest
-}
+// The copy itself lives in ./corpus-copy.mjs because it must BACKDATE the receipts: fs.cpSync stamps a copy with NOW on
+// POSIX, which would make the layer look newer than the report about to describe it and mask A3/A4/A16/A16b on CI.
 
 function addExtraScenario(layer, scenario) {
   const dir = path.join(layer, 'corpus-' + scenario)
@@ -358,7 +355,7 @@ const BUILD = {
   // A10: the layer the report names is edited after the report was written (bytes change, the list does not).
   A10(ctx, tmp) {
     const root = path.join(tmp, 'sim-A10')
-    const layer = copyCorpus(path.join(root, 'layer'))
+    const layer = copyCorpus(path.join(root, 'layer'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A10')
     const files = gateCorpusFiles(layer)
     const man = manifestOf({ ...ctx, corpus: { dir: layer, corpusId: corpusDigest(files), corpusFiles: files } })
@@ -371,7 +368,7 @@ const BUILD = {
   // A10extra: a corpus dir appears in the named layer after the report was written.
   A10extra(ctx, tmp) {
     const root = path.join(tmp, 'sim-A10extra')
-    const layer = copyCorpus(path.join(root, 'layer'))
+    const layer = copyCorpus(path.join(root, 'layer'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A10extra')
     const files = gateCorpusFiles(layer)
     const man = manifestOf({ ...ctx, corpus: { dir: layer, corpusId: corpusDigest(files), corpusFiles: files } })
@@ -383,7 +380,7 @@ const BUILD = {
   // A11: the pre-file-list stamp (no corpusFiles) replayed onto a layer that has since grown.
   A11(ctx, tmp) {
     const root = path.join(tmp, 'sim-A11')
-    const layer = copyCorpus(path.join(root, 'old-layer'))
+    const layer = copyCorpus(path.join(root, 'old-layer'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A11')
     const files = gateCorpusFiles(layer)
     const man = manifestOf({ ...ctx, corpus: { dir: layer, corpusId: corpusDigest(files) }, generatedAt: OLD.toISOString() })
@@ -397,7 +394,7 @@ const BUILD = {
   // A12: the report's file list misstates one file's hash while its corpus id is the true one.
   A12(ctx, tmp) {
     const root = path.join(tmp, 'sim-A12')
-    const layer = copyCorpus(path.join(root, 'layer'))
+    const layer = copyCorpus(path.join(root, 'layer'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A12')
     const files = gateCorpusFiles(layer)
     const claimed = files.map((f) => ({ ...f }))
@@ -412,7 +409,7 @@ const BUILD = {
   // A13: the list omits a scenario the layer holds, while the corpus id is the full one.
   A13(ctx, tmp) {
     const root = path.join(tmp, 'sim-A13')
-    const layer = copyCorpus(path.join(root, 'layer'))
+    const layer = copyCorpus(path.join(root, 'layer'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A13')
     const files = gateCorpusFiles(layer)
     const short = files.slice(0, -1)
@@ -424,7 +421,7 @@ const BUILD = {
   // A13b: the same omission, but every stamp is self-consistent with the SHORT list -- the only tell is the extra dir.
   A13b(ctx, tmp) {
     const root = path.join(tmp, 'sim-A13b')
-    const layer = copyCorpus(path.join(root, 'layer'))
+    const layer = copyCorpus(path.join(root, 'layer'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A13b')
     const files = gateCorpusFiles(layer)
     const short = files.slice(0, -1)
@@ -447,7 +444,7 @@ const BUILD = {
   // A15: a corpus dir appears in the named layer; the report's list and digest are both true for the older set.
   A15(ctx, tmp) {
     const root = path.join(tmp, 'sim-A15')
-    const layer = copyCorpus(path.join(root, 'layer'))
+    const layer = copyCorpus(path.join(root, 'layer'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A15')
     const files = gateCorpusFiles(layer)
     const man = manifestOf({ ...ctx, corpus: { dir: layer, corpusId: corpusDigest(files), corpusFiles: files } })
@@ -460,9 +457,9 @@ const BUILD = {
   // simply not about the corpus this machine is on -- which is precisely the sentence the gate did not used to have.
   A16(ctx, tmp) {
     const root = path.join(tmp, 'sim-A16')
-    const oldLayer = copyCorpus(path.join(root, 'run-2026-11-01-1'))
+    const oldLayer = copyCorpus(path.join(root, 'run-2026-11-01-1'), CORPUS, ctx.generatedAt)
     ageLayer(oldLayer, OLD)
-    const newLayer = copyCorpus(path.join(root, 'run-2026-11-09-2'))
+    const newLayer = copyCorpus(path.join(root, 'run-2026-11-09-2'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A16')
     const files = gateCorpusFiles(oldLayer)
     const man = manifestOf({ ...ctx, corpus: { dir: oldLayer, corpusId: corpusDigest(files), corpusFiles: files } })
@@ -474,8 +471,8 @@ const BUILD = {
   // directory IDENTITY can tell them apart -- which is why "same digest" was never a substitute for "current layer".
   A16b(ctx, tmp) {
     const root = path.join(tmp, 'sim-A16b')
-    const named = copyCorpus(path.join(root, 'run-copy-named-by-report'))
-    const current = copyCorpus(path.join(root, 'run-copy-current'))
+    const named = copyCorpus(path.join(root, 'run-copy-named-by-report'), CORPUS, ctx.generatedAt)
+    const current = copyCorpus(path.join(root, 'run-copy-current'), CORPUS, ctx.generatedAt)
     const dir = baseDir(tmp, 'A16b')
     const files = gateCorpusFiles(named)
     const man = manifestOf({ ...ctx, corpus: { dir: named, corpusId: corpusDigest(files), corpusFiles: files } })

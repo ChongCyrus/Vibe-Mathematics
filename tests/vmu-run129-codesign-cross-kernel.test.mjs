@@ -20,6 +20,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -52,7 +53,7 @@ const boot = async (root) => {
 // test — it waits for the durable write the product already performs.
 const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run129-codesign-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run129-codesign-'))
 try {
   const office = await boot(root)
   const member = await boot(root)

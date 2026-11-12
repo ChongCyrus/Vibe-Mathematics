@@ -2,7 +2,7 @@
 //
 // WHAT PROBLEM THIS SOLVES. Every assertion in this repository is supposed to be "shown able to fail", and the
 // strongest form of that is not a hand-written negative test: it is to MUTATE THE REAL MODULE and watch the SAME
-// probe go red. Round 3 did it by hand for `kernel/activity.js` (copy the module to `D:\_tmp`, splice in the
+// probe go red. Round 3 did it by hand for `kernel/activity.js` (copy the module to `${__tmpRoot()}`, splice in the
 // historical-replay defect, import the copy, run the probe that is green on the real module and require it to be red).
 // That is one file's worth of careful plumbing — this module is that plumbing, so any face can use the technique.
 //
@@ -15,7 +15,7 @@
 //   ③ THE REAL MODULE MUST BE GREEN on the very same probe — otherwise the probe is broken, not the mutant.
 //   ④ THE TWO READINGS MUST DIFFER — `PROBE-DOES-NOT-DISCRIMINATE` when the mutant produced exactly the green
 //      reading, which is what a no-op mutation looks like.
-//   ⑤ THE COPY LIVES IN `D:\_tmp` AND IS DELETED. The temp root is validated (`UNSAFE-TMP-DIR` refuses anything
+//   ⑤ THE COPY LIVES IN `${__tmpRoot()}` AND IS DELETED. The temp root is validated (`UNSAFE-TMP-DIR` refuses anything
 //      else, so a mutant can never be written into the repository) and every copy is removed in a `finally`, with
 //      leftovers reported as `TEMP-NOT-CLEANED`.
 //
@@ -38,16 +38,19 @@
 // example with the control-group assertions spelled out is `tests/vmu-resume-falsify.test.mjs` (2 mutations).
 //
 // The `module` must be importable as a real ESM module from inside this checkout; relative imports in the copy are
-// rewritten to absolute `file://` URLs so the mutant is self-contained wherever `D:\_tmp` is.
+// rewritten to absolute `file://` URLs so the mutant is self-contained wherever `${__tmpRoot()}` is.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join, dirname, resolve, isAbsolute, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { tmpdir } from 'node:os'
 // The repository's own comment/string blanker (sibling lib), reused so the eligibility scan reads CODE only — a
 // `refuse(...)` inside a doc comment must not count as a decision point.
 import { stripComments } from './strip-comments.mjs'
 
-/** The one allowed temp root (project discipline: temp files live in `D:\_tmp`, never on C: and never in-repo). */
-export const DEFAULT_TMP_DIR = 'D:\\_tmp'
+import { tmpRoot as __tmpRoot } from './scratch.mjs'
+/** The one allowed temp root: derived from the HOST, so a clean CI runner is not asked about this laptop; the leaf
+ *  stays `_tmp` (the project's temp discipline) and it is never inside the repository. */
+export const DEFAULT_TMP_DIR = join(tmpdir(), '_tmp')
 
 /**
  * The 10-line form from the header, as a STRING, so a report or a volume can quote the recipe without drifting from

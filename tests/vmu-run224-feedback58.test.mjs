@@ -23,8 +23,9 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const VMU = join(REPO, 'vibe-math-vmu')
-const TMP = 'D:/_tmp/r224'
+const TMP = __tmpRoot() + '/r224'
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
 const SRC_BLUEPRINT = readFileSync(join(VMU, 'packs', 'v5r', 'blueprint.js'), 'utf8')
 const SRC_HOST = readFileSync(join(VMU, 'host.js'), 'utf8')

@@ -77,7 +77,18 @@ test('RUN 195 §0 — the seven repairs are in place (source pins)', () => {
   has(TOOLS, 'VMU_CHAIR_ACT_NOT_DELEGATED', '§0o naming the refusal a fresh institute hits first')
   // 2.4/2.7 — the prompt teaches record ids, not file cards, and how to read a recompiled PDF
   hasNot(PROMPTS, 'Propos/p-x.md"] }', '§0p ★ the part example no longer teaches a file card')
-  has(PROMPTS, '文件卡不是证据', '§0q and says a file card is not evidence')
+  // ★ TB-2752 review: the blanket "a file card is not evidence" is FALSE — the gate resolves a member-file path whose
+  // FILENAME IS the record id (checkEvidencePointers' MEMBER_FILE branch). What replaced it: the two legal spellings,
+  // and the ban on SELF-CHOSEN file cards. The pin now asserts the accurate rule and carries its own anti-lamp.
+  has(PROMPTS, '收两种写法', '§0q the writing guide states the TWO legal spellings of an evidence pointer')
+  has(PROMPTS, '自起的文件名不是证据', '§0q2 and says a SELF-CHOSEN file card is not evidence (never "every path")')
+  hasNot(PROMPTS, '文件路径、文件名、摘要都不收', '§0q3 the false absolute is gone')
+  {
+    const accurate = (t) => t.includes('收两种写法') && t.includes('自起的文件名不是证据') && !t.includes('文件路径、文件名、摘要都不收')
+    ok(accurate(PROMPTS), '§0q4 the accurate predicate holds on the shipped prompts')
+    const relapsed = PROMPTS.split('自起的文件名不是证据').join('文件路径都不收') + ' 文件路径、文件名、摘要都不收'
+    ok(!accurate(relapsed), '§0q-lamp ★ re-inserting the false absolute turns the SAME predicate red (the pin can fail)')
+  }
   has(PROMPTS, 'compiledAfterFinal', '§0r the writing prompt says which PDF reading is authoritative')
 })
 

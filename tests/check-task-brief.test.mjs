@@ -23,11 +23,12 @@ import {
   PLACEHOLDER, RULE_TABLE, SEAT_MAX_LINES, SEATS, STRUCTURE_CODES, TEMPLATE_MAX_LINES,
   checkBriefStructure, structureFixture,
 } from '../scripts/check-task-brief.mjs'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const SCRIPT = join(REPO, 'scripts', 'check-task-brief.mjs')
-const TMP_ROOT = process.env.BRIEF_STRUCT_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const TMP_ROOT = process.env.BRIEF_STRUCT_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
 mkdirSync(TMP_ROOT, { recursive: true })
 const WORK = mkdtempSync(join(TMP_ROOT, 'briefstruct-'))
 

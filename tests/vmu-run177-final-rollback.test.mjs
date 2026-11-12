@@ -32,6 +32,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdtemp, mkdir } from 'node:fs/promises'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
@@ -209,7 +210,7 @@ function fakeLatex(mode) {
 {
   const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
   const entry = await import(pathToFileURL(ENTRY).href)
-  const mk = async (tag) => { await mkdir('D:/_tmp/r177', { recursive: true }); return mkdtemp(join('D:/_tmp/r177', tag + '-')) }
+  const mk = async (tag) => { await mkdir(__tmpRoot() + '/r177', { recursive: true }); return mkdtemp(join(__tmpRoot() + '/r177', tag + '-')) }
   let tick = 2000
   const bootTools = async () => {
     const root = await mk('tool')

@@ -216,7 +216,21 @@ function harvest(env) {
   let judged = null
   try { judged = JSON.parse(auditWith.stdout) } catch (e) { judged = null }
   ok(!!judged && judged.blockers === 0, '§4a ★ with the nested path captured the audit has 0 blockers', judged && { blockers: judged.blockers, exits: auditWith.status })
-  ok(!!judged && judged.readings.gap === 0, '§4b and no taught-reading gap remains', judged && judged.readings)
+  // ★ TB-2752 review (prompt-lane): paper-phase scanning made the audit able to see TWO honest reading gaps — the
+  // paper-review receipt fields are taught in paper-review but no paper-review receipt exists in the harvest corpus yet.
+  // "gap === 0" is not the criterion; a gap is an UNVERIFIED reading that must carry a NAMED capture plan, and a gap
+  // WITHOUT a plan is still a blocker. The real capture waits for RUN 81's harvest corpus.
+  const gapFindings = (judged && Array.isArray(judged.findings) ? judged.findings : []).filter((f) => f.category === 'TAUGHT_READING' && f.warn === 'reading-gap')
+  const gapWithoutPlan = gapFindings.filter((f) => !/capture plan:/.test(String(f.note || '')))
+  ok(!!judged && judged.blockers === 0 && judged.readings.gap === gapFindings.length && gapWithoutPlan.length === 0,
+    '§4b no reading is left unverified: 0 blockers, and every remaining gap names its capture plan (printed below)',
+    judged && { readings: judged.readings, gaps: gapFindings.map((f) => ({ name: f.name, plan: String(f.note || '').slice(0, 180) })), gapWithoutPlan: gapWithoutPlan.map((f) => f.name) })
+  ok(!!judged && judged.readings.gap === gapFindings.length,
+    '§4b-1 the gap count is the number of NAMED gap findings (no unnamed gap hides in the count)',
+    judged && { gap: judged.readings.gap, named: gapFindings.length })
+  ok(!!judged && judged.blockers === 0,
+    '§4b-2 blockers stay 0 with the named gaps present — "not yet captured" is not "no such reading"',
+    judged && judged.blockers)
 
   const strippedFieldset = JSON.parse(JSON.stringify(realFieldset))
   for (const tool of Object.keys(strippedFieldset)) {

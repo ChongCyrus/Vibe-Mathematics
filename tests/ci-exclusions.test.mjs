@@ -1,13 +1,16 @@
-// tests/ci-exclusions.test.mjs — the CI gate keeps its promises (RUN 79 / TB-2738).
+// tests/ci-exclusions.test.mjs — the CI gate keeps its promises (RUN 79 / TB-2738 / TB-2748).
 //
-// WHAT THIS SUITE POLICES. Three things a hosted-CI gate usually loses silently:
+// WHAT THIS SUITE POLICES. Four things a hosted-CI gate usually loses silently:
 //
 //   ① the exclusion table could name a suite that no longer exists. `--exclude` filters by substring, so a
 //      stale label excludes nothing and the gate widens — while the row still reads like a decision;
 //   ② the plan could be a second copy of the job list. Then renaming a suite makes the CI run the old name (or
 //      nothing) and still report green. The plan must ASK tests/run-tests.mjs;
 //   ③ the docs could stop saying what CI does NOT prove, while the green check keeps being read as release
-//      approval. The sentence below is an INPUT to this suite, not decoration.
+//      approval. The sentence below is an INPUT to this suite, not decoration;
+//   ④ an exclusion could silently become a way to delete a pure-logic assertion. Every row must name a KIND of
+//      machine property (TB-2748) and the suite's own source must mention the missing thing, so a logic suite
+//      wearing a dependency label reds as EXCLUSION-NOT-EVIDENCED instead of disappearing.
 //
 // It also runs its own small lamps (fake label, short why, empty guard, empty table, too many shards) so the
 // plan cannot pass by printing a pretty JSON object and exiting 0.
@@ -67,11 +70,24 @@ if (tableText !== null) {
   }
 }
 ok(Array.isArray(rows) && rows.length > 0, '★ the table is a non-empty array', Array.isArray(rows) ? rows.length : 'not an array')
-ok(rows.every((row) => row && typeof row.label === 'string' && row.label.trim() !== ''), 'every row has a label')
-ok(rows.every((row) => row && typeof row.why === 'string'), 'every row has a why')
-ok(rows.every((row) => row && typeof row.localGuard === 'string' && row.localGuard.trim() !== ''), 'every row has a localGuard — a CI exclusion with no local reader is a deleted assertion')
+ok(rows.length > 0 && rows.every((row) => row && typeof row.label === 'string' && row.label.trim() !== ''), 'every row has a label')
+ok(rows.length > 0 && rows.every((row) => row && typeof row.why === 'string'), 'every row has a why')
+ok(rows.length > 0 && rows.every((row) => row && typeof row.localGuard === 'string' && row.localGuard.trim() !== ''), 'every row has a localGuard — a CI exclusion with no local reader is a deleted assertion')
 const shortWhy = Array.isArray(rows) ? rows.filter((row) => row && typeof row.why === 'string' && [...row.why].length < 24) : []
 ok(shortWhy.length === 0, '★ every why is at least 24 characters and names a machine property', shortWhy.map((row) => row.label + ':' + [...String(row.why)].length))
+// ★ TB-2748: a row is a permission to run nothing, so it must NAME the kind of machine property and the
+// concrete missing thing. The kind counts are pinned: three reviewed machine budgets, six locally captured
+// corpora, two DSH host installations, two out-of-repo fixtures. A row that moves between kinds silently is a
+// different decision than the one this table made, and a row with no `missing` names no thing at all.
+const KINDS = ['machine-budget', 'local-corpus', 'host-install', 'out-of-repo-fixture']
+const kindOf = (row) => (row && typeof row.kind === 'string' ? row.kind : '')
+ok(rows.length > 0 && rows.every((row) => KINDS.includes(kindOf(row))), 'every row names one of the four machine properties: ' + KINDS.join(', '), rows.filter((row) => !KINDS.includes(kindOf(row))).map((row) => row && row.label))
+const kindCount = (kind) => rows.filter((row) => kindOf(row) === kind).length
+ok(kindCount('machine-budget') === 3, '★ exactly the three reviewed machine budgets are excluded (a new budget row is a deliberate decision, not a default)', kindCount('machine-budget'))
+ok(kindCount('local-corpus') === 6, '★ six suites measure a locally captured corpus that a hosted runner never has', kindCount('local-corpus'))
+ok(kindCount('host-install') === 2, '★ two suites need an installed DSH host', kindCount('host-install'))
+ok(kindCount('out-of-repo-fixture') === 2, '★ two suites read the out-of-repo taskbooks fixture', kindCount('out-of-repo-fixture'))
+ok(rows.length > 0 && rows.every((row) => row && typeof row.missing === 'string' && row.missing.trim() !== ''), 'every row names the concrete missing thing it cannot get on CI', rows.filter((row) => !row || typeof row.missing !== 'string').map((row) => row && row.label))
 const labels = Array.isArray(rows) ? rows.map((row) => row && row.label) : []
 for (const required of ['sim-gate.test.mjs', 'audit-math-computation-sensitivity.mjs', 'mutation-evidence.test.mjs']) {
   ok(labels.includes(required), 'the table still names ' + required)
@@ -87,6 +103,9 @@ if (planSource !== null) {
   ok(planSource.includes('--only') && planSource.includes('--exclude'), 'the plan proves each exclusion still selects jobs and measures the post-exclusion count')
   ok(planSource.includes('STALE-EXCLUSION'), 'the plan names STALE-EXCLUSION (the failure mode where an exclusion quietly widens the gate)')
   ok(planSource.includes('SHARD-EMPTY'), 'the plan names SHARD-EMPTY (an empty shard is a green check that verifies nothing)')
+  ok(planSource.includes('EXCLUSION-NOT-EVIDENCED'), '★ TB-2748: the plan refuses a dependency label the suite source never mentions (a logic suite must not vanish behind a dependency decision)')
+  ok(planSource.includes('MACHINE-BUDGET-UNLISTED'), '★ TB-2748: a new machine-budget row must be added to the reviewed allow-list deliberately')
+  ok(planSource.includes('EXCLUSION-KIND'), '★ TB-2748: every row states one of four kinds of machine property')
   ok(!/tests\/[A-Za-z0-9._-]+\.test\.mjs/.test(planSource), '★★ the plan carries NO copied suite list (a second list would silently replace the runner)')
 }
 
@@ -98,6 +117,8 @@ if (strict.plan) {
   ok(strict.plan.full - strict.plan.excluded === strict.plan.expected, '★ full - excluded === expected')
   ok(Array.isArray(strict.plan.exclusions) && strict.plan.exclusions.length > 0 && strict.plan.exclusions.length === rows.length, 'the plan reports one row per exclusion')
   ok(Array.isArray(strict.plan.exclusions) && strict.plan.exclusions.length > 0 && strict.plan.exclusions.every((row) => row && typeof row.jobs === 'number' && row.jobs >= 1), '★★ every exclusion label still selects at least one job in the runner (no stale label)', strict.plan.exclusions)
+  ok(Array.isArray(strict.plan.exclusions) && strict.plan.exclusions.length > 0 && strict.plan.exclusions.every((row) => row && KINDS.includes(row.kind)), '★ the plan echoes each row\'s kind, so a reader does not have to re-open the table', strict.plan.exclusions && strict.plan.exclusions.map((row) => row && row.kind))
+  ok(Array.isArray(strict.plan.exclusions) && strict.plan.exclusions.every((row) => row && row.jobs === 1), '★ every excluded label is exactly ONE runner job (the union compares excludedLabels.length with plan.excluded)', strict.plan.exclusions && strict.plan.exclusions.map((row) => row && row.label + ':' + row.jobs))
   ok(Array.isArray(strict.plan.shards) && strict.plan.shards.length === 8, 'the plan has eight shards')
   ok(Array.isArray(strict.plan.shards) && strict.plan.shards.every((shard) => shard && shard.count > 0), '★ every shard has work to do', strict.plan.shards)
   ok(strict.plan.sums && strict.plan.sums.shards === strict.plan.expected, '★★ the shard sizes sum to expected — every job runs in exactly one shard', strict.plan.sums)
@@ -142,13 +163,22 @@ if (workflow) {
   ok(/^ {2}suite:\s*$/m.test(workflow), 'the workflow has the suite job')
   ok(/^ {2}union:\s*$/m.test(workflow), 'the workflow has the union job')
   ok(/--shard \$\{\{ matrix\.shard \}\}\/8/.test(workflow), 'each suite shard runs the runner with --shard i/8', workflow.split('\n').filter((line) => line.includes('--shard')).slice(0, 2))
-  ok((workflow.match(/--exclude /g) || []).length === 3, 'each shard passes exactly the three exclusions', (workflow.match(/--exclude .*/g) || []).slice(0, 4))
+  // ★ TB-2748: the exclusions are DERIVED from the table, not a second hand-written list. A workflow that names
+  // its own exclusions drifts from the table the partition job proved, and the union then measures a different
+  // gate than the one the plan sealed. The count assertion is the old shape's fingerprint and must be gone.
+  ok(workflow.includes("require('./ci-exclusions.json')"), '★★ each shard derives its --exclude flags from ci-exclusions.json (one table, not two lists)', workflow.split('\n').filter((line) => line.includes('--exclude')).slice(0, 4))
+  ok(/--exclude sim-gate\.test\.mjs/.test(workflow) === false, '★★ the workflow no longer hand-copies the three exclusion labels', workflow.split('\n').filter((line) => line.includes('sim-gate.test.mjs')).slice(0, 2))
+  ok(workflow.includes('$EXCLUDES'), 'the derived flags are passed to the runner as one shell variable')
+  ok((workflow.match(/--exclude /g) || []).length <= 2, 'the shard step names --exclude at most twice: once in the table reader, not once per row', (workflow.match(/--exclude .*/g) || []).slice(0, 4))
+  ok(workflow.includes('"$RUNNER_TEMP/shard-report.json"'), '★ TB-2748: shard artifacts are written outside the checkout (a 0-byte untracked report made repo-hygiene red on CI)')
+  ok(workflow.includes('"$RUNNER_TEMP/shard-log.txt"') && workflow.includes('"$RUNNER_TEMP/shard-meta.json"'), '★ the shard log and seal also live under RUNNER_TEMP')
   ok(/name: suite-\$\{\{ env\.RUN_ID \}\}-\$\{\{ env\.RUN_ATTEMPT \}\}-\$\{\{ matrix\.shard \}\}/.test(workflow), '★★ shard artifacts embed run_id and attempt in their name')
   ok(/name: shard-plan-\$\{\{ env\.RUN_ID \}\}-\$\{\{ env\.RUN_ATTEMPT \}\}/.test(workflow), 'the plan artifact is sealed to this run by name')
   ok(/union-verify\.mjs write-meta/.test(workflow), 'the plan and every shard are sealed by union-verify write-meta')
   ok(/needs: suite/.test(workflow), 'union runs after the suite matrix')
   ok(/if: always\(\)/.test(workflow), 'union runs even when a shard failed, so the red can name the shard')
-  ok(/node scripts\/ci\/union-verify\.mjs/.test(workflow) && /--dir artifacts/.test(workflow), 'union verifies the downloaded artifacts with union-verify')
+  ok(/node scripts\/ci\/union-verify\.mjs/.test(workflow) && /--dir "\$RUNNER_TEMP\/ci-artifacts"/.test(workflow), 'union verifies the downloaded artifacts with union-verify, from outside the checkout')
+  ok(/VMU_CORPUS_ROOT: \$\{\{ runner\.temp \}\}\/sim-corpus/.test(workflow), '★ TB-2748: the suite job exports an EMPTY writable corpus root, so a corpus-BUILDING suite does not mkdir at a filesystem root')
   ok(/--expected-run "\$RUN_ID"/.test(workflow) && /--expected-attempt "\$RUN_ATTEMPT"/.test(workflow), 'union expects THIS run and THIS attempt, not whatever artifact happens to be around')
   ok(/pattern: '\*-\$\{\{ env\.RUN_ID \}\}-\$\{\{ env\.RUN_ATTEMPT \}\}\*'/.test(workflow), 'union downloads only artifacts whose names carry this run_id and attempt')
   ok(/GATE_RELEASE: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.full_release && '1' \|\| '0' \}\}/.test(workflow), 'GATE_RELEASE is set only for a manual release dispatch')
@@ -170,6 +200,8 @@ const guardOf = (row) => (row && typeof row.localGuard === 'string' ? row.localG
 try {
   const stale = realRows.map((row, index) => ({
     label: index === 0 ? 'suite-that-no-longer-exists.test.mjs' : row.label,
+    kind: row.kind,
+    missing: row.missing,
     why: whyOf(row),
     localGuard: guardOf(row),
   }))
@@ -180,6 +212,8 @@ try {
 
   const shortTable = realRows.map((row, index) => ({
     label: row.label,
+    kind: row.kind,
+    missing: row.missing,
     why: index === 0 ? 'too short' : whyOf(row),
     localGuard: guardOf(row),
   }))
@@ -189,6 +223,8 @@ try {
 
   const noGuard = realRows.map((row, index) => ({
     label: row.label,
+    kind: row.kind,
+    missing: row.missing,
     why: whyOf(row),
     localGuard: index === 0 ? '' : guardOf(row),
   }))
@@ -199,6 +235,39 @@ try {
   ok(emptyRun.status === 0, '★★ an empty table is consistent: excluding nothing must not break the plan', { status: emptyRun.status, stderr: emptyRun.stderr.trim() })
   ok(emptyRun.plan !== null && emptyRun.plan.expected === emptyRun.plan.full, '★ with no exclusions expected equals full')
   ok(emptyRun.plan !== null && emptyRun.plan.sums.shards === emptyRun.plan.expected, 'the empty-table plan still sums to its expected total')
+
+  // The two TB-2748 lamps: the table must not be able to silence a pure-logic suite. A logic suite wearing a
+  // `local-corpus` label fails EXCLUSION-NOT-EVIDENCED (its source never mentions a corpus), and a new
+  // machine-budget row fails MACHINE-BUDGET-UNLISTED (budgets are reviewed, not declared).
+  const logicRow = {
+    label: 'vmu-records.test.mjs',
+    kind: 'local-corpus',
+    missing: 'a corpus this suite never reads — the label is a costume',
+    why: 'This row is a lamp: a pure-logic suite must not be able to hide behind a dependency label it never uses.',
+    localGuard: 'node tests/vmu-records.test.mjs (lamp)',
+  }
+  const logicRun = runPlan(['--check', '--exclusions', tableFile('logic.json', [...realRows, logicRow])])
+  ok(logicRun.status !== 0, '★★★ TB-2748: a pure-logic suite added to the table makes the plan FAIL instead of disappearing', { status: logicRun.status })
+  ok(logicRun.stderr.includes('EXCLUSION-NOT-EVIDENCED'), '★★★ and the red names EXCLUSION-NOT-EVIDENCED (the suite source never mentions the claimed dependency)', logicRun.stderr.trim().split('\n').slice(0, 6).join(' | '))
+  const budgetRow = {
+    label: 'vmu-records.test.mjs',
+    kind: 'machine-budget',
+    missing: 'a wall-clock budget nobody reviewed',
+    why: 'This row is a lamp: "it is slow here" is not a property of the suite, so a new budget row is a decision.',
+    localGuard: 'node tests/vmu-records.test.mjs (lamp)',
+  }
+  const budgetRun = runPlan(['--check', '--exclusions', tableFile('budget.json', [...realRows, budgetRow])])
+  ok(budgetRun.status !== 0, '★★ TB-2748: an unreviewed machine-budget row fails the plan', { status: budgetRun.status })
+  ok(budgetRun.stderr.includes('MACHINE-BUDGET-UNLISTED'), '★★★ and the red names MACHINE-BUDGET-UNLISTED', budgetRun.stderr.trim().split('\n').slice(0, 6).join(' | '))
+  const kindless = realRows.map((row, index) => ({
+    label: row.label,
+    missing: row.missing,
+    why: whyOf(row),
+    localGuard: guardOf(row),
+    ...(index === 0 ? {} : { kind: row.kind }),
+  }))
+  const kindlessRun = runPlan(['--check', '--exclusions', tableFile('kindless.json', kindless)])
+  ok(kindlessRun.status !== 0 && kindlessRun.stderr.includes('EXCLUSION-KIND'), '★★ a row with no kind fails the plan (a row with no stated reason is a suite someone silenced)', { status: kindlessRun.status })
 
   const tooMany = runPlan(['--check', '--shards', '2000'])
   ok(tooMany.status !== 0, '★★ more shards than jobs fails instead of leaving empty shards', { status: tooMany.status })
@@ -222,7 +291,7 @@ function spawnNode(args, env = process.env) {
   const result = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env })
   return { status: result.status, stdout: String(result.stdout || ''), stderr: String(result.stderr || '') }
 }
-function unionRun(root, env = process.env) {
+function unionRun(root, env = sealEnv) {
   const result = spawnNode([UNION, '--dir', root, '--expected-run', RUN_ID, '--expected-attempt', RUN_ATTEMPT], env)
   let summary = null
   try {
@@ -248,7 +317,8 @@ try {
   const sealedPlan = seal(planDir, planPath)
   ok(sealedPlan.status === 0, 'the plan artifact seals itself to the run (write-meta)', { status: sealedPlan.status, stderr: sealedPlan.stderr.trim() })
 
-  const excludedLabels = ['sim-gate.test.mjs', 'audit-math-computation-sensitivity.mjs', 'mutation-evidence.test.mjs']
+  const excludedLabels = realRows.map((row) => row.label)
+  ok(excludedLabels.length === plan.excluded, 'the rehearsal excludes exactly the plan\'s rows (one table, used twice)', { fromTable: excludedLabels.length, planExcluded: plan.excluded })
   const disagreements = []
   const rehearsalLabels = []
   const rehearsalShapeProblems = []
@@ -381,6 +451,36 @@ try {
   )
   const headSame = unionRun(headRoot, { ...process.env, HEAD_SHA: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' })
   ok(headSame.status === 0, '★ the same-head case stays green: HEAD-MISMATCH is not a blanket red for every union run', { status: headSame.status, codes: headSame.summary && headSame.summary.errors && headSame.summary.errors.map((error) => error.code) })
+
+  // RED G (TB-2748): the plan was NEVER sealed to a head — the seal step was skipped or ran without HEAD_SHA.
+  // That is an upstream gap, not a wrong tree: it must be named HEAD-UNSEALED, not folded into HEAD-MISMATCH.
+  const unsealedRoot = join(unionRoot, 'red-unsealed')
+  cpSync(artifacts, unsealedRoot, { recursive: true })
+  const unsealedPath = join(unsealedRoot, 'shard-plan-' + RUN_ID + '-' + RUN_ATTEMPT, 'meta.json')
+  const unsealedMeta = JSON.parse(readFileSync(unsealedPath, 'utf8'))
+  delete unsealedMeta.headSha
+  writeFileSync(unsealedPath, JSON.stringify(unsealedMeta, null, 2), 'utf8')
+  const unsealed = unionRun(unsealedRoot)
+  ok(unsealed.status !== 0, '★★ TB-2748: an unsealed plan reds the union (it proves a sum, not a tree)', { status: unsealed.status })
+  ok(
+    unsealed.summary !== null && unsealed.summary.errors.some((error) => error.code === 'HEAD-UNSEALED') && !unsealed.summary.errors.some((error) => error.code === 'HEAD-MISMATCH'),
+    '★★★ and the red is HEAD-UNSEALED, NOT HEAD-MISMATCH: a missing seal is an upstream gap, not a wrong tree',
+    unsealed.summary && unsealed.summary.errors.map((error) => error.code),
+  )
+
+  // RED H (TB-2748): this union runs without HEAD_SHA. It cannot compare its sealed head with the tree it is
+  // reading, so it must say HEAD-UNKNOWN rather than pass as if the comparison had happened.
+  const unknown = unionRun(artifacts, (() => {
+    const env = { ...sealEnv }
+    delete env.HEAD_SHA
+    return env
+  })())
+  ok(unknown.status !== 0, '★★ TB-2748: a union with no HEAD_SHA reds (a union that cannot name its tree cannot vouch for it)', { status: unknown.status })
+  ok(
+    unknown.summary !== null && unknown.summary.errors.some((error) => error.code === 'HEAD-UNKNOWN') && !unknown.summary.errors.some((error) => error.code === 'HEAD-MISMATCH'),
+    '★★★ and the red is HEAD-UNKNOWN, not HEAD-MISMATCH',
+    unknown.summary && unknown.summary.errors.map((error) => error.code),
+  )
 
   // RED F: one shard reports a parameterised job with its arguments DROPPED (the pre-RUN-79 shape where the
   // whole label lived in `file`). The union must NOTICE: a reader that only looks at `file` cannot tell

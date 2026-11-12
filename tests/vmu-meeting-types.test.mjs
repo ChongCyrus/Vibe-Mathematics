@@ -26,6 +26,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 
@@ -71,7 +72,7 @@ const call = async (b, name, args = {}) => {
 
 // TB-2695: a proof must build its own evidence on any machine. D:/_tmp is only a fast local disk when it exists;
 // otherwise use the OS temp dir. VMU_TEST_TMP_ROOT still overrides both (same fallback as tests/repo-hygiene.test.mjs:23).
-const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
 const root = await mkdtemp(join(TMP_ROOT, 'vmu-meeting-types-'))
 try {
   // ── ① THE CATALOG LIVES IN THE PACK ────────────────────────────────────────────────────────────────────────
@@ -748,7 +749,7 @@ try {
   // gate follows the declaration" are two honest facts, not one.
   const SENTINEL_ID = 'review-x7'
   const SENTINEL_LABEL = '评审会X7'
-  const swapBase = await mkdtemp(join('D:/_tmp', 'vmu-e33-swap-'))
+  const swapBase = await mkdtemp(join(__tmpRoot(), 'vmu-e33-swap-'))
   const bootEntry = async (entryUrl, config) => {
     const specs = []
     const ctx = { effect: (fn) => fn(), on: () => () => {}, tools: { register: async (s) => { specs.push(s); return () => {} } } }

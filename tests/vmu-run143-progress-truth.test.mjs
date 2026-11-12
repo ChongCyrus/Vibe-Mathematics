@@ -2,7 +2,7 @@
 // vmu RUN 143 / AUDIT11 C1+C2 — TWO CATALOGUE LINES TOLD A MEMBER TO WRITE A FILE THE FACE NEVER WRITES,
 // AND THE ONE "COPY ME" SAMPLE IN THE FULL CATALOGUE COULD NOT BE COPIED.
 //
-// MEASURED DEFECTS (audit11, `D:/_tmp/g7a11/audit11.md` §2):
+// MEASURED DEFECTS (audit11, `${__tmpRoot()}/g7a11/audit11.md` §2):
 //   · C1: the reply field `progress` said 「追加到 Progress/」, but its owner face is `vmu.records.put`
 //     (`FIELD_OWNERS.progress` = {face:'vmu.records', op:'put'}, kernel/records.js) — a LEDGER row, no file at all.
 //     The file under `Members/<member>/Progress/<track>.md` is written by the OTHER field, `record`
@@ -28,6 +28,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const REPLY_CHANNEL = pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-reply-channel.js')).href

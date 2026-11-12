@@ -30,10 +30,11 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const VMU = join(REPO, 'vibe-math-vmu')
 // The scratch parent is created here, not assumed: a per-round directory in D:\_tmp can be
 // reclaimed by any tmp cleanup between runs, and mkdtempSync needs its parent to exist.
-const TMP = 'D:/_tmp/r222'
+const TMP = __tmpRoot() + '/r222'
 mkdirSync(TMP, { recursive: true })
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
 const SRC_BLUEPRINT = readFileSync(join(VMU, 'packs', 'v5r', 'blueprint.js'), 'utf8')

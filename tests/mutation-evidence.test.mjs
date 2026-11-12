@@ -1,6 +1,6 @@
 // tests/mutation-evidence.test.mjs — «改坏机制 ⇒ 被点名的断言必红» 必须在仓库内可重跑（TB-2687 / TB-2702 / AUDIT-17 clue 3）
 //
-// WHY: the 90/91 coverage figure once rested on `D:/_tmp/mutbatch2/mutations.json` — a temp dir with a
+// WHY: the 90/91 coverage figure once rested on `${__tmpRoot()}/mutbatch2/mutations.json` — a temp dir with a
 // 3-hour self-clean. Evidence that lives outside the repo is a rehearsal, not a proof: a later reader
 // cannot re-run it, and `git ls-files | grep -i mutation` was empty. This suite is the EXECUTION POINT of
 // `scripts/audit/mutations/manifest.json`: it runs every manifest entry through `run.mjs`, which mutates a
@@ -18,6 +18,7 @@
 //   ④ the mutation targets tests/** ⇒ the judge is broken, not the product ⇒ MUTATION-ON-CRITERION
 import { runEntry, runAll, loadManifest } from '../scripts/audit/mutations/run.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 let pass = 0, fail = 0
 const ok = (cond, label) => { if (cond) { pass++ } else { fail++; console.log('FAIL ' + label) } }
 

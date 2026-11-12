@@ -29,6 +29,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -74,7 +75,7 @@ const call = async (b, name, args = {}) => {
 }
 const textOf = (r) => String((r.parsed && (r.parsed.message || '')) || '') + ' ' + String((r.parsed && r.parsed.hint) || '')
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run36-poll-debate-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run36-poll-debate-'))
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

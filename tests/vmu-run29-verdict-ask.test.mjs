@@ -35,6 +35,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 // sentence rather than a second copy of it.
 import { MEETING_STATE_MEANING } from '../vibe-math-vmu/kernel/meeting.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -79,7 +80,7 @@ const R = (r) => r.parsed || { ok: false, code: r.code, message: r.message, hint
 
 // ── 0. SETUP: a debate the meeting itself declared, with the CHAIR among the speakers ────────────────────────────────
 console.log('=== 0. SETUP: THREE SEATS, ONE CHAIR, TWO SPEAKERS (THE CHAIR ONE OF THEM) ===')
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run29-ask-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run29-ask-'))
 const b = await boot({ root, packs: ['v5r'] })
 const kernel = b.handle.kernel
 for (const id of ['acad-01', 'res-01', 'res-02']) {

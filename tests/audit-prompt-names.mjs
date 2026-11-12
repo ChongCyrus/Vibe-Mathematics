@@ -17,8 +17,11 @@
 //   enum values            : spec enums + settings domains + comparison/array string literals in kernel/packs source.
 //   variables / locals     : identifiers and quoted string values in kernel/packs/middleware source (comments stripped).
 //
-// SCAN TARGET: the ASSEMBLED text for the three seats (scripts/sim/harness.mjs prompts.assembleFor), not source
-// literals — the prompt is concatenated, so a source fragment may never appear in the finished product.
+// SCAN TARGET: the ASSEMBLED text for the three seats (scripts/sim/harness.mjs prompts.assembleFor) PLUS the paper
+// phases (paper-write / paper-review, assembled through the pack prompt pipeline — they are not reachable through the
+// turn harness). The paper phases were added in TB-2752's review: the RUN 80 batch taught two RECEIPT fields
+// (judgedPartFingerprint / judgedPartRound) inside paper-review, and a normal-phase-only scan could never see them.
+// Not source literals — the prompt is concatenated, so a source fragment may never appear in the finished product.
 //
 // EXTRACTION (deliberately narrow: a missed report is cheap, a false positive forces us to edit correct prose):
 //   tool    any  \bvibe_(vmu|v5)_[a-z_]+\b  in the assembled text (a trailing `*` is a FAMILY: prefix must match)
@@ -54,12 +57,13 @@ import { readFileSync, readdirSync, existsSync, mkdtempSync, rmSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const argv = process.argv.slice(2)
 const flag = (name) => argv.indexOf(name) >= 0
 const valueOf = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] ? argv[i + 1] : dflt }
 
 // PORTABLE-ALLOW: default dev corpus root; overridable via VMU_SIM_ROOT / --fieldset, and a missing corpus FAILS the suite (never skips)
-const SIM_ROOT = process.env.VMU_SIM_ROOT || 'D:/_tmp/sim' // PORTABLE-ALLOW: default dev corpus root; VMU_SIM_ROOT or --fieldset overrides it, and a missing corpus fails the suite
+const SIM_ROOT = process.env.VMU_SIM_ROOT || __tmpRoot() + '/sim' // PORTABLE-ALLOW: default dev corpus root; VMU_SIM_ROOT or --fieldset overrides it, and a missing corpus fails the suite
 const FIELDSET = valueOf('--fieldset', join(SIM_ROOT, 'real-fieldset.json'))
 const DEFAULT_CORPUS = join(SIM_ROOT, 'e2e')
 const SELF_CHECK = flag('--self-check') || flag('--self-test')
@@ -102,7 +106,10 @@ const COVERAGE_GAP_PROVENANCE = {
   archiveMissing: { producedBy: 'vibe_vmu_turn {op:"status"} -> status.turnReceipts[i].archiveMissing (kernel/turn/index.js:2762 opens the slot null; :2838 sets true from the archive read-back, :2839 false when truncated:true was archived)', simProduced: true, evidence: 'sim probe: turn status row after a truncated reply whose archive read-back failed' },
   replyArchiveWhy: { producedBy: 'vibe_vmu_turn {op:"status"} -> status.turnReceipts[i].replyArchiveWhy (kernel/turn/index.js:2758 slot, :2836 copies the named why; :4941 notes it is null when there is nothing to warn about)', simProduced: true, evidence: 'sim probe: turn status row carries archiveMissing:true + replyArchiveWhy naming the read-back failure' },
   writtenFrom: { producedBy: 'vibe_vmu_records {action:"list"|"get"} -> rows[].writtenFrom (kernel/records.js:656 writtenFromOf; :655 WRITTEN_FROM_MEANS gives own-turn/relayed/unknown; withWriter:false answers writtenFromOmitted:true instead of dropping it)', simProduced: true, evidence: 'sim probe: records list row from a seat own-turn write and from a relayed office write' },
+  judgedPartFingerprint: { producedBy: 'the vibe_v5_paper {action:"review"} receipt carries the fingerprint of the text the vote judged — kit/paper.js writes it from the part fingerprint at vote time; the harvest corpus has no paper-review receipt captured yet, so this row is a capture plan, not an existence claim', simProduced: true, evidence: 'tests/vmu-run79-review-fingerprint.test.mjs exercises the kit binding; the live RUN 80 V7 receipt carried it too, but the harvest corpus predates that run', capturedBy: { tool: 'vibe_v5_paper', action: 'review', corpus: 'e2e', scenarioStep: 'paper/review' } },
+  judgedPartRound: { producedBy: 'the vibe_v5_paper {action:"review"} receipt carries the round whose TEXT the vote judged — kit/paper.js writes it beside judgedPartFingerprint; the two always travel together and a part replaced in a later round makes the vote stale', simProduced: true, evidence: 'same receipt as judgedPartFingerprint (RUN 80 V7: fingerprint + round bound by the kernel, not passed as a parameter)', capturedBy: { tool: 'vibe_v5_paper', action: 'review', corpus: 'e2e', scenarioStep: 'paper/review' } },
   votesTotal: { producedBy: 'vibe_v5_verdict_final / closure vote -> receipt.closureVote.votesTotal (kernel/turn/index.js:2026 reads it from the closure reading; :2059 prints votesCast/votesTotal/votesFor/votesAgainst/votesUnknown in one tally)', simProduced: true, evidence: 'sim probe: closure vote receipt .closureVote.votesTotal (4 seats enfranchised)' },
+  fieldsIgnored: { producedBy: 'the reply receipt carries fieldsIgnored rows (field + keptWhy: the value was kept but NOT executed, with the named reason) — measured on the 80th live run (F80-10: vote_solved kept with keptWhy "tool-visibility-unprovable"); the harvest corpus has not captured a receipt carrying it yet', simProduced: true, evidence: 'docs/acceptance/run80-verification.md F80-10 (second op:"step" receipt gives fieldsIgnored[].keptWhy)', capturedBy: { tool: 'vibe_vmu_turn', action: 'reply', corpus: 'e2e', scenarioStep: 'turn/reply' } },
 }
 
 /**
@@ -157,6 +164,12 @@ const READING_PATTERNS = [
   { key: '是小节读数', re: /([^。；\n]{0,220})是\s*小节读数/g, fromSpan: (m) => idsOfSpan(m[1]), quote: (m) => m[1] + '是小节读数' },
   { key: '回执里 X', re: /回执里\s*`([a-z][A-Za-z0-9_]*)`/g, fromSpan: (m) => [m[1]], quote: (m) => m[0] },
   { key: '回执的 X 字段', re: /回执的\s*`([a-z][A-Za-z0-9_]*)`\s*(?:字段|里)/g, fromSpan: (m) => [m[1]], quote: (m) => m[0] },
+  // ★ TB-2752 (RUN 80 prompt corrections): the prompts say 「回执给 `X`（与 `Y`）」 when a receipt carries a field.
+  // Until this pattern existed, that shape escaped the TAUGHT-READING class entirely — a receipt name taught this way
+  // was classified as a plain VARIABLE (its identifier exists in source) and no captured-receipt proof was ever asked
+  // for. Two names rode that hole in the RUN 80 batch (judgedPartFingerprint / judgedPartRound); TB-2736 fixed the
+  // paths a name must be carried by, this fixes the SENTENCE that claims the path.
+  { key: '回执给 X', re: /回执给\s*`([a-z][A-Za-z0-9_]*)`(?:\s*(?:与|和|、)\s*`([a-z][A-Za-z0-9_]*)`)?/g, fromSpan: (m) => [m[1], m[2]].filter(Boolean), quote: (m) => m[0] },
   { key: '看 X', re: /看\s*`([a-z][A-Za-z0-9_]*)`/g, fromSpan: (m) => [m[1]], quote: (m) => m[0] },
 ]
 const NEGATED_CLAIM = /旧称|不是|旧措辞|不存在/
@@ -646,13 +659,23 @@ try {
   for (const v of literalsOf(srcs)) enumWords.add(v)
   const sources = { fields, fieldPaths, settingsKeys: settings.keys, enumWords, codeKeys: codeKeysGlobal, vars: varsOf(srcs), codeIdents: identsOf(srcs), readable: new Set([...fields, ...corpusKeys]) }
   if (reg.size < 20) fail('tool registry looks empty (' + reg.size + ' specs) — refusing to call a vacuous scan a pass')
+  const { PACK: packForPaper } = await import('../vibe-math-vmu/packs/v5r/index.js')
+  const promptMod = await import('../vibe-math-vmu/kernel/prompt/index.js')
+  const paperPipe = promptMod.createPromptPipeline({ sections: packForPaper.sections, bindings: packForPaper.bindings || [], settings: {}, counts: {} })
   const seats = [
     { seat: 'chair', member: 'r-acad' },
     { seat: 'member', member: 'r-1' },
     { seat: 'temp', member: 'r-t1' },
+    // ★ TB-2752 review: the two paper phases the RUN 80 receipt-field correction lives in. Without these rows the
+    // TAUGHT-READING class is structurally blind to every paper-phase claim (the RUN 80 batch taught
+    // judgedPartFingerprint / judgedPartRound in paper-review and the normal-phase scan could not see the sentence).
+    { seat: 'member', member: 'r-1', phase: 'paper-write', usePipe: true },
+    { seat: 'member', member: 'r-1', phase: 'paper-review', usePipe: true },
   ]
   for (const s of seats) {
-    const text = await b.prompts.assembleFor({ seat: s.seat, phase: 'normal', member: s.member })
+    const text = s.usePipe
+      ? String((await paperPipe.assemble({ member: s.member, role: 'member', roleLabel: 'researcher', phase: s.phase })).text)
+      : await b.prompts.assembleFor({ seat: s.seat, phase: 'normal', member: s.member })
     if (typeof text !== 'string' || text.length < 10000) fail('assembled text for ' + s.seat + ' is suspiciously short (' + String(text && text.length) + ')')
     const r = scanText(s.seat, text, reg, sources)
     findings = findings.concat(r.findings)

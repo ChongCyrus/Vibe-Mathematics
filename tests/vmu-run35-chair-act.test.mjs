@@ -29,6 +29,7 @@ import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -50,7 +51,7 @@ const serr = (fn) => { try { return { value: fn() } } catch (e) { return { error
 const entry = await import(pathToFileURL(ENTRY).href)
 
 // Temp roots live under D:\_tmp\r35\chair (task rule ⑦) and are deleted at the end of the run.
-const BASE = join('D:/_tmp/r35/chair')
+const BASE = join(__tmpRoot() + '/r35/chair')
 await mkdir(BASE, { recursive: true })
 
 const boot = async (config = {}) => {

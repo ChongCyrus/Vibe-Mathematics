@@ -13,7 +13,7 @@
 // digest, recorded by the generator (`scripts/sim/run.mjs`) in `manifest.json` at the moment it wrote the files, and
 // recomputed here from the bytes on disk. Equality is the only green value.
 //
-//   node scripts/sim/corpus-stamp.mjs D:/_tmp/sim/e2e   # prints OK or the MIXED-GEN CORPUS diagnosis
+//   node scripts/sim/corpus-stamp.mjs <temp root>/sim/e2e   # prints OK or the MIXED-GEN CORPUS diagnosis
 //
 // The formula is shared with the generator (it imports these helpers), so there is exactly one definition of what the
 // stamp means. A hand-written manifest cannot satisfy it without also writing the files it describes, and that is the

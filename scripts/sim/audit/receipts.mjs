@@ -15,6 +15,12 @@
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// The checkout root is DERIVED, never typed: a hard-coded drive path only works on the machine that wrote it, and the
+// Linux shard that runs this audit found the literal before any local run could (p1-absolute-checkout). This file sits
+// at <repo>/scripts/sim/audit/, so three levels up is the repo root the contract path is relative to.
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
 const ENVIRONMENTAL = ['VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING', 'VMU_ENGINE_UNAVAILABLE']
 const WRITE_ACTIONS = ['propose', 'adopt', 'part', 'review', 'final', 'render', 'compile', 'reindex', 'open', 'attend', 'motion', 'vote', 'close', 'admit', 'append', 'put']
@@ -130,7 +136,7 @@ export function audit(dir) {
   const CONTRACT_PATH = 'vibe-math-vmu/docs/03-interface-contract.md'
   let contract = ''
   try {
-    contract = readFileSync(join('D:/wd/vibemath开发/Vibe-Mathematics', CONTRACT_PATH), 'utf8')
+    contract = readFileSync(join(REPO_ROOT, CONTRACT_PATH), 'utf8')
   } catch (e) {
     findings.push({ check: 'A5', code: 'CONTRACT_UNREADABLE', path: CONTRACT_PATH, message: String((e && e.message) || e) })
   }

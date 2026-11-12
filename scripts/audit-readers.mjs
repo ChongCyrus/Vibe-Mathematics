@@ -22,11 +22,12 @@
 //
 // Human diagnostic, FIRST. `--check` IS NOT APPLICABLE: this tool must never be wired into regen --check (it is a
 // census, and AGENTS.md §7.4 requires --check to stay deterministic and side-effect free).
-// It does not run tests, write files, or use randomness, except the selftest's D:\_tmp fixture, removed afterwards.
+// It does not run tests, write files, or use randomness, except the selftest's scratch fixture, removed afterwards.
 //
 // Usage: node scripts/audit-readers.mjs [--selftest] [--deep] [--strict] [--list-b]
 import { readFileSync, readdirSync, statSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join, relative, dirname } from 'node:path'
+import { tmpRoot as gateTmpRoot } from './lib/tmp-root.mjs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -240,7 +241,7 @@ async function main() {
 }
 
 function selftest() {
-  const root = mkdtempSync(join(process.env.TEMP_SLV_INSPECT || 'D:\\_tmp', 'readers-selftest-'))
+  const root = mkdtempSync(join(process.env.TEMP_SLV_INSPECT || gateTmpRoot(), 'readers-selftest-'))
   let failed = 0
   const ok = (cond, name, detail) => { if (cond) console.log('  ok   ' + name); else { failed++; console.log('  FAIL ' + name + ' :: ' + JSON.stringify(detail)) } }
   try {

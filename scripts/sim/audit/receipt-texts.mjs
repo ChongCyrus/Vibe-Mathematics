@@ -8,8 +8,8 @@
 //
 // Usage:
 //   node scripts/sim/audit/receipt-texts.mjs [--out <dir>] [--corpus <dir> ...]
-//   (no --corpus ⇒ every directory under D:/_tmp/sim that has a receipts.jsonl; corpus-r240-* preferred)
-// Outputs (default `D:/_tmp/sim`):
+//   (no --corpus ⇒ every directory under the sim root that has a receipts.jsonl; corpus-r240-* preferred)
+// Outputs (default `<temp root>/sim`):
 //   receipt-texts.jsonl       {corpus,tool,seq,code,field,text}
 //   receipt-texts-stats.md    top-20 repeated sentences, cross-tool repeats, suspicious hint tokens
 //
@@ -17,6 +17,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpRoot as gateTmpRoot } from '../../lib/tmp-root.mjs'
 import { boot, tmpRoot } from '../harness.mjs'
 
 const TEXT_FIELDS = /^(means|hint|message|note|why)$/i
@@ -26,8 +27,8 @@ const argOf = (flag) => {
   const i = process.argv.indexOf(flag)
   return i >= 0 ? String(process.argv[i + 1] || '') : ''
 }
-const OUT = argOf('--out') || 'D:/_tmp/sim'
-const SIM = 'D:/_tmp/sim'
+const OUT = argOf('--out') || join(gateTmpRoot(), 'sim')
+const SIM = join(gateTmpRoot(), 'sim')
 
 const readJsonl = (file) =>
   readFileSync(file, 'utf8')

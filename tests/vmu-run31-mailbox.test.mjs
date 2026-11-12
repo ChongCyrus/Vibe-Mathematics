@@ -40,6 +40,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const imp = (p) => import(pathToFileURL(resolve(REPO, p)).href)
@@ -77,7 +78,7 @@ const boot = async (root, clock) => {
 }
 const idsOf = (listing) => (listing.entries || []).map((e) => e.id)
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run31-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run31-'))
 
 section('① THE DEFECT: the office kernel and the member kernel are two instances over ONE store')
 {
@@ -435,7 +436,7 @@ section('⑬ THE RUN-31 COMMAND ITSELF, through the PACK TOOLS: office `vibe_v5_
   // where `members` attaches its projection and hydrates - so a member boot WITHOUT a manual declareSlots proves the
   // roster reached the second kernel from the durable file too (without it the tool refuses `VMU_NO_SUCH_OBJECT`).
   const entry = await imp('vibe-math-vmu/vibe-math-vmu.js')
-  const toolRoot = await mkdtemp(join('D:/_tmp', 'vmu-run31-tools-'))
+  const toolRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run31-tools-'))
   const bootPack = async () => {
     const specs = []
     const ctx = {

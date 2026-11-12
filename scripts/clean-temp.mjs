@@ -12,9 +12,9 @@
  *   1. SWEEP: delete only entries at the TOP LEVEL of the temp root, only whose name starts with a
  *      prefix ACTUALLY USED BY THE SUITES (extracted from `tests/*.mjs`, never hand-written), and only
  *      when older than `--age-hours` (default 6 h — a concurrently running gate's dirs stay safe).
- *   2. PREFER D:: when `D:\_tmp` can be created, point TEMP/TMP/TMPDIR at it (the suites follow
- *      `os.tmpdir()` automatically, so this needs NO product change). Never hard-fail: if the drive is
- *      absent the ambient temp root is kept.
+ *   2. USE THE ONE TEMPORARY ROOT: point TEMP/TMP/TMPDIR at the gate temp root (scripts/lib/tmp-root.mjs,
+ *      os.tmpdir()-derived, movable with VMU_TMP_ROOT) so the suites follow it automatically — no product
+ *      change is needed. Never hard-fail: when that root cannot be created, the ambient temp root is kept.
  *
  * Usage:
  *   node scripts/clean-temp.mjs                     # sweep (age 6 h) and print counts
@@ -28,6 +28,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tmpRoot as gateTmpRoot } from './lib/tmp-root.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -110,11 +111,12 @@ export function sweepPrefixes(testsDir = TESTS) {
   return suitePrefixes(testsDir).concat(SCRATCH_PREFIXES)
 }
 
-/** `D:\_tmp` when the D: drive is usable; otherwise null (keep the ambient temp root). Never throws. */
-export function preferredTempRoot(candidate = 'D:\\_tmp') {
+/** The ONE temporary root when it is usable; otherwise null (keep the ambient temp root). Never throws. */
+export function preferredTempRoot(candidate) {
+  const dir = candidate === undefined || candidate === null ? gateTmpRoot() : candidate
   try {
-    if (!existsSync(candidate)) mkdirSync(candidate, { recursive: true })
-    return existsSync(candidate) ? candidate : null
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    return existsSync(dir) ? dir : null
   } catch (e) { return null }
 }
 
@@ -275,8 +277,8 @@ if (has('self-test')) {
   // "the rule had nothing to bite" cannot look the same (docs/11 §4.2 第四条).
   //
   // ★ FIXED after a FULL-SWEEP red (Lead round 17): the first version wrote `root: tmpdir()` against
-  // `defaultRoot: 'D:\\_tmp'`, so it was green only while TEMP pointed somewhere else. `run-tests` calls
-  // `useTempRoot(preferredTempRoot())`, which points TEMP/TMP/TMPDIR at `D:\\_tmp` ⇒ `os.tmpdir()` EQUALS the
+  // `defaultRoot:` a scratch root, so it was green only while TEMP pointed somewhere else. `run-tests` calls
+  // `useTempRoot(preferredTempRoot())`, which points TEMP/TMP/TMPDIR at the gate root ⇒ `os.tmpdir()` EQUALS the
   // "non-default" root and the branch under test can never fire — the check went red for the ENVIRONMENT, not
   // for the guard. Both fixtures are now derived FROM tmpdir(), so they stay distinct under any ambient redirect.
   // (A test that passes only because of where TEMP happens to point is the same false green docs/11 §4.2 names.)

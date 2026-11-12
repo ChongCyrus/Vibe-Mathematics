@@ -277,19 +277,10 @@ export const EXEMPTIONS = Object.freeze([
       + 'omit subject and the handler still has a named refusal for that path.',
     firstSeenRun: 'run 31',
   },
-  {
-    tool: 'vibe_v5_meeting',
-    param: 'agenda',
-    direction: 'optional-but-guard-throws',
-    reason: 'ONE FACE, TWO DOORS: `vibe_v5_meeting` CONVENES (and refuses by name without an agenda) but also reads — '
-      + 'status/summary/rulings take only action+id, which is why ROUND 200 dropped the global `required: true` from agenda '
-      + 'and member. So agenda cannot be declared required without making the read path unlawful, and cannot be dropped '
-      + 'without leaving the convene guard unrecorded. RUN 39 measured the consequence (a closure meeting convened with no '
-      + 'agenda at all); RUN 198 gave the empty-after-trimming case its own name and braces, which is what made the guard '
-      + 'visible to this static scan (a brace-less `if (...) throw` is out of scope here). The alternative channel is a '
-      + 'different ACTION, not a different parameter — recorded as debt so the shape stays visible.',
-    firstSeenRun: 'run 39',
-  },
+  // REMOVED (RUN 80 / F80-2, lead ruling): the `vibe_v5_meeting.agenda` row was STALE — after the face learned the
+  // single-source `materials` door, a missing `agenda` no longer necessarily throws (materials alone convenes), so the
+  // old "optional-but-guard-throws" exemption stopped carrying a live violation. Deleted the row; the detector is NOT
+  // relaxed (a real optional-but-throws violation still reports).
 ])
 export const EXEMPTION_CAP = 8
 

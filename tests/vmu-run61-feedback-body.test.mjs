@@ -21,6 +21,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -56,7 +57,7 @@ const callJSON = async (b, name, args = {}, ctx = {}) => {
 }
 const refusalOf = (r) => (r && r.parsed && r.parsed.ok === false) ? r.parsed : (r && r.thrown ? r : null)
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-r61-feedback-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-r61-feedback-'))
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const k = b.handle.kernel

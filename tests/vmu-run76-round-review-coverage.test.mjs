@@ -30,6 +30,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -112,7 +113,7 @@ has(KIT_SRC, 'function crossReviewCoverage(state) {',
 
 // ── §1. A REAL 3-SEAT PAPER: ROUND 2'S THREE VERDICTS ARE INVALIDATED BY THE ROUND-3 BOUNCE ───────────────────
 console.log('=== 1. 真实 3 席论文：round 2 三票全投，round 3 bounce 后回执点名三张作废票 ===')
-const base = await mkdtemp(join('D:/_tmp', 'vmu-run76-coverage-'))
+const base = await mkdtemp(join(__tmpRoot(), 'vmu-run76-coverage-'))
 const prevCwd = process.cwd()
 process.chdir(base)
 const v5r = await boot({ root: join(base, 'v5r'), packs: ['v5r'] })

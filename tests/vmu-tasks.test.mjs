@@ -12,7 +12,8 @@
 // `--self-probe` copies the module, REMOVES the dependency guard and requires the dependency assertion to
 // fail (the technique tests/run-tests.mutants.mjs uses on the runner).
 
-import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { readFile, writeFile as writeFileAsync, mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -44,6 +45,24 @@ const mk = (opts = {}) => m.createTasks(Object.assign({ clock: () => '2026-10-09
   ok(a.state === 'open', 'a task with no owner starts open')
   const b = await l.create({ title: 'write it up', owner: 'r-1' })
   ok(b.state === 'assigned' && l.list({ owner: 'r-1' }).length === 1, 'a task created with an owner starts assigned')
+  // ★★★ TB-2750 / RUN 80 (F80-1, SECOND DOOR): `create({owner})` is a door assign does not own, so it cannot refuse (the
+  // id must exist before a brief can be written). It NAMES the fact instead: the owner was planted before any readable
+  // work existed, so the row is not startable (`ready:false`) and says WHICH half is missing.
+  ok(b.readable === false && b.contentSource === 'none' && b.ready === false && b.readyCode === 'VMU_TASK_BRIEF_MISSING' && b.assignmentUnreadable === true,
+    'the create door NAMES an owner planted before a brief (ready:false, VMU_TASK_BRIEF_MISSING, assignmentUnreadable:true)',
+    b && { ready: b.ready, readyCode: b.readyCode, readable: b.readable, assignmentUnreadable: b.assignmentUnreadable })
+  const bRow = l.list().filter((t) => t.id === b.id)[0]
+  ok(bRow && bRow.ready === false && bRow.readyCode === 'VMU_TASK_BRIEF_MISSING' && bRow.hasBrief === false,
+    'and the BOARD row agrees with the receipt (one readiness reading, two readers)',
+    bRow && { ready: bRow.ready, readyCode: bRow.readyCode, hasBrief: bRow.hasBrief })
+  l.brief(b.id, 'write the lemma up so a reader can follow it', { by: 'office' })
+  const bRow2 = l.list().filter((t) => t.id === b.id)[0]
+  ok(bRow2.ready === true && bRow2.hasBrief === true && bRow2.readable === true,
+    'the brief turns the SAME row ready (the gate names a missing brief, it is not a permanent state)',
+    bRow2 && { ready: bRow2.ready, hasBrief: bRow2.hasBrief })
+  // ★★★ TB-2750 / RUN 80 (F80-1): assigning is refused by VMU_TASK_BRIEF_MISSING until a brief exists, so the fixture
+  // writes the brief first — this section tests assignment as a STATE, not the brief gate.
+  l.brief(a.id, 'prove the lemma and record every step', { by: 'office' })
   await l.assign(a.id, 'r-2')
   ok(l.list({ owner: 'r-2' }).length === 1, 'assignment is a state, queryable by owner')
   await expectThrow(() => l.assign('t-999', 'r-1'), 'VMU_NO_SUCH_OBJECT', 'assigning an unknown task is refused')
@@ -81,7 +100,10 @@ const mk = (opts = {}) => m.createTasks(Object.assign({ clock: () => '2026-10-09
 // ---- 3. dependencies are enforced at START, and the refusal names them -------------------------
 {
   const l = mk()
+  // TB-2750 (F80-1, hard rule): a task is READY only when a BRIEF is attached — an objective is not a substitute — so
+  // this fixture writes the brief that makes the blocker startable.
   const dep = await l.create({ title: 'dependency' })
+  l.brief(dep.id, 'the blocker every other task in this section depends on', { by: 'office' })
   const work = await l.create({ title: 'dependent work', deps: [dep.id, 't-404'] })
   ok(l.list().length === 2, 'a dependency on a task that does not exist yet can still be declared')
   await expectThrow(() => l.transition(work.id, 'doing'), 'VMU_STATE', 'work cannot start while dependencies are unmet')
@@ -143,6 +165,64 @@ const mk = (opts = {}) => m.createTasks(Object.assign({ clock: () => '2026-10-09
   ok(second.previous && replaced.ok === true, 'replacing a brief reports the previous one (reference swap, rollbackable)')
 }
 
+// ---- 12. TB-2750: the v5r task_create face writes the description it was GIVEN as the brief, never the title -----
+// `vibe-v5r.js`'s task_create created an owned task and left it unreadable (no brief). After the F80-1 gate that is a
+// NAMED defect (ready:false + assignmentUnreadable) unless the face uses the work statement it already carries. Lead
+// ruling: `description` becomes the brief; a title is a NAME, not work, so a subject-only call stays named, never invented.
+{
+  const EXTRAS = resolve(REPO, 'vibe-math-vmu', 'kit', 'extras.js')
+  const X = await import(pathToFileURL(EXTRAS).href)
+  const kernelOf = (ledger) => ({ tasks: ledger, settings: {}, settingsView: () => ({}) })
+
+  const l = mk()
+  const created = await X.toolTaskCreate({ subject: '核验读数', description: '把每个验点的回执字段写成可核的', owner: 'r-1' }, { kernel: kernelOf(l) })
+  const row = l.list().filter((t) => t.id === created.task.id)[0]
+  ok(row && row.hasBrief === true && row.ready === true && row.owner === 'r-1',
+    '12a a `description` becomes the brief: the owned task is READABLE and ready on the board',
+    row && { hasBrief: row.hasBrief, ready: row.ready, owner: row.owner })
+  ok(created.task.revision === row.revision && created.task.contentSource === 'brief' && created.task.assignmentUnreadable === undefined,
+    '12b …and the receipt describes the row AFTER the brief (fresh revision, contentSource brief, no stale unreadable verdict)',
+    { receipt: { revision: created.task.revision, contentSource: created.task.contentSource, assignmentUnreadable: created.task.assignmentUnreadable }, board: row.revision })
+
+  const bare = await X.toolTaskCreate({ subject: '只有标题', owner: 'r-2' }, { kernel: kernelOf(l) })
+  const bareRow = l.list().filter((t) => t.id === bare.task.id)[0]
+  ok(bareRow && bareRow.hasBrief === false && bareRow.ready === false && bareRow.readyCode === 'VMU_TASK_BRIEF_MISSING',
+    '12c a TITLE ALONE is not turned into a brief (a title is a name, not work) — the row stays named, not silent',
+    bareRow && { hasBrief: bareRow.hasBrief, ready: bareRow.ready, readyCode: bareRow.readyCode })
+  ok(bare.task.assignmentUnreadable === true && typeof bare.task.assignmentMeans === 'string',
+    '12d …and the receipt NAMES it (assignmentUnreadable + assignmentMeans), never a silent assignment',
+    bare.task && { unreadable: bare.task.assignmentUnreadable })
+
+  // 12g the NAMED repair is walkable: attaching a brief to the bare (named) row makes it startable (named ≠ stranded).
+  await l.brief(bare.task.id, '核对一处引理表述并写下一行 note', { by: 'office' })
+  const bareFixed = l.list().filter((t) => t.id === bare.task.id)[0]
+  ok(bareFixed && bareFixed.hasBrief === true && bareFixed.ready === true && bareFixed.readyCode === null,
+    '12g …and the NAMED repair works: attaching a brief to the bare row turns it READY (named, not stranded)',
+    bareFixed && { hasBrief: bareFixed.hasBrief, ready: bareFixed.ready, readyCode: bareFixed.readyCode })
+
+  const empty = await X.toolTaskCreate({ subject: '没有正文', description: '', owner: 'r-3' }, { kernel: kernelOf(l) })
+  ok(l.list().filter((t) => t.id === empty.task.id)[0].readyCode === 'VMU_TASK_BRIEF_MISSING',
+    '12e an EMPTY description is not a brief either (the row is named, not invented)')
+
+  // 12f lamp: a tree copy with the brief-write disabled must show the OLD reading (owned but unreadable)
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-tasks-kit-'))
+  try {
+    cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+    const copyExtras = join(dir, 'vibe-math-vmu', 'kit', 'extras.js')
+    const pristine = readFileSync(copyExtras)
+    const anchor = "if (has(args.owner) && has(args.description) && typeof tasks.brief === 'function') {"
+    ok(pristine.toString('utf8').indexOf(anchor) !== -1, '12f-setup the lamp can find the brief write in kit/extras.js')
+    writeFileSync(copyExtras, pristine.toString('utf8').replace(anchor, 'if (false) {'))
+    const X2 = await import(pathToFileURL(copyExtras).href + '?lamp=1')
+    const l2 = mk()
+    const lamp = await X2.toolTaskCreate({ subject: '灯', description: '正文', owner: 'r-1' }, { kernel: kernelOf(l2) })
+    const lampRow = l2.list().filter((t) => t.id === lamp.task.id)[0]
+    ok(lampRow.ready === false && lampRow.hasBrief === false && lamp.task.assignmentUnreadable === true,
+      '12f lamp RED-worthy: without the brief write the face is silent again (owned-but-unreadable)',
+      lampRow && { ready: lampRow.ready, hasBrief: lampRow.hasBrief, assignmentUnreadable: lamp.task.assignmentUnreadable })
+  } finally { await rm(dir, { recursive: true, force: true }) }
+}
+
 // ---- 6. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   const src = await readFile(MODULE, 'utf8')
@@ -152,7 +232,7 @@ if (SELF_PROBE) {
   } else {
     const dir = await mkdtemp(join(tmpdir(), 'vmu-tasks-mut-'))
     await mkdir(join(dir, 'kernel'), { recursive: true })
-    await writeFile(join(dir, 'kernel', 'tasks.js'), src.replace(guard, '      if (false) {'), 'utf8')
+    await writeFileAsync(join(dir, 'kernel', 'tasks.js'), src.replace(guard, '      if (false) {'), 'utf8')
     const mm = await import(pathToFileURL(join(dir, 'kernel', 'tasks.js')).href + '?probe=1')
     const ml = mm.createTasks()
     const dep = await ml.create({ title: 'd' })

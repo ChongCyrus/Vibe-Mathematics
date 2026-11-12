@@ -34,6 +34,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 
@@ -45,7 +46,7 @@ const ok = (cond, label, detail) => {
 }
 
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run9-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run9-'))
 try {
   const specs = []
   const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (s) => { specs.push(s); return () => {} } } }

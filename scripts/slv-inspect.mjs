@@ -17,6 +17,7 @@ import { readFileSync, readdirSync, statSync, mkdtempSync, mkdirSync, writeFileS
 import { join, basename, resolve, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
+import { tmpRoot as gateTmpRoot } from './lib/tmp-root.mjs'
 import zlib from 'node:zlib'
 
 const MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
@@ -474,7 +475,7 @@ function writeFixture(root, name, events) {
 }
 
 function buildSelftest() {
-  const root = mkdtempSync(join(process.env.TEMP_SLV_INSPECT || 'D:\\_tmp', 'slv-inspect-selftest-'))
+  const root = mkdtempSync(join(process.env.TEMP_SLV_INSPECT || gateTmpRoot(), 'slv-inspect-selftest-'))
   // (A) OLD-FORMAT session: no same-source block. Its static bullet list still drives the two-direction comparison, so
   // the four original findings must stay detectable — and the renderer must label it as a POSSIBLE false RED.
   const oldFormat = writeFixture(root, 'session-old', [

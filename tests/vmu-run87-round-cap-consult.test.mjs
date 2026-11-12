@@ -141,7 +141,17 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r87-'))
   // name. The pin now protects the lesson that replaced it: record ids in the evidence list, plus the sentence saying a
   // file card is not evidence.
   ok(text.includes('evidence: ["rec-'), 'the `part` example carries an evidence list of record ids', text.slice(text.indexOf('evidence:')))
-  ok(text.includes('文件卡不是证据'), 'the text says a file card is not evidence')
+  // ★ TB-2752 review: "a file card is not evidence" is a FALSE absolute — a member-file card whose filename IS the
+  // record id is the same record and the gate resolves it. Pin the accurate rule, plus an anti-lamp.
+  ok(text.includes('收两种写法'), 'the text teaches BOTH legal spellings of an evidence pointer')
+  ok(text.includes('自起的文件名不是证据') && !text.includes('文件路径、文件名、摘要都不收'),
+    'a SELF-CHOSEN file card is what is refused — the text carries no "every path" absolute')
+  {
+    const accurate = (t) => t.includes('收两种写法') && t.includes('自起的文件名不是证据') && !t.includes('文件路径、文件名、摘要都不收')
+    ok(accurate(text), 'the accurate predicate holds on the shipped writing guide')
+    const relapsed = text.split('自起的文件名不是证据').join('文件路径都不收') + ' 文件路径、文件名、摘要都不收'
+    ok(!accurate(relapsed), 'anti-lamp: re-inserting the false absolute turns the predicate red')
+  }
   ok(text.includes('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING'), 'the text names the refusal a missing evidence list causes')
   ok(text.includes('declared-role'), 'the text states how the office answers (declared-role), not as a seat')
   const { CHARTER_BLOCKS_B } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-blocks-b.js')).href)

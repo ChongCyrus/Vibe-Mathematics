@@ -172,7 +172,9 @@ ok(/async function toolStart[\s\S]{0,2000}applyMemberScope\(/.test(toolsSrc), 'v
 // first hire, which pushed the seating call past the old 4200-character window — the window is a structural budget,
 // not a contract, so it widens with the function instead of the sentence being cut to fit a test. The check that
 // matters is still "the face that seats a member is the face that applies the scope".
-ok(/async function toolHire[\s\S]{0,6000}applyMemberScope\(/.test(toolsSrc), 'vibe_v5_hire applies the scope to the new seat')
+// RUN 80 收口轮：hire 改为 create→brief→回读→assign 后函数体增长（实测 toolHire 起点到 applyMemberScope( 为 6466 字符），
+// 窗口按实测 6466 放宽到 9000（约 ×1.39，沿用 RUN 208 的「窗口随函数放宽、不剪实现」口径）；断言语义未变。
+ok(/async function toolHire[\s\S]{0,9000}applyMemberScope\(/.test(toolsSrc), 'vibe_v5_hire applies the scope to the new seat')
 ok(toolsSrc.includes('memberScope'), 'both receipts carry the scope receipt (narrowing is provable from outside)')
 
 // ── ⑥ 生产者侧的第二条证据：这个包从不生产 `allow:` overrides（纯静态，不启内核、不写盘）────────────────

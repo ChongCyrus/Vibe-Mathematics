@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // vmu RUN 59 / F-49 — THE ALIAS OUTRANKED THE FIELD IT ALIASES, AND THE LIBRARY DROPPED THE PROPOSITION.
 //
-// THE OBSERVED GAP (live run 59, the member's own receipts - `D:/_tmp/r59/lean59.txt`):
+// THE OBSERVED GAP (live run 59, the member's own receipts - `${__tmpRoot()}/r59/lean59.txt`):
 //   · `vibe_v5_lean_run` declares `statement` REQUIRED (fixed in round 58), but the handler read
 //     `has(args.target) ? target : statement`. A call that passed ONLY `target` (a proposition CARD id, e.g.
 //     "p-odd-sum") was accepted, and every job receipt recorded `statement: "p-odd-sum"` - an object id where the
@@ -26,6 +26,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')

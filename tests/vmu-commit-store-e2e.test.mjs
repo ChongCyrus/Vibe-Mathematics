@@ -1,6 +1,6 @@
 // tests/vmu-commit-store-e2e.test.mjs — Round 9 / task-67 A: the allocating commit store, end to end.
 //
-// LIFTED FROM the Round-8 probe (`D:\_tmp\vmu-r8\commit-store.mjs`, 14/0) — core's §6.5 named it as the single source
+// LIFTED FROM the Round-8 probe (`${__tmpRoot()}\vmu-r8\commit-store.mjs`, 14/0) — core's §6.5 named it as the single source
 // for the 14 assertions, grouped: ① two kernels share ONE store (4) ② crash between intent and effect (6)
 // ③ no store degrades BY NAME (2) ④ a store that mounts after boot (2). Two things were ADDED here, as agreed:
 //   · a RULE E non-empty precondition on every collection-shaped assertion (so none of them can pass vacuously), and
@@ -17,6 +17,7 @@
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { createBallot, createDurableCommitLog } from '../vibe-math-vmu/kernel/ballot.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 let passed = 0
 let failed = 0
 const ok = (cond, label, detail) => {

@@ -125,10 +125,16 @@ const TB2741_BASELINE = { chair: 29491, sum: 78144 }
 // the equality below fails on any silent trim or silent re-bloat in either direction.
 const TB2741_CORRECTIONS_NET = { chair: -22, sum: -66 }
 const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
+// ★ TB-2752 (2026-11-12) — RUN 80's four prompt corrections (见 tests/vmu-run80-prompt-corrections.test.mjs): F80-3
+// puts `final` back into the chair paper bullet, F80-12 derives attendance from `vmu.meetings.attendDeniedSeats` and
+// names `vmu.meetings.eligibleSeats` for the vote (the review rewrite: attendance never decided the vote), F80-4
+// restores the two legal spellings of an evidence pointer (paper phases are outside this water level). Per seat
+// + 51 / + 45 / 0, sum + 96.
+const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
 test('§11 three-seat normal sum is the baseline plus the corrections plus the RUN 272 restore, and nothing else', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
-  assert.equal(normalSum, TB2741_BASELINE.sum + TB2741_CORRECTIONS_NET.sum + RUN272_RUN79_RESTORE.sum,
+  assert.equal(normalSum, TB2741_BASELINE.sum + TB2741_CORRECTIONS_NET.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum,
     'three-seat normal sum ' + normalSum + ' = baseline ' + TB2741_BASELINE.sum + ' · corrections ' + TB2741_CORRECTIONS_NET.sum + ' · restore ' + RUN272_RUN79_RESTORE.sum)
-  assert.equal(normalCombos.chair, TB2741_BASELINE.chair + TB2741_CORRECTIONS_NET.chair + RUN272_RUN79_RESTORE.chair,
+  assert.equal(normalCombos.chair, TB2741_BASELINE.chair + TB2741_CORRECTIONS_NET.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair,
     'chair/normal ' + normalCombos.chair + ' = baseline ' + TB2741_BASELINE.chair + ' · corrections ' + TB2741_CORRECTIONS_NET.chair + ' · restore ' + RUN272_RUN79_RESTORE.chair)
 })

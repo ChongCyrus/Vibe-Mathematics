@@ -28,9 +28,9 @@
 //     worker recording a card, a mailbox send under another seat's name, and an anchor on an already-acked mail. Each is a
 //     NAMED refusal whose code is registered in docs/03-interface-contract.md and whose receipt carries a hint.
 //
-// Run: node scripts/sim/run.mjs --scenario comms --out D:/_tmp/sim/corpus-comms
-// Probes: node scripts/sim/run.mjs --scenario comms --probes --out D:/_tmp/sim/corpus-comms-probes
-// Audit: node scripts/sim/audit/receipts.mjs D:/_tmp/sim/corpus-comms
+// Run: node scripts/sim/run.mjs --scenario comms --out <temp root>/sim/corpus-comms
+// Probes: node scripts/sim/run.mjs --scenario comms --probes --out <temp root>/sim/corpus-comms-probes
+// Audit: node scripts/sim/audit/receipts.mjs <temp root>/sim/corpus-comms
 //
 // NOTE ON THE PROBE RUN (measured, not assumed): `scripts/sim/run.mjs` honours `result.expectedRefusals` — a predicted
 // refusal appears in the report with its code but is not counted as a mechanism refusal, so `--probes` exits 0 with

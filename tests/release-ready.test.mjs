@@ -27,6 +27,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writ
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')

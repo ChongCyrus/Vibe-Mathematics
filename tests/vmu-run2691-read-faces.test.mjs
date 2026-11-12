@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -80,7 +81,7 @@ const call = async (b, name, args = {}) => {
   try { return { raw, parsed: JSON.parse(raw) } } catch { return { raw, parsed: undefined } }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run2691-read-faces-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run2691-read-faces-'))
 let b = null
 try {
   b = await boot(root, { packs: ['v5r'] })

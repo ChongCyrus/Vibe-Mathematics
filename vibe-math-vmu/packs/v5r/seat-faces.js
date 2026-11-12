@@ -81,7 +81,7 @@ export const RULE_INDEX = Object.freeze({
   '8.1': '独立初评：三席都要交自己的裁决（临时工无表决权）',
   '8.2': '按会议 TYPE 推进轮次并收窄工具面',
   '8.3': '裁决汇总：主席席发裁决请求、并落成最终裁决',
-  '9': '论文：start→part→advance→review→render 由工具推进',
+  '9': '论文：start→part→advance→review→final→render 由工具推进',
   '10': '基础设施：python／Lean／LaTeX／并发／断点续跑／请示',
   '10.3': 'Lean 五工具三席可用',
   '11': '反脆弱：失败回滚、越权不靠提示词、禁言、自反馈',
@@ -452,7 +452,7 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_inbox'], text: '' },
     { names: ['vibe_v5_wait'], text: '' },
     { names: ['vibe_vmu_env'], framework: true, text: '探测本机环境（probe/list/report）；只探测上报，【绝不安装/联网/改系统】。' },
-    { names: ['vibe_v5_paper'], text: '论文流程 start→part→advance→review→render：用工具推进，不要用回执字段假装已写；final 只有 chair 被接受。' },
+    { names: ['vibe_v5_paper'], text: '论文流程 start→part→advance→review→final→render：用工具推进，不要用回执字段假装已写；final 只有 chair 被接受。' },
   ]),
   member: Object.freeze([
     { names: ['vibe_v5_record_progress'], text: '' },

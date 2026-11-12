@@ -1,7 +1,7 @@
 // scripts/sim/scenarios/refusals.mjs — DON'T TRUST A FACE YOU HAVE NEVER SEEN REFUSE.
 //
 // WHY THIS FILE EXISTS (task-49 / R240-R, "拒绝形状保真"): the machine audit `scripts/sim/audit/all.mjs` §5 compares
-// every tool's REAL top-level key set (D:/_tmp/sim/real-fieldset.json, collected from live runs) with the key set the
+// every tool's REAL top-level key set (`<sim root>/real-fieldset.json`, collected from live runs) with the key set the
 // simulator ever produces. A tool that no scenario ever refuses is a tool whose refusal SHAPE was never exercised:
 // `code`, `hint`, `enforced`, `evaluated` are then a promise, not a measurement. That was the whole remaining failure
 // class, on the faces a feed run leans on most: read_library, meeting, meeting_round, motion, overview, hire, second,
@@ -14,7 +14,7 @@
 // failure, and audit A1 lets that receipt through.
 //
 // WHAT IT IS NOT: a claim that a refusal is CORRECT. The live-run shapes that CANNOT be produced here are listed in
-// `highlights.fidelityGaps` with the reason, and in `D:/_tmp/sim/refusals-report.md` — never silently dropped.
+// `highlights.fidelityGaps` with the reason, and in `<sim root>/refusals-report.md` — never silently dropped.
 //
 // THREE THINGS THIS SCENARIO MUST ARRANGE, and each is a fact about the deployment, not a convenience:
 //   · `vmu.meetings.verdictMaxRounds: 1` — the motion ceiling is the only motion refusal carrying

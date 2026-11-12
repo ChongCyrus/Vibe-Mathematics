@@ -391,8 +391,12 @@ export async function scenario(h, { log = () => {} } = {}) {
     action: 'create', title: '仿真任务：CAS 链', objective: '走通五种写', owner: 'r-1', write_scopes: ['Shared/'], priority: 2,
   }))
   const task3Id = firstId(task3)
-  const revNow = async () => {
-    const g = await h.call('vibe_v5_task_get', { id: task3Id }, as('r-1'))
+  // TB-2750 (F80-1): `assign`/`claim` now REFUSES a task that carries no brief (VMU_TASK_BRIEF_MISSING) — a title is a
+  // name, not work. The CAS chain below is about the write itself, so it must attach the brief first, exactly as the
+  // hire/assign faces compose create->brief; without this the chain would be measuring the new refusal, not the write.
+  const task3Brief = await step('F/task/brief-3', () => h.call('vibe_vmu_task', { action: 'brief', id: task3Id, text: '仿真：CAS 链任务的简报（assign 前必须先有简报）' }))
+  const revNow = async (id = task3Id) => {
+    const g = await h.call('vibe_v5_task_get', { id }, as('r-1'))
     return (g && g.task && g.task.revision) || (g && g.revision) || null
   }
   const taskRev = await revNow()
@@ -427,11 +431,14 @@ export async function scenario(h, { log = () => {} } = {}) {
     write_scopes: ['Shared/'], priority: 2,
   }))
   const task4Id = firstId(task4)
-  const task4Assign = await step('F/task_update/assign-before-reassign', () => h.call('vibe_v5_task_update', {
-    action: 'assign', task_id: task4Id, expected_revision: 1, owner: 'r-2', why: '仿真：先让任务处于 assigned',
+  // TB-2750 (F80-1): same rule on the second chain — brief before assign, and the CAS revisions are read fresh because
+  // writing the brief bumps the revision the hardcoded 1/2 below would have quoted.
+  const task4Brief = await step('F/task/brief-4', () => h.call('vibe_vmu_task', { action: 'brief', id: task4Id, text: '仿真：改派链任务的简报（assign 前必须先有简报）' }))
+  const task4Assign = await step('F/task_update/assign-before-reassign', async () => h.call('vibe_v5_task_update', {
+    action: 'assign', task_id: task4Id, expected_revision: await revNow(task4Id), owner: 'r-2', why: '仿真：先让任务处于 assigned',
   }, as('r-acad')))
-  const task4Reassign = await step('F/task_update/reassign-from-assigned', () => h.call('vibe_v5_task_update', {
-    action: 'reassign', task_id: task4Id, expected_revision: 2, owner: 'r-1', why: '仿真：改派 assigned 任务（前置态与真机一致）',
+  const task4Reassign = await step('F/task_update/reassign-from-assigned', async () => h.call('vibe_v5_task_update', {
+    action: 'reassign', task_id: task4Id, expected_revision: await revNow(task4Id), owner: 'r-1', why: '仿真：改派 assigned 任务（前置态与真机一致）',
   }, as('r-acad')))
   if (task4Assign && task4Assign.ok === false) expect('vibe_v5_task_update', task4Assign.code, 'assign 是 open→assigned 的唯一写；拒收时必须具名')
   if (task4Reassign && task4Reassign.ok === false) expect('vibe_v5_task_update', task4Reassign.code, 'reassign 从 assigned 出发应被接受（内核只在 open→assigned 改状态）')

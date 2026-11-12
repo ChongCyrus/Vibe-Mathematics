@@ -18,6 +18,7 @@ import { dirname, join, relative } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promptSettings } from './settings.mjs'
+import { tmpRoot as gateTmpRoot } from '../lib/tmp-root.mjs'
 
 // DERIVED, never hard-coded: this file lives at <repo>/scripts/sim/harness.mjs, so two hops up is the repo.
 export const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -452,8 +453,10 @@ function writeJsonl(p, rows) {
   writeFileSync(p, rows.map((r) => JSON.stringify(r)).join(String.fromCharCode(10)) + String.fromCharCode(10))
 }
 
+// A scenario's scratch space comes from the ONE temporary root (scripts/lib/tmp-root.mjs): which drive exists is a
+// property of the machine, not of the mechanism under test, and VMU_TMP_ROOT must move this directory too.
 export function tmpRoot(tag) {
-  const base = 'D:/_tmp/sim'
+  const base = join(gateTmpRoot(), 'sim')
   mkdirSync(base, { recursive: true })
   return mkdtempSync(join(base, tag + '-'))
 }

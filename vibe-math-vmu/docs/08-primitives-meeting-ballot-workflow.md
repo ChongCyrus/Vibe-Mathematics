@@ -480,7 +480,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 
 | 对象 | 字段（✓ 实有／✗ 规划） |
 |---|---|
-| `Task` ✓ | `id, title, objective?, owner?, deps[], priority?, state, stage?, brief?, history[], createdAt` ✓ |
+| `Task` ✓ | `id, title, objective?, owner?, deps[], priority?, state, stage?, brief?（创建可不写；但 **assign/claim 前必须有**，否则具名拒 `VMU_TASK_BRIEF_MISSING`；`create({owner})` 预置 owner 时行上 `ready:false` 并具名）, history[], createdAt` ✓ |
 | `Task`（轮 318 ✓） | **`revision`**（**每次被接受的写入递增** ✓；`expectedRevision` 与之比对 ⇒ 过期写入具名拒 ✓） |
 | `Task`（规划 ✗） | `due?, raci{}, wipColumn?, checkpoints[], retry{}, gates{}, subtasks[], templateId?` |
 | `WorkEntry` ✓ | `id, owner, kind, objective, state(pending/settled/interrupted), outcome?, at` ✓ |

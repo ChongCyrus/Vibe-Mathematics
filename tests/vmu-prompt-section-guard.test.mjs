@@ -1,7 +1,7 @@
 // vibe-math-vmu — ROUND 21 / task-129: THE `systemPrompt` ACCESS MUST NOT KILL PRESET ASSEMBLY.
 // Run: `node tests/vmu-prompt-section-guard.test.mjs` (last line `=== VMU PROMPT SECTION GUARD: N passed, M failed ===`).
 //
-// THE DEFECT THIS GUARDS (H2, confirmed locally with no DSH at all — `D:\_tmp\r21b-h2-probe.mjs`):
+// THE DEFECT THIS GUARDS (H2, confirmed locally with no DSH at all — `${__tmpRoot()}\r21b-h2-probe.mjs`):
 // `vibe-math-vmu.js:706` read `ctx.systemPrompt` while `inject = ['tools']`, so under cordis — which answers an
 // un-injected service access with a THROWING getter (`cannot get property "systemPrompt" without inject`) — the
 // `ctx &&` truthiness check could not guard it. A PACK's prompt data pushes into `effectivePrompts`, so the
@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
 
 let passed = 0

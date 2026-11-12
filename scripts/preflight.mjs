@@ -197,7 +197,7 @@ if (FOR_T3) {
 // ---- 9. portability (TB-2681): absolute machine paths, CRLF regressions, skip-as-pass ------------------
 // 2026-11-09: the exit audit (TB-2677) found 31 blockers of exactly these three shapes - absolute file://
 // imports and checkout constants that only work on THIS machine, whole-file CRLF, and suites that print SKIP
-// and exit 0 when a D:/_tmp corpus is gone (a gate reading green because the measurement did not happen).
+// and exit 0 when a scratch corpus is gone (a gate reading green because the measurement did not happen).
 // The criterion lives in ONE place only (`tests/audit-portability.mjs`, documented in docs/AUDIT-CHECKLIST.md
 // §11); this step runs it and, on failure, surfaces its per-finding output VERBATIM (file:line + rule), because
 // writing just "portability failed" would force a human to re-run it to learn what to fix. The judge treats

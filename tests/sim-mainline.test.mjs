@@ -31,7 +31,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
-const TMP = 'D:/_tmp/sim-tests'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+const TMP = __tmpRoot() + '/sim-tests'
 
 let passed = 0
 let failed = 0

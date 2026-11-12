@@ -35,6 +35,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const imp = (p) => import(pathToFileURL(resolve(REPO, p)).href)
@@ -65,7 +66,7 @@ const waitFor = async (pred, ms = 2000) => {
   }
   return last
 }
-const tempRoot = async (tag) => mkdtemp(join('D:/_tmp', 'vmu-run31-tb-' + tag + '-'))
+const tempRoot = async (tag) => mkdtemp(join(__tmpRoot(), 'vmu-run31-tb-' + tag + '-'))
 // The real boot shape (`vibe-math-vmu/vibe-math-vmu.js`): the kernel is CONSTRUCTED first, then the host opens the
 // store. `boot` does both so a test case can also construct-then-open by hand (case ⑧).
 const boot = async (root, extra = {}) => {
@@ -106,6 +107,9 @@ section('② the member claims; the office sees the OWNER CHANGE, not just the r
   const office = await boot(root)
   const member = await boot(root)
   await office.tasks.create({ title: '认领测试' })
+  // TB-2750 / RUN 80 (F80-1): a task is taken only after its brief is written — the claim below would be refused by
+  // name otherwise (this fixture is about cross-kernel visibility, not the brief gate).
+  await office.tasks.brief('t-1', 'claim me from the member kernel and report the owner change', { by: 'office' })
   ok(await waitFor(() => rowOf(member.tasks.list(), 't-1')), 'the member can see the row before claiming')
   const claim = await member.tasks.assign('t-1', 'res-01')
   ok(claim.ok === true && claim.owner === 'res-01', 'the member kernel assigned the task to res-01', claim)
@@ -114,7 +118,7 @@ section('② the member claims; the office sees the OWNER CHANGE, not just the r
     return row && row.owner === 'res-01' ? row : null
   })
   ok(!!seen, 'the OFFICE kernel sees owner=res-01 (the write-back merged the claim, it did not overwrite it)', rowOf(office.tasks.list(), 't-1'))
-  ok(seen && Number(seen.revision) === 2, 'the office sees the bumped revision, so a reread is not a stale snapshot', seen)
+  ok(seen && Number(seen.revision) === 3, 'the office sees the bumped revision (create 1 → brief 2 → claim 3), so a reread is not a stale snapshot', seen)
   ok(office.tasks.sharing().durable === true, 'the office board is durable after the member wrote', office.tasks.sharing())
 }
 
@@ -124,6 +128,7 @@ section('③ a THIRD kernel booted from the root still sees the row and its owne
   const root = await tempRoot('persist')
   const office = await boot(root)
   await office.tasks.create({ title: '持久板' })
+  await office.tasks.brief('t-1', 'persist this row across kernels', { by: 'office' })
   await office.tasks.assign('t-1', 'res-02')
   ok(await waitFor(async () => {
     const raw = office.store.read('tasks')
@@ -148,6 +153,7 @@ section('④ one task stays ONE row across repeated reads, writes and pulls')
   const office = await boot(root)
   const member = await boot(root)
   await office.tasks.create({ title: '只此一行' })
+  await office.tasks.brief('t-1', 'the one row that must not duplicate across kernels', { by: 'office' })
   await waitFor(() => rowOf(member.tasks.list(), 't-1'))
   for (let i = 0; i < 4; i += 1) { member.tasks.list(); office.tasks.list() }
   await member.tasks.assign('t-1', 'res-01')
@@ -208,6 +214,8 @@ section('⑥ owner vs state at the same revision: resolved and EXPLAINED, never 
   const a = await boot(root, { log })
   const b = await boot(root, { log })
   await a.tasks.create({ title: 'contested' })
+  // TB-2750 / RUN 80 (F80-1): the board refuses an unbriefed take, so the brief lands before the race.
+  await a.tasks.brief('t-1', 'contested by two kernels at once', { by: 'office' })
   await waitFor(() => rowOf(b.tasks.list(), 't-1'))
   await a.tasks.assign('t-1', 'res-01')          // revision 2
   await waitFor(() => Number((rowOf(b.tasks.list(), 't-1') || {}).revision) === 2)

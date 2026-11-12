@@ -27,6 +27,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -42,7 +43,7 @@ const ok = (cond, label, detail) => {
 }
 const serr = (fn) => { try { return { value: fn() } } catch (e) { return { error: e } } }
 
-const BASE = 'D:/_tmp/r68/records'
+const BASE = __tmpRoot() + '/r68/records'
 await mkdir(BASE, { recursive: true })
 const roots = []
 const newRoot = async (tag) => { const r = await mkdtemp(join(BASE, tag + '-')); roots.push(r); return r }

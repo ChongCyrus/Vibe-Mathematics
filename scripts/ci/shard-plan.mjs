@@ -31,6 +31,12 @@
 // and the job it meant to skip now runs, or worse, the suite it named was renamed and something else is
 // skipped). The runner is the only authority that can say "this label still selects jobs", so we ask it.
 //
+// WHY AN EXCLUSION MUST NAME ITS KIND AND EVIDENCE IT (TB-2748). A row is a permission to NOT run a suite,
+// so the permission has to be about something a hosted runner lacks, not about the suite being inconvenient.
+// `kind` is closed ({machine-budget, local-corpus, host-install, out-of-repo-fixture}); machine budgets are
+// reviewed in MACHINE_ALLOWLIST; dependency kinds must be mentioned by the suite's own source. A pure-logic
+// suite added to the table reds as EXCLUSION-NOT-EVIDENCED or MACHINE-BUDGET-UNLISTED instead of disappearing.
+//
 // USAGE
 //   node scripts/ci/shard-plan.mjs [--shards 8] [--exclusions ci-exclusions.json] [--check] [--json]
 //   exit 0 = plan printed (and, with --check, internally consistent)
@@ -44,6 +50,28 @@ import { fileURLToPath } from 'node:url'
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const RUNNER = join(REPO, 'tests', 'run-tests.mjs')
 const WHY_MIN = 24
+
+// TB-2748: A ROW MUST SAY WHICH KIND OF MACHINE PROPERTY MAKES IT UNRUNNABLE, AND THE SOURCE MUST BACK IT.
+// Before this, any row with a long enough why could silence any suite, including a pure-logic one that a
+// hosted runner would pass if it ran. Two machine checks now sit between the prose and the permission:
+//   · kind is a closed set. `machine-budget` names the three rows TB-2738 reviewed and measured; a new
+//     budget row must be added to MACHINE_ALLOWLIST deliberately, because "too slow on my laptop" is not
+//     a property of the suite;
+//   · dependency kinds must be EVIDENCED by the suite's own source. A row claiming `local-corpus` whose
+//     file never mentions a corpus, or `host-install` with no `dsh`/`DSH_`, or `out-of-repo-fixture` with
+//     no `taskbooks/`, is a pure-logic suite wearing a dependency label — that is the failure code
+//     EXCLUSION-NOT-EVIDENCED, and it is the reason the honest judge can add a logic suite and watch it red.
+const KINDS = new Set(['machine-budget', 'local-corpus', 'host-install', 'out-of-repo-fixture'])
+const MACHINE_ALLOWLIST = new Set([
+  'sim-gate.test.mjs',
+  'audit-math-computation-sensitivity.mjs',
+  'mutation-evidence.test.mjs',
+])
+const EVIDENCE = {
+  'local-corpus': [/corpus\.mjs/, /VMU_CORPUS/, /VMU_SIM_ROOT/, /VMU_RICH_REAL/, /_tmp[\\/]sim/, /real-fieldset/, /real-fields\.jsonl/],
+  'host-install': [/\bdsh\b/, /DSH_/],
+  'out-of-repo-fixture': [/taskbooks/],
+}
 
 const argv = process.argv.slice(2)
 const flag = (name) => argv.includes('--' + name)
@@ -146,12 +174,31 @@ try {
     if (guard === '') {
       errors.push({ code: 'GUARD-EMPTY', label, message: 'the localGuard for ' + label + ' is empty: a CI exclusion with no local reader is a deleted assertion' })
     }
+    // TB-2748: the kind says WHY a hosted runner cannot run it; the suite source has to carry that reason.
+    const kind = row && typeof row.kind === 'string' ? row.kind.trim() : ''
+    if (!KINDS.has(kind)) {
+      errors.push({ code: 'EXCLUSION-KIND', label, message: 'the kind for ' + label + ' is ' + JSON.stringify(kind) + ': every exclusion names one of ' + [...KINDS].join('/') + ' (a row with no stated kind is a suite someone silenced)' })
+    } else if (kind === 'machine-budget') {
+      if (!MACHINE_ALLOWLIST.has(label)) {
+        errors.push({ code: 'MACHINE-BUDGET-UNLISTED', label, message: label + ' claims a machine budget but is not in the reviewed MACHINE_ALLOWLIST: "it is slow here" is not a property of the suite, so a new budget row is a deliberate decision, not a default' })
+      }
+    } else {
+      let source = null
+      try {
+        source = readFileSync(join(REPO, 'tests', label), 'utf8')
+      } catch (error) {
+        errors.push({ code: 'EXCLUSION-NOT-EVIDENCED', label, message: 'cannot read tests/' + label + ' to verify the ' + kind + ' claim (' + (error && error.code) + '): the label may be stale or the dependency is not testable' })
+      }
+      if (source !== null && !EVIDENCE[kind].some((pattern) => pattern.test(source))) {
+        errors.push({ code: 'EXCLUSION-NOT-EVIDENCED', label, message: 'tests/' + label + ' never mentions the ' + kind + ' dependency in its own source (' + EVIDENCE[kind].map((pattern) => String(pattern)).join(' | ') + '): a row that cannot show the missing thing is a suite being silenced, not a machine limit' })
+      }
+    }
     const only = runScopeReport(['--only', label], { allowZero: true })
     const jobs = only.final.total
     if (jobs === 0) {
       errors.push({ code: 'STALE-EXCLUSION', label, message: 'the runner selects 0 jobs for ' + label + ' — excluding it would silently widen the gate; the label may name a suite that was renamed or removed' })
     }
-    entries.push({ label, whyChars, jobs })
+    entries.push({ label, kind, whyChars, jobs })
   }
 
   const labels = entries.map((entry) => entry.label)

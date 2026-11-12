@@ -27,6 +27,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpRoot } from '../../lib/tmp-root.mjs'
 
 const NL = String.fromCharCode(10)
 
@@ -35,7 +36,7 @@ const NL = String.fromCharCode(10)
  * a data location, not an execution path: `VMU_SIM_ROOT` or `--out` overrides it, and a missing root or layer is a
  * named refusal (AUDIT_CORPUS_UNMEASURED), never an empty digest and never a skip.
  */
-export const DEFAULT_SIM_ROOT = process.env.VMU_SIM_ROOT || 'D:/_tmp/sim' // PORTABLE-ALLOW: dev corpus root; overridable with VMU_SIM_ROOT or --out, and a missing root/layer is a named AUDIT_CORPUS_UNMEASURED refusal, never a skip
+export const DEFAULT_SIM_ROOT = process.env.VMU_SIM_ROOT || join(tmpRoot(), 'sim') // the default is the ONE temporary root (os.tmpdir()-derived, movable with VMU_TMP_ROOT); VMU_SIM_ROOT and --out still override it, and a missing root/layer is a named AUDIT_CORPUS_UNMEASURED refusal, never a skip
 
 /** The single-writer pointer: all.mjs atomically rewrites it after every run. */
 export const CURRENT_LAYER_FILE = 'current-layer.json'

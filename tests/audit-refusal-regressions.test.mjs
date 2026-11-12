@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VMU = join(HERE, '..', 'vibe-math-vmu')
 const url = 'file:///' + VMU.replace(/\\/g, '/').replace(/ /g, '%20')
@@ -21,7 +22,7 @@ let failed = 0
 const ok = (cond, label, detail) => {
   if (cond) { passed += 1; console.log('  ok   ' + label) } else { failed += 1; console.error('  FAIL ' + label + (detail === undefined ? '' : ' :: ' + JSON.stringify(detail))) }
 }
-const root = mkdtempSync(process.env.TEMP_SLV_INSPECT || 'D:\\_tmp')
+const root = mkdtempSync(process.env.TEMP_SLV_INSPECT || __tmpRoot())
 
 try {
   console.log('=== 桶 env（2 条）===')

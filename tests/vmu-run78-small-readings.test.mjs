@@ -22,6 +22,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 
 const VMU = join(REPO, 'vibe-math-vmu')
 // Scratch space must live under the platform temp dir, not on one machine's drive: a hard-coded

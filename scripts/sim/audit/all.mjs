@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/sim/audit/all.mjs — the ONE entry point for "simulate faithfully, then prove the simulation covers what it claims".
 //
-//   node scripts/sim/audit/all.mjs                  # all scenarios -> D:/_tmp/sim/run-<stamp>-<pid>/corpus-<name>
+//   node scripts/sim/audit/all.mjs                  # all scenarios -> <temp root>/sim/run-<stamp>-<pid>/corpus-<name>
 //   node scripts/sim/audit/all.mjs --strict         # a missing coverage map is a FAILURE, not a warning
 //   node scripts/sim/audit/all.mjs --only mainline  # one scenario
 //   node scripts/sim/audit/all.mjs --keep           # keep scenario workspaces for inspection

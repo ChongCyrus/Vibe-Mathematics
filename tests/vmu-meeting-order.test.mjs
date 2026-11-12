@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // vmu MEETING-ORDER GUARD — B③ order override + B④ the floor (R14 task-108 landed them; R15 task-112 puts them
-// under guard here, ported from the throwaway probe `D:\_tmp\vmu-r14\order14.mjs`).
+// under guard here, ported from the throwaway probe `${__tmpRoot()}\vmu-r14\order14.mjs`).
 //
 // WHAT THIS PROVES, and why each claim is kept APART from the receipt that claims it:
 //   §1 HONESTY (R15 ①): `vote({motion:null})` records the vote (minutes + counters) but COUNTED NOTHING ⇒ the receipt
@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 

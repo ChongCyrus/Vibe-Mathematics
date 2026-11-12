@@ -60,9 +60,9 @@
  *     set) is outside the changed set since the recorded baseline. The JOB LIST NEVER SHRINKS: skipped
  *     families still count in TOTAL and are reported as `SKIP <family> (incremental: targets unchanged …)`.
  *   · BASELINE: a file OUTSIDE the repository, `GATE_BASELINE_FILE` (default
- *     `D:\_tmp\gate-full-baseline.txt`), holding the commit of the last GREEN FULL sweep. This runner only
+ *     `<scratch root>\gate-full-baseline.txt`), holding the commit of the last GREEN FULL sweep. This runner only
  *     READS it. It is written by the gate flow after a green full sweep
- *     (`git rev-parse HEAD > D:\_tmp\gate-full-baseline.txt`) or by `--write-baseline`, which REFUSES to
+ *     (`git rev-parse HEAD > <scratch root>\gate-full-baseline.txt`) or by `--write-baseline`, which REFUSES to
  *     write unless the sweep is FULL and GREEN - a red or partial tree must never become a baseline.
  *   · RELEASE RULE (hard): before a commit/release/tag the FULL, non-incremental sweep is REQUIRED.
  *     `GATE_RELEASE=1` ignores `GATE_INCREMENTAL` entirely and runs everything.
@@ -93,7 +93,7 @@
  *     always run - a cache that guessed would be the very "skip a family that really changed" defect this
  *     runner's incremental mode was built to avoid.
  *   · `GATE_RELEASE=1` BYPASSES it (named on stderr): a release sweep must execute every family.
- *   · DIR: `D:\\_tmp\\gate-mutant-cache\\` (falls back to `%TEMP%\\gate-mutant-cache` when D: is absent);
+ *   · DIR: `<scratch root>\\gate-mutant-cache\\` (falls back to `%TEMP%\\gate-mutant-cache` when D: is absent);
  *     `GATE_MUTANT_CACHE_DIR` overrides it. Entries are plain JSON; deleting the directory is a safe ROLLBACK,
  *     and so is `GATE_MUTANT_CACHE=0` (no code change). The runner itself NEVER deletes repo files and never
  *     writes inside the repository for this.
@@ -117,6 +117,11 @@ import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// ★ The runner is the one file OTHER JUDGES COPY (mutant runs, shard rehearsals), so it may not depend on a
+// sibling module: `./_lib/scratch.mjs` does not travel with a copy, and a copy that cannot import dies with
+// ERR_MODULE_NOT_FOUND before it prints anything. Same rule as scripts/lib/tmp-root.mjs, one line, no import:
+// the scratch root is derived from the HOST and overridable — never a drive letter belonging to one laptop.
+const runnerTmpRoot = () => String(process.env.VMU_TMP_ROOT || join(tmpdir(), 'vmu-gate'))
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 // Suites live beside this runner, but they resolve the presets and the corpora from the
 // repository root, so they must keep running with that as their working directory.
@@ -604,7 +609,7 @@ function familySkippable(file) {
 // ── Baseline + changed set (read-only; the baseline file lives OUTSIDE the repository) ─────────────
 // A FUNCTION (not a constant) so the self-check can point it at a deliberately unreadable path and prove
 // that an unreadable baseline skips nothing.
-const baselineFilePath = () => String(process.env.GATE_BASELINE_FILE || 'D:\\_tmp\\gate-full-baseline.txt')
+const baselineFilePath = () => String(process.env.GATE_BASELINE_FILE || join(runnerTmpRoot(), 'gate-full-baseline.txt'))
 /** Read a commit id from a baseline file; null when missing/unreadable/unparseable (=> run everything). */
 function readBaselineFrom(file) {
   let raw
@@ -677,7 +682,7 @@ const mutantCacheEnabled = () => String(process.env.GATE_MUTANT_CACHE || '') !==
 function mutantCacheDir() {
   const explicit = String(process.env.GATE_MUTANT_CACHE_DIR || '').trim()
   if (explicit) return explicit
-  const preferred = 'D:\\_tmp\\gate-mutant-cache'
+  const preferred = join(runnerTmpRoot(), 'gate-mutant-cache')
   try { mkdirSync(preferred, { recursive: true }); return preferred } catch (e) { /* D: absent/read-only => %TEMP% */ }
   const fallback = join(tmpdir(), 'gate-mutant-cache')
   mkdirSync(fallback, { recursive: true })

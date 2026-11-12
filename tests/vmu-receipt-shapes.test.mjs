@@ -19,6 +19,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 
@@ -35,7 +36,7 @@ const has = (obj, keys, label) => {
 
 const { createMeetingVerdict } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'meetingverdict.js')).href)
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
-const root = await mkdtemp(join('D:/_tmp', 'vmu-shapes-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-shapes-'))
 try {
   const specs = []
   const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (s) => { specs.push(s); return () => {} } } }

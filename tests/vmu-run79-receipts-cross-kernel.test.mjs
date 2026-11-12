@@ -31,6 +31,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const VMU = join(REPO, 'vibe-math-vmu')
@@ -53,8 +54,8 @@ const ok = (cond, label, detail) => {
 const str = (v) => (typeof v === 'string' && v.trim() !== '' ? v : null)
 const T = 1_800_000_000_000
 
-const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
-const MUT_ROOT = join('D:/_tmp', 'tb2740')
+const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
+const MUT_ROOT = join(__tmpRoot(), 'tb2740')
 const roots = []
 const mkRoot = async (tag) => { const d = await mkdtemp(join(TMP_ROOT, tag)); roots.push(d); return d }
 

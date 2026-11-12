@@ -22,6 +22,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const VMU = join(REPO, 'vibe-math-vmu')
 
 let passed = 0
@@ -41,7 +42,7 @@ async function boot(config = {}) {
     on: () => () => {},
     tools: { register: async (spec) => { specs.push(spec); return () => {} } },
   }
-  const root = await mkdtemp(join('D:/_tmp', 'vmu-blueprint-'))
+  const root = await mkdtemp(join(__tmpRoot(), 'vmu-blueprint-'))
   const handle = entry.apply(ctx, Object.assign({ root, packs: ['v5r'], clock: () => 1000 }, config))
   await handle.ready()
   return { handle, specs, root, specOf: (name) => specs.filter((s) => s.name === name)[0] || null }

@@ -5,7 +5,7 @@
 // untracked 文件（`三张表分别是「sim`、`不在此重复（避免两处真相）。`、`本文件是**唯一出处**；`）。
 // 根因：`docs/acceptance/sim-gate-scope.md` 第 4–6 行的 markdown 引用块（行首 `> `）被 bash 当命令执行，
 // `>` 成了重定向，文件名 = 该行第一个词。它们污染 `git status`、让收口哈希不稳定，且很难靠人眼在
-// 49 项 untracked 中发现。旧防线 `D:\_tmp\env\repo-guard.sh` 只是临时目录里的 shell 脚本（3 小时清理器
+// 49 项 untracked 中发现。旧防线是一个临时目录里的 shell 脚本（3 小时清理器
 // 会扫掉、不在任何门禁里），这里把它提进仓库成为无依赖的 Node 工具。
 //
 // 判据（三类，全部只针对 **untracked**；tracked 的中文文档名是合法的，见 docs/AUDIT-CHECKLIST.md §10）：

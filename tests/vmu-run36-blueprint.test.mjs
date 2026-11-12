@@ -1,7 +1,7 @@
 /**
  * tests/vmu-run36-blueprint.test.mjs — RUN 36: ADOPTION SILENTLY TRUNCATED THE BLUEPRINT TEXT AT THE FIRST INNER `## `.
  *
- * THE EVIDENCE (`D:/_tmp/r36/dig36.txt`, receipts verbatim):
+ * THE EVIDENCE (`${__tmpRoot()}/r36/dig36.txt`, receipts verbatim):
  *   [seq 192] propose{path:"Shared/Protocol.md", member:"r-1", text:<4 KB, carries its own `## 一、` … `## 六、`>} ⇒ id:"r-23"
  *   [seq 485] read_library{id:"r-23"} ⇒ bytes:4134, body complete
  *   [seq 497] adopt{draft:"r-23", member:"r-acad"} ⇒ id:"r-29", status:"current", inForce.bytes:939
@@ -34,8 +34,9 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const VMU = join(REPO, 'vibe-math-vmu')
-const TMP_ROOT = 'D:/_tmp/r36/blueprint'
+const TMP_ROOT = __tmpRoot() + '/r36/blueprint'
 
 let passed = 0
 let failed = 0

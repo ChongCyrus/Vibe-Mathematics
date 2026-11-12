@@ -1,17 +1,93 @@
 [
   {
     "label": "sim-gate.test.mjs",
-    "why": "Its assertions include a meeting-matrix wall-clock budget (14000 ms), which measures the speed of the machine and its load, not whether the engine is correct.",
+    "kind": "machine-budget",
+    "missing": "the per-segment CPU-cost baselines and drift allowances measured on this machine and this tree",
+    "why": "Its budgets are MEASURED CPU costs (per-segment caps, a 150000 ms three-segment backstop, and drift against baselines recorded on this machine), so a runner with a different CPU and tree cannot reproduce the measurement; the numbers describe the machine, not the product.",
     "localGuard": "node tests/sim-gate.test.mjs locally, and scripts/sim/audit/release-ready.mjs runs the sim lane on the release machine where the timing budget is meaningful."
   },
   {
     "label": "audit-math-computation-sensitivity.mjs",
+    "kind": "machine-budget",
+    "missing": "floating-point sensitivity thresholds measured on this CPU",
     "why": "The audit derives its thresholds from measured floating-point sensitivity on the CPU it runs on, so the numbers differ per machine without any code being wrong.",
     "localGuard": "node tests/audit-math-computation-sensitivity.mjs locally, where the thresholds were measured; scripts/sim/audit/release-ready.mjs refuses a release when the audit itself reports a regression on the release machine."
   },
   {
     "label": "mutation-evidence.test.mjs",
+    "kind": "machine-budget",
+    "missing": "a few minutes of real mutation runs and this machine's tmpdir layout",
     "why": "It copies the whole tree and runs real mutations for a couple of minutes, so its cost and its tmpdir layout are properties of the machine, not of the product.",
     "localGuard": "GATE_RELEASE=1 node tests/run-tests.mjs (the release sweep bypasses the mutation cache) and scripts/sim/audit/release-ready.mjs on the release machine."
+  },
+  {
+    "label": "audit-prompt-names.mjs",
+    "kind": "local-corpus",
+    "missing": "D:/_tmp/sim/real-fieldset.json, the receipt fieldset captured from this machine's real sessions",
+    "why": "It reads the receipt fieldset captured from this machine's real DSH sessions (D:/_tmp/sim/real-fieldset.json) and fails when that capture is missing; a hosted CI runner has no such capture.",
+    "localGuard": "node scripts/sim/harvest/real.mjs then node tests/audit-prompt-names.mjs on the release machine; scripts/sim/audit/release-ready.mjs reads the same corpus."
+  },
+  {
+    "label": "vmu-run240-fidelity-scope.test.mjs",
+    "kind": "local-corpus",
+    "missing": "the locally captured sim corpus under D:/_tmp/sim (real-fieldset.json, real-receipts.jsonl)",
+    "why": "It measures the real receipts corpus captured on this machine (VMU_CORPUS_ROOT / D:/_tmp/sim) and names CORPUS MISSING instead of skipping, so on a runner without that capture it cannot pass.",
+    "localGuard": "node tests/vmu-run240-fidelity-scope.test.mjs on the release machine where D:/_tmp/sim was harvested (node scripts/sim/run.mjs --scenario end-to-end --out D:/_tmp/sim)."
+  },
+  {
+    "label": "sim-compare-strict.test.mjs",
+    "kind": "local-corpus",
+    "missing": "the rich compare corpus (compare/real-fields.jsonl and real-receipts.jsonl) captured on this machine",
+    "why": "Both of its halves measure the rich compare corpus built from this machine's real sessions; without compare/real-fields.jsonl the suite reports CORPUS MISSING rather than a green measurement.",
+    "localGuard": "node scripts/sim/compare/run.mjs --harvest then node tests/sim-compare-strict.test.mjs on the release machine; scripts/sim/audit/release-ready.mjs reads the same corpus."
+  },
+  {
+    "label": "sim-fidelity-baseline.test.mjs",
+    "kind": "local-corpus",
+    "missing": "the rich live corpus compare/real-fields.jsonl that only this machine's sessions produce",
+    "why": "It audits the rich live corpus (VMU_RICH_REAL / compare/real-fields.jsonl) as the only ruler, and the audit names its absence; a clean runner has no such capture, so the injected-row proof cannot run there.",
+    "localGuard": "node scripts/sim/compare/run.mjs --harvest then node tests/sim-fidelity-baseline.test.mjs on the release machine, where the rich corpus exists."
+  },
+  {
+    "label": "sim-vs-real.test.mjs",
+    "kind": "local-corpus",
+    "missing": "the rich live corpus compare/real-fields.jsonl that only this machine's sessions produce",
+    "why": "It compares the simulator against the rich live corpus captured on this machine and reports CORPUS MISSING for every declaration whose evidence file is absent, so it cannot pass on a runner without the capture.",
+    "localGuard": "node scripts/sim/compare/run.mjs --harvest then node tests/sim-vs-real.test.mjs on the release machine; scripts/sim/audit/release-ready.mjs reads the same corpus."
+  },
+  {
+    "label": "audit-corpus-nested-keys.test.mjs",
+    "kind": "local-corpus",
+    "missing": "the locally harvested fieldset (D:/_tmp/sim/real-fieldset.json) and this machine's session roots",
+    "why": "Its end-to-end half reads the fieldset harvested from this machine's real sessions (D:/_tmp/sim/real-fieldset.json) and its harvest step walks this machine's DSH session roots, so a clean runner has neither the capture nor the roots.",
+    "localGuard": "node scripts/sim/harvest/real.mjs then node tests/audit-corpus-nested-keys.test.mjs on the release machine (VMU_SIM_ROOT points at the captured corpus)."
+  },
+  {
+    "label": "vmu-assistant-host-slice.test.mjs",
+    "kind": "host-install",
+    "missing": "an installed DSH host: the `dsh` binary on PATH plus the shipped headless host template",
+    "why": "It drives an installed DSH host and requires `dsh` on PATH to report a version; a hosted runner has no DSH install, which is exactly the status 127 this suite reported there.",
+    "localGuard": "node tests/vmu-assistant-host-slice.test.mjs on the release machine, where the DSH host used for real sessions is installed."
+  },
+  {
+    "label": "e2e-f1-agent-detach.test.mjs",
+    "kind": "host-install",
+    "missing": "the installed DSH host packages @deepseek-ai/cordis and @deepseek-ai/dsh-agent",
+    "why": "It imports the real AgentRegistry from the installed DSH host packages (@deepseek-ai/cordis, @deepseek-ai/dsh-agent) and throws when they cannot be located, which a parked CI checkout never carries.",
+    "localGuard": "node tests/e2e-f1-agent-detach.test.mjs on the release machine with the DSH host installed (DESKTOP bundle or DSH_NODE_MODULES)."
+  },
+  {
+    "label": "brief-claims-match-product.test.mjs",
+    "kind": "out-of-repo-fixture",
+    "missing": "../taskbooks/RUN-BRIEF-TEMPLATE.md, which lives outside the repository by workspace convention",
+    "why": "It parses taskbooks/RUN-BRIEF-TEMPLATE.md, a file that lives OUTSIDE the repository by workspace convention, so a clean clone has no taskbooks/ and the template read is ENOENT.",
+    "localGuard": "node tests/brief-claims-match-product.test.mjs in the workspace checkout where ../taskbooks exists (or VMU_BRIEF_TEMPLATE_PATH names the template)."
+  },
+  {
+    "label": "run79-brief-corrections.test.mjs",
+    "kind": "out-of-repo-fixture",
+    "missing": "../taskbooks/RUN-BRIEF-TEMPLATE.md, which lives outside the repository by workspace convention",
+    "why": "It reads the same out-of-repo run-brief template (taskbooks/RUN-BRIEF-TEMPLATE.md) to check its corrections, so a clean clone without ../taskbooks fails on the template read with ENOENT.",
+    "localGuard": "node tests/run79-brief-corrections.test.mjs in the workspace checkout where ../taskbooks exists (or VMU_BRIEF_TEMPLATE_PATH names the template)."
   }
 ]

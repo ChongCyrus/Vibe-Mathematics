@@ -1,6 +1,6 @@
 // tests/vmu-run78-meeting-provenance.test.mjs — RUN 78 / TB-2731 (FEEDBACK78 D2 + D3).
 //
-// THE TWO DEFECTS THIS PINS (measured on the real machine, `D:/_tmp/slv-phase5/slvp258-ws`):
+// THE TWO DEFECTS THIS PINS (measured on the real machine, `${__tmpRoot()}/slv-phase5/slvp258-ws`):
 //
 //   D2 — the DURABLE MEETING ROW stored only the RESOLVED type id. TB-2726 had already put `typeInput`/`typeMatchedBy`
 //        on the receipt ring, but the meeting row itself (`state.json` → keys.meetings.value.data.live) carried
@@ -33,6 +33,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const VMU = join(REPO, 'vibe-math-vmu')
@@ -53,7 +54,7 @@ const ok = (cond, label, detail) => {
 const str = (v) => (typeof v === 'string' && v.trim() !== '' ? v : null)
 const T = 1_800_000_000_000
 
-const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
 const roots = []
 const mkRoot = async (tag) => { const d = await mkdtemp(join(TMP_ROOT, tag)); roots.push(d); return d }
 

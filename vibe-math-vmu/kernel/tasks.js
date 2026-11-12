@@ -272,6 +272,55 @@ export function createTasks({
   }
 
   /**
+   * ★★★ TB-2750 / RUN 80 (F80-1, MEASURED on the 80th live run): a task with NO BRIEF reached `ready`. The ledger said
+   * `brief:null` / `hasBrief:false` and the kernel row's `objective` was a COPY OF ITS TITLE — so the task read as
+   * startable while its assignee had nothing to read: a title is a name, not work. "Ready" is a claim that someone can
+   * start FROM this row, so it now requires actual content: a BRIEF, and nothing else. The objective/title-echo branch
+   * (an objective that says more than the title being accepted as the work text) was a DRAFT of the fix and is NOT
+   * implemented: `contentSource` is only ever `brief` or `none`. The absence is NAMED (`VMU_TASK_BRIEF_MISSING`) on the
+   * row and on every receipt that can observe it, never inferred.
+   */
+  const contentOf = (t) => {
+    const hasBrief = briefs.has(t.id)
+    const objective = typeof t.objective === 'string' ? t.objective.trim() : ''
+    const title = typeof t.title === 'string' ? t.title.trim() : ''
+    return {
+      hasBrief,
+      hasObjective: objective !== '',
+      objectiveEchoesTitle: objective !== '' && objective === title,
+      readable: hasBrief,
+      contentSource: hasBrief ? 'brief' : 'none',
+    }
+  }
+  const READABLE_MEANS = 'a task is READY to start only when a BRIEF is attached (vibe_vmu_task { action: "brief", id, text }): work is taken only after the assignor wrote the brief and the assignee can read it. `contentSource` is "brief" when one is attached and "none" when it is not; `readyCode:"VMU_TASK_BRIEF_MISSING"` names the absence. An objective is not a substitute — it is a one-line topic like the title. TWO DOORS can put an owner on the board: `assign`/claim REFUSES an unbriefed task by that name; `create({ owner })` may plant the owner first (the hire/assign faces compose create→brief) and does NOT refuse — its receipt names `assignmentUnreadable:true` instead, and such a row is never startable until the brief lands'
+  /**
+   * ★★★ TB-2750 follow-up (the "second door"): THE READINESS FACTS LIVE IN ONE FUNCTION. `create`, `assign`, `list` and
+   * `status().ready` all publish these fields; two copies of this arithmetic is how "ready here, not ready there" starts.
+   * `depsReady` is the graph half, `readable`/`contentSource` the text half, and `readyCode` names WHICH half failed.
+   */
+  const readinessOf = (t, content = contentOf(t)) => {
+    const depsReady = unmetDeps(t).length === 0
+    const ready = depsReady && content.readable
+    return {
+      readable: content.readable, contentSource: content.contentSource, hasBrief: content.hasBrief,
+      depsReady, ready,
+      readyCode: ready ? null : (content.readable ? 'VMU_TASK_BLOCKED' : 'VMU_TASK_BRIEF_MISSING'),
+      readyWhy: ready ? READABLE_MEANS
+        : (content.readable
+          ? 'this task has a readable brief but still waits on unfinished blockers — see `blocked` in status(): ' + JSON.stringify(unmetDeps(t))
+          : 'this task cannot be STARTED: no brief is attached, so whoever takes it would have nothing to read (' + (content.objectiveEchoesTitle ? 'the objective only repeats the title' : content.hasObjective ? 'the objective is a topic line, not the work statement' : 'it has no objective either') + ') — attach the brief, do not guess the work'),
+    }
+  }
+  const briefMissingRefusal = (t, content) => refuse('VMU_TASK_BRIEF_MISSING',
+    'task ' + t.id + ' carries no brief, so whoever it is assigned to cannot read what the work is'
+      + (content.hasObjective
+        ? ' — its objective ' + (content.objectiveEchoesTitle ? 'only repeats its title' : 'names the topic but is not the work statement')
+        : ' (it has no objective either)')
+      + '; a title is a name, not work',
+    'attach the brief FIRST with vibe_vmu_task { action: "brief", id: ' + JSON.stringify(t.id) + ', text: "what to do and what counts as done" }, then assign or claim the task — a task is taken only after its assignor wrote the brief and its assignee can read it',
+    { id: String(t.id), readable: false, contentSource: content.contentSource })
+
+  /**
    * F35: refuse a dependency edge set that would close a cycle. `findDependencyCycle` (module scope, exported)
    * does the walk; this only turns its answer into the face's named refusal.
    */
@@ -341,7 +390,19 @@ export function createTasks({
       // ★ RUN 238 (run 61 / FEEDBACK61 H): every later mutation of this task (claim / transition / dependencies) wants
       // `revision`, and create did not return it — so a caller had to spend a read to learn a number the writer already
       // knew, and every extra read is another chance to act on a stale view.
-      return { ok: true, id, state: t.state, objective: t.objective, deps: t.deps.slice(), writeScopes: t.writeScopes.slice(), skippedScopes: scopeNorm.skipped, revision: t.revision }
+      // ★★★ TB-2750 / RUN 80 (F80-1, SECOND DOOR): `create({ owner })` puts an owner on the row without passing through
+      // `assign`, and the faces that compose it (hire, the v5r assign face, task_create) need the id BEFORE they can write
+      // the brief. So this door does not refuse — it NAMES the fact: the readiness facts go on the receipt (the same
+      // function assign/list use), and `assignmentUnreadable:true` says "an owner was planted while no readable work
+      // exists". A caller that wants a HANDOVER rather than just a row writes the brief (or calls assign, which refuses).
+      const content = contentOf(t)
+      const readiness = readinessOf(t, content)
+      return { ok: true, id, state: t.state, objective: t.objective, deps: t.deps.slice(), writeScopes: t.writeScopes.slice(), skippedScopes: scopeNorm.skipped, revision: t.revision,
+        ...readiness,
+        assignmentUnreadable: t.owner !== null && !readiness.readable,
+        ...(t.owner !== null && !readiness.readable
+          ? { assignmentMeans: 'create() was given an OWNER before a brief existed: this row is ASSIGNED BUT NOT READABLE. It is not startable (ready:false) and it was not refused here — the creator is the one about to write the brief; call vibe_vmu_task { action: "brief", id, text }, or create without owner and call assign after the brief (that door refuses an unbriefed take by name)' }
+          : {}) }
     },
 
     /**
@@ -407,22 +468,29 @@ export function createTasks({
       if (typeof who !== 'string' || who.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'assign needs a member id')
       // The attribution is validated BEFORE the mutation: a refused audit row must not leave the board moved.
       const actor = normaliseActor(by, bySource)
-      // run 229: a claim — or a chair's assignment — on a task whose blockers are unfinished is refused
-      // BY NAME before anything moves (see `blockedClaim`; the v5r preset's `V5_TASK_BLOCKED` gate, lost in the port).
       // A terminal task keeps its OWN refusal ("a done task cannot be assigned"): that fact is about the task's state,
-      // not about its dependencies. Refused BEFORE the bus hook on purpose — a listener must never observe an
-      // assignment that was refused.
-      if (t.state !== 'done' && t.state !== 'cancelled') {
-        const blocked = blockedClaim(t)
-        if (blocked) throw blocked
-      }
-      if (bus) {
-        const dec = await bus.emit('task/assign', { id, who, state: t.state }, { member: who })
-        if (dec && dec.ok === false) return { ok: false, refused: dec.refused || { code: dec.code, message: dec.message } }
-      }
+      // not about its dependencies or its brief, so it is answered FIRST.
       const from = t.state
       if (from === 'done' || from === 'cancelled') {
         throw refuse('VMU_STATE', 'a ' + from + ' task cannot be assigned', 'terminal states are terminal')
+      }
+      // run 229: a claim — or a chair's assignment — on a task whose blockers are unfinished is refused
+      // BY NAME before anything moves (see `blockedClaim`; the v5r preset's `V5_TASK_BLOCKED` gate, lost in the port).
+      // Refused BEFORE the bus hook on purpose — a listener must never observe an assignment that was refused.
+      const blocked = blockedClaim(t)
+      if (blocked) throw blocked
+      // ★★★ TB-2750 / RUN 80 (F80-1, HARD RULE): an assignment is refused BY NAME when the task has no brief. The 80th
+      // live run assigned a task whose `objective` was a copy of its title and whose `briefs` map was empty, and the
+      // assignee could claim it and still had nothing to read. A warning was the first shape of this fix; the rule is
+      // stricter than that — work is taken only after its assignor wrote the brief — so the refusal happens BEFORE the
+      // bus hook and before anything moves, exactly like `blockedClaim` above: no listener may observe an assignment
+      // that was refused, and no reader may mistake "assigned" for "startable". The brief is attached in a SEPARATE act
+      // (tasks.brief / vibe_vmu_task { action: "brief" }), so a chair that creates a task now and briefs it next is not
+      // stranded — it simply cannot hand it over before writing down what the work is.
+      if (!briefs.has(t.id)) throw briefMissingRefusal(t, contentOf(t))
+      if (bus) {
+        const dec = await bus.emit('task/assign', { id, who, state: t.state }, { member: who })
+        if (dec && dec.ok === false) return { ok: false, refused: dec.refused || { code: dec.code, message: dec.message } }
       }
       t.owner = String(who)
       if (from === 'open') t.state = 'assigned'
@@ -432,9 +500,14 @@ export function createTasks({
       // ROUND 10 / task-74 (A5): the receipt says whether the assignee may OBJECT (v5r :9555-9562 records and
       // broadcasts an objection, and the task still runs). The declaration is read here as well as in
       // `objectAssign()` so a caller never has to guess which door is open.
+      // ★★★ TB-2750 / RUN 80 (F80-1): the assignment is only reachable when the brief exists (refused above), so the
+      // receipt states the readable fact POSITIVELY instead of warning about it: the assignee has work text to read. The
+      // readiness fields are the SAME ones `create` and `list` publish (one `readinessOf()`), so a reader can compare.
+      const readiness = readinessOf(t)
       return { ok: true, id, owner: t.owner, by: actor.by, bySource: actor.bySource, state: t.state,
         mayObject: sget('vmu.tasks.memberMayRejectAssign', true) !== false,
-        enforced: ['vmu.tasks.memberMayRejectAssign'] }
+        enforced: ['vmu.tasks.memberMayRejectAssign'],
+        ...readiness }
     },
 
     /**
@@ -518,14 +591,26 @@ export function createTasks({
     /** The ledger, filtered. Never carries the brief text (that is fetched by id, docs/08). */
     list(filter = {}) {
       return [...tasks.values()]
-        .filter((t) => (filter.state === undefined || t.state === filter.state) &&
-          (filter.owner === undefined || t.owner === filter.owner) &&
-          (filter.ready === undefined || (filter.ready ? (t.state === 'open' || t.state === 'assigned') && unmetDeps(t).length === 0 : true)))
+        .filter((t) => {
+          if (filter.state !== undefined && t.state !== filter.state) return false
+          if (filter.owner !== undefined && t.owner !== filter.owner) return false
+          if (filter.ready !== undefined) {
+            const depsReady = unmetDeps(t).length === 0
+            const startable = t.state === 'open' || t.state === 'assigned'
+            if (filter.ready && !(startable && depsReady && contentOf(t).readable)) return false
+          }
+          return true
+        })
         .sort((a, b) => (b.priority - a.priority) || a.id.localeCompare(b.id))
-        .map((t) => ({ id: t.id, title: t.title, state: t.state, owner: t.owner, revision: t.revision, deps: t.deps.slice(),
-          ready: unmetDeps(t).length === 0, hasBrief: briefs.has(t.id),
-          // F39: advisory only - visible so a colleague can see what someone else says they will touch.
-          writeScopes: Array.isArray(t.writeScopes) ? t.writeScopes.slice() : [] }))
+        .map((t) => {
+          // ★★★ TB-2750 / RUN 80 (F80-1): `ready` is deps AND content; the two halves are published separately (`depsReady`
+          // for the graph, `readable`/`contentSource` for the text) so a reader never has to infer which one failed. The
+          // fields come from the SAME `readinessOf()` the create/assign receipts use — one reading, one place.
+          return { id: t.id, title: t.title, state: t.state, owner: t.owner, revision: t.revision, deps: t.deps.slice(),
+            ...readinessOf(t),
+            // F39: advisory only - visible so a colleague can see what someone else says they will touch.
+            writeScopes: Array.isArray(t.writeScopes) ? t.writeScopes.slice() : [] }
+        })
     },
 
     /** Attach a task brief: the prompt fragment injected when the OWNER is woken (docs/08; the fragment side is docs/06). */

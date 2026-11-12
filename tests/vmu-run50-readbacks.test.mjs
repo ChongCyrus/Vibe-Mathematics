@@ -26,6 +26,7 @@ import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { statusBoardReadings, renderStatusBoard } from '../vibe-math-vmu/kernel/turn/index.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -66,7 +67,7 @@ const callJSON = async (b, name, args = {}, ctx = {}) => {
   try { return { parsed: JSON.parse(raw) } } catch { return { raw } }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run50-readbacks-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run50-readbacks-'))
 try {
   const a = await boot({ root })
   const kA = a.handle.kernel

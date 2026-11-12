@@ -14,8 +14,10 @@
 //   envShaped       -- the environment (no Lean engine, no xelatex) changes the SHAPE of a field: a declared,
 //                      key-narrow entry in fidelity-declared.json with kind 'env' and a note naming the seam.
 import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpRoot } from '../../lib/tmp-root.mjs'
 
-export const RICH_PATH = process.env.VMU_RICH_REAL || 'D:/_tmp/sim/compare/real-fields.jsonl' // PORTABLE-ALLOW: dev rich-corpus default; overridable via VMU_RICH_REAL / loadRichRows(file), and a missing corpus FAILS the branch audit
+export const RICH_PATH = process.env.VMU_RICH_REAL || join(tmpRoot(), 'sim', 'compare', 'real-fields.jsonl') // the dev rich-corpus default lives under the ONE temporary root; VMU_RICH_REAL / loadRichRows(file) override it, and a missing corpus FAILS the branch audit
 export const ENV_KINDS = new Set(['env'])
 export const KNOWN_KINDS = new Set(['env', 'superseded-shape', 'defensive-only', 'needs-deployment-config', 'sim-cannot'])
 export const FORBIDDEN_KINDS = new Set(['value'])

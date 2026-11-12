@@ -41,10 +41,11 @@ import { RICH_REAL, loadRich, loadSimFields, withoutGlossary, readBaseline, meas
 // in corpus-files.mjs, shared with all.mjs. They used to be two loops that disagreed about which directory the corpus
 // lives in, so a clean tree was refused with AUDIT_CORPUS_STALE. Re-exported below for existing import sites.
 import { resolveReportCorpus, readCurrentLayer } from './corpus-files.mjs'
+import { tmpRoot } from '../../lib/tmp-root.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..', '..', '..')
-const SIM_ROOT = 'D:/_tmp/sim' // PORTABLE-ALLOW: dev audit root; overridable with --root, and a missing AUDIT.md becomes a named refusal (AUDIT_MISSING), never a skip
+const SIM_ROOT = join(tmpRoot(), 'sim') // the ONE temporary root; --root still overrides it, and a missing AUDIT.md becomes a named refusal (AUDIT_MISSING), never a skip
 const OPEN_ITEMS = join(REPO, 'docs', 'acceptance', 'sim-audit-open-items.json')
 const GATE_SCRIPT = join(REPO, 'tests', 'sim-gate.test.mjs')
 
@@ -506,7 +507,7 @@ export const REMEDY = {
   AUDIT_PREDATES_WORKTREE: { owner: 'the lanes that still hold uncommitted edits under vibe-math-vmu/, scripts/ or tests/', readyIf: 'no code edit is newer than AUDIT.md: the tree goes quiet and the audit is re-run once after the last edit' },
   AUDIT_FAILED: { owner: 'the section the audit names (A1-A5 = sim-lane; rules/actions = prompt-lane; fidelity = compare lane)', readyIf: 'that section reports no failure, and the audit is re-run after the fix' },
   AUDIT_INCOMPLETE: { owner: 'sim-lane (all.mjs writes the five sections)', readyIf: 'AUDIT.md carries all five section headers' },
-  AUDIT_FIDELITY_UNMEASURED: { owner: 'run-lane (scripts/sim/harvest/real.mjs)', readyIf: 'D:/_tmp/sim/real-fieldset.json exists, so the fidelity section can compare field lists' }, // PORTABLE-ALLOW: in refusal text (readyIf), not an execution path
+  AUDIT_FIDELITY_UNMEASURED: { owner: 'run-lane (scripts/sim/harvest/real.mjs)', readyIf: 'the sim root holds real-fieldset.json, so the fidelity section can compare field lists' },
   AUDIT_FIDELITY_GAPS: { owner: 'whoever owns the tool face the gap names (coverage debt is a scenario task; only a measured-unreachable field may be declared)', readyIf: 'a scenario drives that path and the field appears in sim receipts; a genuinely unreachable field goes into the open-items ledger with owner + condition, never into fidelity-declared.json as a guess' },
   OPEN_ITEMS_INVALID: { owner: 'sim-lane (docs/acceptance/sim-audit-open-items.json)', readyIf: 'every item has severity/status/title/owner and every open item names a condition' },
   OPEN_P0: { owner: 'the owner named on each OPEN P0 (see the ledger)', readyIf: 'each P0 is fixed with evidence, or re-graded with a written reason: never deleted to go green' },
@@ -589,7 +590,7 @@ export function assess(facts) {
     // R3: recompute the fidelity reading from the same corpus with the same module. A report that says "gaps: 0" is a
     // claim; the recomputation is the check. R5: when it fails, name the gaps, not just the count.
     const recomputed = facts.fidelityRecomputed || { ok: false, why: 'the gate did not recompute the fidelity reading', compared: null, gaps: null, liveToolsWithFieldList: null, gapList: [] }
-    add('AUDIT_FIDELITY_UNMEASURED', 'audit report has no fidelity counts in its audit-report block: run `node scripts/sim/audit/all.mjs --out <dir>` with D:/_tmp/sim/real-fieldset.json present', measured) // PORTABLE-ALLOW: in refusal text, not an execution path
+    add('AUDIT_FIDELITY_UNMEASURED', 'audit report has no fidelity counts in its audit-report block: run `node scripts/sim/audit/all.mjs --out <dir>` with the real-fieldset.json present in the sim root', measured)
     add('AUDIT_FIDELITY_MEASURED_NOTHING', 'fidelity section compared ' + String(compared) + ' live tool(s): "compared 0; gaps 0" means nothing was measured, not that nothing is wrong', measured && compared > 0)
     add('AUDIT_FIDELITY_COUNTS_INCONSISTENT', 'fidelity compared ' + String(compared) + ' of ' + String(liveTools) + ' live tool(s) with a field list: every tool must be compared for the section to mean anything', measured && compared === liveTools)
     const claimedGapNames = Array.isArray(fidelity && fidelity.gapList) ? fidelity.gapList.map((x) => String(x)) : []

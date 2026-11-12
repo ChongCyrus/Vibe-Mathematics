@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -46,7 +47,7 @@ const allDefined = (obj, keys) => ok(keys.length > 0, 'the key list is not empty
 const entry = await import(pathToFileURL(ENTRY).href)
 
 const roots = []
-const mkRoot = async () => { const d = await mkdtemp(join('D:/_tmp', 'vmu-run240-')); roots.push(d); return d }
+const mkRoot = async () => { const d = await mkdtemp(join(__tmpRoot(), 'vmu-run240-')); roots.push(d); return d }
 
 const boot = async (root) => {
   const specs = []

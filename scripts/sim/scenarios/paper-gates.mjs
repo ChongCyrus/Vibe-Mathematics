@@ -1,7 +1,7 @@
 // scripts/sim/scenarios/paper-gates.mjs — the PAPER track's GATES, driven by a SCRIPT (no language model).
 //
 // WHY THIS SCENARIO EXISTS (R240-P / task-48): `node scripts/sim/audit/all.mjs` §5 compares the FIELD UNION of the
-// simulator's `vibe_v5_paper` receipts with the live machine's (`D:/_tmp/sim/real-fieldset.json`). Paper was the
+// simulator's `vibe_v5_paper` receipts with the live machine's (`<sim root>/real-fieldset.json`). Paper was the
 // largest fidelity gap: the live receipts carry field names (enforced / requestId / actedBy / inTrash / gate /
 // missing / provided / emptyParts / where / participants / crossReviewers / reviewsOnDisk / waiting / trash / …)
 // that the simulator had never produced, because every paper scenario only walked the HAPPY path. A field the

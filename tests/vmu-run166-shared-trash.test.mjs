@@ -42,8 +42,9 @@ const J = (o) => JSON.stringify(o)
 const CODE = (r) => (r && r.code) || null
 
 const entry = await import(pathToFileURL(ENTRY).href)
-const BASE = 'D:/_tmp/r166/trash'
+const BASE = __tmpRoot() + '/r166/trash'
 import { mkdir } from 'node:fs/promises'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 await mkdir(BASE, { recursive: true })
 
 const boot = async (root, settings = null) => {

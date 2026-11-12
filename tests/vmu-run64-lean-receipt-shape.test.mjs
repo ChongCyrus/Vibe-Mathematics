@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // vmu RUN 64 / F-56 — ONE ENVELOPE, NOT TWO: EVERY LEAN TOOL ANSWERS AT THE SAME DEPTH.
 //
-// THE OBSERVED GAP (live run 64, the root session's own report - `D:/_tmp/r64/*`): the pack tools wrapped the Lean
+// THE OBSERVED GAP (live run 64, the root session's own report - `${__tmpRoot()}/r64/*`): the pack tools wrapped the Lean
 // face's answer in a SECOND envelope, and the nesting depth was not even uniform —
 //   · `vibe_v5_lean_job {jobId}`  → `receipt.job` = `{ok:true, job:{…}}`  ⇒ the record (and the F-55 field triple)
 //                                    only reachable at `receipt.job.job.*`;
@@ -17,6 +17,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')

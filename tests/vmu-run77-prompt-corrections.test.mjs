@@ -96,10 +96,12 @@ const TB2741_CORRECTIONS = { chair: -22, member: -22, temp: -22, sum: -66 }
 // against a short-name relapse (+8), 「形状问题不等于引擎不可用」 restored inside the shape-code sentence (+14), and
 // 「别自己数人头」 restored beside the closure-vote denominator (+8). Measured 29499 per seat / 78168 for three.
 const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
+const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 } // review rewrite: attendance and vote named on their two keys; paper-evidence teaching corrected; see tests/vmu-run256-prompts-compress.test.mjs
 test('§7 the corrections did not grow the prompts: three-seat normal sum ≤ the TB-2725 baseline (77844) + the RUN 270 sample + the TB-2732 / TB-2741 dedups + the RUN 272 restores', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
-  const sumCeiling = 77844 + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum
-  const chairCeiling = 29455 + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair
+  // ★ TB-2752 (2026-11-12) — RUN 80’s four prompt corrections: F80-3 puts `final` back in the chair paper-flow bullet (seat-faces), F80-12 derives temp attendance from `vmu.meetings.attendDeniedSeats` and names `vmu.meetings.eligibleSeats` for the vote, F80-4 restores the two legal spellings of an evidence pointer (the review rewrite).
+  const sumCeiling = 77844 + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum
+  const chairCeiling = 29455 + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair
   assert.ok(normalSum <= sumCeiling, 'three-seat normal sum ' + normalSum + ' ≤ ' + sumCeiling)
   assert.ok(normalCombos.chair <= chairCeiling, 'chair/normal ' + normalCombos.chair + ' ≤ ' + chairCeiling)
 })

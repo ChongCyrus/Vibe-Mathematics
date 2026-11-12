@@ -17,10 +17,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const SCRIPT = join(REPO, 'scripts', 'check-repo-hygiene.mjs')
-const TMP_ROOT = process.env.REPO_HYGIENE_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const TMP_ROOT = process.env.REPO_HYGIENE_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
 mkdirSync(TMP_ROOT, { recursive: true })
 const WORK = mkdtempSync(join(TMP_ROOT, 'repohyg-'))
 

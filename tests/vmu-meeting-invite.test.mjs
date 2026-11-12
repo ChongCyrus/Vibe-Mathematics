@@ -30,6 +30,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -73,7 +74,7 @@ const call = async (b, name, args = {}) => {
 }
 
 // TEMP ROOT ON D: — this repository's rule is that scratch files never land on the C: drive (AGENTS.md §6).
-const root = await mkdtemp(join('D:/_tmp', 'vmu-meeting-invite-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-meeting-invite-'))
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

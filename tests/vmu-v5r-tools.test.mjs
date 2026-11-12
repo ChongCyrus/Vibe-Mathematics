@@ -204,6 +204,11 @@ try {
   ok(made.parsed && made.parsed.ok === true && made.parsed.task && made.parsed.task.id,
     'task_create: 正 — a task really lands on the board', made.parsed && made.parsed.task && { id: made.parsed.task.id, status: made.parsed.task.status })
   const createdId = made.parsed && made.parsed.task && made.parsed.task.id
+  // ★★★ TB-2750 / RUN 80 (F80-1): an assignment is refused BY NAME until the task carries a brief (the rule: work is
+  // taken only after its assignor wrote down what the work is). This fixture claims/assigns the task it just created, so
+  // it writes the brief FIRST — the claim/assign assertions below keep testing attribution, not the brief gate. The brief
+  // bumps the revision, so it is written BEFORE the revision token below is read (otherwise this precondition is stale).
+  v5rBoot.handle.kernel.tasks.brief(createdId, '证明引理 A：写出完整证明，交回记录面')
   // The revision token is read from the BOARD (the list row is the documented source of `revision`): the create
   // receipt's own shape is the ledger's, and this suite must not assume a field name it has not measured.
   const listedForRev = await receipt(v5rBoot, 'vibe_v5_task_list', {})

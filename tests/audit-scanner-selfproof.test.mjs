@@ -32,6 +32,7 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { stripComments } from './_lib/strip-comments.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const TESTS = join(REPO, 'tests')
@@ -41,7 +42,7 @@ const TESTS = join(REPO, 'tests')
 // new scanner may ship without proof.
 const UNPROVEN = new Set([
   // Phase-3 (TB-2680, plugin layer): a receipt-superset comparator whose negative controls are three lamps run OUTSIDE
-  // the repository (`D:/_tmp/tb2680-lamps`, deleted with the temp tree) — an unscanner: it walks the two branch
+  // the repository (`${__tmpRoot()}/tb2680-lamps`, deleted with the temp tree) — an unscanner: it walks the two branch
   // handlers and compares key sets, so "0 findings" could also mean "read nothing". Registered rather than pretended;
   // delete this row the day it grows an in-repo `--selftest` (the same three lamps, run from `tests/`).
   'audit-plugin-receipt-superset',

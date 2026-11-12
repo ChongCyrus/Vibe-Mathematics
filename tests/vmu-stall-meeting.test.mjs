@@ -1,7 +1,7 @@
 // vibe-math-vmu —— v5r 的"静止 ⇒ 开会"（packs/v5r/middleware/stall-meeting.js）常驻断言。
 // 运行：`node tests/vmu-stall-meeting.test.mjs`（末行 `=== VMU STALL MEETING: N passed, M failed ===`）。
 //
-// 为什么这套测试存在（轮 11 / task-88）：Round 10 的三步探针是在**仓库外**（`D:\_tmp`）跑的 ——
+// 为什么这套测试存在（轮 11 / task-88）：Round 10 的三步探针是在**仓库外**（`${__tmpRoot()}`）跑的 ——
 // 按本仓纪律"**能跑** ≠ **被守住**"，它必须在仓内被常驻守住。本套测试把它搬进仓，并补两条纪律：
 //   · **阈值不硬编码**：断言 `stallDecision()` 用的是 `3 × 声明的 idleAfterMs`（v5r `:1082/:1083` 的比例），
 //     而不是把 360000 写死 —— 用一个**不同的声明值**（60000）也能得到 180000 的门槛来证明；
@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import * as entryMod from '../vibe-math-vmu/vibe-math-vmu.js'
 import { stallDecision, STALL_RATIO, V5R_STALL_MEETING } from '../vibe-math-vmu/packs/v5r/middleware/stall-meeting.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 let passed = 0
 let failed = 0
 const failures = []

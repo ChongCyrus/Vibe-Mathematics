@@ -1,7 +1,7 @@
 // vibe-math-vmu —— v5r 的"动议 ⇒ 开箱"政策（packs/v5r/middleware/motion-box.js）常驻断言。
 // 运行：`node tests/vmu-motion-box.test.mjs`（末行 `=== VMU MOTION BOX: N passed, M failed ===`）。
 //
-// 为什么这套测试存在（轮 13 / task-97 收尾）：R12 的"开火探针"是**仓库外**跑的（`D:\_tmp`）——按本仓纪律
+// 为什么这套测试存在（轮 13 / task-97 收尾）：R12 的"开火探针"是**仓库外**跑的（`${__tmpRoot()}`）——按本仓纪律
 // "**能跑** ≠ **被守住**"，它必须在仓内被常驻守住。四段：
 //   ① 纯函数（选项词表／问题文案／绑定查表）；
 //   ② 真 pack 装载 ⇒ 会议里提出动议 ⇒ 中间件**真被调**、**箱子真的存在**、绑定**真被设上**（source='method'）；
@@ -14,6 +14,7 @@ import * as entryMod from '../vibe-math-vmu/vibe-math-vmu.js'
 import { MOTION_BOX_OPTIONS, motionBoxQuestion, boxForMeetingMotion, V5R_MOTION_BOX } from '../vibe-math-vmu/packs/v5r/middleware/motion-box.js'
 import * as meetingsMod from '../vibe-math-vmu/kernel/meetings.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 let passed = 0
 let failed = 0
 const failures = []

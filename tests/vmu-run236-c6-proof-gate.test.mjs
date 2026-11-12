@@ -30,7 +30,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
-const TMP = 'D:/_tmp/vmu-run236'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+const TMP = __tmpRoot() + '/vmu-run236'
 
 let passed = 0
 let failed = 0

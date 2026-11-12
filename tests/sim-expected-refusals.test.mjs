@@ -21,7 +21,8 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { REPO } from './_lib/repo-root.mjs'
 
-const TMP = 'D:/_tmp/sim-tests/expected-refusals'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+const TMP = __tmpRoot() + '/sim-tests/expected-refusals'
 
 let passed = 0
 let failed = 0

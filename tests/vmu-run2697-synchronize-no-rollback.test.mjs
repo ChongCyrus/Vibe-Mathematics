@@ -25,6 +25,7 @@ import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -95,8 +96,8 @@ const ROW = (id, title, body, by, extra = {}) => ({
   id, track: 'state', kind: 'state', title, body, tags: [], state: 'live', restoredAt: null, by, owner: by, ...extra,
 })
 
-const rootA = await mkdtemp(join('D:/_tmp', 'vmu-r2697-'))
-const mutantRoot = await mkdtemp(join('D:/_tmp', 'vmu-r2697-mutant-'))
+const rootA = await mkdtemp(join(__tmpRoot(), 'vmu-r2697-'))
+const mutantRoot = await mkdtemp(join(__tmpRoot(), 'vmu-r2697-mutant-'))
 const cleanups = []
 try {
   // ── §0 the seam publishes both refusal counters with their sentences ─────────────────────────────────────────────
@@ -207,7 +208,7 @@ try {
     return join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')
   }
   const withRoot = async (entryPath, fn) => {
-    const rootB = await mkdtemp(join('D:/_tmp', 'vmu-r2697-m-'))
+    const rootB = await mkdtemp(join(__tmpRoot(), 'vmu-r2697-m-'))
     try {
       const k = await bootWith(entryPath, rootB)
       return await fn(k)

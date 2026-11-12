@@ -16,9 +16,10 @@ import { REPO } from './_lib/repo-root.mjs'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 
 
-const TMP = 'D:/_tmp/run237'
+const TMP = __tmpRoot() + '/run237'
 const LEDGER = join(REPO, 'docs', 'acceptance', 'rules-ledger.json')
 const GATE = join(REPO, 'scripts', 'check-rules-coverage.mjs')
 const SRC_GATE = readFileSync(GATE, 'utf8')

@@ -101,8 +101,16 @@ test('§7 criticism 10 members/temps are told only op:"status" of vibe_vmu_turn 
 // corrections are a net-zero task: merging restatements had to pay for every added sentence, so the sum must not
 // grow past that measurement.
 const TB2732_BASELINE = { chair: 29500, sum: 78171 }
-test('§8 the corrections are net-zero: three-seat normal sum ≤ the TB-2732 baseline, chair unchanged or smaller', () => {
+// ★ TB-2752 / RUN 80 (prompt-lane review + audit): four prompt corrections measured on the SAME collect() ruler as the
+// RUN 78 baseline. RUN 78's ceiling is a net-zero measurement and RUN 80's batch is not net-zero, so its growth enters
+// this suite as a NAMED line item — never by editing 78 171 into the measured number (that would erase the baseline).
+// Per seat: chair +51 (roster bullet +45, seat-faces paper-flow bullet +6), member +45, temp 0; sum +96, still inside
+// the taskbook's +120 envelope. No cap / ratchet was raised.
+const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
+test('§8 the RUN 78 corrections are net-zero, plus the NAMED RUN 80 batch (+96): three-seat normal sum ≤ baseline + TB-2752', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
-  assert.ok(normalSum <= TB2732_BASELINE.sum, 'three-seat normal sum ' + normalSum + ' ≤ ' + TB2732_BASELINE.sum)
-  assert.ok(normalCombos.chair <= TB2732_BASELINE.chair, 'chair/normal ' + normalCombos.chair + ' ≤ ' + TB2732_BASELINE.chair)
+  const sumCeiling = TB2732_BASELINE.sum + TB2752_RUN80_FIXES.sum
+  const chairCeiling = TB2732_BASELINE.chair + TB2752_RUN80_FIXES.chair
+  assert.ok(normalSum <= sumCeiling, 'three-seat normal sum ' + normalSum + ' ≤ ' + sumCeiling + ' (baseline ' + TB2732_BASELINE.sum + ' + TB-2752 +' + TB2752_RUN80_FIXES.sum + ')')
+  assert.ok(normalCombos.chair <= chairCeiling, 'chair/normal ' + normalCombos.chair + ' ≤ ' + chairCeiling + ' (baseline ' + TB2732_BASELINE.chair + ' + TB-2752 +' + TB2752_RUN80_FIXES.chair + ')')
 })

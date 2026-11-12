@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -69,7 +70,7 @@ const call = async (b, name, args = {}) => {
 
 // TB-2695: a proof must build its own evidence on any machine. D:/_tmp is only a fast local disk when it exists;
 // otherwise use the OS temp dir. VMU_TEST_TMP_ROOT still overrides both (same fallback as tests/repo-hygiene.test.mjs:23).
-const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
 mkdirSync(TMP_ROOT, { recursive: true })
 const root = await mkdtemp(join(TMP_ROOT, 'vmu-run248-notice-'))
 try {

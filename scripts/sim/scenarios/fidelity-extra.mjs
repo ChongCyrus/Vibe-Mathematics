@@ -1,7 +1,7 @@
 // scripts/sim/scenarios/fidelity-extra.mjs — RUN 240-F: the FIELDS the live runs read and the simulation never produced.
 //
 // WHY THIS SCENARIO EXISTS: `scripts/sim/audit/all.mjs` §5 compares every receipt the simulation has ever produced
-// against `D:/_tmp/sim/real-fieldset.json` (the union of what REAL runs read back). After task-47 the gap list still
+// against `<sim root>/real-fieldset.json` (the union of what REAL runs read back). After task-47 the gap list still
 // named 14 tools whose receipts lack keys the live runs saw. Those keys are not decoration: each one is a fact a
 // member or the office read out of a receipt — `asOfClose`, `counts`, `rounds`, `seatFace`, `target`, `plan`,
 // `recovery`, `applicable`, `p1Routes`, `rev`, … A field the simulation never produces is a field nobody verified
@@ -119,7 +119,7 @@ export async function scenario(h, { log = () => {} } = {}) {
   highlights.start = pick(started, ['ok', 'institution', 'members', 'roster', 'chair', 'code'])
   // TB-2643 cleanup: this used to declare `vibe_v5_start:VMU_STATE` as an expected refusal, but a second
   // `vibe_v5_start` on the same store is NOT refused - it hires into the existing institute and answers ok:true (probe
-  // `D:/_tmp/sim/probe-unfired.mjs`: start2 `{ok:true, hired:…, rosterBefore:…}`, keys carry no `code`). A declaration
+  // `<temp root>/sim/probe-unfired.mjs`: start2 `{ok:true, hired:…, rosterBefore:…}`, keys carry no `code`). A declaration
   // that can never fire makes the ledger look safer than the engine is, so it is gone rather than pinned.
   notes.secondStartNotRefused = 'a repeated vibe_v5_start is idempotent-for-hiring, not VMU_STATE; no refusal exists to declare'
 
@@ -547,7 +547,7 @@ export async function scenario(h, { log = () => {} } = {}) {
   //      • read-back drift does NOT require a second writer: the delegated kernel boots on `h.root + "-delegated"`
   //        (its own store), yet the MAIN kernel's read-back still names a `meetings` drift (expected `411f4dd9:54224`
   //        vs actual `a7ee8aae:54347`, `writesBetween:44`). A minimal probe (boot -> start -> convene -> attend ->
-  //        readBack, `D:/_tmp/sim/probe-drift2.mjs`) does not reproduce it, so the expectation refresh misses one late
+  //        readBack, `<temp root>/sim/probe-drift2.mjs`) does not reproduce it, so the expectation refresh misses one late
   //        write path. That is a PRODUCT reading, tracked as TB-2647 for state-lane; this scenario only records the
   //        drift it sees (and asserts the drift receipt carries no `failedSteps` - see G14's note below).
   // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -567,7 +567,7 @@ export async function scenario(h, { log = () => {} } = {}) {
     // the failed round is an ENVIRONMENTAL reading (no subagents service here), not a top-level refusal: it is recorded
     // on the round, which is the only place the engine names what it tried to send and how long it waited
     // TB-2643 cleanup: this used to declare `vibe_vmu_turn:VMU_ENGINE_UNAVAILABLE` as an expected refusal. That code
-    // is real (probe `D:/_tmp/sim/probe-deleg.mjs`: `drive.failures[0].code === "VMU_ENGINE_UNAVAILABLE"`, message
+    // is real (probe `<temp root>/sim/probe-deleg.mjs`: `drive.failures[0].code === "VMU_ENGINE_UNAVAILABLE"`, message
     // `the host exposes no subagents service at all`), but it lives on the DELEGATED kernel: its ledger holds only
     // `start`+`drive` as ok receipts and the failed round rides inside `drive.receipts[0]`, so no refusal ever reaches
     // THIS corpus. A declaration the ledger can never see is not evidence, so the measurement stays (`fid` below) and
@@ -590,7 +590,7 @@ export async function scenario(h, { log = () => {} } = {}) {
   highlights.humanReadBack = pick(humanReadBack, ['ok', 'consistent', 'checked', 'writesBetween', 'driftKeys', 'code'])
 
   // TB-2643 / G14 — TWO DIFFERENT REFUSAL PATHS, and the live corpus keeps them apart (run-lane cross-check,
-  // `D:/_tmp/slv-phase5/run75-g11-g14-verify.md`):
+  // `<temp root>/slv-phase5/run75-g11-g14-verify.md`):
   //   (a) `failedSteps` belongs to `vibe_vmu_human {action:"recover"}` when a recovery does NOT succeed. The live
   //       receipts that carry it are `code:"VMU_STATE"` (real-receipts.jsonl:17271 and :17394; real-fields.jsonl:17179
   //       and :17301 render the value `["ledgers","readback"]`).

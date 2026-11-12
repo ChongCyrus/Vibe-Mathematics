@@ -23,6 +23,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 
 import { p1Intent, P1_ROUTES, P1_ROUTE_MEANS } from '../vibe-math-vmu/packs/v5r/verification-gates.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 // ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now RESOLVED against the institute's own records — run 40 wrote
 // p=1 while naming a ballot that held ZERO votes, so `debate_ruling` has to prove "a decision people made", not "a
 // string that looks like an id". A made-up id is refused by name (`VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`), so these
@@ -50,7 +51,7 @@ const ok = (cond, label, detail) => {
 }
 
 const entry = await import(pathToFileURL(ENTRY).href)
-const ROOT = await mkdtemp(join('D:/_tmp', 'vmu-b3c8c10-'))
+const ROOT = await mkdtemp(join(__tmpRoot(), 'vmu-b3c8c10-'))
 const STMT = '若 G 是有限群且 H≤G，则 |H| 整除 |G|。'
 const VALUE = '拉格朗日定理。'
 const MOTIVE = 'B3/C8/C10：回执必须说清凭据是哪条路。'

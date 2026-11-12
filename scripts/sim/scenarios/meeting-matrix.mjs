@@ -21,14 +21,16 @@
 // in `highlights.matrix.altBoots` — the matrix is about the MECHANISM, not about pretending one boot has two policies.
 
 import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { boot } from '../harness.mjs'
+import { tmpRoot as gateTmpRoot } from '../../lib/tmp-root.mjs'
 
 // The one deployment setting this scenario needs: 1 ms after openedAt counts as late. This is the same path a real
 // deployment config.vmu takes (harness boot -> entry.apply({ vmu: settings })).
 export const settings = { 'vmu.meetings.lateAfterMs': 1 }
 // The corpus defaults to the directory TB-2603 names, so `node scripts/sim/run.mjs --scenario meeting-matrix`
 // writes the evidence where the taskbook points without an --out flag.
-export const corpusDir = 'D:/_tmp/sim/meeting-matrix' // PORTABLE-ALLOW: dev corpus dir; overridable with --out, and an unwritable dir FAILS the run instead of silently writing elsewhere
+export const corpusDir = join(gateTmpRoot(), 'sim', 'meeting-matrix') // the corpus default lives under the ONE temporary root; --out still wins, and an unwritable dir FAILS the run instead of silently writing elsewhere
 
 const NOW = 1_800_000_000_000 // the fixed clock harness.mjs boots with
 const ISO = (ms) => new Date(ms).toISOString()

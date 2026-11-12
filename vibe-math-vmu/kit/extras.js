@@ -40,8 +40,28 @@ async function toolTaskCreate(args = {}, { kernel } = {}) {
     writeScopes: Array.isArray(args.write_scopes) ? args.write_scopes.map(String) : [],
     priority,
   })
-  return { ok: true, tool: 'vibe_v5_task_create', task: made, priority,
-    note: 'priority is STORED (the ledger has the column and lists the board by it); the original also treated it as a hint — here it is real data' }
+  // ★★★ TB-2750 / RUN 80 (F80-1): `create({owner})` plants the owner before a brief can exist (the id must come first),
+  // so this face — which HAS a work statement whenever `description` is supplied — turns that description into the brief
+  // and returns the row as it stands AFTER it. Same create→brief shape as hire / the v5r assign face. Two limits that are
+  // deliberate, not omissions: (a) a TITLE IS A NAME, NOT WORK — when only `subject` exists this face does NOT invent a
+  // brief from it; the row keeps the named `ready:false` / `assignmentUnreadable` reading instead of pretending (b) with
+  // no `owner` there is no assignment at all, so no brief is written here (an open task may be created un-briefed).
+  let task = made
+  if (has(args.owner) && has(args.description) && typeof tasks.brief === 'function') {
+    await tasks.brief(made.id, str(args.description), {})
+    const listed = await tasks.list()
+    const rows = Array.isArray(listed) ? listed : (listed && Array.isArray(listed.tasks) ? listed.tasks : [])
+    const fresh = rows.filter((r) => r && r.id === made.id)[0] || null
+    if (fresh) {
+      task = Object.assign({}, made, fresh)
+      // the create snapshot's "planted an owner before any readable work" verdict is about the PAST; after the brief the
+      // receipt must not carry a contradiction (ready:true beside assignmentUnreadable:true).
+      delete task.assignmentUnreadable
+      delete task.assignmentMeans
+    }
+  }
+  return { ok: true, tool: 'vibe_v5_task_create', task, priority,
+    note: 'priority is STORED (the ledger has the column and lists the board by it); the original also treated it as a hint — here it is real data; a supplied `description` becomes the task brief when `owner` is set (TB-2750)' }
 }
 
 async function toolTaskList(args = {}, { kernel } = {}) {
@@ -166,8 +186,8 @@ async function toolTaskGet(args = {}, { kernel } = {}) {
       // did not exist. Absence gets its own sentence naming the setter; only a REAL failure keeps the "lookup failed:" form.
       if (code === 'VMU_NO_SUCH_OBJECT' && /has no brief/.test(msg)) {
         briefNote = null
-        briefMeans = 'this task has no brief attached: the board holds none for it. A brief is OPTIONAL (docs/08) and is set by the '
-          + 'owner path with vibe_vmu_task { action: "brief", id, text }. No brief ≠ a broken lookup: this answer was read, not refused.'
+        briefMeans = 'this task has no brief attached: the board holds none for it. Creating a task without a brief is allowed (docs/08), '
+          + 'but TAKING it is not: assign/claim refuses by name VMU_TASK_BRIEF_MISSING until the brief exists. Set it with vibe_vmu_task { action: "brief", id, text }. No brief ≠ a broken lookup: this answer was read, not refused.'
       } else {
         briefNote = 'brief lookup failed: ' + String(code || msg)
       }

@@ -27,6 +27,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 
@@ -56,7 +57,7 @@ const receipt = async (b, name, args = {}) => {
   try { return JSON.parse(await spec.execute(args, {})) } catch (e) { return { ok: false, code: codeOf(e), message: e.message, hint: e.hint } }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run8-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run8-'))
 try {
   // ★ RUN 230-A: the v5r preset now ships the durable mailbox transport (`packs/v5r/settings/defaults.json`), so the
   // "no transport" branch has to be DECLARED to be reached — config.vmu wins over the pack's value layer. §F is about
@@ -127,7 +128,7 @@ try {
   // The zero-floor CONTRAST, read where it still exists: a deployment that declares the framework default
   // `quorumFloorSource:"setting"` with no quorumMin/quorumRatio has floor 0 ⇒ `met`/`floorMet` true while nobody but
   // the chair is present, and `unanimity.met` false — the two questions are still two questions.
-  const floorRoot = await mkdtemp(join('D:/_tmp', 'vmu-run8-floor-'))
+  const floorRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run8-floor-'))
   try {
     const zero = await boot({ root: floorRoot, packs: ['v5r'], vmu: { meetings: { quorumFloorSource: 'setting' } } })
     await zero.handle.kernel.members.hire({ id: 'acad', slot: 'chair' })

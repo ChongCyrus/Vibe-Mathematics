@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
 const verifiedMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'verified.js')).href)
 
@@ -58,7 +59,7 @@ const fakeLean = (jobs) => ({
   policy: () => ({ formalVerify: 'require', requireFormal: true, encourageFormal: false, initiative: 'off', initiativeEffect: 'display-only' }),
 })
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-fidelity-conclude-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-fidelity-conclude-'))
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

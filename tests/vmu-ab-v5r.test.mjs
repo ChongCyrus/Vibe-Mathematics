@@ -28,6 +28,7 @@ import { createMembers } from '../vibe-math-vmu/kernel/members.js'
 import { createFairness } from '../vibe-math-vmu/kernel/fairness.js'
 import { TOOL_NAMES, sanitizeToolFilter } from '../vibe-math-vmu/host.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 let passed = 0
 let failed = 0
 const failures = []
@@ -57,7 +58,7 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], NOT_ADOPTED: [], DIVERGENT: [] }
 {
   const promised = V5R.headerListContractBlock()
   ok(typeof promised === 'string' && promised.indexOf('头部列表') !== -1, 'B0. the v5r contract block is a string that names the head list')
-  const lib = createLibrary({ settings: { get: () => undefined }, clock: () => 0, root: 'D:/_tmp/ab-v5r-lib' })
+  const lib = createLibrary({ settings: { get: () => undefined }, clock: () => 0, root: __tmpRoot() + '/ab-v5r-lib' })
   const STATEMENT = 'AB-SENTINEL-STATEMENT-must-not-appear-in-heads'
   const a = await lib.append({ kind: 'proposition', statement: STATEMENT, title: 'AB title', owner: 'm1' })
   ok(a.ok === true && typeof a.fingerprint === 'string', 'B1. vmu stores a record and reports a CONTENT FINGERPRINT (the contract asks for one)')

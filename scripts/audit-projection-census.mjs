@@ -18,6 +18,7 @@
 const REPO = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpRoot } from './lib/tmp-root.mjs'
 
 const entry = await import(new URL('../vibe-math-vmu/vibe-math-vmu.js', import.meta.url).href)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -80,7 +81,7 @@ const tables = (kernel) => {
 }
 
 console.log('=== 1. THE REAL ASSEMBLY, EVERY DECLARED FACE FILED (three tables) ===')
-const ROOT = join(process.env.TEMP || 'D:/_tmp', 'vmu-r11-census')
+const ROOT = join(process.env.TEMP || tmpRoot(), 'vmu-r11-census')
 const H = await assemble(ROOT)
 const T = tables(H.kernel)
 console.log('  declared=' + JSON.stringify(T.declared))

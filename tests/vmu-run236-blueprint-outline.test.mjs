@@ -34,6 +34,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const VMU = join(REPO, 'vibe-math-vmu')
 const T0 = Date.parse('2020-01-01T00:00:00.000Z')
 
@@ -61,7 +62,7 @@ async function boot(config = {}) {
     on: () => () => {},
     tools: { register: async (spec) => { specs.push(spec); return () => {} } },
   }
-  const root = await mkdtemp(join('D:/_tmp', 'vmu-r236-'))
+  const root = await mkdtemp(join(__tmpRoot(), 'vmu-r236-'))
   const handle = entry.apply(ctx, Object.assign({ root, packs: ['v5r'], clock: () => T0 }, config))
   await handle.ready()
   return { handle, specs, root, specOf: (name) => specs.filter((s) => s.name === name)[0] || null }

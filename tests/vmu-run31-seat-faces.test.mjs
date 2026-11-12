@@ -34,6 +34,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const V5R = join(REPO, 'vibe-math-vmu', 'packs', 'v5r')
@@ -74,7 +75,7 @@ const boot = async (config = {}) => {
   return { handle, state, names: state.specs.map((s) => s.name), specOf: (n) => state.specs.find((s) => s.name === n) }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run31-seat-faces-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run31-seat-faces-'))
 const b = await boot({ root, packs: ['v5r'] })
 const kernel = b.handle.kernel
 try {

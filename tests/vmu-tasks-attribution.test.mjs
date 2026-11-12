@@ -44,6 +44,10 @@ const mkKernel = (tasks) => ({ tasks, settings: {}, settingsView: () => ({}) })
 // is expected to take it from (`task_list`/`task_get`) — so the helper reads it back instead of inventing a revision.
 const newTask = async (tasks, title) => {
   const made = await tasks.create({ title })
+  // ★★★ TB-2750 / RUN 80 (F80-1): an assignment is refused by VMU_TASK_BRIEF_MISSING until the assignor wrote the work
+  // down, so this fixture attaches the brief before it hands the task over (and reads the revision afterwards: the brief
+  // itself bumps it).
+  tasks.brief(made.id, 'work: ' + title, { by: 'm-chair' })
   const listed = await tasks.list()
   const rows = Array.isArray(listed) ? listed : (listed.tasks || [])
   const row = rows.filter((r) => r.id === made.id)[0]

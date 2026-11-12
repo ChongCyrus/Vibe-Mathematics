@@ -32,6 +32,7 @@ import { dirname, join } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { seatBulletLines } from '../vibe-math-vmu/packs/v5r/seat-faces.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 // The section analyzer is dev-only tooling under `scripts/sim/` (NOT a shipped module), so it is loaded the way the
 // other sim-based suite loads it (`tests/vmu-run241-prompt-budget.test.mjs`): a runtime import by absolute URL. A
 // static relative import here would be read by `tests/audit-package-membership.mjs` as a shipped-module reference
@@ -125,7 +126,7 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //        改成「**默认用 fs**＋工具只为内核记账」，并把「产出归/由指派者归档」改成「指派者只核对、不代写」
   //        （core:572 / blocks-a:228·89·103·220·294·455 / blocks-b:1057·1100 / assistant.js:30 / assistant.json:12）。
   //        实测（同一个 collect() 的 combos）：chair/normal 28 567、member 24 961、temp 21 690，合计 75 218；
-  //        对 HEAD（`D:/_tmp/base255` worktree，67fb601a）的 28 614 / 25 008 / 21 728 = 75 350 是 **−132**
+  //        对 HEAD（`${__tmpRoot()}/base255` worktree，67fb601a）的 28 614 / 25 008 / 21 728 = 75 350 是 **−132**
   //        （逐席 −47 / −47 / −38）⇒ 两条线上的上限与余量原样不动（仍 28 615 / 75 414）。以后谁把口径改回去、把字数
   //        涨回来，这里会先红。
   //   ★ RUN 256 / task-107 **不动座位装配、因此不记账**：这一轮改的是 persona 的**捕获语料**
@@ -185,6 +186,11 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //       next_step 编排建议。新增句全部由合并 fixture-tools / tracks 的重复句付款：三席各 −4，合计 −12
   //       （实测 29 491→29 469 / 25 993→25 971 / 22 660→22 638）。
   const TB2741_CORRECTIONS = { chair: -22, member: -22, temp: -22, sum: -66 }
+  //   ★ TB-2752（2026-11-12）— RUN 80 四条提示词更正（复核后重写：F80-4 恢复「两种合法写法」、F80-12 把入会与
+  //        表决权分到两个声明键上）。本套件的两条上限此前**漏记**这一轮，实测已红（29 562 > 29 555、78 288 > 78 216）；
+  //        这里按同一份逐条记账的口径补上：chair +51（含 seat-faces 的 final +6）、member +45、temp 0、合计 +96。
+  //        来源与归因见 `tests/vmu-run256-prompts-compress.test.mjs` 的 `TB2752_RUN80_FIXES`。
+  const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
   //   ★ RUN 270 (Lead) — TB-2725 的回退缺口：那次把「回执契约」两句合并成一句时，把 progress 的**可照抄样例**一起删了。
   //       实测后果：fixtureMode=tools 下 member/temp 席的提示词里**一处样例都没有**（只剩 chair 自己的
   //       `v5r-tools-academician` 里还有一份）。这个样例存在的理由是真机缺陷——席位写 `"progress":"长叙述"`（字符串）⇒
@@ -201,13 +207,13 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
     return { lines, chars }
   }
   const chairNormal = charsOf('chair', 'normal')
-  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair + RUN252_TEACHING.chair + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair
+  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair + RUN252_TEACHING.chair + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + TB2752_RUN80_FIXES.chair
   ok(chairNormal <= chairCeiling,
-    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair} ＋ RUN 252 教学 ${RUN252_TEACHING.chair} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.chair} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.chair} ＋ TB-2711 final 流程句 ${TB2711_FINAL_STEP.chair} ＋ TB-2717 相位闭集句 ${TB2717_PHASE_STEP.chair} ＋ TB-2732 去重 ${TB2732_DEDUP.chair}，逐条记账、无余量）`, chairNormal)
+    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair} ＋ RUN 252 教学 ${RUN252_TEACHING.chair} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.chair} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.chair} ＋ TB-2711 final 流程句 ${TB2711_FINAL_STEP.chair} ＋ TB-2717 相位闭集句 ${TB2717_PHASE_STEP.chair} ＋ TB-2732 去重 ${TB2732_DEDUP.chair} ＋ TB-2752 RUN 80 更正 ${TB2752_RUN80_FIXES.chair}，逐条记账、无余量）`, chairNormal)
   const sum = charsOf('chair', 'normal') + charsOf('member', 'normal') + charsOf('temp', 'normal')
-  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum + RUN252_TEACHING.sum + RUN2692_TEACHING.sum + RUN2692_FIELD_FIX.sum + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum
+  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum + RUN252_TEACHING.sum + RUN2692_TEACHING.sum + RUN2692_FIELD_FIX.sum + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + TB2752_RUN80_FIXES.sum
   ok(sum <= sumCeiling,
-    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum} ＋ RUN 252 机制教学 ${RUN252_TEACHING.sum} ＋ RUN 2692 净增 ${RUN2692_TEACHING.sum} ＋ RUN 2692 字段名更正 ${RUN2692_FIELD_FIX.sum} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.sum} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.sum} ＋ TB-2711 final 流程句 ${TB2711_FINAL_STEP.sum} ＋ TB-2717 相位闭集句 ${TB2717_PHASE_STEP.sum} ＋ TB-2732 去重 ${TB2732_DEDUP.sum}）`, sum)
+    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum} ＋ RUN 252 机制教学 ${RUN252_TEACHING.sum} ＋ RUN 2692 净增 ${RUN2692_TEACHING.sum} ＋ RUN 2692 字段名更正 ${RUN2692_FIELD_FIX.sum} ＋ TB-2707 归档句 ${RUN2707_ARCHIVE_SENTENCE.sum} ＋ RUN 260 问询门教学 ${RUN260_CONSULT_TEACHING.sum} ＋ TB-2711 final 流程句 ${TB2711_FINAL_STEP.sum} ＋ TB-2717 相位闭集句 ${TB2717_PHASE_STEP.sum} ＋ TB-2732 去重 ${TB2732_DEDUP.sum} ＋ TB-2752 RUN 80 更正 ${TB2752_RUN80_FIXES.sum}）`, sum)
   for (const seat of ['chair', 'member', 'temp']) {
     const s = signatureRows(seat)
     ok(s.lines <= 8 && s.chars <= 1738,

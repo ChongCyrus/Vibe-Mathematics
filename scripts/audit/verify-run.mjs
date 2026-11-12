@@ -3,7 +3,7 @@
  * verify-run.mjs — 真机 run 的机械核对器（TB-2696 / RUN 75 的 V1–V12 入库）
  *
  * 为什么存在：run 75 的 SIM-REPORT 自报 PASS 8 / FAIL 1 / ENV-LIMIT 3，机械核对是 PASS 5 /
- * NO-EVIDENCE 7 / FAIL 0——差在证据不在机制。核对器原先只住在 D:/_tmp，三小时后没人能复核；
+ * NO-EVIDENCE 7 / FAIL 0——差在证据不在机制。核对器原先只住在一个临时目录里，三小时后没人能复核；
  * 这个文件让它对任意一次 run 可重跑。
  *
  * 判定纪律（每条都写进输出，读者不必读码也能复核）：

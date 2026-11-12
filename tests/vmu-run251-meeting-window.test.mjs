@@ -31,6 +31,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 import { MEETING_STATE_MEANING, WAITING_FOR_MEANS } from '../vibe-math-vmu/kernel/meeting.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 
@@ -249,7 +250,7 @@ const nonEmptyString = (v) => typeof v === 'string' && v.length > 0
 // The kernel-level sections above prove the SERVICE is truthful; this one proves the receipt a CALLER reads (the
 // framework tool spec in tools/meeting.js) carries the same fields — echoed by name, never recomputed.
 {
-  const root = await mkdtemp(join('D:/_tmp', 'vmu-run251-meeting-'))
+  const root = await mkdtemp(join(__tmpRoot(), 'vmu-run251-meeting-'))
   try {
     const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
     const state = { specs: [] }

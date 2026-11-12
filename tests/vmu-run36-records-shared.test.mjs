@@ -35,6 +35,7 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -54,7 +55,7 @@ const serr = (fn) => { try { return { value: fn() } } catch (e) { return { error
 const entry = await import(pathToFileURL(ENTRY).href)
 
 // Temp roots live under D:\_tmp\r36\records (task rule) and are deleted at the end of the run.
-const BASE = 'D:/_tmp/r36/records'
+const BASE = __tmpRoot() + '/r36/records'
 await mkdir(BASE, { recursive: true })
 
 const boot = async (config = {}) => {

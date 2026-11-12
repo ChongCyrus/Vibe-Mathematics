@@ -23,6 +23,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const TOOLS_SRC = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
@@ -55,7 +56,7 @@ ok(/const pUnchanged = storedP !== null && typeof args\.p === 'number' && Number
 ok(src.includes('declares nothing new') && src.includes('guards a change of the reading, not a correction of the text beside it'),
   '★★ 正：跳过门时回执说明了为什么可以跳过')
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run240-settle-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run240-settle-'))
 try {
   const h = await boot({ root, clock: () => 1_800_000_000_000, withPrompt: false })
   const kernel = h.kernel

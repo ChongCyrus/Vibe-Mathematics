@@ -17,9 +17,16 @@ name: gate
 # THE FOUR JOBS AND THE ONE FACT THEY SHARE. `partition` publishes a plan; the eight `suite` shards each run one
 # slice of that plan and seal themselves to the SAME run (run id + attempt + plan sha256); `union` reads the
 # artifacts back and proves Σ selected == plan.sums.shards == plan.expected, that no shard is red, and that the
-# three excluded jobs appear in no shard's job list. Artifact names carry `run_id` and `run_attempt` so the union
-# can never sum yesterday's green shard into today's gate. `scripts/ci/union-verify.mjs` holds that arithmetic;
-# this file only wires it, because a proof that lives in YAML is a proof nobody can unit-test.
+# jobs excluded by `ci-exclusions.json` appear in no shard's job list. Artifact names carry `run_id` and
+# `run_attempt` so the union can never sum yesterday's green shard into today's gate. `scripts/ci/union-verify.mjs`
+# holds that arithmetic; this file only wires it, because a proof that lives in YAML is a proof nobody can unit-test.
+#
+# WHY EVERY GENERATED FILE LIVES UNDER `$RUNNER_TEMP` (TB-2748). These steps used to redirect `shard-report.json`
+# and friends into the checkout root. `tests/repo-hygiene.test.mjs` runs IN the suite shard, sees a 0-byte
+# untracked file that our own workflow created a second earlier, and reds — a gate that fails because of its own
+# litter teaches everyone to ignore red. Files are now written and uploaded by absolute path under the runner's
+# temp dir, and the suite exports an empty writable `VMU_CORPUS_ROOT` so suites that BUILD a corpus (rather than
+# measure a captured one) have a scratch root instead of trying `mkdir` at the filesystem root.
 #
 # THE FIRST RED MUST BE A FACT ABOUT THE PRODUCT. Before the first real push, refresh the derived counts
 # (`update-doc-counts --write`) until `--check` reports no changes. A CI that reds because our own derived docs
@@ -109,7 +116,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/ci/shard-plan.mjs --check | tee shard-plan.json
+          node scripts/ci/shard-plan.mjs --check | tee "$RUNNER_TEMP/shard-plan.json"
 
       # Seal the plan to this run BEFORE uploading it. The shards download this metadata and seal themselves
       # against the same plan sha256, which is what makes "this shard planned another tree" a named red.
@@ -117,14 +124,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/ci/union-verify.mjs write-meta --out meta.json --plan shard-plan.json
+          node scripts/ci/union-verify.mjs write-meta --out "$RUNNER_TEMP/meta.json" --plan "$RUNNER_TEMP/shard-plan.json"
 
       - uses: actions/upload-artifact@v4
         with:
           name: shard-plan-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}
           path: |
-            shard-plan.json
-            meta.json
+            ${{ runner.temp }}/shard-plan.json
+            ${{ runner.temp }}/meta.json
           if-no-files-found: error
 
   suite:
@@ -140,6 +147,10 @@ jobs:
     # silently run the release sweep (it is slower and its results mean something else).
     env:
       GATE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.full_release && '1' || '0' }}
+      # TB-2748: an EMPTY SCRATCH corpus root. Suites that measure a locally captured corpus still fail by name
+      # (they are the excluded rows); suites that only need a writable root to BUILD a corpus must not try
+      # `mkdir <filesystem-root>/_tmp/sim` on a runner whose filesystem root is not writable.
+      VMU_CORPUS_ROOT: ${{ runner.temp }}/sim-corpus
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -150,25 +161,32 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: shard-plan-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}
+          path: ${{ runner.temp }}/plan
 
       # One slice. The runner prints `shard=i/8 selected=K of M` on its header, its TOTAL line and inside
       # `--json`, so the number a shard reports is the number the union compares — not a number the workflow
       # derives again. `--json` goes to a file because it IS the artifact; the human log goes to stderr.
       #
+      # The exclusions come FROM ci-exclusions.json, not from a second hand-written list: a workflow that names
+      # its own exclusions drifts from the table the partition job proved, and the union would then compare a
+      # different gate than the one the plan sealed. `--exclude` takes one label at a time.
+      #
       # The step exits with the runner's exit code. A shard that failed must fail the job: the union also reds on
       # `fail>0`, but two independent statements about the same fact are how a gate stays honest.
+      #
+      # Everything this step writes lives outside the checkout (TB-2748): the suite shard RUNS repo-hygiene, and a
+      # 0-byte untracked `shard-report.json` from this very step is what made it red on CI.
       - name: run shard ${{ matrix.shard }}
         shell: bash
         run: |
           set -uo pipefail
           rc=0
+          EXCLUDES=$(node -e "const rows = require('./ci-exclusions.json'); process.stdout.write(rows.map((row) => '--exclude ' + row.label).join(' '))")
           node tests/run-tests.mjs --shard ${{ matrix.shard }}/8 --json --no-temp-hygiene \
-            --exclude sim-gate.test.mjs \
-            --exclude audit-math-computation-sensitivity.mjs \
-            --exclude mutation-evidence.test.mjs \
-            > shard-report.json 2> shard-log.txt || rc=$?
-          cat shard-log.txt
-          cat shard-report.json
+            $EXCLUDES \
+            > "$RUNNER_TEMP/shard-report.json" 2> "$RUNNER_TEMP/shard-log.txt" || rc=$?
+          cat "$RUNNER_TEMP/shard-log.txt"
+          cat "$RUNNER_TEMP/shard-report.json"
           exit "$rc"
 
       # Even a shard that crashed must upload what it has: the union needs to see the failure, not infer it from
@@ -178,7 +196,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/ci/union-verify.mjs write-meta --out shard-meta.json --plan shard-plan.json
+          node scripts/ci/union-verify.mjs write-meta --out "$RUNNER_TEMP/shard-meta.json" --plan "$RUNNER_TEMP/plan/shard-plan.json"
 
       - name: upload shard ${{ matrix.shard }}
         if: always()
@@ -186,9 +204,9 @@ jobs:
         with:
           name: suite-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}-${{ matrix.shard }}
           path: |
-            shard-report.json
-            shard-log.txt
-            shard-meta.json
+            ${{ runner.temp }}/shard-report.json
+            ${{ runner.temp }}/shard-log.txt
+            ${{ runner.temp }}/shard-meta.json
           if-no-files-found: warn
 
   union:
@@ -212,7 +230,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: '*-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}*'
-          path: artifacts
+          path: ${{ runner.temp }}/ci-artifacts
 
       # Six statements, one proof:
       #   1. the plan and all eight shards exist and belong to THIS run (and to THIS plan, by sha256);
@@ -228,14 +246,14 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/ci/union-verify.mjs \
-            --dir artifacts \
+            --dir "$RUNNER_TEMP/ci-artifacts" \
             --expected-run "$RUN_ID" \
-            --expected-attempt "$RUN_ATTEMPT" | tee union-summary.json
+            --expected-attempt "$RUN_ATTEMPT" | tee "$RUNNER_TEMP/union-summary.json"
 
       - name: upload the proof
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: union-${{ env.RUN_ID }}-${{ env.RUN_ATTEMPT }}
-          path: union-summary.json
+          path: ${{ runner.temp }}/union-summary.json
           if-no-files-found: warn

@@ -72,12 +72,35 @@ const TB2741_CORRECTIONS = { chair: -22, member: -22, temp: -22, sum: -66 }
 // Every one is a fact a seat must read; none is decoration. 29469+30 = 29499 per seat, 78078+90 = 78168 for the
 // three normals (live, measured after the restore).
 const RUN272_RUN79_RESTORE = { chair: 30, member: 30, temp: 30, sum: 90 }
-const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair // 29499
-const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 295
-const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29795
-const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum // 78168
-const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 782
-const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 78953
+// ★ TB-2752 (2026-11-12) — RUN 80’s four prompt corrections, all inside `packs/v5r/prompts/**` plus the one
+// seat-faces bullet that renders into the chair tool list. REWRITTEN after the prompt-lane review (the first version
+// taught a mechanism that does not exist — see F80-4 below).
+// F80-3 (+6 chair, tool list): the chair paper-flow bullet went from `start→part→advance→review→render` to
+// `start→part→advance→review→final→render` (seat-faces.js); the paper-review guide states that
+// `judgedPartFingerprint` / `judgedPartRound` are RECEIPT fields the kernel binds, not parameters — passing them is
+// refused `VMU_INVALID_ARGUMENT`. The same sentence was rendered twice in the paper-review assembly; the duplicate was
+// deleted (the copy in `v5r-blocks-b.js` is kept, the paragraph-identical one in `v5r-paper-prompts.js` is gone).
+// F80-4 (0 in these water levels: `collect()` assembles normal/meeting only, paper-write/paper-review are outside the
+// ruler; source text grew and is NOT counted here): `evidence` now teaches the REAL contract — two spellings name the
+// same record (the bare id `rec-<n>`, or a member-file path whose filename IS the record id); self-chosen file names
+// and prose summaries are what the gate refuses. The first fix said "record ids only, no paths", which
+// `checkEvidencePointers` never implemented (it resolves the member-file form) — a false absolute plus a dangling
+// 「按上一条…」, both removed.
+// F80-12 (+45 chair and +45 member, plus the +6 chair tool line = +51/+45); the roster bullet keeps a SHORT
+// checkable negative (what the temp does NOT write) because G7 C1b reads THAT bullet, not the shared section.: the roster derives attendance from
+// `vmu.meetings.attendDeniedSeats` AND says vote rights are decided by `vmu.meetings.eligibleSeats` — two keys, two
+// mechanisms. The first wording said 「不表决」 as if attendance decided the vote, which the vote gate does not do.
+// F80-8 (0 here): the office identity is hostPrompt-only, so it enters no seat normal — not counted in these water
+// levels; its correction is pinned by the new judge against `assistant.json` directly.
+// Measured per seat after the C1b restore: chair 29 499→29 550 (+51), member 26 001→26 046 (+45), temp 22 668 (0);
+// three-seat sum 78 168→78 264 (+96), still inside the taskbook's +120 envelope (24 chars of room). No cap raised.
+const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
+const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair // 29547
+const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 296
+const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29843
+const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum // 78272
+const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 783
+const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 79055
 
 let passed = 0
 let failed = 0

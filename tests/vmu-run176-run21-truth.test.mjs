@@ -30,6 +30,7 @@ import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -48,7 +49,7 @@ const ok = (cond, label, detail) => {
 const entry = await import(pathToFileURL(ENTRY).href)
 const pack = await import(pathToFileURL(PACK_PAPER).href)
 const qualityMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')).href)
-const BASE = 'D:/_tmp/r176/run21'
+const BASE = __tmpRoot() + '/r176/run21'
 const newRoot = async (tag) => { await mkdir(BASE, { recursive: true }); return mkdtemp(join(BASE, tag + '-')) }
 let tick = 1000
 const boot = async (root) => {

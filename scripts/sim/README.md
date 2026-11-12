@@ -12,8 +12,8 @@ model will use it.
 ## Run it
 
 ```bash
-node scripts/sim/run.mjs --scenario mainline --out D:/_tmp/sim/corpus-mainline
-node scripts/sim/audit/receipts.mjs D:/_tmp/sim/corpus-mainline
+node scripts/sim/run.mjs --scenario mainline --out "<temp root>/sim/corpus-mainline"
+node scripts/sim/audit/receipts.mjs "<temp root>/sim/corpus-mainline"
 ```
 
 `--scenario` defaults to `mainline`; `--keep` keeps the workspace (default: kept for the last run
@@ -53,7 +53,7 @@ steps/           one file per step, the full receipt (for reading, not parsing)
 REPORT.md        the human summary (steps, refusals, files before -> after)
 ```
 
-`node scripts/sim/run.mjs --scenario end-to-end --out D:/_tmp/sim/e2e` is the full-lifecycle
+`node scripts/sim/run.mjs --scenario end-to-end` is the full-lifecycle
 corpus (start -> hire -> proposition -> blueprint -> meeting -> records -> paper -> final), and it
 is the one the gate below runs.
 
@@ -96,7 +96,7 @@ so a future kernel fix flips one assertion instead of leaving the gap undocument
 
 ## Coverage debt: walk the real path, never declare an exemption (TB-2643)
 
-`audit/all.mjs` §5 compares every receipt against the LIVE field list (`D:/_tmp/sim/real-fieldset.json`, refreshed by
+`audit/all.mjs` §5 compares every receipt against the LIVE field list (`<sim root>/real-fieldset.json`, refreshed by
 `scripts/sim/harvest/real.mjs`). When a refresh exposes a field the simulation never produced, the fix is a step on
 the real path plus a HARD assertion — not a line in `scripts/sim/audit/fidelity-declared.json`:
 
@@ -147,7 +147,7 @@ the byte-for-byte check on exactly that row; and `SIM_SELFTEST_FAILURE=<CODE>` m
 A mutation copy is a temporary file that reuses this directory's code with one deliberate change,
 so it proves the *assertion* bites rather than proving that a copy of the code is broken. Two
 things must be re-pinned inside the copy, or the copy dies before it tests anything: the `REPO`
-constant (a copy living under `D:/_tmp` derives `D:/_tmp` from `import.meta.url`, and boot then
+constant (a copy living under the temp root derives the temp root from `import.meta.url`, and boot then
 fails with `ERR_MODULE_NOT_FOUND` for a path that never existed) and any relative import of
 `settings.mjs` (re-point it at the real file URL). A copy that fails to boot is not evidence — it
 only shows the copy is wrong.
@@ -184,7 +184,7 @@ caller-echoed panel field) is classified as `content`, not contract.
 
 The corpus is only comparable if it is stamped. The authoritative stamp is the driver's **sealed `run-metadata`
 event at the head of every journal it wrote** (TB-2641: `{"type":"run-metadata","build":"<sha>","buildSource":…,
-"tarballBytes":…,"scannedJs":…}`, prepended as one complete zstd frame by `D:/_tmp/slv-phase5/journal-build-stamp.mjs`
+"tarballBytes":…,"scannedJs":…}`, prepended as one complete zstd frame by a run-driver script kept outside the
 after the server stops, so existing frames stay byte-identical). Harvest copies that build onto **every** row and
 records provenance in `buildWhy` (`run-metadata:<source>`; a journal written before TB-2641 falls back to the old
 `BUILD REV:` text grep and says `grep:BUILD REV`). Filtering: `--only-build <sha|HEAD|null|any>` (default `HEAD`),

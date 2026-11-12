@@ -28,6 +28,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const HARNESS = await import(pathToFileURL(join(REPO, 'scripts', 'sim', 'harness.mjs')).href)
@@ -66,7 +67,7 @@ const blockOf = (text) => {
 }
 const lineCount = (block) => (block === '' ? 0 : block.split(NL).length)
 
-const TMP = 'D:/_tmp/vmu-run254-notice'
+const TMP = __tmpRoot() + '/vmu-run254-notice'
 mkdirSync(TMP, { recursive: true })
 const roots = []
 const mkRoot = async (tag) => { const d = await mkdtemp(join(TMP, tag + '-')); roots.push(d); return d }

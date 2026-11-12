@@ -26,6 +26,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const REPO = process.cwd()
 
 // The store writes through fire-and-forget, so a teardown can meet a write that is still landing: run 61's gate saw
@@ -51,7 +52,7 @@ const ok = (cond, name, detail) => {
   if (cond) { passed += 1; console.log('  ok   ' + name) } else { failed += 1; failures.push(name); console.log('  FAIL ' + name + (detail === undefined ? '' : ' [' + JSON.stringify(detail) + ']')) }
 }
 
-const BASE = 'D:/_tmp/r48/mute-author'
+const BASE = __tmpRoot() + '/r48/mute-author'
 await mkdir(BASE, { recursive: true })
 const root = await mkdtemp(join(BASE, 'author-'))
 const SETTINGS = {

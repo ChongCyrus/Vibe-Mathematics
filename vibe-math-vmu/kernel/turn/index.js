@@ -3808,9 +3808,52 @@ export function createTurnOrchestrator({
     }
     structuredReport = recorded
     const readback = pendingStructuredReport()
+    // ★★★ TB-2750 / RUN 80 (F80-10, MEASURED on the 80th live run): this receipt answered `{accepted:true,
+    // countedLater:{when:"the next op:\"step\"..."}}` for a reply that carried `vote_solved`, and only the NEXT call said
+    // the vote was never counted (`keptWhy:"tool-visibility-unprovable"`, votesCast stayed 4). `accepted:true` is about the
+    // WRITE, but a caller holding a judgement cannot wait a turn to learn it was a ghost vote. The facts that decide the
+    // channel are already in this loop's hands when the report lands (which tools the turn mounted), so the receipt runs
+    // the SAME decision the apply path will run and answers NOW: `keptNow`/`keptWhy` name it, and `accepted:true` is
+    // spelled out as "recorded, not yet counted". Nothing is guessed: an unprovable turn says so by name.
+    const voteKeeping = (() => {
+      if (!Object.prototype.hasOwnProperty.call(recorded.reply, 'vote_solved')) return null
+      if (recorded.reply.vote_solved === null || recorded.reply.vote_solved === undefined) return null
+      const id = recorded.member === null || recorded.member === undefined ? null : String(recorded.member)
+      const verdict = (keptNow, keptWhy, reason) => ({ field: 'vote_solved', keptNow, keptWhy, reason })
+      if (id === null) return verdict(false, 'no-member', 'the report carries no member id, so a closure vote cannot be attributed to anyone and is NOT counted')
+      if (toolVotedThisTurn.has(id)) return verdict(false, 'tool-used-this-turn', 'vibe_vmu_vote was already used this turn; the reply vote_solved is ignored (ONE TURN, ONE CHANNEL) — the vote that counts is the one already cast through the tool')
+      const vid = recorded.turnId === null || recorded.turnId === undefined ? null : String(recorded.turnId)
+      if (vid === null) {
+        if ((visibleToolsByMember.get(id) || []).includes('vibe_vmu_vote')) {
+          return verdict(false, 'tool-visible', 'vibe_vmu_vote is available this turn; the reply vote_solved is ignored (use the tool)')
+        }
+        return verdict(true, 'no-turn-row-compat', 'no turn id reached this report: this is the direct/tool path, where the pre-2730 rule (adopt unless the member table names the vote tool) still holds, so the vote WILL be counted on apply')
+      }
+      const mounted = mountedToolsByTurn.get(vid) || null
+      if (mounted === null) {
+        const validId = /^t-\d+$/.test(vid)
+        let durableEpoch = null
+        try { durableEpoch = turnLedger && typeof turnLedger.epochOf === 'function' ? turnLedger.epochOf(vid) : null } catch (e) { durableEpoch = null }
+        const knownHere = turns.has(vid)
+        const restarted = durableEpoch !== null ? durableEpoch !== loopEpoch : !knownHere
+        if (validId && restarted) return verdict(false, 'tool-visibility-unknown-after-restart', 'turn ' + vid + ' was assembled by an EARLIER kernel process; its mounted-tools fact went with that process, so a reply vote is unprovable and is NOT counted')
+        if (validId && knownHere && evictedTurnIds.has(vid)) return verdict(false, 'tool-visibility-evicted', 'turn ' + vid + ' WAS assembled by this loop, but its mounted-tools fact fell out of the bounded ' + MOUNTED_TOOLS_TURNS_CAP + '-turn table (FIFO eviction, NOT a restart); unprovable now, so it is NOT counted')
+        return verdict(false, 'legacy-row', 'this loop holds no mounted-tools fact for turn ' + vid + ' and cannot show it ever had one (bare row / never assembled in this loop); a reply vote is unprovable and is NOT counted')
+      }
+      if (mounted.provable !== true) return verdict(false, 'tool-visibility-unprovable', 'this loop cannot prove what turn ' + vid + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '); a reply vote is NOT counted — relaying it would be a ghost vote')
+      if (mounted.tools.indexOf('vibe_vmu_vote') !== -1) return verdict(false, 'tool-visible', 'vibe_vmu_vote WAS mounted for turn ' + vid + ' (measured from the host table); the reply vote_solved is ignored (use the tool)')
+      return verdict(true, 'tool-not-mounted', 'turn ' + vid + ' mounted ' + mounted.tools.length + ' host tool(s) and NONE of them is vibe_vmu_vote — the reply is then the member’s only channel, and the vote WILL be counted on apply')
+    })()
+    const keptNow = voteKeeping === null ? true : voteKeeping.keptNow
     return {
       ok: true,
       accepted: true,
+      // ★★★ TB-2750 / RUN 80 (F80-10): the answer to "will the judgement I just sent count?", available NOW.
+      keptNow,
+      keptWhy: voteKeeping === null ? null : voteKeeping.keptWhy,
+      keptNowMeans: '`accepted:true` means this report is RECORDED on the held turn; `keptNow` answers the narrower question this receipt can already decide — will the judgement it carries SURVIVE the apply? The channel is decided by a measured fact (which tools this turn mounted), and this loop reads that fact now instead of making the caller wait a step to find out. `keptNow:false` + `keptWhy` means the field will NOT be counted: do not wait for it, use vibe_vmu_vote in this turn if the vote must land',
+      fieldsKeeping: voteKeeping === null ? [] : [voteKeeping],
+      acceptedMeans: 'accepted / fields describe the WRITE (the report landed on the held turn, and which names it carried). They are not a promise that every field will be counted: a reply vote is counted only when no vote tool was mounted, and `keptNow`/`fieldsKeeping` report that decision at the moment it is made',
       source: 'tool',
       member: recorded.member,
       turn: recorded.turnId,
@@ -3837,6 +3880,12 @@ export function createTurnOrchestrator({
         when: 'the next `op:"step"` completes this held turn',
         why: 'this receipt RECORDS the report; the field actions it implies (including a closure vote) are carried out when the held turn is applied, so closureVote.votesCast moves on that step rather than here',
         fields: Object.keys(recorded.reply),
+        // ★★★ TB-2750 / RUN 80 (F80-10): WHEN this receipt already knows a field will NOT survive the apply, it says so
+        // here instead of leaving the promise one-sided. Empty means every recorded field is still expected to be kept.
+        notCountedFields: voteKeeping !== null && voteKeeping.keptNow === false ? [voteKeeping.field] : [],
+        notCountedWhy: voteKeeping !== null && voteKeeping.keptNow === false
+          ? voteKeeping.keptWhy + ' — ' + voteKeeping.reason
+          : null,
       },
       // ★★★ ROUND 240 (FEEDBACK63 ①5): `accepted:true` IS ABOUT THE WRITE. The run-63 office read it as "this will be
       // applied" and then never learned otherwise. The next three readings close that gap WITHOUT changing the write

@@ -317,6 +317,27 @@ async function toolHire(args = {}, { kernel, exec = null } = {}) {
   let task = null
   if (kernel.tasks && typeof kernel.tasks.create === 'function') {
     task = await kernel.tasks.create({ title: str(args.initial_task), objective: str(args.purpose), owner: str(args.to), deps: null, writeScopes: [] })
+    // ★★★ TB-2750 / RUN 80 (F80-1): `create` with an owner is an ASSIGNMENT that did not pass through `assign`, so the
+    // brief gate cannot refuse it here (the id must exist before a brief can be written). The hire purpose is the hiring
+    // caller's own written statement of what the new member is for, so it becomes the brief IMMEDIATELY — otherwise the
+    // fresh seat would wake to an assignment with nothing to read. This stores the caller's words; it does not invent work
+    // text.
+    if (task && typeof task.id === 'string' && typeof kernel.tasks.brief === 'function') {
+      await kernel.tasks.brief(task.id, str(args.purpose), { by: hiredBy })
+      // ★★★ TB-2750 follow-up (MEASURED by a probe after the fix above): `brief` bumps the row revision, so the CREATE
+      // row this receipt would otherwise hand back is ALREADY STALE — revision 1 beside a board at revision 2, and no
+      // `hasBrief`/`readable`. A caller that took that revision into a compare-and-set write was refused VMU_TASK_STALE_REVISION.
+      // The receipt must describe the row as it stands AFTER the brief: read it back and return THAT row.
+      const listed = await kernel.tasks.list()
+      const rows = Array.isArray(listed) ? listed : (listed && Array.isArray(listed.tasks) ? listed.tasks : [])
+      const freshRow = rows.filter((r) => r && r.id === task.id)[0] || null
+      // ★★★ TB-2750 follow-up (R5-b, MEASURED by a probe): the create row says `assignmentUnreadable:true` (an owner
+      // existed before the brief); the row AFTER the brief does not. The board row carries no such key, so merging only
+      // it left the create-time field in place — the same receipt then said "assigned but nothing to read" AND
+      // `readable:true/ready:true`: TWO READINGS, ONE RECEIPT. The brief was written IN THIS CALL (awaited above), so the
+      // post-brief truth overwrites both fields (null = named absence, never a stale sentence).
+      if (freshRow) task = Object.assign({}, task, freshRow, { assignmentUnreadable: false, assignmentMeans: null })
+    }
   }
   // ★ ROUND 32 (run-32 report, readability item 1): `vibe_v5_hire` hands back a TASK whose id is `t-1`, and
   // `vibe_vmu_turn { op:"step" }` hands back a PROMPT whose `turnId` is also `t-1` — two registries minting from their own
@@ -1100,6 +1121,12 @@ async function toolAssign(args = {}, { kernel } = {}) {
   const tasks = tasksOf(kernel)
   let taskId = has(args.task_id) ? str(args.task_id) : null
   let created = null
+  // ★★★ TB-2750 / RUN 80 (F80-1): this face is the v5r ASSIGNMENT verb, and it carries the assignment's WHY + ACCEPTANCE
+  // — the work statement the assignee must be able to read. The kernel now refuses an unbriefed take by name
+  // (`VMU_TASK_BRIEF_MISSING`), so this face turns its own two required parameters into that brief instead of leaving the
+  // assignee with an assigned-but-unreadable row. The text is the caller's, never invented; an EXISTING brief is not
+  // overwritten (the existing work statement is the more specific one).
+  const assignmentBrief = () => '【分派】' + str(args.subject || args.task_id) + '\n理由：' + str(args.why) + '\n验收：' + str(args.acceptance)
   if (!taskId) {
     if (!has(args.subject)) {
       throw refuse('VMU_INVALID_ARGUMENT', 'assign without task_id needs a subject (the original created the task here)',
@@ -1107,7 +1134,31 @@ async function toolAssign(args = {}, { kernel } = {}) {
     }
     created = await tasks.create({ title: str(args.subject), objective: has(args.description) ? str(args.description) : str(args.acceptance), owner: to, deps: null, writeScopes: Array.isArray(args.write_scopes) ? args.write_scopes.map(String) : [] })
     taskId = created && created.id
+    // create({owner}) plants the owner without a brief (the id must exist first); write the brief NOW and return the row
+    // as it stands AFTER it (the brief bumps revision — a stale receipt would feed the next compare-and-set a bad number).
+    if (created && typeof tasks.brief === 'function') {
+      await tasks.brief(created.id, assignmentBrief(), {})
+      const listed = await tasks.list()
+      const rows = Array.isArray(listed) ? listed : (listed && Array.isArray(listed.tasks) ? listed.tasks : [])
+      const fresh = rows.filter((r) => r && r.id === created.id)[0] || null
+      // ★★★ TB-2750 follow-up (R5-b): same as hire above — the brief was written in THIS call, so the create-time
+      // `assignmentUnreadable:true`/`assignmentMeans` no longer describe this row. Returning both would contradict
+      // `readable:true` in the SAME receipt (one receipt, one reading).
+      if (fresh) created = Object.assign({}, created, fresh, { assignmentUnreadable: false, assignmentMeans: null })
+    }
   } else {
+    // an EXISTING task: assign refuses when it has no brief, so hand it the same work statement first — but only when it
+    // really lacks one (briefOf throws VMU_NO_SUCH_OBJECT for "no brief", which is an absence, not a failure).
+    let alreadyBriefed = false
+    if (typeof tasks.briefOf === 'function') {
+      try { tasks.briefOf(taskId); alreadyBriefed = true } catch (e) {
+        // ONLY "this task has no brief" is an absence this face may fill; any other failure is a real read failure and
+        // must travel (silently treating it as "no brief" would overwrite a statement nobody could read).
+        if (!e || e.code !== 'VMU_NO_SUCH_OBJECT') throw e
+        alreadyBriefed = false
+      }
+    }
+    if (!alreadyBriefed && typeof tasks.brief === 'function') await tasks.brief(taskId, assignmentBrief(), {})
     await tasks.assign(taskId, to)
   }
   let notice = null
@@ -4693,7 +4744,19 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   if (agendaItems.length === 0 && agendaText.trim() !== '') {
     agendaItems = agendaText.split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== '')
   }
-  if (!has(args.agenda)) {
+  // ★★★ TB-2750 follow-up (RUN 80 / F80-2, LEAD DECISION "option ②"): `materials` is the KERNEL-side name for this
+  // same stored line, so — having refused the BOTH-supplied call above — the legacy name has to be legal ALONE as well.
+  // Otherwise this face's own conflict hint would name a call it refuses (agenda required): a repair path that does not
+  // exist. This is NOT a second "material content" slot; it is the same one line under its old name, and the receipt
+  // names which name supplied it (`agendaSource` / `agendaItemsSource`).
+  const agendaFromLegacyName = !has(args.agenda) && has(args.materials)
+  if (agendaFromLegacyName) {
+    agendaText = str(args.materials)
+    if (agendaText.trim() !== '') {
+      agendaItems = agendaText.split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== '')
+    }
+  }
+  if (!has(args.agenda) && !agendaFromLegacyName) {
     throw refuse('VMU_INVALID_ARGUMENT',
       'meeting needs an agenda — ' + (agendaGiven
         ? 'the one you passed is EMPTY after trimming (whitespace is not a purpose)'
@@ -4925,7 +4988,24 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'wallLimitMs must be an integer inside [300000, 7200000] (30 minutes .. 2 hours); got ' + JSON.stringify(wallLimitMsRaw),
       'pass this meeting\u2019s own upper bound in ms (or its alias durationMs), or omit it to use vmu.meetings.hardLimitMs')
   }
+  // ★★★ TB-2750 / RUN 80 (F80-2, MEASURED on the 80th live run): `agenda` and `materials` are TWO NAMES FOR ONE STORED
+  // LINE, and this face let the SECOND one win silently. The run passed an agenda of three items AND a materials string;
+  // the stored line was the materials text, `agendaItems` read back as two materials lines, and the receipt still said
+  // `agendaInputShape:"string"` — so the caller believed its three-item agenda had been recorded. A face that answers two
+  // names for one slot must never pick one behind the caller's back: with BOTH supplied it refuses BY NAME and spells out
+  // the two legal ways to say the same thing (pass the agenda alone, or the legacy materials alone).
+  const agendaNamedBoth = has(args.agenda) && has(args.materials)
+  if (agendaNamedBoth) {
+    throw refuse('VMU_MEETING_AGENDA_CONFLICT',
+      'both `agenda` and `materials` address the SAME stored line, so passing both would silently drop one (the previous behaviour let materials win and still reported the agenda shape)',
+      'pass ONE of them: agenda:"what this meeting is for" (the preferred name; one string, or an array of non-empty lines joined with "; "). `materials` is the SAME stored line under the KERNEL-side old name: a legacy caller may pass materials:"the same one line" ALONE (that single-source form is accepted), but never both, and it is NOT a second "material content" slot — if you mean material content, write it INSIDE the agenda text. The read faces (status/summary/board) return that one line either way',
+      { agendaInputShape: Array.isArray(args.agenda) ? 'array' : 'string', materialsSupplied: true,
+        reachableInstead: 'vibe_v5_meeting { agenda: "…" } — or vibe_v5_meeting { materials: "…" } — never both (the two names store ONE line; each single-source form is legal)' })
+  }
   const materialsText = has(args.materials) ? str(args.materials) : agendaText
+  // (TB-2750) `agenda` is REQUIRED on this face, so `materials` can only ever arrive ALONGSIDE it — which the block above
+  // now refuses by name. There is therefore no receipt flag to add here: a convene that returns has exactly one agenda
+  // source, and `agenda`/`agendaItems` in the receipt are that source.
   // ★ RUN 240-I: the declaration used to STOP HERE. `formal_agenda:true` was echoed into this face's receipt while the
   // kernel was never told, so the stored meeting carried no agenda row and every read face returned
   // `formalAgendaItems:null` forever (live run 63). The kernel now stores what is said (a boolean declaration or an
@@ -5037,13 +5117,22 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // ★ RUN 239-E (FEEDBACK62 #9, MEASURED): the audit read `agenda` as a string, passed an ARRAY, and got
     // materials:"确认命题; 分配复核" back — the joined text was the only trace of the items. The receipt now reads the
     // agenda back in BOTH shapes and says where each came from: `agenda` is the normalized line stored as materials,
-    // `agendaItems` is the ordered list, `agendaSource` is "argument" (this face refuses to convene without one;
-    // "default" is reserved for a kernel-side default), and `agendaItemsSource` names which door split the list.
+    // `agendaItems` is the ordered list, `agendaSource` is "argument" or "materials" (the TWO single-source names for
+    // the same line; "default" is reserved for a kernel-side default), and `agendaItemsSource` names which door split
+    // the list.
     agendaItems,
-    agendaSource: 'argument',
-    agendaItemsSource: Array.isArray(args.agenda)
-      ? 'argument-array'
-      : (agendaGiven && String(args.agenda).trim().charAt(0) === '[' ? 'argument-json-array' : 'argument-line'),
+    // ★★★ TB-2750 follow-up (F80-2 option ②): the one stored line has TWO accepted names; this pair names WHICH name
+    // supplied it, so a reader never has to infer it from `args` it cannot see (agenda argument vs the legacy
+    // kernel-side `materials`, never both).
+    agendaSource: agendaFromLegacyName ? 'materials' : 'argument',
+    agendaSourceMeans: agendaFromLegacyName
+      ? 'the caller passed NO `agenda` and passed `materials` (the kernel-side name for the SAME stored line): that single-source form is accepted and named here; the two names are never two fields, and the read faces return this one line as `materials`'
+      : 'the agenda came from the `agenda` argument (this face refuses to convene without ONE of the two single-source forms)',
+    agendaItemsSource: agendaFromLegacyName
+      ? 'materials-line'
+      : (Array.isArray(args.agenda)
+        ? 'argument-array'
+        : (agendaGiven && String(args.agenda).trim().charAt(0) === '[' ? 'argument-json-array' : 'argument-line')),
     agendaItemsSourceMeans: '`agendaItems` are the lines THIS face joined into the stored materials (an array agenda keeps its items; a one-line agenda is split on the "; " separator the join itself uses). The kernel meeting object keeps its own agenda items (ids ag-1..., closable one at a time) and the kernel face reads them back — this field never claims to be that ledger.',
     // ★ ROUND 79 / TB-2740 (FEEDBACK79 B9): WHICH SHAPE the caller passed, and the separator rules that applied — the
     // two convenes of RUN 79 both passed ARRAYS, so 「逗号不是分隔符」 was never challenged on the string path. A reader
@@ -6719,6 +6808,26 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // read, so the receipt cannot disagree with itself about which row wrote the file.
       const compiledRow = (() => { try { return got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null } catch (e) { return null } })()
       const compiledProduced = compiledRow !== null
+      // ★★★ TB-2750 / RUN 80 (F80-5, MEASURED on the 80th live run): the same status receipt said `toolchainProbe:"not-run"`
+      // while `pdfCompiled` described a compiled PDF (produced:true, engine "xelatex", 111327 bytes, sha matching disk). The
+      // probe was read only from THIS kernel's session memo — so a compile that ran in an earlier kernel, or before a
+      // restore, left "nobody asked" on a paper whose PDF provably exists. A READ THAT CAN SEE THE PROOF OWES THE VERDICT:
+      // the durable paper ledger's compile row is the observation ("a compile ran and produced a file"), so `not-run` is
+      // upgraded to `ran-present` and the receipt names WHICH evidence it used (`toolchainProbeSource`). Nothing is
+      // invented: no row ⇒ no verdict, and `ran-absent` (a measured failure) is never overwritten by a row from another
+      // compile — absence is about the engine, and a produced file is not evidence of absence.
+      const envLedgerRead = (() => {
+        if (!compiledProduced || envRead.toolchainProbe !== 'not-run') return envRead
+        const engine = compiledRow && compiledRow.engine !== undefined && compiledRow.engine !== null ? String(compiledRow.engine) : null
+        const rowAt = compiledRow && compiledRow.at !== undefined && compiledRow.at !== null ? String(compiledRow.at) : null
+        const rowBytes = compiledRow && compiledRow.pdfBytes !== undefined && compiledRow.pdfBytes !== null ? compiledRow.pdfBytes : null
+        return Object.assign({}, envRead, {
+          latexAvailable: envRead.latexAvailable === null ? true : envRead.latexAvailable,
+          toolchainProbe: 'ran-present',
+          toolchainProbeSource: 'paper-ledger',
+          toolchainProbeMeans: 'toolchainProbe:"ran-present" read from the durable paper ledger, not from this session\'s probe memo: the paper track already holds a compile row (engine ' + (engine === null ? 'unnamed' : '"' + engine + '"') + ', ' + (rowBytes === null ? 'PDF size not recorded by the row' : String(rowBytes) + ' byte PDF') + (rowAt === null ? '' : ', recorded at ' + rowAt) + '), so a compile DID run and produced a file — the engine was available before it. This is an OBSERVATION of that compile, not an installation claim made by a read; it is the same verdict any kernel can reach from the same ledger',
+        })
+      })()
       // ★★★ RUN 2691 (TB-2691 / F75-15): IS THE FILE ON DISK STILL THE FILE THE ROW RECORDED? The row carries the sha256
       // the compile counted (same buffer as `pdfBytes`); this read hashes the disk file once. Either side `null` is named
       // absence — never "matches". A mismatch is the tamper/permission case: the row says which bytes, the disk says other.
@@ -6731,7 +6840,7 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const pdfSha256Mismatch = pdfSha256MatchesDisk === false
       return { ok: true, tool, action, target, exists,
         // ★★★ RUN 256 (TB-2624 item 1): the same four environment keys, same names, at the TOP level of this door too.
-        ...envRead,
+        ...envLedgerRead,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
         // ★★★ TB-2713 (RUN 76 / A5, MEASURED): round 2's `deliverable:true` votes were read as stale on round 3, and no
@@ -6844,13 +6953,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // ★★★ RUN 256 (TB-2624 item 1): the environment reading is the SAME one `compile`/`final` print at top level
         // (one reader, three doors). `latexAvailable:null` means this session never asked; an empty list means
         // not-reported, never "installed".
-        toolchainAbsent: envRead.toolchainAbsent,
-        pdfEnvironmentMissing: envRead.pdfEnvironmentMissing,
-        latexAvailable: envRead.latexAvailable,
+        toolchainAbsent: envLedgerRead.toolchainAbsent,
+        pdfEnvironmentMissing: envLedgerRead.pdfEnvironmentMissing,
+        latexAvailable: envLedgerRead.latexAvailable,
         // ★★★ TB-2743 (item B): `toolchainAbsent: []` beside `not-run` means NOT TESTED, never "installed and fine".
-        toolchainProbe: envRead.toolchainProbe,
-        toolchainProbeMeans: envRead.toolchainProbeMeans,
-        toolchainAbsentMeans: envRead.environmentMeans,
+        toolchainProbe: envLedgerRead.toolchainProbe,
+        toolchainProbeMeans: envLedgerRead.toolchainProbeMeans,
+        toolchainAbsentMeans: envLedgerRead.environmentMeans,
         // ★★ RUN 183 (run 29 / FEEDBACK29 D9, MEASURED): a finalized paper read `complete:true` beside `pdf:null` and
         //   a reader took it as "no PDF but the paper is complete". `complete` speaks only about the ARCHIVE artifacts
         //   row (md/tex/pdf/meta as NAMED rows); the file a compile produced is `pdfCompiled` below, and the two are
@@ -6891,14 +7000,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
               ? 'not-finalized'
               : (blockedPartKeys.length === 0
                 ? 'no-parts'
-                : (Array.isArray(envRead.toolchainAbsent) && envRead.toolchainAbsent.length > 0 ? 'toolchain-absent' : 'compile-not-run'))
+                : (Array.isArray(envLedgerRead.toolchainAbsent) && envLedgerRead.toolchainAbsent.length > 0 ? 'toolchain-absent' : 'compile-not-run'))
             const blockedByMeans = blockedBy === 'not-finalized'
               ? 'the paper is not finalized yet (status: ' + (blockedStatus === '' ? 'unknown' : blockedStatus) + '): a PDF is produced by `final` (or by `compile` on an already-finalized paper), so there is nothing to look for yet — this is NOT a toolchain verdict'
               : (blockedBy === 'no-parts'
                 ? 'the paper is finalized but carries NO parts, so there is no prose to typeset: record parts first (vibe_v5_paper { action: "part", … }) — this is NOT a toolchain verdict'
                 : (blockedBy === 'toolchain-absent'
-                  ? 'the paper was finalized and parts exist, but the compile found the LaTeX toolchain unusable (' + envRead.toolchainAbsent.join(', ') + '): a MEASURED absence, see `toolchainProbe:"ran-absent"`'
-                  : 'the paper was finalized and parts exist, and the compile was never observed producing a PDF (toolchainProbe:' + String(envRead.toolchainProbe) + '): re-run vibe_v5_paper { action: "compile", target: "' + stateTarget + '" } and read its receipt'))
+                  ? 'the paper was finalized and parts exist, but the compile found the LaTeX toolchain unusable (' + envLedgerRead.toolchainAbsent.join(', ') + '): a MEASURED absence, see `toolchainProbe:"ran-absent"`'
+                  : 'the paper was finalized and parts exist, and the compile was never observed producing a PDF (toolchainProbe:' + String(envLedgerRead.toolchainProbe) + '): re-run vibe_v5_paper { action: "compile", target: "' + stateTarget + '" } and read its receipt'))
             return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, pdfSha256: null, engine: null,
               blockedBy, blockedByMeans,
               // ★★★ RUN 249 (F-08): no ledger row ⇒ NO record can name the file on disk. Stated as a field (not silence)
@@ -7768,8 +7877,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / a passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier and is REFUSED by name (`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`). ★ `title`/`id` are optional (omit both and an id is minted; an id held by another registry is refused by name). ★ `at` SCHEDULES it (epoch ms or ISO-8601): a future time puts the meeting in `scheduled` — reads work right away, every action before the start is refused by name, and a latecomer attending then starts it; the receipt reads `state` and `scheduledFor` back. ★ The institution\'s recommended procedure comes back in `procedure` — a RECOMMENDATION, never a gate; steps the framework has not implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES, plus TWO reads (`action:"rulings"` lists the ruling cards the members filed for a debate — id + proposition_id; `action:"receiptsView"` READS the kernel\'s receipts: `limit` 1..200, default 50, out-of-range refused by name; rows carry `typeInput`/`typeMatchedBy`, old rows null + means); status/summary/close/flow live on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face — on vibe_vmu_meeting it is a VOTE\'s object, so do not carry the habit between faces. ★ `sequence` convenes the meetings that FOLLOW this one (an array of descriptors, each validated and refused by name); omitting `at` convenes them now, `at` schedules this one and the declared run follows it. ★ `durationMs` sets THIS meeting\'s own upper bound (integer ms, 30 minutes .. 2 hours; outside the range is refused by name); omit it and `vmu.meetings.hardLimitMs` applies — the receipt reads back `wallLimitMs` and `wallLimitMsSource`. ★ RUN 225-B / RUN 255 rev3: `lateAdmission` (open|chair|refuse, DEFAULT chair — a late arrival must be admitted by the chair) decides a LATE ARRIVAL (late = vmu.meetings.lateAfterMs against openedAt; the default 0 means nobody is ever late): open seats it (late:true), chair holds it at the door (`pendingLate:true`, released only by the chair with vibe_vmu_meeting { action: "admit", id, member, actor }), refuse refuses it by name (`VMU_LATE_ADMISSION_REFUSED`, naming the two repairs). ★ RUN 248-N: `op` IS AN ALIAS of `action` (one word, two spellings; giving BOTH with different words is refused by name), and the appointment notice teaches three words of it: `{op:"appoint"}` convenes/预约 in one word, `{op:"schedule", scheduledFor:"<ISO-8601 time>"}` requires the start time (alias `at`; missing is refused by name), and `{op:"attend", id:"<meeting>", member:"<id>"}` takes the seat the notice promised. The receipt echoes the KERNEL delivery verdict — `notified` / `notifyRows` / `notifyFailed` are the kernel `open()` fields passed through unchanged — because ONE convene writes exactly ONE durable row per invited member (and renders ONE notice line); this face sends no invitation of its own.',
-    parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: ['boolean', 'array'], items: { type: ['string', 'object'] }, description: 'true = declare that this meeting has a formal agenda; an ARRAY = the agenda items themselves (each a non-empty line, or {title|text, kind, id}); the kernel stores either and the read faces return `formalAgendaItems` rows with `formalAgendaItemsWhy` naming why they are empty' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' }, op: { type: 'string' }, scheduledFor: { type: 'string' }, materials: { type: 'string' }, wallLimitMs: { type: 'integer' }, limit: { type: 'integer' },
+    description: 'Convene a meeting. agenda REQUIRED (or its kernel-side alias `materials`: ONE stored line — pass exactly one, never both (`VMU_MEETING_AGENDA_CONFLICT`); there is no separate material slot; a materials-only convene reads back `agendaSource:"materials"`); a STRING agenda splits on `;`/`；`/newline only (a comma is punctuation); type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier: `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`. ★ `title`/`id` optional (omit both ⇒ an id is minted; an id held by another registry is refused by name). ★ `at` schedules it (epoch ms or ISO-8601): a future time ⇒ `scheduled` — reads work at once, every action before the start is refused, a latecomer attending starts it; receipt reads `state`/`scheduledFor`. ★ `procedure` is a RECOMMENDATION, never a gate; unimplemented steps are in `pendingSteps`. ★ THIS FACE ONLY CONVENES + TWO reads: `action:"rulings"` (filed ruling cards: id + proposition_id) and `action:"receiptsView"` READS the kernel receipts; `limit` 1..200 default 50, out-of-range refused; rows carry `typeInput`/`typeMatchedBy`, old rows null + means). status/summary/close/flow are on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face; on vibe_vmu_meeting it is a VOTE object — do not carry the habit between faces. ★ `sequence` convenes the FOLLOWING meetings (descriptors validated/refused by name; omit `at` ⇒ now). ★ `durationMs` is this meeting own upper bound (integer ms, 30min..2h; out-of-range refused); default `vmu.meetings.hardLimitMs`; receipt reads `wallLimitMs`/`wallLimitMsSource`. ★ `lateAdmission` (open|chair|refuse, default chair) decides LATE arrivals (late = vmu.meetings.lateAfterMs vs openedAt; 0 = nobody late): open seats it (`late:true`); chair holds it (`pendingLate:true`, released by the chair via vibe_vmu_meeting { action:"admit", id, member, actor }); refuse ⇒ `VMU_LATE_ADMISSION_REFUSED`. ★ `op` aliases `action` (both with different words ⇒ refused by name); the appointment notice teaches `{op:"appoint"}`, `{op:"schedule", scheduledFor:"<ISO-8601>"}` (start required; alias `at`), `{op:"attend", id, member}`. The receipt echoes the kernel `notified`/`notifyRows`/`notifyFailed` (one durable row per invited member; this face sends no invitation of its own).',
+    parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: ['boolean', 'array'], items: { type: ['string', 'object'] }, description: 'true = declare that this meeting has a formal agenda; an ARRAY = the agenda items themselves (each a non-empty line, or {title|text, kind, id}); the kernel stores either and the read faces return `formalAgendaItems` rows with `formalAgendaItemsWhy` naming why they are empty' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' }, op: { type: 'string' }, scheduledFor: { type: 'string' }, materials: { type: 'string', description: 'the KERNEL-side name for the SAME one stored agenda line (legacy alias of `agenda`): accepted ALONE when no agenda is passed; never alongside agenda (VMU_MEETING_AGENDA_CONFLICT). It is not a second "materials" slot — put material content inside the agenda text' }, wallLimitMs: { type: 'integer' }, limit: { type: 'integer' },
     // ★ RUN 225-B / RUN 255 rev3: lateAdmission is THIS meeting policy for a LATE arrival; the default (chair — a
     //   late arrival is held at the door until the chair admits it) lives in the kernel, not here. Undeclared keys are
     //   refused generically by the host funnel BEFORE the handler runs, so being able to say it at all has to be a

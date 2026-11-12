@@ -17,7 +17,7 @@
 // pattern. That is the difference between a claim and a citation: a renamed symbol or a deleted line turns it red.
 //
 // ── ROUND 610: FROM "THE CITED FILE EXISTS" TO "THE CLAIM HAS A VERIFIABLE SHAPE" ───────────────────────────────
-// An independent re-audit (D:/_tmp/verify/rule-coverage-audit.md) proved the 77-DONE ledger was hollow in three
+// An independent re-audit (a scratch-dir audit report) proved the 77-DONE ledger was hollow in three
 // ways this gate could not see: 41/77 rows cited a `rule` line range that does not contain their requirement (14 of
 // those ranges were entirely blank lines); mechanism/tool evidence was bare words (`routes`, `obstacles`, `state`);
 // and a handful of `live` rows were "some gate refused" rather than a real receipt. The gate now checks SHAPE:

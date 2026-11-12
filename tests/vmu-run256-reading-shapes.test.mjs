@@ -1,7 +1,7 @@
 // tests/vmu-run256-reading-shapes.test.mjs — RUN 256 / TB-2624: ONE FACT, ONE SHAPE.
 //
 // THE THREE DEFECTS THIS PINS (measured by the 73rd run; the RED readings are quoted verbatim below, captured on
-// the pre-fix tree `git archive HEAD` = 67fb601a by the probe `D:/_tmp/probe-red2624.mjs`):
+// the pre-fix tree `git archive HEAD` = 67fb601a by the probe `${__tmpRoot()}/probe-red2624.mjs`):
 //
 //   1) ONE LaTeX-absent fact in THREE shapes. Pre-fix readings, same engine-missing session:
 //        compile: top-level toolchainAbsent ABSENT, pdfEnvironmentMissing ABSENT, latexAvailable ABSENT
@@ -39,6 +39,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -125,7 +126,7 @@ has(KIT_SRC, "export const consultRequestId = (seq, { seed = '', rand = null } =
 
 // ── §1. THREE DOORS, ONE SESSION, ONE ENGINE-MISSING FACT ──────────────────────────────────────────────────────
 console.log('=== 1. engine missing: final / compile / status carry the SAME top-level environment reading ===')
-const base = await mkdtemp(join('D:/_tmp', 'vmu-run256-readings-'))
+const base = await mkdtemp(join(__tmpRoot(), 'vmu-run256-readings-'))
 const prevCwd = process.cwd()
 process.chdir(base)
 const b = await boot({ root: join(base, 'v5r'), packs: ['v5r'] })

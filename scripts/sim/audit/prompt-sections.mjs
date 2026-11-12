@@ -19,7 +19,7 @@
 //
 // Usage:
 //   node scripts/sim/audit/prompt-sections.mjs [--out <dir>] [--slots chair,member,temp] [--phases normal,meeting,checkpoint,verify]
-// Outputs (default `D:/_tmp/sim`):
+// Outputs (default `<temp root>/sim`):
 //   prompt-sections.json      {generatedAt, combos:[{slot,phase,chars,headings,empty}], sections:[…]}
 //   prompt-sections-index.md  per slot/phase totals + section ranking + first-line summaries + duplicate appendix
 //   prompt-sections-dups.json {assemblyDups, exactDups, nearDups, timing}
@@ -28,6 +28,7 @@
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpRoot as gateTmpRoot } from '../../lib/tmp-root.mjs'
 import { REPO, boot, tmpRoot } from '../harness.mjs'
 
 export const DEFAULT_SLOTS = ['chair', 'member', 'temp']
@@ -37,7 +38,7 @@ function argOf(flag) {
   const i = process.argv.indexOf(flag)
   return i >= 0 ? String(process.argv[i + 1] || '') : ''
 }
-const OUT = argOf('--out') || 'D:/_tmp/sim'
+const OUT = argOf('--out') || join(gateTmpRoot(), 'sim')
 const SLOTS = (argOf('--slots') || DEFAULT_SLOTS.join(',')).split(',').map((s) => s.trim()).filter(Boolean)
 const PHASES = (argOf('--phases') || DEFAULT_PHASES.join(',')).split(',').map((s) => s.trim()).filter(Boolean)
 

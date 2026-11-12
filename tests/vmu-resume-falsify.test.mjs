@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createStorePolicy } from '../vibe-math-vmu/kernel/storepolicy.js'
 import { createWorkLedger } from '../vibe-math-vmu/kernel/work.js'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const RESUME = join(HERE, '..', 'vibe-math-vmu', 'kernel', 'resume.js')

@@ -80,8 +80,11 @@ const mk = (opts = {}) => createTasks(Object.assign({ clock }, opts))
 // ── F35 · 4. a legal DAG still passes, and the start-time gate is unchanged ─────────────────────────────────
 {
   const a = mk()
+  // TB-2750 (F80-1, hard rule): readiness requires a BRIEF (an objective is a topic line, not the work statement).
   const t1 = await a.create({ title: 'one' })
+  a.brief(t1.id, 'the only root of this legal-DAG fixture: do it first', { by: 'office' })
   const t2 = await a.create({ title: 'two', deps: [t1.id] })
+  a.brief(t2.id, 'fan-out child of the legal-DAG root', { by: 'office' })
   const t3 = await a.create({ title: 'three', deps: [t1.id, t2.id] })
   const t4 = await a.create({ title: 'four', deps: ['t-999'] })   // documented: a dep may not exist yet
   ok(t4.ok === true, 'a dependency naming a not-yet-existing task is still allowed (checked at start)', t4)
@@ -124,7 +127,10 @@ const mk = (opts = {}) => createTasks(Object.assign({ clock }, opts))
     'the overlapping pair is REPORTED', st.writeScopeConflicts)
   ok(/advisory only/.test(String(st.writeScopes)), 'status() says the scopes are advisory', st.writeScopes)
   // the decisive assertion: nothing is blocked by the overlap
-  const assigned = await a.assign(t2.id, 'r-3', { expectedRevision: t2.revision })
+  // ★★★ TB-2750 / RUN 80 (F80-1): the assignment needs a brief first (an unbriefed assign is refused by name); this
+  // section is about write scopes, not the brief gate.
+  a.brief(t2.id, 'edit the proposition file under Members/r-1/Propos', { by: 'office' })
+  const assigned = await a.assign(t2.id, 'r-3', { expectedRevision: a.list().filter((r) => r.id === t2.id)[0].revision })
   ok(assigned.ok === true, 'an overlapping scope does NOT block an assignment', assigned)
   const moved = await a.transition(t2.id, 'doing', { expectedRevision: assigned.revision })
   ok(moved.ok === true, 'nor a transition into work', moved)

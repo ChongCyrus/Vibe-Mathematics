@@ -3,6 +3,7 @@
 // that never existed. Two readers were wrong: the loop (it could have checked the roster it is given) and my brief (it
 // assumed seats that had never been hired). This file pins the loop's half; the brief is fixed in D:\_tmp.
 import { createTurnOrchestrator } from '../vibe-math-vmu/kernel/turn/index.js'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 
 let passed = 0
 let failed = 0

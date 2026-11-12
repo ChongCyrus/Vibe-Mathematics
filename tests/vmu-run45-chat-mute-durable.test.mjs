@@ -27,6 +27,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const REPO = process.cwd()
 const m = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
 
@@ -37,7 +38,7 @@ const ok = (cond, name, detail) => {
   if (cond) { passed += 1; console.log('  ok   ' + name) } else { failed += 1; failures.push(name); console.log('  FAIL ' + name + (detail === undefined ? '' : ' [' + JSON.stringify(detail) + ']')) }
 }
 
-const BASE = 'D:/_tmp/r45/teammate-chat'
+const BASE = __tmpRoot() + '/r45/teammate-chat'
 await mkdir(BASE, { recursive: true })
 const root = await mkdtemp(join(BASE, 'mute-'))
 const SETTINGS = {

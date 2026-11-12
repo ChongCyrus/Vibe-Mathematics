@@ -30,6 +30,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 
 import { parseCardBody } from '../vibe-math-vmu/packs/v5r/verified.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -46,7 +47,7 @@ const ok = (cond, label, detail) => {
 }
 
 const entry = await import(pathToFileURL(ENTRY).href)
-const ROOT = await mkdtemp(join('D:/_tmp', 'vmu-c5c8-'))
+const ROOT = await mkdtemp(join(__tmpRoot(), 'vmu-c5c8-'))
 await mkdir(join(ROOT, 'Formal'), { recursive: true })
 const LEAN_FILE = 'Formal/c5c8-card.lean'
 await writeFile(join(ROOT, LEAN_FILE), 'theorem c5c8_aux : True := trivial\n', 'utf8')

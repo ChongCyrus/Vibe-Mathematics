@@ -24,6 +24,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -73,7 +74,7 @@ const fileRuling = async (kernel, member, verdict, reason, suffix) => {
   }, { member })
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run47-rulings-'))
+const root = await mkdtemp(join(__tmpRoot(), 'vmu-run47-rulings-'))
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

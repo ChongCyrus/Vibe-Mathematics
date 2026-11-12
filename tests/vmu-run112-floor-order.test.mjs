@@ -1,6 +1,6 @@
 // tests/vmu-run112-floor-order.test.mjs — AUDIT HOLE E16: 「批量指定成员按顺序发言」的 MECHANISM, not a queue nobody consults.
 //
-// THE DEFECT THIS PINS (independent audit, report `D:/_tmp/reaudit2/lane-e.md`): the ledger pinned E16 to `queue()` +
+// THE DEFECT THIS PINS (independent audit, report `${__tmpRoot()}/reaudit2/lane-e.md`): the ledger pinned E16 to `queue()` +
 // a read-back of `order`, and a probe showed `speak()` NEVER read the queue. With order ["r-1","r-2"], r-2 could speak
 // first and the receipt said `ok:true, turns:1` — no refusal, no disclosure, while the prompt taught the queue as a gate.
 // A rule about ORDER must bite where a turn is spent.
@@ -19,6 +19,7 @@ import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const REPO = process.cwd()
 const m = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
 

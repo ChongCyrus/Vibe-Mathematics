@@ -1,6 +1,6 @@
 // tests/vmu-round1-seams.test.mjs - resident form of the round-1 SEAMS probe (vmu-core's task-4 probe).
 //
-// PROMOTED FROM A SCRATCH SCRIPT. It used to live at `D:\_tmp\vmu-r1\probe.mjs` and import the preset through
+// PROMOTED FROM A SCRATCH SCRIPT. It used to live at `${__tmpRoot()}\vmu-r1\probe.mjs` and import the preset through
 // absolute `file:///D:/...` URLs, i.e. it could not run on any other machine, was invisible to the gate
 // (the runner scans `tests/` top level only) and left its `mkdtemp` workspaces behind. This suite keeps the
 // probe's 37 ASSERTIONS AND THEIR SEMANTICS, and changes only their container:
@@ -41,6 +41,7 @@ import { toolSpecs, resolveFaces, FACE_KEYS, TOOL_FACES } from '../vibe-math-vmu
 import { deliverViaSubagents } from '../vibe-math-vmu/kernel/turn/index.js'
 import * as entry from '../vibe-math-vmu/vibe-math-vmu.js'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 let passed = 0, failed = 0
 const failures = []
 const ok = (cond, label, detail) => {

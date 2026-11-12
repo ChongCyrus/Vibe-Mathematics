@@ -12,7 +12,7 @@
 // thing. So the measurement lives here, once, and both callers import it.
 //
 // WHAT IT MEASURES
-//   live fields   = every dotted leaf path in D:/_tmp/sim/compare/real-fields.jsonl (`fields` keys already are leaves)
+//   live fields   = every dotted leaf path in the rich corpus (<sim root>/compare/real-fields.jsonl; `fields` keys are leaves)
 //   sim fields    = every dotted leaf path in the scenario receipts, flattened to the same depth rule
 //   a GAP         = a live path no simulated receipt carries
 //   absorbed gap  = a gap the declaration ledger names for that tool, OR a gap a baseline row matches
@@ -22,7 +22,12 @@
 // The shallow `real-fieldset.json` (top-level keys only) is NOT read here: it cannot see a nested leaf and cannot
 // disprove a nested declaration. One ruler, or no ruler.
 
-export const RICH_REAL = process.env.VMU_RICH_REAL || 'D:/_tmp/sim/compare/real-fields.jsonl' // PORTABLE-ALLOW: dev rich-corpus default; overridable via VMU_RICH_REAL / loadRich(richPath), and a missing corpus FAILS the audit
+import { join } from 'node:path'
+import { tmpRoot } from '../../lib/tmp-root.mjs'
+
+// The default corpus path is derived from the ONE temporary root (os.tmpdir()-derived, movable with VMU_TMP_ROOT);
+// VMU_RICH_REAL and loadRich(richPath) still override it, and a missing corpus FAILS the audit instead of reading empty.
+export const RICH_REAL = process.env.VMU_RICH_REAL || join(tmpRoot(), 'sim', 'compare', 'real-fields.jsonl')
 export const MAX_FLAT_DEPTH = 3 // mirrors scripts/sim/compare/run.mjs fieldsOf(): arrays stay one path, objects flatten to depth 3
 
 const STAR = String.fromCharCode(42)

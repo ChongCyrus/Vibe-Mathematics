@@ -19,10 +19,11 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCatalog, checkBriefText, CODES } from '../scripts/check-task-brief.mjs'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const SCRIPT = join(REPO, 'scripts', 'check-task-brief.mjs')
-const TMP_ROOT = process.env.BRIEF_CHECK_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const TMP_ROOT = process.env.BRIEF_CHECK_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
 mkdirSync(TMP_ROOT, { recursive: true })
 const WORK = mkdtempSync(join(TMP_ROOT, 'briefcheck-'))
 

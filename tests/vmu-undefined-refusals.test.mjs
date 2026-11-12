@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 
@@ -63,7 +64,7 @@ console.log('=== 2b. GATE (G6 tier 2): EVERY NAMED REFUSAL CARRIES A NON-EMPTY H
 // driven with action:"status" (a real 30s/60s wait is not a fixture; their timeout path is covered elsewhere).
 {
   const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
-  const root = mkdtempSync(join('D:/_tmp', 'vmu-refusal-hints-'))
+  const root = mkdtempSync(join(__tmpRoot(), 'vmu-refusal-hints-'))
   const specs = []
   const ctx = {
     effect(fn) { return fn() },

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/audit/mutations/run.mjs — «改坏机制 ⇒ 被点名的断言必红» 的仓库内可重跑件（TB-2687 / AUDIT-17 clue 3）。
 //
-// WHY: the 90/91 coverage figure once rested on `D:/_tmp/mutbatch2/mutations.json` — a temp dir with a
+// WHY: the 90/91 coverage figure once rested on a scratch-dir `mutations.json` — a temp dir with a
 // 3-hour self-clean. Evidence outside the repo is a rehearsal, not a proof. This runner makes the same
 // action re-runnable: copy the repo to a process-unique temp dir, run the target suite there FIRST
 // (baseline), apply the mutation in the copy, run it again, require the named assertion title in the
@@ -242,7 +242,7 @@ export function writeEvidenceDoc(results) {
     '# Mutation evidence — 改坏机制 ⇒ 被点名断言必红（仓库内可重跑）',
     '',
     '> 本文件由 `node scripts/audit/mutations/run.mjs --doc` **生成**，不要手改。',
-    '> 它把「规则被守住」的证据从 `D:/_tmp/mutbatch2/`（3 小时自清理）搬进仓库：每一条 PROVEN-RED 都能在',
+    '> 它把「规则被守住」的证据从一个 3 小时自清理的临时目录搬进仓库：每一条 PROVEN-RED 都能在',
     '> 本机重跑 `node scripts/audit/mutations/run.mjs --all` 复现——复制仓库到临时目录、改坏一个机制、',
     '> 跑指定套件、要求 manifest 点名的断言出现在失败输出里、删掉副本；工作树全程不动。',
     '',
@@ -262,7 +262,7 @@ export function writeEvidenceDoc(results) {
     '',
     '- `RULES-E33-SOURCE-GREP`（P2）已由 TB-2686 关闭：`tests/vmu-meeting-types.test.mjs` 的 E33 runtime 断言',
     '  用临时 pack 副本证明 catalog 跟着 pack 走，反关灯两条。',
-    '- REHEARSED-RED 条目不是「没做过弄假」：TB-2679 在 `D:/_tmp/mutbatch/` 逐条做过（77 条），',
+    '- REHEARSED-RED 条目不是「没做过弄假」：TB-2679 在一个临时目录里逐条做过（77 条），',
     '  只是证据未入仓、不能重跑；要升级成 PROVEN-RED，把该条的 `{file,anchor,replaceWith,expectRed}`',
     '  加进 `manifest.json` 即可（见 `scripts/audit/mutations/run.mjs` 头部注释）。',
     '',

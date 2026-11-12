@@ -37,6 +37,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const imp = (p) => import(pathToFileURL(resolve(REPO, p)).href)
@@ -82,7 +83,7 @@ const decl = (n) => V5R_PACK_TOOLS.filter((t) => t && t.name === n)[0] || null
 const filingPath = (filed) => String((filed && filed.submission && filed.submission.path) || '')
 const asArray = (v) => (Array.isArray(v) ? v : [])
 
-const TMP = 'D:/_tmp/r45/teammate-library'
+const TMP = __tmpRoot() + '/r45/teammate-library'
 mkdirSync(TMP, { recursive: true })
 const rootA = mkdtempSync(join(TMP, 'k-'))
 const roots = [rootA]

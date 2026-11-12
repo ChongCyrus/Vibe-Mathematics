@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url'
 import {
   NAME_CODES, buildCatalog, buildKnownNames, checkBriefNames, extractBacktickedNames,
 } from '../scripts/check-task-brief.mjs'
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -37,8 +38,8 @@ const SCRIPT = join(REPO, 'scripts', 'check-task-brief.mjs')
 // set TASK_BRIEF_77=<path> to point at any brief; when it is set but missing this suite FAILS
 // (a measurement that did not happen must not pass). When it is unset, sections 4-5 print a
 // NOTE and add no assertion -- the rule itself is covered by the synthetic cases in 1-3 and 6-7.
-const LIVE_BRIEF = process.env.TASK_BRIEF_77 || 'D:/_tmp/slv-phase5/task-sim77.txt'  // PORTABLE-ALLOW: opt-in run artifact outside the repo; override with TASK_BRIEF_77=<path>, and when the env var is set but the file is missing this suite FAILS instead of skipping
-const TMP_ROOT = process.env.BRIEF_NAMES_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const LIVE_BRIEF = process.env.TASK_BRIEF_77 || __tmpRoot() + '/slv-phase5/task-sim77.txt'  // PORTABLE-ALLOW: opt-in run artifact outside the repo; override with TASK_BRIEF_77=<path>, and when the env var is set but the file is missing this suite FAILS instead of skipping
+const TMP_ROOT = process.env.BRIEF_NAMES_TMP_ROOT || (existsSync(__tmpRoot()) ? __tmpRoot() : tmpdir())
 mkdirSync(TMP_ROOT, { recursive: true })
 const WORK = mkdtempSync(join(TMP_ROOT, 'briefnames-'))
 

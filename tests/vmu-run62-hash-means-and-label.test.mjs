@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // vmu RUN 62 / F-53 + F-54 — AN ABSENCE WITH TWO CAUSES, AND A DURABLE LINE THAT STILL TAUGHT THE OLD SHAPE.
 //
-// THE OBSERVED GAP (live run 62, the root session's own receipts - `D:/_tmp/r62/dig62.txt`):
+// THE OBSERVED GAP (live run 62, the root session's own receipts - `${__tmpRoot()}/r62/dig62.txt`):
 //   · F-53 — `vibe_v5_lean_job {jobId:"lean-2"}` returned a job whose file could not be read: `state:"failed"`,
 //     `code:"VMU_LEAN_FILE_UNREADABLE"`, and `hashUnchangedMeans: null` while `hashUnchanged` was simply ABSENT. A
 //     reader cannot tell two different facts apart: "no comparison exists because no compile ran" and "the face forgot
@@ -24,6 +24,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
@@ -156,7 +157,7 @@ const callJSON = async (b, name, args = {}, ctx = {}) => {
   } catch (e) { return { thrown: true, code: e && e.code, message: e && e.message, hint: e && e.hint } }
 }
 
-const recRoot = await mkdtemp(join('D:/_tmp', 'vmu-r62-feedback-'))
+const recRoot = await mkdtemp(join(__tmpRoot(), 'vmu-r62-feedback-'))
 try {
   const b = await boot({ root: recRoot, packs: ['v5r'] })
   const k = b.handle.kernel

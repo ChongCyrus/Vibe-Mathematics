@@ -30,6 +30,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -77,7 +78,7 @@ const codeOf = (parsed) => (parsed && parsed.code) || null
 // address, not a title: match the whole token and let the ledger decide whether it exists.
 const REQUEST_ID = /consult-[A-Za-z0-9_-]+/g
 
-const base = await mkdtemp(join('D:/_tmp', 'vmu-paper-consult-tool-'))
+const base = await mkdtemp(join(__tmpRoot(), 'vmu-paper-consult-tool-'))
 try {
   // ── 0. THE FACE EXISTS, AND IT EXISTS BECAUSE THE PACK DECLARES IT ────────────────────────────────────────────
   console.log('=== 0. ZERO MECHANISM: NO PACK ⇒ NO PAPER FACE; WITH v5r ⇒ consult/consult_state IN THE DEPLOYED SCHEMA ===')
