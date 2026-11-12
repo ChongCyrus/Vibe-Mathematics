@@ -155,7 +155,9 @@
 - **旁证/连带影响（run-lane 第一手）**：看门狗 kill 列表含 12 个 pid，其中 **1 个是更早启动的 `DeepSeek Harness.exe`（pid 13276）**——连带影响需 Lead/sim-lane 知悉（当前 DSH 主 GUI pid 4896 等仍存活；run 树已无残留）。
 - **已修复**：**TB-2766**（`taskbooks/TB-2766-driver-watchdog-postdrive.md`）已落看门狗 v3（post-drive 只记录不杀、阈值降 0.8、`-DriveLog` 阶段判定）＋驱动 7/7b/8 抗杀 ＋ `postDrive` 先写后 cleanup ＋ `run-inspect-<clone>.log`；证据 `D:/_tmp/run-lane/TB-2766-WATCHDOG-V3.md`（本轮不代替验证）。
 
-### 6.1 待审计裁定：`slv-inspect` 的 5 条 RED（不自行定性）
+### 6.1 `slv-inspect` 的 5 条 RED：**已裁定 = `DEFECT-IN-PRODUCT`（真阳性）→ TB-2770（P0）**
+
+> **audit3-lane 2026-11-13 03:47 裁定**（`D:/_tmp/audit3-lane/SLV-INSPECT-VERDICT.md`）：成员/临时工会话 prompt 里的「同源块」**确实存在**，但被渲染成「`0 个`（本回合没有可用工具）」，而同会话同回合 wire 有 **79** 个工具（69 个 pack + 10 个组合），模型在**同一回合真的成功调用** 39/39、35/35、30/30、25/25、13/13 次 ⇒ **块在说假事实**。根因 `vibe-math-vmu/host.js:2478-2501`（`out.tools` 不可观测时静默 `[]` + `0` 分支写成「没有可用工具」+ `:2483-2489` 把空表写进 `narrowFaceByAgent` 自锁）；产品自己的契约测试 `tests/vmu-host.test.mjs:711-720` 已钉「块 == wire」，本轮直接违约。**修产品（TB-2770），不许改检查器去消红**。以下为裁定前的原始观测，保留作证据。
 
 run-lane 手工补跑 `slv-inspect`（`D:/_tmp/run-lane/slv-inspect-attempt3.log`，1024 行）得到 **`SUMMARY: 6 session(s) in 1 file(s), 5 with RED checks`、exit=1**：
 
