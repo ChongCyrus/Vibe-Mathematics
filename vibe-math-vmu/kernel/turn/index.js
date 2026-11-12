@@ -3693,6 +3693,9 @@ export function createTurnOrchestrator({
       via: structuredReport.via,
       fields: Object.keys(structuredReport.reply),
       ignoredFields: structuredReport.ignoredFields.slice(),
+      // ★★★ TB-2764 D-8: the caller's declaration travels with the held report, so the next reader can tell a DECLARED
+      // absence from an unobserved wire (null = no declaration; `none-by-caller` = the only accepted value).
+      mountedToolsDeclared: structuredReport.mountedToolsDeclared || null,
       at: structuredReport.at,
     }
   }
@@ -3716,7 +3719,7 @@ export function createTurnOrchestrator({
    * receipt that can be READ BACK (`readback` is the slot as it really stands, not a copy of the arguments - "the value
    * was set" and "the value took effect" are different claims, and this repository only makes the second one).
    */
-  const supplyStructuredReply = (fields, { forMember = null, meeting = null } = {}) => {
+  const supplyStructuredReply = (fields, { forMember = null, meeting = null, mountedTools = null } = {}) => {
     // ★ 用户裁决 B 第 2 步：所办可以为「成员的这一轮」指定它属于哪场会议。给了就让成员的那句 say 被记成
     // 成员本人的发言（onBehalf），没给就保持现状（进 notes，回执说明为什么没派发）。
     // ★ E12 / task-19: `meeting` is now the EXPLICIT wish; the binding itself is resolved below against the parked
@@ -3798,6 +3801,32 @@ export function createTurnOrchestrator({
         'known fields: ' + known.concat(RECORDED_FIELDS).join(', ') + ' (vmu.turn.unknownReplyFieldMode=' + unknownFieldMode + ')'
           + ' REACHABLE INSTEAD: drop the unknown names and resend the report through vibe_vmu_turn { op:"reply", report:{ <one of the names above>: <value> } } - a report made ONLY of unknown names records nothing, so nothing was applied; or set vmu.turn.unknownReplyFieldMode="ignore-named" (the default) to have unknown names reported in reply.ignoredFields instead of refusing')
     }
+    // ★★★ TB-2764 D-8 (RUN 81 / FEEDBACK81 D-8, MEASURED): in CALLER mode the loop cannot read which tools the member's
+    // turn mounted, so a reply vote was structurally unprovable (`keptWhy:"tool-visibility-unprovable"`, mounted-why:
+    // provider-threw:VMU_MEMBER_SESSION_NOT_LIVE) and the only legal reply-vote channel was dead. The office MAY declare that
+    // this turn mounted no vote tool — an explicit, recorded fact, never a guess. It fills an ABSENCE only: if any measured
+    // table says otherwise the declaration is REFUSED by name (a declaration may not override a measurement).
+    const declaredRaw = mountedTools === null || mountedTools === undefined || String(mountedTools).trim() === '' ? null : String(mountedTools).trim()
+    if (declaredRaw !== null && declaredRaw !== 'none') {
+      fail('VMU_INVALID_ARGUMENT', 'mounted_tools names ONE fact on this channel: "none" (this turn mounted no vibe_vmu_vote tool); got ' + JSON.stringify(declaredRaw),
+        'pass mounted_tools:"none" only when you observed that this turn gave the member no vibe_vmu_vote (caller mode cannot read the member table); omit it otherwise — an unproven channel still says tool-visibility-unprovable, it is not guessed')
+    }
+    const declaredMountedTools = declaredRaw === 'none' ? 'none-by-caller' : null
+    if (declaredMountedTools !== null) {
+      const declaredMember = String(recorded.member)
+      const declaredTurn = recorded.turnId === null || recorded.turnId === undefined ? null : String(recorded.turnId)
+      const declaredFact = declaredTurn === null ? null : (mountedToolsByTurn.get(declaredTurn) || null)
+      const measuredVote = (visibleToolsByMember.get(declaredMember) || []).indexOf('vibe_vmu_vote') !== -1
+        || !!(declaredFact && declaredFact.provable === true && Array.isArray(declaredFact.tools) && declaredFact.tools.indexOf('vibe_vmu_vote') !== -1)
+      if (toolVotedThisTurn.has(declaredMember) || measuredVote) {
+        fail('VMU_TURN_REPLY_CONFLICT',
+          'mounted_tools:"none" contradicts what this loop MEASURED for ' + declaredMember + (declaredTurn === null ? '' : ' turn ' + declaredTurn) + ': ' + (toolVotedThisTurn.has(declaredMember) ? 'vibe_vmu_vote was already USED this turn' : (declaredFact && declaredFact.provable === true ? 'the measured mounted table names vibe_vmu_vote' : 'the visible tool table names vibe_vmu_vote')) + ' — a declaration fills an UNOBSERVED fact, it cannot override a measured one',
+          'omit mounted_tools (this turn is provable, so the table decides), or — if the measurement is what you believe is wrong — report the drift instead of declaring around it; the vote is NOT counted either way')
+      }
+      recorded.mountedToolsDeclared = declaredMountedTools
+    } else {
+      recorded.mountedToolsDeclared = null
+    }
     if (structuredReport && structuredReport.member === recorded.member
       && (structuredReport.turnId === null || recorded.turnId === null || structuredReport.turnId === recorded.turnId)) {
       // ★ THE TWO-TRUTHS RULE, ENFORCED AT THE WRITE SIDE TOO: a second report for the SAME open turn is not an update.
@@ -3819,29 +3848,46 @@ export function createTurnOrchestrator({
       if (!Object.prototype.hasOwnProperty.call(recorded.reply, 'vote_solved')) return null
       if (recorded.reply.vote_solved === null || recorded.reply.vote_solved === undefined) return null
       const id = recorded.member === null || recorded.member === undefined ? null : String(recorded.member)
-      const verdict = (keptNow, keptWhy, reason) => ({ field: 'vote_solved', keptNow, keptWhy, reason })
+      // ★★★ TB-2764 D-8: a DECLARED absence is explicit data, never a guess, and it is echoed on the verdict so a reader can
+      // tell it from a MEASURED one. It only ever fills an unobservable fact (contradicting a measured table is refused at
+      // the write side, and re-checked here).
+      const declaredNone = recorded.mountedToolsDeclared === 'none-by-caller' ? 'none-by-caller' : null
+      const verdict = (keptNow, keptWhy, reason) => ({ field: 'vote_solved', keptNow, keptWhy, reason, ...(declaredNone === null ? {} : { mountedToolsDeclared: declaredNone }) })
       if (id === null) return verdict(false, 'no-member', 'the report carries no member id, so a closure vote cannot be attributed to anyone and is NOT counted')
-      if (toolVotedThisTurn.has(id)) return verdict(false, 'tool-used-this-turn', 'vibe_vmu_vote was already used this turn; the reply vote_solved is ignored (ONE TURN, ONE CHANNEL) — the vote that counts is the one already cast through the tool')
       const vid = recorded.turnId === null || recorded.turnId === undefined ? null : String(recorded.turnId)
+      const visibleVote = (visibleToolsByMember.get(id) || []).indexOf('vibe_vmu_vote') !== -1
+      const mountedFact = vid === null ? null : (mountedToolsByTurn.get(vid) || null)
+      const mountedVote = !!(mountedFact && mountedFact.provable === true && Array.isArray(mountedFact.tools) && mountedFact.tools.indexOf('vibe_vmu_vote') !== -1)
+      if (declaredNone !== null && (toolVotedThisTurn.has(id) || visibleVote || mountedVote)) {
+        return verdict(false, 'tool-visible', 'the caller DECLARED that this turn mounted no vibe_vmu_vote, but this loop MEASURED the opposite (' + (toolVotedThisTurn.has(id) ? 'the tool was already used this turn' : mountedVote ? 'the measured mounted table for turn ' + vid + ' names it' : 'the visible tool table names it') + '); a declaration cannot override a measurement, so the vote will NOT be counted')
+      }
+      if (toolVotedThisTurn.has(id)) return verdict(false, 'tool-used-this-turn', 'vibe_vmu_vote was already used this turn; the reply vote_solved is ignored (ONE TURN, ONE CHANNEL) — the vote that counts is the one already cast through the tool')
       if (vid === null) {
-        if ((visibleToolsByMember.get(id) || []).includes('vibe_vmu_vote')) {
+        if (visibleVote) {
           return verdict(false, 'tool-visible', 'vibe_vmu_vote is available this turn; the reply vote_solved is ignored (use the tool)')
         }
+        if (declaredNone !== null) return verdict(true, 'tool-not-mounted', 'no turn row reached this report and the caller DECLARED that this turn mounted no vibe_vmu_vote; no measured table contradicts it, so the vote WILL be counted on apply')
         return verdict(true, 'no-turn-row-compat', 'no turn id reached this report: this is the direct/tool path, where the pre-2730 rule (adopt unless the member table names the vote tool) still holds, so the vote WILL be counted on apply')
       }
-      const mounted = mountedToolsByTurn.get(vid) || null
+      const mounted = mountedFact
       if (mounted === null) {
         const validId = /^t-\d+$/.test(vid)
         let durableEpoch = null
         try { durableEpoch = turnLedger && typeof turnLedger.epochOf === 'function' ? turnLedger.epochOf(vid) : null } catch (e) { durableEpoch = null }
         const knownHere = turns.has(vid)
         const restarted = durableEpoch !== null ? durableEpoch !== loopEpoch : !knownHere
+        // ★ TB-2764 D-8: the caller's explicit declaration is the ONLY data that can fill this absence. Without it the
+        // three unprovable states below stay exactly as they were (not counted, by name).
+        if (declaredNone !== null) return verdict(true, 'tool-not-mounted', 'turn ' + vid + ' has no mounted-tools fact in this loop (' + (validId && restarted ? 'it was assembled by an EARLIER kernel process' : validId && knownHere && evictedTurnIds.has(vid) ? 'its fact was FIFO-evicted' : 'caller mode / never assembled in this loop') + '), and the caller DECLARED that it mounted no vibe_vmu_vote; no measured table contradicts that, so the vote WILL be counted on apply')
         if (validId && restarted) return verdict(false, 'tool-visibility-unknown-after-restart', 'turn ' + vid + ' was assembled by an EARLIER kernel process; its mounted-tools fact went with that process, so a reply vote is unprovable and is NOT counted')
         if (validId && knownHere && evictedTurnIds.has(vid)) return verdict(false, 'tool-visibility-evicted', 'turn ' + vid + ' WAS assembled by this loop, but its mounted-tools fact fell out of the bounded ' + MOUNTED_TOOLS_TURNS_CAP + '-turn table (FIFO eviction, NOT a restart); unprovable now, so it is NOT counted')
         return verdict(false, 'legacy-row', 'this loop holds no mounted-tools fact for turn ' + vid + ' and cannot show it ever had one (bare row / never assembled in this loop); a reply vote is unprovable and is NOT counted')
       }
-      if (mounted.provable !== true) return verdict(false, 'tool-visibility-unprovable', 'this loop cannot prove what turn ' + vid + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '); a reply vote is NOT counted — relaying it would be a ghost vote')
-      if (mounted.tools.indexOf('vibe_vmu_vote') !== -1) return verdict(false, 'tool-visible', 'vibe_vmu_vote WAS mounted for turn ' + vid + ' (measured from the host table); the reply vote_solved is ignored (use the tool)')
+      if (mounted.provable !== true) {
+        if (declaredNone !== null) return verdict(true, 'tool-not-mounted', 'this loop cannot prove what turn ' + vid + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '), and the caller DECLARED that it mounted no vibe_vmu_vote; no measured table contradicts that, so the vote WILL be counted on apply')
+        return verdict(false, 'tool-visibility-unprovable', 'this loop cannot prove what turn ' + vid + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '); a reply vote is NOT counted — relaying it would be a ghost vote')
+      }
+      if (mountedVote) return verdict(false, 'tool-visible', 'vibe_vmu_vote WAS mounted for turn ' + vid + ' (measured from the host table); the reply vote_solved is ignored (use the tool)')
       return verdict(true, 'tool-not-mounted', 'turn ' + vid + ' mounted ' + mounted.tools.length + ' host tool(s) and NONE of them is vibe_vmu_vote — the reply is then the member’s only channel, and the vote WILL be counted on apply')
     })()
     const keptNow = voteKeeping === null ? true : voteKeeping.keptNow
@@ -3869,6 +3915,11 @@ export function createTurnOrchestrator({
       meetingSource: recorded.meeting === null ? null : (requestedMeeting === null ? 'inherited-from-parked-turn' : 'explicit'),
       meetingSourceMeans: 'explicit = this report named the meeting; inherited-from-parked-turn = the report named none, so the meeting the dispatch bound to the parked prompt was used (the binding is a property of the turn, not of the answer)',
       ignoredFieldMode: unknownFieldMode,
+      // ★★★ TB-2764 D-8: the declaration is a RECEIPT fact, not a hidden flag: null = none was made.
+      mountedToolsDeclared: recorded.mountedToolsDeclared || null,
+      mountedToolsDeclaredMeans: recorded.mountedToolsDeclared === null
+        ? 'no declaration was made: a reply vote on an UNOBSERVABLE turn stays tool-visibility-unprovable (not guessed)'
+        : 'the caller DECLARED that this turn mounted no vibe_vmu_vote tool; it is used ONLY where no measured table contradicts it, and it is written on the row that adopts the vote (caller mode cannot read the member table, so this is the explicit-data channel)',
       // ★ READ BACK, NOT SET: this is the slot as it stands AFTER the write (member, turn, fields), so a caller can see
       // that the report really landed on the turn it thinks it did.
       readback,
@@ -4200,6 +4251,13 @@ export function createTurnOrchestrator({
   const fieldsIgnoredOf = (r) => (Array.isArray(r && r.bookkeeping)
     ? r.bookkeeping.filter((b) => b && b.kept === false).map((b) => ({ field: String(b.field), reason: b.reason === undefined ? null : String(b.reason), keptWhy: b.keptWhy === undefined ? null : String(b.keptWhy) }))
     : [])
+  // ★★★ TB-2764 D-8: the ADOPTED side of the same list. `fieldsIgnored` only carries `kept:false` rows, so a vote the caller
+  // DECLARED into being (`kept:true` + `mountedToolsDeclared`) was invisible on the completion receipt — the row existed in
+  // `bookkeeping` but no reader could see it. This is the mirror view: kept rows, their deciding why, and the declaration.
+  const fieldsKeepingOf = (r) => (Array.isArray(r && r.bookkeeping)
+    ? r.bookkeeping.filter((b) => b && b.kept === true).map((b) => ({ field: String(b.field), kept: true, keptWhy: b.keptWhy === undefined ? null : String(b.keptWhy), ...(b.mountedToolsDeclared === undefined ? {} : { mountedToolsDeclared: String(b.mountedToolsDeclared) }), ...(b.adoptedBecause === undefined ? {} : { adoptedBecause: String(b.adoptedBecause) }) }))
+    : [])
+  const FIELDS_KEEPING_MEANS = 'the ADOPTED fields of this reply: `kept:true` rows with the fact that decided them (`keptWhy`) and, when the decision rested on an EXPLICIT caller declaration, `mountedToolsDeclared:"none-by-caller"`. An empty list means no field was adopted (see `fieldsIgnored` for what was refused and why)'
   const FIELDS_IGNORED_MEANS = 'these fields arrived in the reply and were NOT recorded: `reason` says why and `keptWhy` names the fact that decided it (the closure vote is the usual case — `tool-visible` means `vibe_vmu_vote` was mounted so the judgement belongs to the TOOL, `tool-not-mounted` means the reply WAS the only channel and the value was adopted, `tool-visibility-unprovable`/`legacy-row` mean this loop has no reading of what that turn mounted and a vote is NOT counted rather than guessed). `fields` is what the reply carried; this list is what did not survive it'
   // ★★★★★★★ RUN 255 / TB-2606-A (run 74 / FEEDBACK74 #1, MEASURED): THE THREE FIELD COUNTS NOW TRAVEL ON EVERY
   // SUCCESS RECEIPT, not only on the whole-turn failure.
@@ -4413,15 +4471,31 @@ export function createTurnOrchestrator({
         const mounted = turnIdForVote !== null ? (mountedToolsByTurn.get(turnIdForVote) || null) : null
         const visible = visibleToolsByMember.get(id) || []
         const toolVoteUsed = toolVotedThisTurn.has(id)
-        if (toolVoteUsed) {
+        // ★★★ TB-2764 D-8 (RUN 81 / FEEDBACK81 D-8): CALLER MODE cannot read the member's wire (the provider throws
+        // VMU_MEMBER_SESSION_NOT_LIVE for a relayed/parked turn), so the reply vote was structurally unprovable and the
+        // lawful channel dead. The office may DECLARE that the turn mounted no vote tool; that declaration FILLS an
+        // absence — it never overrides a measurement (a measured table with the vote tool keeps the vote NOT counted).
+        const declaredMountedTools = opts && opts.mountedToolsDeclared === 'none-by-caller' ? 'none-by-caller' : null
+        const visibleVote = visible.indexOf('vibe_vmu_vote') !== -1
+        const mountedVote = !!(mounted && mounted.provable === true && Array.isArray(mounted.tools) && mounted.tools.indexOf('vibe_vmu_vote') !== -1)
+        const adoptDeclared = (why) => {
+          recordClosureVote(memberId, rawVote)
+          context.set(field, r[field])
+          bookkeeping.push({ field: 'vote_solved', kept: true, keptWhy: 'tool-not-mounted', mountedToolsDeclared: declaredMountedTools, adoptedBecause: why })
+        }
+        if (declaredMountedTools !== null && (toolVoteUsed || visibleVote || mountedVote)) {
+          bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visible', mountedToolsDeclared: declaredMountedTools, reason: 'the caller DECLARED that this turn mounted no vibe_vmu_vote, but this loop MEASURED the opposite (' + (toolVoteUsed ? 'the tool was already used this turn' : mountedVote ? 'the measured mounted table for turn ' + turnIdForVote + ' names it' : 'the visible tool table names it') + '); a declaration cannot override a measurement, so the vote is NOT counted' })
+        } else if (toolVoteUsed) {
           bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-used-this-turn', reason: 'vibe_vmu_vote was already used this turn; the reply vote_solved is ignored (ONE TURN, ONE CHANNEL)' })
         } else if (turnIdForVote === null) {
           // ★ COMPATIBILITY, NAMED: a bare `apply()` with no turn row (the tool face's own path and the unit tests that
           // predate this gate). Production replies ALWAYS travel through dispatchReply (:4729) with `turnId: turn.id`, so
           // this branch is not reachable from a member's reply; it exists because the pre-2730 rule is what those callers
           // were tested against, and changing it would be a second, unrelated change. The row still says the fact by name.
-          if (visible.includes('vibe_vmu_vote')) {
+          if (visibleVote) {
             bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visible', reason: 'vibe_vmu_vote is available this turn; the reply vote_solved is ignored (use the tool)' })
+          } else if (declaredMountedTools !== null) {
+            adoptDeclared('no turn row reached apply() and the caller DECLARED that this turn mounted no vibe_vmu_vote; no measured table contradicts it, so the vote is adopted')
           } else {
             recordClosureVote(memberId, rawVote)
             context.set(field, r[field])
@@ -4433,13 +4507,17 @@ export function createTurnOrchestrator({
           // cause from evidence: a row from another epoch = the fact died with an earlier process; the same epoch plus a
           // remembered FIFO eviction = the fact was displaced by the 512-turn cap; neither = there was never a fact to
           // lose (a bare row, or a turn this loop opened but never assembled). All three are unprovable and none counts
-          // a reply vote - only the reason the reader goes and checks changes.
+          // a reply vote - only the reason the reader goes and checks changes. TB-2764 D-8 adds ONE explicit exception:
+          // a declaration by the caller that the turn mounted no vote tool fills the absence (never a guess about the
+          // wire - the reader is told which fact was used, by name).
           const validId = /^t-\d+$/.test(turnIdForVote)
           let durableEpoch = null
           try { durableEpoch = turnLedger && typeof turnLedger.epochOf === 'function' ? turnLedger.epochOf(turnIdForVote) : null } catch (e) { durableEpoch = null }
           const knownHere = turns.has(turnIdForVote)
           const restarted = durableEpoch !== null ? durableEpoch !== loopEpoch : !knownHere
-          if (validId && restarted) {
+          if (declaredMountedTools !== null) {
+            adoptDeclared('turn ' + turnIdForVote + ' has no mounted-tools fact in this loop (' + (validId && restarted ? 'assembled by an EARLIER kernel process' : validId && knownHere && evictedTurnIds.has(turnIdForVote) ? 'fact FIFO-evicted' : 'caller mode / never assembled in this loop') + '), and the caller DECLARED that it mounted no vibe_vmu_vote; no measured table contradicts that, so the vote is adopted')
+          } else if (validId && restarted) {
             bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-unknown-after-restart', reason: 'turn ' + turnIdForVote + ' was assembled by an EARLIER kernel process, not this one (the durable row says ' + String(durableEpoch) + ', this loop is ' + loopEpoch + ' and started ' + loopStartedAt + '); its mounted-tools fact went with that process, so a reply vote is unprovable and is NOT counted' })
           } else if (validId && knownHere && evictedTurnIds.has(turnIdForVote)) {
             bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-evicted', reason: 'turn ' + turnIdForVote + ' WAS assembled by this loop, but its mounted-tools fact fell out of the bounded ' + MOUNTED_TOOLS_TURNS_CAP + '-turn table (FIFO eviction, NOT a restart); unprovable now, so it is NOT counted' })
@@ -4447,12 +4525,16 @@ export function createTurnOrchestrator({
             bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'legacy-row', reason: 'this loop holds no mounted-tools fact for turn ' + turnIdForVote + ' and cannot show it ever had one (bare row / never assembled in this loop); a reply vote is unprovable and is NOT counted' })
           }
         } else if (mounted.provable !== true) {
-          bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-unprovable', reason: 'this loop cannot prove what turn ' + turnIdForVote + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '); a reply vote is NOT counted — relaying it would be a ghost vote' })
-        } else if (mounted.tools.indexOf('vibe_vmu_vote') !== -1) {
+          if (declaredMountedTools !== null) {
+            adoptDeclared('this loop cannot prove what turn ' + turnIdForVote + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '), and the caller DECLARED that it mounted no vibe_vmu_vote; no measured table contradicts that, so the vote is adopted')
+          } else {
+            bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-unprovable', reason: 'this loop cannot prove what turn ' + turnIdForVote + ' mounted (mounted-why:' + String(mounted.why || 'unknown') + '); a reply vote is NOT counted — relaying it would be a ghost vote' })
+          }
+        } else if (mountedVote) {
           bookkeeping.push({ field: 'vote_solved', kept: false, keptWhy: 'tool-visible', reason: 'vibe_vmu_vote WAS mounted for turn ' + turnIdForVote + ' (measured from the host table); the reply vote_solved is ignored (use the tool)' })
         } else {
-          // ★ the only state that adopts: a PROVABLE turn whose mounted table really lacks the vote tool. The row names
-          // both the fact and why adopting here is not a guess.
+          // ★ the only state that adopts without a declaration: a PROVABLE turn whose mounted table really lacks the vote tool.
+          // The row names both the fact and why adopting here is not a guess.
           recordClosureVote(memberId, rawVote)
           context.set(field, r[field])
           bookkeeping.push({ field: 'vote_solved', kept: true, keptWhy: 'tool-not-mounted', adoptedBecause: 'turn ' + turnIdForVote + ' mounted ' + mounted.tools.length + ' host tool(s) and NONE of them is vibe_vmu_vote — the reply is then the member’s only channel, and the value is passed through raw' })
@@ -4892,7 +4974,7 @@ export function createTurnOrchestrator({
    * dispatch, and one notice per refused field. `parsed` is `{ reply, fields, ignoredFields?, source }`; `source` is
    * carried onto the receipt and into the bus payload, so a reader can tell WHICH channel produced a field.
    */
-  const dispatchReply = async ({ turn, parsed, attributedTo, rawText, meeting = null }) => {
+  const dispatchReply = async ({ turn, parsed, attributedTo, rawText, meeting = null, mountedToolsDeclared = null }) => {
     // ★ PHASE 7: "ignored" must be READABLE - one notice for this member's next prompt (red line 3: never silent).
     if (Array.isArray(parsed.ignoredFields) && parsed.ignoredFields.length) {
       queueNotice(turn.member, '【研究所提示】回执里出现未登记字段：' + parsed.ignoredFields.join(', ') + '（已按 ignore-named 忽略；回执顶层请只写登记字段）')
@@ -4934,7 +5016,7 @@ export function createTurnOrchestrator({
         turnId: turn && turn.id !== undefined && turn.id !== null ? String(turn.id) : null,
         member: turn && turn.member !== undefined && turn.member !== null ? String(turn.member) : null,
       }
-      out = await apply(parsed.reply, null, attributedTo || turn.member, { meeting, turnStart: turn && turn.at, turnId: turn && turn.id, delivery: turnDelivery })
+      out = await apply(parsed.reply, null, attributedTo || turn.member, { meeting, turnStart: turn && turn.at, turnId: turn && turn.id, delivery: turnDelivery, mountedToolsDeclared: mountedToolsDeclared === 'none-by-caller' ? 'none-by-caller' : null })
     } catch (e) {
       try {
         const text = typeof rawText === 'string' ? rawText : JSON.stringify(parsed.reply)
@@ -5488,7 +5570,7 @@ export function createTurnOrchestrator({
     const reportMeeting = report.meeting === undefined || report.meeting === null
       ? (pending && typeof pending.meeting === 'string' && pending.meeting !== '' ? pending.meeting : null)
       : report.meeting
-    const tail = await dispatchReply({ turn, parsed, attributedTo: report.member, meeting: reportMeeting, rawText: JSON.stringify(report.reply) })
+    const tail = await dispatchReply({ turn, parsed, attributedTo: report.member, meeting: reportMeeting, rawText: JSON.stringify(report.reply), mountedToolsDeclared: report.mountedToolsDeclared || null })
     return Object.assign({ member: report.member, meeting: reportMeeting }, tail)
   }
 
@@ -6523,7 +6605,7 @@ export function createTurnOrchestrator({
           meetingMeans: (r.meeting === undefined || r.meeting === null)
             ? 'the completed report was NOT bound to a meeting, so a bare say was kept (see receipt.notes), never dispatched'
             : 'the completed report was bound to the named meeting: the member\'s bare say was recorded as THAT MEMBER\'S speech (see receipt.executed[].onBehalf)',
-          receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, meeting: r.meeting === undefined ? null : r.meeting, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}),
+          receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, meeting: r.meeting === undefined ? null : r.meeting, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), fieldsKeeping: fieldsKeepingOf(r), ...(fieldsKeepingOf(r).some((x) => x.mountedToolsDeclared) ? { fieldsKeepingMeans: FIELDS_KEEPING_MEANS } : {}),
             executed: (r.executed || []).length, executedDetail: (r.executed || []).slice(0, 5), skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, instructionDelivered: false,
             skippedDetail: (r.skipped || []).slice(0, 5),
             skippedDetailTruncated: (r.skipped || []).length > 5,

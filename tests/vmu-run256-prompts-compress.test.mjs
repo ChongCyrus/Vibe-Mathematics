@@ -95,6 +95,11 @@ const RUN272_RUN79_RESTORE = { chair: 30, member: 30, temp: 30, sum: 90 }
 // Measured per seat after the C1b restore: chair 29 499→29 550 (+51), member 26 001→26 046 (+45), temp 22 668 (0);
 // three-seat sum 78 168→78 264 (+96), still inside the taskbook's +120 envelope (24 chars of room). No cap raised.
 const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
+// ★ TB-2765 (2026-11-13, prompt-lane text side): A-3 formula teaching in the paper-write prompt, plus A-1/A-2/D-7 read-face
+// notes in the OFFICE persona (hostPrompt). All three additions land OUTSIDE the phases this ruler measures
+// (paper-write is not in collect()'s normal/meeting set; the office persona enters no seat prompt), so the measured
+// water levels are UNCHANGED: chair 29,550 / member 26,046 / temp 22,668 = 78,264, and TB2752_RUN80_FIXES stays
+// { chair: 51, member: 45, temp: 0, sum: 96 }. Verified: audit-prompt-budget --check PASS (chair/meeting 35,987).
 const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair // 29547
 const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 296
 const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29843

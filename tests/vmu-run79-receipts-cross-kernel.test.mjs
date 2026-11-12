@@ -13,8 +13,8 @@
 //      `inProcessRingCount` — the ring never overwrites the fold;
 //   ② TWO kernel instances on the SAME store root: A convenes (Chinese alias), B reads through the TOOL face and the
 //      three keys are byte-identical across receipt / durable row / B's read;
-//   ③ `agendaInputShape` + `agendaSplitMeans`: a STRING agenda splits on `;` / `；` / newlines only (a `,` or `、` is
-//      punctuation inside a purpose, not a boundary), an ARRAY agenda is never re-split;
+//   ③ `agendaInputShape` + `agendaSplitMeans`: a STRING agenda splits on `;` / `；` / newlines only AT DEPTH 0
+//      (separators inside paired brackets/quotes are not boundaries; an unpaired token is a NAMED fallback; a `,` or `、` is
 //   ④ `limit` 1..200, out-of-range refused BY NAME (no clamp) — and `available`/`dropped` stay honest on the durable
 //      source;
 //   ⑤ a legacy fold row (no `typeInput`/`typeMatchedBy`) reads null + means, not "" and not a throw; a BROKEN fold seam
@@ -136,8 +136,13 @@ try {
       'a disagreement is stated with both numbers and the reason the fold wins')
     ok(/agendaInputShape: Array\.isArray\(args\.agenda\) \? 'array' : 'string'/.test(PACK_SRC),
       'the pack receipt declares WHICH agenda shape the caller used')
-    ok(/agendaItems = agendaText\.split\(\/\[;；\\n\]\/\)/.test(PACK_SRC),
-      '★ the STRING path splits on `;` / `；` / newline only (not a bare comma)')
+    // ★★★ TB-2763 (RUN 81 attempt-3): the splitter is DEPTH-AWARE now — a separator inside paired brackets
+    // （）()[]【】 or quotes is NOT a boundary, and an unpaired token is NAMED instead of silently split at level 0.
+    ok(/function splitAgendaText \(/.test(PACK_SRC) &&
+      /AGENDA_BRACKET_PAIRS/.test(PACK_SRC) &&
+      /stack\.length === 0 && quote === null && \(ch === ';' \|\| ch === '；' \|\| ch === '\\n'\)/.test(PACK_SRC) &&
+      /agendaSplitUnbalancedMeans/.test(PACK_SRC),
+      '★ the STRING path splits on `;` / `；` / newline only AT DEPTH 0 — paired brackets/quotes are not boundaries, a bare comma never splits, and an unpaired token is NAMED (TB-2763)')
     ok(/agendaSplitMeans:/.test(PACK_SRC), 'the split rules are stated in the receipt (a reader does not re-read the transcript)')
   }
 
@@ -370,15 +375,17 @@ try {
     // (c) split a string agenda on a comma ⇒ one purpose becomes two items.
     {
       const root = await mkRoot('vmu-run79-mut-c-')
-      const out = await withMutant('c-comma', PREL, (s) => s.replace(/agendaItems = agendaText\.split\(\/\[[^\]]*\]\/\)/, 'agendaItems = agendaText.split(/,/)'),
+      // ★ TB-2763 re-anchor: the old mutation replaced `agendaText.split(/[;；\n]/)`; the splitter now compares
+      // characters at depth 0, so the SAME defect is injected by ADDING the comma to that separator condition.
+      const out = await withMutant('c-comma', PREL, (s) => s.replace("(ch === ';' || ch === '；' || ch === '\\n')", "(ch === ';' || ch === '；' || ch === '\\n' || ch === ',')"),
         async ({ entry }) => {
           const b = await bootWith(entry, root)
           await b.kernel.members.hire({ id: 'r-acad', slot: 'chair' })
           return call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '确认 (2k−1,2k) 的界,与证明' })
         })
       ok(out && out.ok === true, '§6 (c) the mutant kernel still convenes', out && (out.code || out.message))
-      ok(out && Array.isArray(out.agendaItems) && out.agendaItems.length === 3,
-        '★★ §6 (c) RED-worthy: with a comma split, ONE comma-bearing purpose becomes THREE items',
+      ok(out && Array.isArray(out.agendaItems) && out.agendaItems.length === 2,
+        '★★ §6 (c) RED-worthy: with a comma split, ONE comma-bearing purpose becomes TWO items (the comma inside (…) stays protected — the depth rule survives the mutation)',
         out && out.agendaItems)
     }
   }

@@ -156,6 +156,37 @@ try {
   const blankArray = await call('vibe_v5_meeting', { agenda: ['  ', ''], type: 'ordinary', member: 'r-acad' }, as('r-acad'))
   ok(blankArray && blankArray.ok === false && blankArray.code === 'VMU_INVALID_ARGUMENT',
     '#9: an array of blank items is still refused (whitespace is not a purpose)', blankArray && { code: blankArray.code, message: blankArray.message })
+
+  // ── TB-2763 (RUN 81 attempt-3, FEEDBACK81 D-6): the agenda STRING split is bracket/quote-aware ────────────────────
+  const RUN81_AGENDA = 'V6 半 A：单源字符串议程；中文分号作分隔（；）；逗号不作分隔（，(2k−1,2k)）'
+  const sp = await call('vibe_v5_meeting', { agenda: RUN81_AGENDA, type: 'ordinary', member: 'r-acad' }, as('r-acad'))
+  ok(sp && sp.ok === true, 'TB-2763: the run-81 agenda convenes', sp && { code: sp.code, message: sp.message })
+  deepEq(sp && sp.agendaItems, ['V6 半 A：单源字符串议程', '中文分号作分隔（；）', '逗号不作分隔（，(2k−1,2k)）'],
+    '★★ TB-2763: the exact run-81 input splits into THREE items — the （；） span is NOT a boundary and no empty shell is minted')
+  eq(sp && sp.agendaSplitMode, 'bracket-aware', '★ TB-2763: the receipt names the split mode')
+  eq(sp && sp.agendaSplitUnbalanced, null, '★ TB-2763: balanced input ⇒ agendaSplitUnbalanced:null')
+  const pFull = await call('vibe_v5_meeting', { agenda: '前置（；）后置；顶层第二项', type: 'ordinary', member: 'r-acad' }, as('r-acad'))
+  deepEq(pFull && pFull.agendaItems, ['前置（；）后置', '顶层第二项'], '★ TB-2763: full-width （；） stays inside one item; the top-level ； still splits')
+  const pHalf = await call('vibe_v5_meeting', { agenda: 'a(b;c)d;顶层', type: 'ordinary', member: 'r-acad' }, as('r-acad'))
+  deepEq(pHalf && pHalf.agendaItems, ['a(b;c)d', '顶层'], '★ TB-2763: half-width (a;b) stays inside one item')
+  const pNested = await call('vibe_v5_meeting', { agenda: '外（内（；））;第二', type: 'ordinary', member: 'r-acad' }, as('r-acad'))
+  deepEq(pNested && pNested.agendaItems, ['外（内（；））', '第二'], '★ TB-2763: NESTED brackets are counted (the inner ； is not a boundary either)')
+  const pNewline = await call('vibe_v5_meeting', { agenda: '第一\n第二', type: 'ordinary', member: 'r-acad' }, as('r-acad'))
+  deepEq(pNewline && pNewline.agendaItems, ['第一', '第二'], '★ TB-2763: a top-level NEWLINE still splits')
+  const pPaired = await call('vibe_v5_meeting', { agenda: '顶层；「引号里的；」；第三', type: 'ordinary', member: 'r-acad' }, as('r-acad'))
+  deepEq(pPaired && pPaired.agendaItems, ['顶层', '「引号里的；」', '第三'], '★ TB-2763: a ； inside paired quotes is not a boundary')
+  const pUnpaired = await call('vibe_v5_meeting', { agenda: '未配对（;第二', type: 'ordinary', member: 'r-acad' }, as('r-acad'))
+  ok(pUnpaired && pUnpaired.ok === true, 'TB-2763: an unpaired bracket still convenes (named fallback, not a refusal)', pUnpaired && pUnpaired.code)
+  deepEq(pUnpaired && pUnpaired.agendaItems, ['未配对（', '第二'], '★★ TB-2763: unpaired （ ⇒ documented PRE-fix top-level split (nothing silently moved)')
+  ok(Array.isArray(pUnpaired && pUnpaired.agendaSplitUnbalanced) && pUnpaired.agendaSplitUnbalanced.length === 1,
+    '★★ TB-2763: …and the unpaired token is NAMED (agendaSplitUnbalanced)', pUnpaired && pUnpaired.agendaSplitUnbalanced)
+  ok(typeof pUnpaired.agendaSplitUnbalancedMeans === 'string' && pUnpaired.agendaSplitUnbalancedMeans.includes('PRE-RUN-81'),
+    '★★ TB-2763: …with a sentence saying which fallback was used and why', pUnpaired && pUnpaired.agendaSplitUnbalancedMeans)
+  // ★ LAMP: the pre-fix splitter is computed here — the same input WOULD have minted the empty shells, so the
+  // assertions above cannot pass under the old algorithm.
+  const oldSplit = (text) => String(text).split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== '')
+  ok(oldSplit(RUN81_AGENDA).length === 4 && oldSplit(RUN81_AGENDA).includes('）'),
+    '★★★ LAMP(RED-worthy): the OLD top-level splitter mints 4 items INCLUDING the empty shell "）" — the fixed 3-item reading above is load-bearing', oldSplit(RUN81_AGENDA))
 } catch (e) {
   failed += 1
   failures.push({ name: 'threw', detail: String(e && e.stack || e) })

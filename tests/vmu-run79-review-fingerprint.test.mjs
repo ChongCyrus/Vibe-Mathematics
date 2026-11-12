@@ -21,7 +21,7 @@
 //
 // Run: node tests/vmu-run79-review-fingerprint.test.mjs   Last line: === VMU RUN79 REVIEW FINGERPRINT: N passed, M failed ===
 
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -43,11 +43,11 @@ const ok = (cond, label, detail) => {
 const CODE = (r) => (r && r.code) || null
 
 // ── the real v5r pack on a throwaway root ───────────────────────────────────────────────────────────────────────────
-async function boot (settings = null) {
+async function boot (settings = null, entryUrl = null) {
   const root = mkdtempSync(join(tmpdir(), 'vmu-r79-rf-'))
   const specs = []
   const ctx = { effect: (fn) => fn(), on: () => () => {}, tools: { register: async (spec) => { specs.push(spec); return () => {} } } }
-  const entry = await import(urlish(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')))
+  const entry = await import(entryUrl || urlish(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')))
   const handle = entry.apply(ctx, Object.assign({ clock: () => 1000, packs: ['v5r'], root }, settings ? { settings } : {}))
   await handle.ready()
   await handle.kernel.store.open()
@@ -135,7 +135,10 @@ function parseCalls (hint) {
   cleanup(b)
 }
 
-// ── §A2 the round-boundary shape: round matches the paper, the prose does not ─────────────────────────────────────
+// ── §A2 the round-boundary shape (TB-2761 D-1): the round moved, the PROSE did not ──────────────────────────────
+// RUN 81 measured the opposite of what RUN 79 pinned: a round bump alone does NOT invalidate a verdict on an untouched
+// section. The binding is the judged part's FINGERPRINT. This block now asserts the corrected reading: the round-2 votes
+// on round-1 text COUNT (equal fingerprints), `voidReviews` stays empty, and `advance` passes.
 {
   const b = await boot()
   for (const [id, slot] of [['r-0', 'chair'], ['r-1', 'member'], ['r-2', 'member']]) await b.hire(id, slot)
@@ -153,71 +156,78 @@ function parseCalls (hint) {
   const bounce = await b.paper('advance', { target: 'a2' })
   ok(bounce.refused === false && bounce.receipt.advance.to === 'writing' && bounce.receipt.advance.round === 2,
     '§A2 fixture: advance bounces the paper to writing round 2', bounce.receipt && bounce.receipt.advance)
+  // ★★★ TB-2761 D-5: the two round numbers on ONE screen are explained and in sync (run 81 read round:3 beside updatedRound:2).
+  ok(bounce.receipt && bounce.receipt.advance && bounce.receipt.advance.updatedRound === bounce.receipt.advance.roundTo && bounce.receipt.advance.updatedRoundSameAsRound === true &&
+    typeof bounce.receipt.advance.updatedRoundMeans === 'string' && bounce.receipt.advance.updatedRoundMeans.length > 20,
+    '§A2 ★ D-5: the round-advancing receipt carries updatedRound == roundTo, the equality flag, and a means sentence',
+    bounce.receipt && bounce.receipt.advance)
   const back = await b.paper('advance', { target: 'a2' })
   ok(back.refused === false && back.receipt.advance.to === 'reviewing' && back.receipt.advance.round === 2,
     '§A2 fixture: round 2 enters reviewing', back.receipt && back.receipt.advance)
-  // ★ THE MEASURED SHAPE: the parts were never re-filed after the bounce, so the round-2 votes judge round-1 prose.
+  // THE MEASURED SHAPE: the parts were never re-filed after the bounce, so the round-2 votes judge round-1 prose whose
+  // FINGERPRINTS are unchanged. Before TB-2761 that was read as "stale"; the corrected rule counts it.
   const v1 = await b.paper('review', { target: 'a2', member: 'r-1', of: 'r-2', deliverable: true })
   const v2 = await b.paper('review', { target: 'a2', member: 'r-2', of: 'r-1', deliverable: true })
   ok(v1.refused === false && v2.refused === false, '§A2 fixture: both members vote deliverable in round 2', CODE(v1) || CODE(v2))
-  ok(v1.receipt && v1.receipt.review && v1.receipt.review.judgedPartRound === 1 && v1.receipt.review.stalePart === true,
-    '§A2 the vote receipt says AT ONCE that it judged a round-1 part', { round: v1.receipt && v1.receipt.review && v1.receipt.review.judgedPartRound, stale: v1.receipt && v1.receipt.review && v1.receipt.review.stalePart })
+  ok(v1.receipt && v1.receipt.review && v1.receipt.review.judgedPartRound === 1 && v1.receipt.review.stalePart === false,
+    '§A2 the vote receipt records the judged ROUND as history but does NOT call it stale (the text is unchanged)', { round: v1.receipt && v1.receipt.review && v1.receipt.review.judgedPartRound, stale: v1.receipt && v1.receipt.review && v1.receipt.review.stalePart })
   const st = await b.paper('status', { target: 'a2' })
   const cov = st.receipt.perRoundReviewCoverage
-  const stale = (cov && Array.isArray(cov.staleReviews)) ? cov.staleReviews : []
   ok(cov && cov.round === 2, '§A2 the paper stands in round 2', cov && cov.round)
-  ok(stale.length === 2, '§A2 BOTH round-2 votes are named as stale (not silently dropped)', stale.length)
-  const r1 = stale.filter((s) => s.by === 'r-1')[0]
-  ok(!!r1 && r1.of === 'r-2' && r1.judgedPartRound === 1 && r1.currentRound === 2 && r1.why === 'round-changed',
-    '§A2 the reason is round-changed: the fingerprints are EQUAL, the defect is the round', r1)
-  ok(!!r1 && r1.judgedPartFingerprint === fp2 && r1.currentFingerprint === fp2,
-    '§A2 staleReviews carries BOTH fingerprints AND their rounds (equal bytes, different rounds)', r1)
-  ok(Array.isArray(cov.covered) && cov.covered.length === 0, '§A2 no round-2 vote is counted as coverage', cov && cov.covered)
-  ok(Array.isArray(cov.missing) && cov.missing.indexOf('r-1') !== -1 && cov.missing.indexOf('r-2') !== -1,
-    '§A2 both members read as missing (with staleReviews saying WHY)', cov && cov.missing)
-  const refusedAdv = await b.paper('advance', { target: 'a2' })
-  ok(refusedAdv.refused === true && refusedAdv.code === 'VMU_REVIEW_STALE',
-    '§A2 advance REFUSES by name instead of counting nothing', { code: refusedAdv.code })
-  const roundAfter = (await b.paper('status', { target: 'a2' })).receipt.paper.round
-  ok(roundAfter === 2, '§A2 the refusal does NOT burn a round (a stale vote is not a dissent)', roundAfter)
-  // ── §A2b the five printed steps are all there, and every EXECUTABLE one really runs ─────────────────────────────
-  ok(/REACHABLE INSTEAD/.test(refusedAdv.hint), '§A2b the refusal carries the D-2 marker', String(refusedAdv.hint).slice(0, 120))
-  ok((String(refusedAdv.hint).match(/vibe_v5_paper \{/g) || []).length === 5,
-    '§A2b the hint prints FIVE steps (one per state transition the repair needs)',
-    (String(refusedAdv.hint).match(/vibe_v5_paper \{/g) || []).length)
-  const calls = parseCalls(refusedAdv.hint)
-  ok(calls.length === 5, '§A2b all five printed calls parse back', calls.length)
-  ok(calls[0] && calls[0].action === 'review' && calls[0].member === 'r-1' && calls[0].deliverable === false,
-    '§A2b step 1 is the reviewer judging this round back to writing', calls[0])
-  ok(calls[1] && calls[1].action === 'advance' && calls[2] && calls[2].action === 'part' && calls[3] && calls[3].action === 'advance',
-    '§A2b steps 2-4 are advance -> re-file the part -> advance', calls.map((c) => c.action))
-  ok(calls[4] && calls[4].action === 'review' && calls[4].deliverable === true && calls[4].member === 'r-1' && calls[4].of === 'r-2',
-    '§A2b step 5 is the same vote on the new text', calls[4])
-  const step1 = calls[0] === undefined ? { refused: true, code: 'NO_PARSE' } : await b.paper('review', calls[0])
-  ok(step1.refused === false, '§A2b step 1 executes verbatim', { code: step1.code, message: step1.message })
-  const step2 = calls[1] === undefined ? { refused: true, code: 'NO_PARSE' } : await b.paper('advance', calls[1])
-  ok(step2.refused === false && step2.receipt.advance.to === 'writing' && step2.receipt.advance.round === 3,
-    '§A2b step 2 executes verbatim and bounces to writing round 3', step2.receipt && step2.receipt.advance)
-  // step 3 is a TEMPLATE (its prose is the paper, so the ellipses are filled with the real body: the hint says so)
-  const re1 = await b.paper('part', { target: 'a2', member: 'r-1', part: 'r-1 part', body: 'A2 round-3 text of r-1', evidence: [ev1.id] })
-  const re2 = await b.paper('part', { target: 'a2', member: 'r-2', part: 'r-2 part', body: 'A2 round-3 text of r-2', evidence: [ev2.id] })
-  ok(re1.refused === false && re2.refused === false, '§A2b step 3: both authors re-file for the current round', CODE(re1) || CODE(re2))
-  const step4 = calls[3] === undefined ? { refused: true, code: 'NO_PARSE' } : await b.paper('advance', calls[3])
-  ok(step4.refused === false && step4.receipt.advance.to === 'reviewing' && step4.receipt.advance.round === 3,
-    '§A2b step 4 executes verbatim and re-enters reviewing round 3', step4.receipt && step4.receipt.advance)
-  const step5 = calls[4] === undefined ? { refused: true, code: 'NO_PARSE' } : await b.paper('review', calls[4])
-  ok(step5.refused === false, '§A2b step 5 executes verbatim and binds the CURRENT text', { code: step5.code })
-  ok(step5.receipt && step5.receipt.review && step5.receipt.review.stalePart === false, '§A2b the re-vote is NOT stale', step5.receipt && step5.receipt.review && step5.receipt.review.stalePart)
-  const other = await b.paper('review', { target: 'a2', member: 'r-2', of: 'r-1', deliverable: true })
-  ok(other.refused === false, '§A2b the other reviewer files the same way (the hint says "another applies likewise")', CODE(other))
-  const done = await b.paper('advance', { target: 'a2' })
-  ok(done.refused === false && done.receipt.advance.to === 'awaiting-editor',
-    '§A2b after walking the five steps the paper reaches awaiting-editor', done.receipt && done.receipt.advance)
-  ok(JSON.stringify((await b.paper('status', { target: 'a2' })).receipt.perRoundReviewCoverage) === JSON.stringify(done.receipt.advance.perRoundReviewCoverage),
-    '§A2b status and advance print the SAME coverage object (one arithmetic, two doors)')
-  const finalCov = (await b.paper('status', { target: 'a2' })).receipt.perRoundReviewCoverage
-  ok(finalCov && Array.isArray(finalCov.staleReviews) && finalCov.staleReviews.length === 0,
-    '§A2b the repaired paper has no stale votes left', finalCov && finalCov.staleReviews)
+  const coveredIds = (cov && Array.isArray(cov.covered)) ? cov.covered.map((c) => c.member).sort() : []
+  ok(JSON.stringify(coveredIds) === JSON.stringify(['r-1', 'r-2']),
+    '§A2 ★ D-1: BOTH round-2 votes are COUNTED although their rows/rounds are round 1 — the judged text is unchanged', coveredIds)
+  ok(cov && Array.isArray(cov.missing) && cov.missing.length === 0, '§A2 nothing is missing: the untouched text still covers', cov && cov.missing)
+  ok(cov && Array.isArray(cov.voidReviews) && cov.voidReviews.length === 0,
+    '§A2 ★ D-2: no vote is voided — and the empty list is explicit, not a missing field', cov && cov.voidReviews)
+  ok(cov && Array.isArray(cov.staleReviews) && cov.staleReviews.length === 0 && Array.isArray(cov.invalidatedByRound) && cov.invalidatedByRound.length === 0,
+    '§A2 the two legacy filtered views agree with voidReviews (both empty)', { stale: cov && cov.staleReviews, invalidated: cov && cov.invalidatedByRound })
+  const advOk = await b.paper('advance', { target: 'a2' })
+  ok(advOk.refused === false && advOk.receipt.advance.to === 'awaiting-editor',
+    '§A2 ★ advance PASSES on round-old votes whose text is unchanged (no more round-only staleness)', { code: advOk.code, to: advOk.receipt && advOk.receipt.advance && advOk.receipt.advance.to })
+  const st2 = await b.paper('status', { target: 'a2' })
+  ok(JSON.stringify(st2.receipt.perRoundReviewCoverage) === JSON.stringify(advOk.receipt.advance.perRoundReviewCoverage),
+    '§A2 status and advance print the SAME coverage object (one arithmetic, two doors)')
+  cleanup(b)
+}
+
+// ── §A2b TB-2761 D-2/D-4: ONE void list grouped by why with COUNT; equal fingerprints are never printed as "≠" ──────
+{
+  const b = await boot()
+  for (const [id, slot] of [['r-0', 'chair'], ['r-1', 'member'], ['r-2', 'member']]) await b.hire(id, slot)
+  const ev1 = b.evidenceRow('a2b-1')
+  const ev2 = b.evidenceRow('a2b-2')
+  await b.paper('start', { target: 'a2b', title: 'run 81 void reviews', participants: ['r-1', 'r-2'] })
+  await b.paper('part', { target: 'a2b', member: 'r-1', part: 'r-1 part', body: 'A2b text of r-1', evidence: [ev1.id] })
+  await b.paper('part', { target: 'a2b', member: 'r-2', part: 'r-2 part', body: 'A2b text of r-2', evidence: [ev2.id] })
+  await b.paper('advance', { target: 'a2b' })
+  const fp2b = (await b.paper('status', { target: 'a2b' })).receipt.paper.parts['r-2'].fingerprint
+  // the measured rec-34 shape: a deliverable vote BOUND to a text the part no longer carries (forged fingerprint)
+  b.kernel.records.put({
+    track: 'paper', kind: 'paper-review', title: 'v5r-paper|a2b|review|r-1',
+    body: JSON.stringify({ target: 'a2b', member: 'r-1', of: 'r-2', round: 1, deliverable: true, comments: '', judgedPartFingerprint: 'deadbeef', judgedPartRound: 1 }),
+    by: 'vibe_v5_paper'
+  })
+  const v2 = await b.paper('review', { target: 'a2b', member: 'r-2', of: 'r-1', deliverable: true })
+  ok(v2.refused === false, '§A2b fixture: the other member votes on the current text', CODE(v2))
+  const cov = (await b.paper('status', { target: 'a2b' })).receipt.perRoundReviewCoverage
+  const groups = (cov && Array.isArray(cov.voidReviews)) ? cov.voidReviews : []
+  ok(groups.length === 1 && groups[0].why === 'part-text-changed' && groups[0].count === 1 && JSON.stringify(groups[0].members) === JSON.stringify(['r-1']),
+    '§A2b ★ D-2: voidReviews groups by why WITH a count (part-text-changed ×1, members named)', groups)
+  ok(groups[0] && Array.isArray(groups[0].entries) && groups[0].entries.length === 1 && typeof groups[0].whyMeans === 'string' && groups[0].whyMeans.length > 20,
+    '§A2b ★ the group carries its entries and a human sentence, not just a code', groups[0] && groups[0].entries)
+  const legacyStale = (cov && Array.isArray(cov.staleReviews)) ? cov.staleReviews : []
+  ok(legacyStale.length === 1 && legacyStale[0].by === 'r-1' && legacyStale[0].why === 'part-text-changed',
+    '§A2b the legacy staleReviews view is a FILTERED VIEW of voidReviews (same entry, same why)', legacyStale)
+  ok(cov && Array.isArray(cov.invalidatedByRound) && cov.invalidatedByRound.length === 0,
+    '§A2b no legacy round-invalidated entries are invented on top of the text-changed one', cov && cov.invalidatedByRound)
+  // ★ D-4: the disagreement/refusal prose may only print ≠ between REALLY different fingerprints; the old code printed
+  // "f56eba11… ≠ f56eba11…" (same hash) when the defect was the ROUND. The branch that could print it now compares first.
+  const kitSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  ok(kitSrc.includes('const sameBytes =') && kitSrc.includes('作废原因是轮次/无绑定，不是字节'),
+    '§A2b ★ D-4: the STALE-PART line compares the two fingerprints before printing "≠" (equal bytes get the round explanation)')
+  ok(!/judgedPartFingerprint '\s*\+ String\(v\.judgedPartFingerprint\) \+ ' ≠ 当前 '/.test(kitSrc),
+    '§A2b ★ the old unconditional "judgedPartFingerprint … ≠ 当前 …" template is gone')
   cleanup(b)
 }
 
@@ -362,6 +372,93 @@ function parseCalls (hint) {
   ok(['not-finalized', 'no-parts', 'toolchain-absent', 'compile-not-run'].indexOf(String(st1.pdfCompiled && st1.pdfCompiled.blockedBy)) !== -1,
     '§B blockedBy is one of the named reasons (never a bare false)', st1.pdfCompiled && st1.pdfCompiled.blockedBy)
   cleanup(b)
+}
+
+// ── TB-2761 LAMPS: each fix gets a working-tree copy that reverts it; the OLD (defective) reading must come back ───
+// A lamp that does not bite is worse than no lamp: each body drives the same door the positive assertion used.
+{
+  const withLamp = async (mutations, body) => {
+    const dir = mkdtempSync(join(tmpdir(), 'vmu-r79-lamp-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+      let src = readFileSync(kitPath, 'utf8')
+      // ★ #3b（audit-declaration-criterion RULE E）：遍历 mutation 列表的循环在空表上会静默通过；先钉住非空。
+      ok(Array.isArray(mutations) && mutations.length > 0, 'lamp-setup: the mutation list is non-empty (' + mutations.length + ')')
+      for (const m of mutations) {
+        ok(src.indexOf(m[0]) !== -1, 'lamp-setup: mutation point present (' + String(m[0]).slice(0, 46) + '…)')
+        src = src.replace(m[0], m[1])
+      }
+      writeFileSync(kitPath, src)
+      const b = await boot(null, urlish(join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')))
+      try { await body(b) } finally { cleanup(b) }
+    } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) }
+  }
+  const seed = async (b, target) => {
+    for (const [id, slot] of [['r-0', 'chair'], ['r-1', 'member'], ['r-2', 'member']]) await b.hire(id, slot)
+    const e1 = b.evidenceRow('lamp-1')
+    const e2 = b.evidenceRow('lamp-2')
+    await b.paper('start', { target, title: 'tb2761 lamp', participants: ['r-1', 'r-2'] })
+    await b.paper('part', { target, member: 'r-1', part: 'p1', body: 'lamp text 1', evidence: [e1.id] })
+    await b.paper('part', { target, member: 'r-2', part: 'p2', body: 'lamp text 2', evidence: [e2.id] })
+    await b.paper('advance', { target })
+  }
+
+  // D-1 lamp: revert the TEXT binding to the old ROUND binding.
+  await withLamp([["if (judged.partChanged) return out(false, 'part-text-changed')", "if (rowRound !== round) return out(false, 'part-text-changed')"]], async (b) => {
+    await seed(b, 'l1')
+    await b.paper('review', { target: 'l1', member: 'r-1', of: 'r-2', deliverable: true })
+    await b.paper('review', { target: 'l1', member: 'r-2', of: 'r-1', deliverable: false })
+    await b.paper('advance', { target: 'l1' }) // bounce → round 2 writing
+    await b.paper('advance', { target: 'l1' }) // → reviewing round 2
+    const cov = (await b.paper('status', { target: 'l1' })).receipt.perRoundReviewCoverage
+    ok(!!cov && cov.covered.length === 0 && cov.missing.indexOf('r-1') !== -1,
+      'lamp D-1 RED-worthy: 把判据退回「round 绑定」⇒ round-1 的 deliverable 票不再计入（run 81 D-1 的原状）',
+      cov && { covered: cov.covered, missing: cov.missing })
+  })
+
+  // D-2 lamp: drop the per-why COUNT and the old "two lists, no count" reading comes back.
+  await withLamp([['count: byWhy.get(why).length', 'count: null']], async (b) => {
+    await seed(b, 'l2')
+    b.kernel.records.put({ track: 'paper', kind: 'paper-review', title: 'v5r-paper|l2|review|r-1',
+      body: JSON.stringify({ target: 'l2', member: 'r-1', of: 'r-2', round: 1, deliverable: true, comments: '', judgedPartFingerprint: 'deadbeef', judgedPartRound: 1 }),
+      by: 'vibe_v5_paper' })
+    await b.paper('review', { target: 'l2', member: 'r-2', of: 'r-1', deliverable: true })
+    const cov = (await b.paper('status', { target: 'l2' })).receipt.perRoundReviewCoverage
+    const count = cov && cov.voidReviews && cov.voidReviews[0] ? cov.voidReviews[0].count : undefined
+    ok(count !== 1, 'lamp D-2 RED-worthy: 去掉 count ⇒ 作废组又无法回答「几张票」（run 81 D-2 的原状）', { count })
+  })
+
+  // D-5 lamp: drop the advance-side sync of `updatedRound`; the two numbers on one receipt diverge again.
+  await withLamp([["state.round += 1; state.updatedRound = state.round; state.status = 'writing'", "state.round += 1; state.status = 'writing'"]], async (b) => {
+    await seed(b, 'l5')
+    await b.paper('review', { target: 'l5', member: 'r-1', of: 'r-2', deliverable: false })
+    const bounce = await b.paper('advance', { target: 'l5' })
+    ok(bounce.refused === false && bounce.receipt.advance && bounce.receipt.advance.updatedRound !== bounce.receipt.advance.roundTo,
+      'lamp D-5 RED-worthy: 不同步 updatedRound ⇒ 同一回执上 round 与 updatedRound 又不同（run 81 D-5 的原状）',
+      bounce.receipt && bounce.receipt.advance && { roundTo: bounce.receipt.advance.roundTo, updatedRound: bounce.receipt.advance.updatedRound })
+  })
+
+  // D-4 lamp: make the equality check always true; a line about TWO DIFFERENT fingerprints must not claim they are
+  // equal (the mirror image of the run-81 "same hash printed as ≠"). The stale-part line must render here: a forged row
+  // binds a fingerprint the part does not carry, and a dissent makes the advance bounce with that line in the record.
+  await withLamp([
+    ['const sameBytes = String(shown(v.judgedPartFingerprint)) === String(shown(v.currentFingerprint))', 'const sameBytes = true'],
+  ], async (b) => {
+    await seed(b, 'l4')
+    b.kernel.records.put({ track: 'paper', kind: 'paper-review', title: 'v5r-paper|l4|review|r-1',
+      body: JSON.stringify({ target: 'l4', member: 'r-1', of: 'r-2', round: 1, deliverable: true, comments: '', judgedPartFingerprint: 'deadbeef', judgedPartRound: 1 }),
+      by: 'vibe_v5_paper' })
+    await b.paper('review', { target: 'l4', member: 'r-2', of: 'r-1', deliverable: false })
+    const bounce = await b.paper('advance', { target: 'l4' })
+    const st = await b.paper('status', { target: 'l4' })
+    const hist = (st.receipt && st.receipt.paper && Array.isArray(st.receipt.paper.disagreement)) ? st.receipt.paper.disagreement : []
+    const last = hist.length ? String(hist[hist.length - 1].detail || '') : ''
+    const staleRow = ((bounce.receipt && bounce.receipt.advance && bounce.receipt.advance.reviewsRead) || []).filter((r) => r && r.member === 'r-1' && r.stalePart === true)[0] || null
+    ok(bounce.refused === false && /与当前相同/.test(last) && !!staleRow && staleRow.judgedPartFingerprint !== staleRow.currentFingerprint,
+      'lamp D-4 RED-worthy: 把比较改成恒真 ⇒ 两个不同指纹也被印成「与当前相同」（同族假事实）',
+      { detail: last.slice(0, 200), judged: staleRow && staleRow.judgedPartFingerprint, current: staleRow && staleRow.currentFingerprint })
+  })
 }
 
 console.log('=== VMU RUN79 REVIEW FINGERPRINT: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -335,6 +335,30 @@ ok(!/proseUnderscores/.test(String(TOOLS_SRC.split('projectPdfBlock')[0])),
 ok(!!c && c.math && typeof c.math.proseUnderscores === 'number',
   '★ 读回：compile 回执的 math 块带着这个计数（可读、可不读）', c && c.math && c.math.proseUnderscores)
 
+// ── §6. TB-2768: GLYPH LOSS IS A TOP-LEVEL READING OF THE PAPER RECEIPT (ok:true must not hide it) ─────────────
+console.log('=== 6. TB-2768：编译成功但日志报了 Missing character ⇒ 回执顶层可读（不是只藏在 math 里） ===')
+stubLatex(kernel, { check: async (request) => {
+  const base = await writeFakePdf(request)
+  return Object.assign({}, base, { logRead: true, logPath: 'fake.log', glyphLossDetected: true, missingCharacterCount: 3,
+    glyphsUnrepaired: [{ char: 'ℤ', u: 'U+2124', count: 3, font: 'lmroman10-regular', where: '1, 4' }],
+    glyphLossCode: 'VMU_PAPER_GLYPH_UNCOVERED',
+    glyphLossMeans: 'the compile EXITED 0 and wrote a PDF, but its log names 1 distinct glyph the font could not print' })
+} })
+const glyphReceipt = (await receipt(v5r, 'vibe_v5_paper', { action: 'compile', target: T })).parsed
+ok(!!glyphReceipt && glyphReceipt.ok === true, '前置：compile 回执存在且 ok:true', glyphReceipt && glyphReceipt.ok)
+eq(glyphReceipt && glyphReceipt.glyphLossDetected, true, '★★ 正(TB-2768)：ok:true 的回执 TOP LEVEL 带 glyphLossDetected:true')
+eq(glyphReceipt && glyphReceipt.glyphLossCode, 'VMU_PAPER_GLYPH_UNCOVERED', '★★ 正：具名码 VMU_PAPER_GLYPH_UNCOVERED')
+ok(Array.isArray(glyphReceipt && glyphReceipt.glyphsUnrepaired) && glyphReceipt.glyphsUnrepaired.length === 1 && glyphReceipt.glyphsUnrepaired[0].char === 'ℤ',
+  '★★ 正：顶层带 glyphsUnrepaired 行（char/u/count/font/where）', glyphReceipt && glyphReceipt.glyphsUnrepaired)
+ok(!!glyphReceipt && glyphReceipt.compiled && glyphReceipt.compiled.math && glyphReceipt.compiled.math.glyphLossDetected === true &&
+  Array.isArray(glyphReceipt.compiled.math.glyphsUnrepaired) && glyphReceipt.compiled.math.glyphsUnrepaired.length === 1,
+  '★ 正：同一读数也进 pdf 块的 math（一份读数两个入口）', glyphReceipt && glyphReceipt.compiled && glyphReceipt.compiled.math)
+ok(!!glyphReceipt && glyphReceipt.compiled && glyphReceipt.compiled.stderrFindings && glyphReceipt.compiled.stderrFindings.missingCharacterCount === 3 &&
+  glyphReceipt.compiled.stderrFindings.source === 'engine-log' && glyphReceipt.compiled.stderrFindings.glyphLossDetected === true,
+  '★★ 正：compiled.stderrFindings 是 TB-2768 点名的「把 Missing character 计入回执」', glyphReceipt && glyphReceipt.compiled && glyphReceipt.compiled.stderrFindings)
+ok(typeof glyphReceipt.glyphLossMeans === 'string' && /could not print/.test(glyphReceipt.glyphLossMeans),
+  '★ 正：means 明说「PDF 存在但字形没打印」', glyphReceipt && glyphReceipt.glyphLossMeans)
+
 // A Windows kernel keeps a handle on the member tree for a moment after a claim, so cleanup is
 // best-effort: the temp root is under D:/_tmp and the assertions above already read every byte they need.
 try { process.chdir(prevCwd) } catch { /* the temp tree is what matters */ }

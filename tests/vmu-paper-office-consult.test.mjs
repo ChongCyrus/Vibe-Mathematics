@@ -54,9 +54,9 @@ function makeKernel(settings, roster) {
     records: {
       put(r) {
         const id = r.id || ('row-' + (++seq))
-        const row = { ...r, id }
+        const row = { ...r, id, fingerprint: 'fp-' + id }
         rows.set(id, row)
-        return { id, fingerprint: 'fp-' + id }
+        return { id, fingerprint: row.fingerprint }
       },
       get({ id }) { return { record: rows.get(id) || null } },
       list({ track, limit } = {}) {
@@ -77,6 +77,8 @@ async function boot({ settings = {}, roster = ROSTER } = {}) {
   const clock = { now: 1000 }
   const { kernel, rows } = makeKernel({ ...BASE, ...settings }, roster)
   const flow = pack.createPaperSubsystem({ kernel, clock: () => clock.now })
+  // test-only handle so the helper can file a resolvable evidence card (the quality gate resolves evidence ids)
+  flow.__testRecords = kernel.records
   return { flow, kernel, rows, clock, codes: pack.PAPER_CODES, pack }
 }
 
@@ -84,8 +86,16 @@ async function boot({ settings = {}, roster = ROSTER } = {}) {
  *  under test here, so faking the stage would let a broken advance pass this file). */
 function toEditor(flow, target = 'P-1', participants = ['r-1', 'r-2']) {
   flow.start({ target, participants })
+  // ★ TB-2761：互审绑定被判 part 的 fingerprint。没有部分的「deliverable:true」不是互审（旧场景里它靠 round 相等
+  // 蒙混过关，新门会具名拒「只有 0 位审了别人」）。真实流程：每位参与者写一节，再逐对互审（of 指向别人）。
+  for (const m of participants) {
+    const card = flow.__testRecords ? flow.__testRecords.put({ track: 'propositions', kind: 'proposition', title: 'evidence for ' + m, body: '二值：1' }) : null
+    flow.recordPart({ target, member: m, title: m + ' 的一节', solution: m + ' 的正文', evidence: card ? [card.id] : [] })
+  }
   flow.advance({ target })
-  for (const m of participants) flow.recordReview({ target, member: m, deliverable: true })
+  for (let i = 0; i < participants.length; i += 1) {
+    flow.recordReview({ target, member: participants[i], of: participants[(i + 1) % participants.length], deliverable: true })
+  }
   return flow.advance({ target })
 }
 

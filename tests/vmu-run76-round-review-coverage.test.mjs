@@ -92,14 +92,20 @@ ok(coverageBody.includes('const missing = []') && coverageBody.includes('missing
   '★★★ 正：`missing` 是逐成员判出来的（先建空表再 push），不是恒空字面量', coverageBody.length)
 ok(!coverageBody.includes('missing: []'),
   '★★★ 反：函数里没有「missing 恒空」的捷径')
-has(coverageBody, 'invalidatedByRound.push({ member, recordId: found.recordId || null, round: rowRound, why: \'previous-round\',',
-  '★★★ 正：`invalidatedByRound` 的每条都带 member / recordId / 行的 round / why')
-has(coverageBody, 'rowRound !== round',
-  '★★★ 正：只有「最新评审行属于别的轮」才进 invalidatedByRound（同轮判否是 missing，不是坏轮）')
-has(coverageBody, 'body.deliverable === true',
-  '★★★ 正：只有 deliverable:true 的票计入 covered（判否的票仍是 missing）')
-has(coverageBody, 'str(body.of === undefined || body.of === null ? \'\' : body.of) !== member',
+// TB-2761 (RUN 81 D-1/D-2) rewrote the arithmetic: the gate binds the judged part's FINGERPRINT (not the round number),
+// and the two old lists are now FILTERED VIEWS of one counted `voidReviews`. These pins name the new single source.
+has(KIT_SRC, 'const coverageVerdictOf = (state, body) => {',
+  '★★★ 正：覆盖判定收在一处（coverageVerdictOf），requireCrossReview 与读数共用它')
+has(KIT_SRC, "if (judged.partChanged) return out(false, 'part-text-changed')",
+  '★★★ 正（TB-2761 D-1）：判据是「被审节 fingerprint 是否变」，不是「round 是否等于论文 round」')
+has(KIT_SRC, 'if (body.deliverable !== true) return out(false, null)',
+  '★★★ 正：只有 deliverable:true 的票才可能计入 covered（判否的票仍是 missing，不是作废）')
+has(KIT_SRC, "(member !== '' && of === member)",
   '★★★ 正：自审永不计入 covered（of 必须点名别人）')
+has(coverageBody, 'const byWhy = new Map()',
+  '★★★ 正（TB-2761 D-2）：voidReviews 按 why 分组（Map），不是两个各自为政的名单')
+has(coverageBody, 'count: byWhy.get(why).length',
+  '★★★ 正：每个 why 组带 count（「没有作废」与「作废两张」不再读起来一样）')
 has(KIT_SRC, "source: 'durable-other-round'",
   '★★★ 机制 pin：readReview 的 durable-other-round 分支还在（上轮票作废是刻意的安全设计）')
 eq(KIT_SRC.split('state.round += 1').length - 1, 2,
@@ -143,8 +149,9 @@ const r2Open = (await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target:
 eq(r2Open && r2Open.advance && r2Open.advance.from, 'reviewing', '前置(RULE E)：round 1 reviewing → writing')
 eq(r2Open && r2Open.advance && r2Open.advance.to, 'writing', '前置(RULE E)：round 1 因分歧回到 writing')
 eq(r2Open && r2Open.advance && Number(r2Open.advance.round), 2, '前置(RULE E)：round 1 → round 2（一次 bounce）')
-eq(r2Open && r2Open.advance && r2Open.advance.perRoundReviewCoverage && r2Open.advance.perRoundReviewCoverage.invalidatedByRound.map((x) => x.member), [R2],
-  '★★ 正：round 1 唯一那张票已经被 round 2 判为 previous-round（回执现在就点名它）', r2Open && r2Open.advance && r2Open.advance.perRoundReviewCoverage)
+const covR2 = r2Open && r2Open.advance && r2Open.advance.perRoundReviewCoverage
+ok(!!covR2 && Array.isArray(covR2.voidReviews) && covR2.voidReviews.length === 0 && Array.isArray(covR2.invalidatedByRound) && covR2.invalidatedByRound.length === 0,
+  '★★ 正（TB-2761）：round 1 那张票判的是 FALSE ⇒ 它是 missing，不是被作废（voidReviews 为空，空是显式的）', covR2 && { voidReviews: covR2.voidReviews, invalidated: covR2.invalidatedByRound })
 const open2 = (await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: T })).parsed
 eq(open2 && open2.advance && open2.advance.from, 'writing', '前置(RULE E)：round 2 writing → reviewing')
 eq(open2 && open2.advance && open2.advance.to, 'reviewing', '前置(RULE E)：round 2 进入 reviewing')
@@ -173,28 +180,25 @@ ok(!!adv3 && Object.prototype.hasOwnProperty.call(adv3, 'perRoundReviewCoverage'
 const cov3 = adv3 && adv3.perRoundReviewCoverage
 ok(!!cov3 && Number(cov3.round) === 3,
   '★★★ 正：读数说的是 paper 当前 round（3），不是刚关掉的那一轮', cov3 && cov3.round)
-ok(!!cov3 && Array.isArray(cov3.expected) && cov3.expected.length === 3 && cov3.missing.length === 3,
-  '★★★ 正：新轮 expected 三席、missing 恰好三席（没有一张旧票被当成本轮票）', cov3 && { expected: cov3.expected, missing: cov3.missing })
-eq(cov3 && cov3.covered, [], '★★★ 正：round 3 还没有 counted 票：covered 为空')
-ok(!!cov3 && Array.isArray(cov3.invalidatedByRound) && cov3.invalidatedByRound.length === 3,
-  '★★★ 正：三张 round-2 的票逐条进 invalidatedByRound（不是静默消失）', cov3 && cov3.invalidatedByRound)
-eq(cov3 && cov3.invalidatedByRound.map((x) => x.member).sort(), [ACAD, R1, R2].sort(),
-  '★★★ 正：被作废的三席姓名逐条点名')
-eq(cov3 && cov3.invalidatedByRound.map((x) => Number(x.round)), [2, 2, 2],
-  '★★★ 正：每条都带它所属的 round（2）')
-ok(!!cov3 && cov3.invalidatedByRound.length > 0 && cov3.invalidatedByRound.every((x) => x.recordId === byMember.get(x.member)),
-  '★★★ 正：每条的 recordId 等于该成员那张 round-2 评审回执的 recordId —— 读者能直接指回行',
-  cov3 && cov3.invalidatedByRound.map((x) => ({ member: x.member, got: x.recordId, want: byMember.get(x.member) })))
-ok(!!cov3 && cov3.invalidatedByRound.length > 0 && cov3.invalidatedByRound.every((x) => x.why === 'previous-round' && typeof x.whyMeans === 'string'
-  && x.whyMeans.includes('why:"previous-round"') && x.whyMeans.includes('NOT counted') && x.whyMeans.length > 40),
-  '★★★ 正：why 是机器可判的 `previous-round`，whyMeans 是人读的整句（解释为何不算，而不是复读键名）',
-  cov3 && cov3.invalidatedByRound.map((x) => x.whyMeans))
+ok(!!cov3 && Array.isArray(cov3.expected) && cov3.expected.length === 3 && cov3.missing.length === 1 && cov3.missing[0] === R2,
+  '★★★ 正（TB-2761 D-1）：round 3 的 missing 只剩真正拒收的 R2 —— 两张 round-2 的 deliverable 票判的正文没变，仍然计入', cov3 && { expected: cov3.expected, missing: cov3.missing })
+ok(!!cov3 && Array.isArray(cov3.covered) && cov3.covered.length === 2 && JSON.stringify(cov3.covered.map((x) => x.member).sort()) === JSON.stringify([ACAD, R1].sort()),
+  '★★★ 正：covered 是两张「跨轮但正文未变」的票（round bump 不再作废未改节的票）', cov3 && cov3.covered)
+ok(!!cov3 && cov3.covered.every((x) => x.recordId === byMember.get(x.member) && Number(x.round) === 3),
+  '★★★ 正：covered 的 recordId 等于该成员 round-2 评审回执的 recordId（换轮不换行），round 报的是 paper 当前轮 3',
+  cov3 && cov3.covered.map((x) => ({ member: x.member, got: x.recordId, want: byMember.get(x.member) })))
+ok(!!cov3 && Array.isArray(cov3.invalidatedByRound) && cov3.invalidatedByRound.length === 0,
+  '★★★ 正：没有一张票因为「轮次」被作废（invalidatedByRound 是 voidReviews 的 legacy 视图，这里是空）', cov3 && cov3.invalidatedByRound)
+ok(!!cov3 && Array.isArray(cov3.voidReviews) && cov3.voidReviews.length === 0,
+  '★★★ 正（TB-2761 D-2）：voidReviews 为空且显式 —— 没有票被作废，而不是「字段缺失被读成空」')
+ok(!!cov3 && cov3.covered.length > 0 && cov3.covered.every((x) => typeof x.member === 'string' && typeof x.recordId === 'string' && Number(x.round) === 3),
+  '★★★ 正：covered 每条的 recordId 可回指行、round 是当前轮', cov3 && cov3.covered)
 for (const key of ['expectedMeans', 'coveredMeans', 'missingMeans', 'invalidatedByRoundMeans', 'means']) {
   ok(!!cov3 && typeof cov3[key] === 'string' && cov3[key].length > 40,
     '★★ 正：每值带 means 句 — `' + key + '` 存在且是可读整句', cov3 && typeof cov3[key] === 'string' && cov3[key].slice(0, 60))
 }
-ok(!!cov3 && typeof cov3.invalidatedByRoundMeans === 'string' && cov3.invalidatedByRoundMeans.includes('NOT empty'),
-  '★★ 正：非空列表的 means 说它「为什么非空」（不是空话）', cov3 && cov3.invalidatedByRoundMeans)
+ok(!!cov3 && typeof cov3.invalidatedByRoundMeans === 'string' && cov3.invalidatedByRoundMeans.includes('empty ON PURPOSE'),
+  '★★ 正（TB-2761）：empty 列表的 means 说明「空是刻意的」，并把读者指向 covered / voidReviews', cov3 && cov3.invalidatedByRoundMeans)
 
 // ── §2. THE SAME READING FLIPS TO covered ONCE THE THREE MEMBERS FILE FOR ROUND 3 ─────────────────────────────
 console.log('=== 2. round 3 三席各投一次 ⇒ covered 三席、missing 为空 ===')
@@ -254,7 +258,7 @@ console.log('=== 4. 机制未被改掉：bounce 真实发生、字段只是读�
 ok(!!adv3 && adv3.moved === true && Number(adv3.roundFrom) === 2 && Number(adv3.roundTo) === 3,
   '★★ 正：round 2 → 3 的 advance 真的 moved（读数没有取代状态机）', adv3 && { moved: adv3.moved, roundFrom: adv3.roundFrom, roundTo: adv3.roundTo })
 ok(!!adv3 && Array.isArray(adv3.stale) && adv3.stale.length === 0,
-  '★★ 正（RUN 76 现场）：三席都投了票，所以 stale 为空 —— 旧票的作废只体现在 invalidatedByRound',
+  '★★ 正（RUN 76 现场）：三席都投了票，stale 为空（round 视图由 voidReviews 派生；跨轮未改正文的票现在计入 covered）',
   adv3 && adv3.stale)
 eq(st && st.paper && Number(st.paper.round), 3, '★★ 正：status 的 paper.round 与读数一致（都是 3）')
 

@@ -272,11 +272,25 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   // `archiveArtifacts` (the archive ROW question, which used to be copied into `missing`). The pin below stays an
   // EXACT key-set equality (nothing relaxed): it is updated to name the new keys, and the same-not-different assertion
   // is also extended to the FAILED door, so both doors must still agree.
-  const expected = ['argv', 'archiveArtifacts', 'code', 'engine', 'engineSource', 'faceCode', 'hint', 'kind', 'math', 'message', 'missing', 'missingMeans', 'ok', 'outDir', 'pdfBytes', 'pdfPath',
-    'produced', 'recordId', 'recordIdMeans', 'signal', 'sourceName', 'stderrTail', 'stdoutTail', 'tailSource', 'tailsIdentical', 'tailsIdenticalMeans', 'target', 'toolchainAbsent', 'toolchainAbsentMeans',
-    'triedEngines', 'triedEnginesTotal',
-    'triedEnginesTruncated'].sort()
-  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（32 键，RUN 252 加 4 个具名读数）', keys)
+  // ★★★ TB-2768 (RUN 81 attempt-3): the shared projection gained NINE engine-log/glyph readings
+  // (`glyphLossDetected`/`glyphLossCode`/`glyphLossMeans`/`glyphLossHint`/`glyphsUnrepaired`/
+  // `missingCharacterCount`/`logPath`/`logRead`/`stderrFindings`), so the exact set is now 41 keys.
+  // The list below is NOT hand-copied: it was generated from a REAL `compile` receipt of this build
+  // (`Object.keys(compiled.compiled).sort()`), and the same list is compared against success, failure
+  // and `final` further down — one projection, one field set. A projection change must update this
+  // list deliberately (and the lamp below proves a dropped key is caught).
+  const expected = ['archiveArtifacts', 'argv', 'code', 'engine', 'engineSource', 'faceCode', 'glyphLossCode', 'glyphLossDetected', 'glyphLossHint', 'glyphLossMeans', 'glyphsUnrepaired', 'hint', 'kind', 'logPath', 'logRead', 'math', 'message', 'missing', 'missingCharacterCount', 'missingMeans', 'ok', 'outDir', 'pdfBytes', 'pdfPath', 'produced', 'recordId', 'recordIdMeans', 'signal', 'sourceName', 'stderrFindings', 'stderrTail', 'stdoutTail', 'tailSource', 'tailsIdentical', 'tailsIdenticalMeans', 'target', 'toolchainAbsent', 'toolchainAbsentMeans', 'triedEngines', 'triedEnginesTotal', 'triedEnginesTruncated'].sort()
+  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（41 键，TB-2768 加 9 个 glyph/engine-log 读数）', keys)
+  // ★ LAMP(RED-worthy): the pin is not vacuous — take the REAL projection object and delete one key; the SAME
+  // comparison must go false (so a projection that silently drops a field cannot pass this list).
+  const droppedKey = 'kind'
+  const keysWithoutOne = keys.filter((k) => k !== droppedKey)
+  // RULE E shape B: a two-collection comparison must first prove BOTH sides are non-empty, or it compares two
+  // empty lists and passes vacuously. The guard is the point: this lamp must be a real difference.
+  ok(keysWithoutOne.length > 0 && expected.length > 0,
+    'LAMP 前置：两侧集合都非空（空集对比恒真，先守卫）', { without: keysWithoutOne.length, expected: expected.length })
+  ok(!(keysWithoutOne.length === expected.length && JSON.stringify(keysWithoutOne) === JSON.stringify(expected)),
+    'LAMP(RED-worthy)：从投影对象删掉一个键（' + droppedKey + '）⇒ 同一比较为假（这个字段集 pin 有牙）', { dropped: droppedKey, n: keysWithoutOne.length })
 
   // ── the SAME fields must come out of `final`: drive a paper to awaiting-editor, then final it with a failing compile ──
   const fail2 = makeSubprocess(FAILING_COMPILE)

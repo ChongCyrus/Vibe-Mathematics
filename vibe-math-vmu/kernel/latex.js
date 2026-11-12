@@ -21,6 +21,61 @@ export const LATEX_CODES = Object.freeze({
 const refuse = (code, message, hint, extra = {}) => Object.assign(Object.assign(new Error(message), { code, hint }), extra)
 const tail = (s, n = 2000) => { const v = String(s === undefined || s === null ? '' : s); return v.length > n ? v.slice(v.length - n) : v }
 
+/**
+ * ★★★ TB-2768 (RUN 81 attempt-3, MEASURED — PDF silently lost 16 glyphs while `final` said ok:true):
+ * xelatex reports a glyph the font lacks on its LOG, not on stderr:
+ *   `Missing character: There is no ℤ (U+2124) in font [lmroman10-regular]:mapping=t`
+ * An exit code of 0 says "a PDF was written"; it does NOT say every glyph printed. This parser is the ONE reading of
+ * those log lines — the face attaches it to a successful compile and the pack prints it on the paper receipt.
+ */
+export function missingCharactersOf (logText) {
+  const text = String(logText === undefined || logText === null ? '' : logText)
+  const rows = new Map()
+  const re = /Missing character: There is no (.+?) \(U\+([0-9A-Fa-f]{4,6})\) in font \[([^\]]+)\]/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const char = m[1]
+    const u = 'U+' + m[2].toUpperCase()
+    const font = m[3]
+    const key = u + '\u0000' + font
+    const row = rows.get(key) || { char, u, count: 0, font }
+    row.count += 1
+    rows.set(key, row)
+  }
+  return [...rows.values()].sort((a, b) => a.u.localeCompare(b.u))
+}
+
+/**
+ * The whole verdict for one compile log + the .tex it typeset: WHICH glyphs the font dropped, how many, in which font,
+ * and the .tex lines they appear on (`where`) — so a reader can fix the text instead of only learning "a PDF exists".
+ * `glyphLossDetected:false` is a MEASURED clean reading (the log was read and had no Missing-character line), never an
+ * unknown: the caller passes logRead separately.
+ */
+export function glyphLossReading ({ logText = '', texText = '' } = {}) {
+  const rows = missingCharactersOf(logText)
+  const lines = String(texText === undefined || texText === null ? '' : texText).split(/\r?\n/)
+  const whereOf = (ch) => {
+    const hit = []
+    for (let i = 0; i < lines.length && hit.length < 3; i += 1) if (lines[i].includes(ch)) hit.push(i + 1)
+    return hit.length === 0 ? null : hit.join(', ')
+  }
+  const glyphsUnrepaired = rows.map((r) => ({ char: r.char, u: r.u, count: r.count, font: r.font, where: whereOf(r.char) }))
+  const missingCharacterCount = glyphsUnrepaired.reduce((n, r) => n + r.count, 0)
+  const glyphLossDetected = glyphsUnrepaired.length > 0
+  return {
+    glyphLossDetected,
+    missingCharacterCount,
+    glyphsUnrepaired,
+    glyphLossCode: glyphLossDetected ? 'VMU_PAPER_GLYPH_UNCOVERED' : null,
+    glyphLossMeans: glyphLossDetected
+      ? 'the compile EXITED 0 and wrote a PDF, but its log names ' + String(glyphsUnrepaired.length) + ' distinct glyph(s) (' + String(missingCharacterCount) + ' occurrence(s)) the font could not print: those characters are MISSING from the PDF text even though the file exists. This is a measured content loss, not a failed compile — write the math between paired `$ … $` and/or use the LaTeX spelling (e.g. \\mathbb{Z}, \\forall, \\mid, \\cap, \\cup, \\cdots) so the glyph is typeset instead of dropped'
+      : 'the compile log was read and carried NO `Missing character` line: every glyph the .tex asked the font for was printed (a MEASURED clean reading, not "not checked")',
+    glyphLossHint: glyphLossDetected
+      ? 'replace the dropped character(s) with their LaTeX command inside math mode: ℤ→\\mathbb{Z}, ∀→\\forall, ∣→\\mid, ∩→\\cap, ∪→\\cup, ⋯→\\cdots (the paper face already re-spells the glyphs it knows; this list is what the FONT dropped)'
+      : null,
+  }
+}
+
 export function createLatexFace(opts = {}) {
   const readKey = (k) => (opts.settings && typeof opts.settings.get === 'function' ? opts.settings.get(k) : (opts.settings || {})[k])
   const spawn = typeof opts.spawn === 'function' ? opts.spawn : null
@@ -174,7 +229,38 @@ export function createLatexFace(opts = {}) {
         else if (buf && buf.length !== undefined) { bytes = buf.length; sha = createHash('sha256').update(Buffer.from(buf)).digest('hex') }
       } catch { bytes = null; sha = null }
       stats.ok += 1
-      return { ok: true, engine, tried, argv, outDir, pdfPath, pdfBytes: bytes, pdfSha256: sha, elapsedMs, timeoutMs: ms, at: clock() }
+      // ★★★ TB-2768 (RUN 81 attempt-3): a successful exit code answers "a PDF was written", never "every glyph
+      // printed". Read the engine LOG here and attach the verdict — and keep "could not read" separate from "read and
+      // clean" (`logRead:false` + `logReadWhy`, never a silent 0).
+      const logPath = String(texFile).replace(/\.tex$/i, '.log')
+      let logText = ''
+      let logRead = false
+      let logReadWhy = null
+      try {
+        const hasLog = await fs.exists(logPath)
+        if (hasLog) {
+          const logBuf = await fs.readBytes(logPath)
+          logText = Buffer.isBuffer(logBuf) ? logBuf.toString('utf8') : String(logBuf === undefined || logBuf === null ? '' : logBuf)
+          logRead = true
+        } else {
+          logReadWhy = 'the engine wrote no .log next to the .tex'
+        }
+      } catch (e) {
+        logReadWhy = 'the .log could not be read: ' + String((e && e.message) || e)
+      }
+      let texText = source || ''
+      if (texText === '' && logRead && missingCharactersOf(logText).length > 0) {
+        try {
+          const texBuf = await fs.readBytes(texFile)
+          texText = Buffer.isBuffer(texBuf) ? texBuf.toString('utf8') : String(texBuf === undefined || texBuf === null ? '' : texBuf)
+        } catch { /* a missing `where` is an honest absence */ }
+      }
+      const glyphLoss = logRead
+        ? glyphLossReading({ logText, texText })
+        : { glyphLossDetected: false, missingCharacterCount: null, glyphsUnrepaired: [], glyphLossCode: null,
+          glyphLossMeans: 'the engine log could NOT be read (' + String(logReadWhy) + '), so glyph loss was NOT measured — this is not a clean reading', glyphLossHint: null }
+      return { ok: true, engine, tried, argv, outDir, pdfPath, pdfBytes: bytes, pdfSha256: sha, elapsedMs, timeoutMs: ms, at: clock(),
+        logPath, logRead, ...(logReadWhy === null ? {} : { logReadWhy }), ...glyphLoss }
     }
     stats.noEngine += 1
     return { ok: false, code: LATEX_CODES.noEngine, tried, engineOrder: engines,

@@ -129,6 +129,30 @@ test('§3 the water levels move with the text, not behind it', () => {
   ok(sum === 78168 + 96, '§3g three-seat normal sum = the RUN 272 water level + the recorded delta', { live: sum, expected: 78168 + 96 })
 })
 
+test('§5 TB-2765 teaching: formulas are `$…$`/`$$…$$` in the assembled paper prompt, and the A-1/A-2/D-7 read-face notes are in the office prompt', async () => {
+  console.log('=== 5. TB-2765 TEXT SIDE (A-3 math / A-1 denominator / A-2 old meeting key / D-7 task_create note) ===')
+  const write = await paperAt('paper-write')
+  // A-3 — the part-write prompt and the writing guide must both name INLINE and DISPLAY math; the retired inline-only sentence is gone.
+  ok(says(write, '公式写成成对 `$…$`') && says(write, '`$$…$$`'), '§5a assembled paper-write part prompt teaches inline `$…$` AND display `$$…$$`', { len: write.length })
+  ok(says(write, '公式一律写成成对 `$…$`'), '§5b the writing guide teaches the same contract (one authoritative sentence)')
+  ok(denies(write, '行内数学要用成对'), '§5c the retired inline-only sentence is GONE from the assembled prompt')
+  ok(says(write, 'inlineMathSpans') && says(write, 'displayMathSpans'), '§5d the two span counters are named (a 0 reading is the alarm, run 81 measured 0/0)')
+  // anti-lamp: swap the shipped sentence back to the retired wording -> the predicate must flip.
+  const MATH_OK = (t) => t.includes('公式写成成对 `$…$`') && t.includes('`$$…$$`') && !t.includes('行内数学要用成对')
+  ok(MATH_OK(write), '§5e the accurate predicate holds on the assembled text')
+  const mathRelapse = write.split('公式写成成对 `$…$`').join('行内数学要用成对的 `$` 包起来') + ' 行内数学要用成对'
+  ok(!MATH_OK(mathRelapse), '§5f anti-lamp: the retired inline-only wording turns the SAME predicate red')
+  // A-1 / A-2 / D-7 — read-face clarifications live in the office persona (hostPrompt; not a seat prompt, so 0 water-level chars).
+  const reporting = JSON.parse(identity).sections.filter((x) => x.name === 'v5r-assistant-reporting')[0].text
+  ok(says(reporting, 'settled turn 内的 reply 字段写') && says(reporting, '不等于 `records list` 的行数'), '§5g A-1 the office prompt says what `memberWorkShare.acts` counts (not records rows)')
+  ok(says(reporting, '`meetings` 只含**原语会**') && says(reporting, '`serviceMeetings`') && says(reporting, '`unionMeetings`'), '§5h A-2 the office prompt says `meetings` is the primitive-only key and names the union (`serviceMeetings` + `unionMeetings`)')
+  ok(says(reporting, '`description` 时正文进 brief') && says(reporting, '`owner` 只决定是否指派'), '§5i D-7 the office prompt says `description` becomes the brief and `owner` only decides assignment')
+  const READ_OK = (t) => t.includes('settled turn 内的 reply 字段写') && t.includes('`unionMeetings`') && t.includes('`owner` 只决定是否指派')
+  ok(READ_OK(reporting), '§5j the three read-face facts are present together')
+  const bulletAt = reporting.indexOf('6. **读回执别做减法（先看键名再算分母）**')
+  ok(bulletAt >= 0 && !READ_OK(reporting.slice(0, bulletAt)), '§5k anti-lamp: deleting the read-face bullet turns the predicate red')
+})
+
 test('§4 anti-lamps: mutating the prompt or the accounting turns this suite red', async () => {
   console.log('=== 4. THE TWO LAMPS ===')
   // Lamp 1 — put the FALSE ABSOLUTE back into the assembled paper-write text. §0c (no "all paths refused") and §2a must

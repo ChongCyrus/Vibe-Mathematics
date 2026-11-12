@@ -27,8 +27,9 @@
 // RULE E：每个「含/不含」的断言先证明被断言的对象真的存在（非空），空对空的比较不算证据。
 //
 // Run: node tests/vmu-run154-real-run4-fixes.test.mjs
-import { readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
@@ -195,16 +196,47 @@ console.log('§2 H1：缓存丢了评审条目，磁盘上的评审行仍然作�
   f2.recordReview({ target: T2, member: 'r-2', deliverable: true, comments: '第二轮可交付' })
   dropReviewsCache(rows2, T2)
   const moved2 = f2.advance({ target: T2 })
-  // ★ RUN 199 改口径：上一轮的行不是「拒收」，是「这一轮没有作出表态」。同一个事实以前被塞进 refusers，
-  // 与同回执 reviewsRead[].means 说的「ROUND MISMATCH, not a member refusing」互相打脸。现在它有自己的列。
+  // ★★★ TB-2761（RUN 81 D-1）：判据是「被判节 fingerprint 是否变」，不是「round 是否等于论文 round」。r-1 的票是
+  // 第 1 轮投的、判的正文在 round 2 里**没有被改**，所以它仍然计数；这不是「本轮缺席」，也不是拒收。
+  ok(moved2 && moved2.to === 'awaiting-editor' && moved2.unanimous === true,
+    'H1（TB-2761）：跨轮但正文未变的评审票仍然计入 ⇒ round 2 unanimous、推进 awaiting-editor', moved2 && { to: moved2.to, unanimous: moved2.unanimous })
   ok(moved2 && Array.isArray(moved2.refusers) && moved2.refusers.length === 0,
-    'H1：上一轮的评审行不算拒收——refusers 里不该出现 r-1', moved2 && moved2.refusers)
-  ok(moved2 && Array.isArray(moved2.stale) && moved2.stale.length === 1 && moved2.stale[0] === 'r-1',
-    'H1：只有本轮的评审行作数——r-1 的行属于上一轮，因此列在 stale 里（ROUND MISMATCH，不是拒收）', moved2 && moved2.stale)
+    'H1：跨轮票不是拒收——refusers 里不该出现 r-1', moved2 && moved2.refusers)
+  ok(moved2 && Array.isArray(moved2.stale) && moved2.stale.length === 0,
+    'H1（TB-2761）：没有「因轮次」作废的票——stale 为空且显式', moved2 && moved2.stale)
+  const cov2 = moved2 && moved2.perRoundReviewCoverage
+  ok(cov2 && Array.isArray(cov2.covered) && JSON.stringify(cov2.covered.map((x) => x.member).sort()) === JSON.stringify(['r-1', 'r-2']) && cov2.missing.length === 0,
+    'H1（TB-2761）：covered 两席、missing 空（r-1 的票跨轮但仍覆盖未改正文）', cov2 && { covered: cov2.covered, missing: cov2.missing })
+  ok(cov2 && Array.isArray(cov2.voidReviews) && cov2.voidReviews.length === 0,
+    'H1（TB-2761）：voidReviews 为空且显式（没有票被作废）', cov2 && cov2.voidReviews)
   const st = stateOf(f2, T2)
   const why = String((((st || {}).disagreement || [])[((st || {}).disagreement || []).length - 1] || {}).detail || '')
   ok(why.length > 0, 'H1：分歧行带 detail', why)
   ok(!why.includes('未说明'), 'H1：分歧行不再写「未说明」（写清读到了什么）', why)
+  // ★ TB-2761 反灯：整树副本把指纹绑定改回 round 绑定，同一场景必须退回「跨轮票不计数」的旧事实。
+  {
+    const dir = mkdtempSync(join(tmpdir(), 'run154-lamp-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+      const src = readFileSync(kitPath, 'utf8')
+      const from = "if (judged.partChanged) return out(false, 'part-text-changed')"
+      ok(src.indexOf(from) !== -1, 'lamp-setup：指纹绑定判据存在')
+      writeFileSync(kitPath, src.replace(from, "if (rowRound !== round) return out(false, 'part-text-changed')"))
+      const copyPack = await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href + '?lamp=1')
+      const { kernel } = makeKernel(BASE, ROSTER)
+      const f3 = copyPack.createPaperSubsystem({ kernel, clock: () => 1 })
+      const T3 = 'lamp-h1'
+      toReviewing(f3, T3)
+      oneRefusingRound(f3, T3)
+      f3.advance({ target: T3 })
+      f3.recordReview({ target: T3, member: 'r-2', deliverable: true, comments: '第二轮可交付' })
+      let lamp = null
+      try { lamp = f3.advance({ target: T3 }) } catch (e) { lamp = { threw: e && e.code } }
+      ok(lamp && (lamp.threw === 'VMU_REVIEW_STALE' || (Array.isArray(lamp.stale) && lamp.stale.indexOf('r-1') !== -1)),
+        'lamp TB-2761 RED-worthy：退回 round 绑定 ⇒ 跨轮票又被当成作废（run 81 D-1 的原状）', lamp && { stale: lamp.stale, to: lamp.to })
+    } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

@@ -523,6 +523,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '- 在 evidence 里放**记录 id**（`rec-<n>`）或**以记录 id 命名的文件卡路径**（`Members/<成员>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md`，文件名就是记录 id）：先 `vibe_v5_record_*` 落卡，再引用它；**自起的文件名**或摘要不收，交了会被具名拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`。',
         '',
         '★ 用法：这一步【不再】靠回执字段提交（`paper_part` 这类字段解析器已不接受，会被判 VMU_TURN_UNKNOWN_FIELD）。',
+        '★ **公式写成成对 `$…$`（行内）/ 成对 `$$…$$`（display）**：不写成对符号的 `^`/`_` 会被当成字面文本，PDF 读作文本（`math.inlineMathSpans`/`displayMathSpans` 会读 0）。',
         '★ 请调用工具 `vibe_v5_paper`，action 为 `part`：',
         '    vibe_v5_paper { action: "part", target: "<论文 target>", part: "你这个部分的标题",',
         '                    body: "你对**原问题完整解法**的贡献（推理链与结论，只写有证据的）" }',

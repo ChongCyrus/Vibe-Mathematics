@@ -55,7 +55,7 @@ export const v5rPaperWriteSection = Object.freeze({
     // ★★★ RUN 217 (run 54 / FEEDBACK53 ①-4, MEASURED): the members wrote `Σ_{i=1}^{n}` as bare text, so every `^` and `_`
     // was escaped into literal characters and the PDF printed the formula's own escaping. The convention (paired `$`) was
     // never taught anywhere; two `≥` glyphs also vanished because the font lacks them. This line is the teaching.
-    '· ★ **行内数学要用成对的 `$` 包起来**：`$\\sum_{i=1}^{n}(2i-1)=n^2$`。成对 `$` 之间的内容是**原样**交给 LaTeX 的（`^` 是上标、`_` 是下标）；`$` 之外的 `^`/`_` 会被转义成**字面文本**，公式在 PDF 里就会读成文本——`render`/`compile` 回执的 `math` 块用 `proseCarets`/`proseUnderscores` 计数告诉你有没有发生这件事。`≥`/`≤`/`∎` 这类 unicode 数学符号会被自动换成 LaTeX 数学命令（回执 `math.glyphsRepaired` 计数），但你仍应优先写成数学模式。',
+    '· ★ **公式一律写成成对 `$…$`（行内）/ 成对 `$$…$$`（display）**：`\\sum_{i=1}^{n}(2i-1)=n^2$`。成对符号之间的内容是**原样**交给 LaTeX 的（`^` 上标、`_` 下标）；符号之外的 `^`/`_` 会被转义成**字面文本**，公式在 PDF 里就读成文本——回执 `math` 块里 `inlineMathSpans`/`displayMathSpans` 为 0、`proseCarets`/`proseUnderscores` 非 0，就是这件事发生了。`≥`/`≤`/`∎` 这类 unicode 数学符号会被自动换成 LaTeX 数学命令（回执 `math.glyphsRepaired` 计数），但你仍应优先写成数学模式。',
     '· ★ **PDF 的数字以回执为准**：定稿回执的 `pdf` 块是**那一次**编译（`pdf.produced` / `pdfBytes` / `engine`）；之后若有人对同一篇跑过 `compile`，磁盘上的文件就换了，此时以 `vibe_v5_paper { action:"status" }` 的 `pdfCompiled` 为准（它给的是**最新**一次编译，并用 `compiledAfterFinal` 说明这是不是定稿那次）。不要按旧记忆引用字节数。',
     '',
     '工具与回执契约：',

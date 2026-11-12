@@ -14,7 +14,7 @@
 //      something that was never there.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -31,8 +31,8 @@ const has = (hay, needle, msg) => ok(String(hay).includes(needle), msg + ' — m
 const advanceOf = (r) => (r && r.advance) || r
 const refuseCode = (err) => (err && (err.code || (err.error && err.error.code))) || null
 
-async function assemble(dir, opts = {}) {
-  const entry = await import(pathToFileURL(ENTRY).href)
+async function assemble(dir, opts = {}, entryUrl = null) {
+  const entry = await import(entryUrl || pathToFileURL(ENTRY).href)
   const specs = []
   const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { async register(s) { specs.push(s); return () => {} } } }
   const handle = await entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root: dir, ...(opts.vmu ? { vmu: opts.vmu } : {}) })
@@ -173,11 +173,46 @@ test('RUN 201 §3 — advance says the ROUND advanced; a gate-blocked final stil
     const back2 = await call('vibe_v5_paper', { action: 'final', target: 'p-201', member: 'r-acad', decision: 'revise', note: '第二轮' })
     ok(back2.ok === true, '§3c premise: the editor opened round 2', back2.code || back2.ok)
     await call('vibe_v5_paper', { action: 'advance', target: 'p-201' })
-    // ★ run 40's shape: nobody filed a round-2 review, so the round is held open and the paper goes BACK to writing
+    // ★★★ TB-2761（RUN 81 D-1）：round 变了但被判正文没变 ⇒ 旧票仍计数。run 40 现场（round 2 没有新评审行）因此是
+    // UNANIMOUS（停在 awaiting-editor、round 不动），不是「退回 writing、round→3」。旧断言断的是被取代的 round 代理语义。
     const held = advanceOf(await call('vibe_v5_paper', { action: 'advance', target: 'p-201' }))
-    ok(held.ok === true && held.to === 'writing', '§3d premise: the round is not unanimous and the paper goes back to writing', held)
-    ok(held.roundFrom === 2 && held.roundTo === 3, '§3e ★★ the receipt names BOTH rounds (2 → 3), not just "writing"', { roundFrom: held.roundFrom, roundTo: held.roundTo, round: held.round })
-    ok(/2 → 3/.test(String(held.roundMeans || '')), '§3f and says the round advanced, so round 3 is not a retry of round 2', held.roundMeans)
+    ok(held.ok === true && held.unanimous === true && held.to === 'awaiting-editor',
+      '§3d（TB-2761）跨轮未改正文的两票仍计数 ⇒ unanimous、推进 awaiting-editor（不退回 writing）', held)
+    ok(held.roundFrom === 2 && held.roundTo === 2 && held.roundMoved === false,
+      '§3e（TB-2761）round 不因「没有新票」而前进：roundFrom==roundTo==2', { roundFrom: held.roundFrom, roundTo: held.roundTo, roundMoved: held.roundMoved })
+    ok(/did not move/.test(String(held.roundMeans || '')), '§3f 回执明说 round 没有移动（不是静默）', held.roundMeans)
+    const cov201 = held.perRoundReviewCoverage
+    ok(cov201 && Array.isArray(cov201.covered) && cov201.covered.length === 2 && cov201.missing.length === 0 && Array.isArray(cov201.voidReviews) && cov201.voidReviews.length === 0,
+      '§3f2（TB-2761）读数：covered 两席、missing 空、voidReviews 空', cov201 && { covered: cov201.covered, missing: cov201.missing, voidReviews: cov201.voidReviews })
+    // ★ TB-2761 反灯：整树副本把指纹绑定退回 round 绑定 ⇒ 同一场景退回「两人 stale + 退回 writing + round→3」。
+    {
+      const lampDir = mkdtempSync(join(tmpdir(), 'run201-lamp-'))
+      try {
+        cpSync(join(ROOT, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+        const kitPath = join(lampDir, 'vibe-math-vmu', 'kit', 'paper.js')
+        let mut = readFileSync(kitPath, 'utf8')
+        const p1 = "if (judged.partChanged) return out(false, 'part-text-changed')"
+        const p2 = 'if (crossEarlier && judgedEarlier.bound === true && !judgedEarlier.partChanged) {'
+        ok(mut.indexOf(p1) !== -1 && mut.indexOf(p2) !== -1, '§3 lamp-setup：两个 mutation 点都在')
+        mut = mut.replace(p1, "if (rowRound !== round) return out(false, 'part-text-changed')").replace(p2, 'if (false) {')
+        writeFileSync(kitPath, mut)
+        const lampRoot = mkdtempSync(join(tmpdir(), 'run201-lamp-ws-'))
+        const L = await assemble(lampRoot, { vmu: { 'vmu.paper.officeConsult': 'off' } }, pathToFileURL(join(lampDir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?lamp=1')
+        await L.call('vibe_v5_start', { researcherCount: 2 })
+        await L.call('vibe_v5_record_proposition', { id: 'rec-lamp201', title: '证据卡', statement: 'n + n = 2n', value: 0.9, motive: '算术', p: 0.9, member: 'r-acad' })
+        await L.call('vibe_v5_paper', { action: 'start', target: 'pl', participants: ['r-1', 'r-2'] })
+        for (const m of ['r-1', 'r-2']) await L.call('vibe_v5_paper', { action: 'part', target: 'pl', member: m, part: m, body: m + ' body', evidence: ['rec-lamp201'] })
+        await L.call('vibe_v5_paper', { action: 'advance', target: 'pl' })
+        for (const m of ['r-1', 'r-2']) await L.call('vibe_v5_paper', { action: 'review', target: 'pl', member: m, deliverable: true, comments: 'ok' })
+        await L.call('vibe_v5_paper', { action: 'advance', target: 'pl' })
+        await L.call('vibe_v5_paper', { action: 'final', target: 'pl', member: 'r-acad', decision: 'revise', note: 'lamp' })
+        await L.call('vibe_v5_paper', { action: 'advance', target: 'pl' })
+        const lampHeld = advanceOf(await L.call('vibe_v5_paper', { action: 'advance', target: 'pl' }))
+        ok(lampHeld && lampHeld.to === 'writing' && Array.isArray(lampHeld.stale) && lampHeld.stale.length === 2 && lampHeld.roundTo === 3,
+          '§3 lamp RED-worthy：退回 round 绑定 ⇒ 两张跨轮票又成 stale、退回 writing、round→3（run 40/81 的旧代理语义）', lampHeld && { to: lampHeld.to, stale: lampHeld.stale, roundTo: lampHeld.roundTo })
+        rmSync(lampRoot, { recursive: true, force: true })
+      } finally { rmSync(lampDir, { recursive: true, force: true }) }
+    }
   } finally { rmSync(dir, { recursive: true, force: true }) }
   try {
     // ★ 1.5: the consult gate is ON here, so `final` is blocked by name — and now it says what it blocked.

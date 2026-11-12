@@ -18,7 +18,7 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
-import { readFileSync } from 'node:fs'
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 
 import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -41,14 +41,15 @@ const BASE = __tmpRoot() + '/r172/truth'
 const roots = []
 const newRoot = async (tag) => { await mkdir(BASE, { recursive: true }); const r = await mkdtemp(join(BASE, tag + '-')); roots.push(r); return r }
 let tick = 1000
-const boot = async (root) => {
+const boot = async (root, entryUrl = null) => {
   const specs = []
   const ctx = {
     effect(fn) { return fn() },
     on() { return () => {} },
     tools: { register: async (spec) => { specs.push(spec); return () => {} } },
   }
-  const handle = entry.apply(ctx, { root, packs: ['v5r'], clock: () => tick })
+  const activeEntry = entryUrl === null ? entry : await import(entryUrl)
+  const handle = activeEntry.apply(ctx, { root, packs: ['v5r'], clock: () => tick })
   await handle.ready()
   const call = async (name, args) => {
     const spec = specs.filter((s) => s.name === name)[0]
@@ -213,12 +214,54 @@ const qualityOf = async (A, target) => {
   const adv2Raw = await A.call('vibe_v5_paper', { action: 'advance', target: 'p3' })
   const adv2 = (adv2Raw && adv2Raw.advance) || adv2Raw || {}
   const reads = Array.isArray(adv2.reviewsRead) ? adv2.reviewsRead : []
+  // ★★★ TB-2761（RUN 81 D-1）：判据是「被判节 fingerprint 是否变」，不是「round 是否等于论文 round」。round 1 → 2 时
+  // 正文没有被改：r-acad 的 deliverable:true 票仍然 COUNTED（不是 round mismatch）；r-1 的 deliverable:false 票判的也是
+  // 未改正文，所以它仍然是一次**拒收**（不是「本轮缺席」）。旧断言「stale>=1」的旧语义被 TB-2761 取代。
   const stale = reads.filter((r) => r && r.source === 'durable-other-round')
-  ok(stale.length >= 1, '§3 ★★ the newest row for that member belongs to another round (measured: run 17 flattened this into `deliverable:false`)', reads.map((r) => [r.member, r.source]))
-  ok(stale.length >= 1 && stale[0].rowDeliverable === true,
-    '§3 …and the row\'s OWN reading travels with the verdict (`rowDeliverable:true`)', stale.length >= 1 ? stale[0].rowDeliverable : stale)
-  ok(stale.length >= 1 && /ROUND MISMATCH/.test(String(stale[0].means || '')),
-    '§3 …and the receipt says it is a round mismatch, not a member refusing', stale.length >= 1 ? stale[0].means : stale)
+  ok(stale.length === 0, '§3（TB-2761）跨轮但正文未变的票不再被标成 durable-other-round', reads.map((r) => [r.member, r.source]))
+  ok(reads.some((r) => r && r.member === 'r-acad' && r.source === 'durable' && r.deliverable === true && r.countedFromEarlierRound === true),
+    '§3 ★★ r-acad 的第 1 轮 deliverable 票跨轮仍计数（回执点名 countedFromEarlierRound）', reads)
+  ok(reads.some((r) => r && r.member === 'r-1' && r.source === 'durable' && r.deliverable === false),
+    '§3 ★ r-1 的 deliverable:false 票判的是未改正文 ⇒ 仍是拒收（不是 round mismatch）', reads)
+  ok(adv2Raw.ok === true && adv2.to === 'writing' && Array.isArray(adv2.refusers) && adv2.refusers.indexOf('r-1') !== -1,
+    '§3 这一轮不 unanimous 的原因是真拒收 r-1：回执照旧退回 writing', { to: adv2.to, refusers: adv2.refusers })
+  const cov172 = adv2.perRoundReviewCoverage
+  ok(cov172 && Array.isArray(cov172.covered) && cov172.covered.some((x) => x.member === 'r-acad') && Array.isArray(cov172.missing) && cov172.missing.indexOf('r-1') !== -1,
+    '§3 ★ TB-2761 读数：covered 含跨轮的 r-acad、missing 是拒收的 r-1', cov172 && { covered: cov172.covered, missing: cov172.missing })
+  ok(cov172 && Array.isArray(cov172.voidReviews) && cov172.voidReviews.length === 0,
+    '§3 voidReviews 为空且显式（没有票因为轮次被作废）', cov172 && cov172.voidReviews)
+  // ★ TB-2761 反灯：把指纹绑定退回 round 绑定 ⇒ 同一场景里 r-acad 的第 1 轮票必须重新变成 round mismatch。
+  {
+    const dir = await mkdtemp(join(__tmpRoot(), 'run172-lamp-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+      const src = readFileSync(kitPath, 'utf8')
+      const from = "if (judged.partChanged) return out(false, 'part-text-changed')"
+      ok(src.indexOf(from) !== -1, '§3 lamp-setup：指纹绑定判据存在')
+      let mutated = src.replace(from, "if (rowRound !== round) return out(false, 'part-text-changed')")
+      const fromRound = 'if (crossEarlier && judgedEarlier.bound === true && !judgedEarlier.partChanged) {'
+      ok(mutated.indexOf(fromRound) !== -1, '§3 lamp-setup：readReview 的跨轮计数分支存在')
+      mutated = mutated.replace(fromRound, 'if (false) {')
+      writeFileSync(kitPath, mutated)
+      const root2 = await newRoot('stale-lamp')
+      const B = await boot(root2, pathToFileURL(join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?lamp=1')
+      await hire(B.kernel)
+      await B.call('vibe_v5_paper', { action: 'start', target: 'p3l', participants: ['r-acad', 'r-1'] })
+      await B.call('vibe_v5_paper', { action: 'part', target: 'p3l', member: 'r-acad', part: 'part one', solution: '正文 one', evidence: [] })
+      await B.call('vibe_v5_paper', { action: 'part', target: 'p3l', member: 'r-1', part: 'part two', solution: '正文 two', evidence: [] })
+      await B.call('vibe_v5_paper', { action: 'advance', target: 'p3l' })
+      await B.call('vibe_v5_paper', { action: 'review', target: 'p3l', member: 'r-acad', of: 'r-1', deliverable: true, comments: 'one' })
+      await B.call('vibe_v5_paper', { action: 'review', target: 'p3l', member: 'r-1', of: 'r-acad', deliverable: false, comments: 'two' })
+      await B.call('vibe_v5_paper', { action: 'advance', target: 'p3l' })
+      await B.call('vibe_v5_paper', { action: 'advance', target: 'p3l' })
+      const lampRaw = await B.call('vibe_v5_paper', { action: 'advance', target: 'p3l' })
+      const lamp = (lampRaw && lampRaw.advance) || lampRaw || {}
+      const lampReads = Array.isArray(lamp.reviewsRead) ? lamp.reviewsRead : []
+      ok(lamp.code === 'VMU_REVIEW_STALE' || lampReads.some((r) => r && r.source === 'durable-other-round'),
+        '§3 lamp RED-worthy：退回 round 绑定 ⇒ 跨轮票又被当成作废（VMU_REVIEW_STALE 或 durable-other-round；run 81 D-1 的原状）', { code: lamp.code, reads: lampReads.map((r) => [r.member, r.source]) })
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
 }
 
 // ── §4 restore recomputes the content fingerprint ──────────────────────────────────────────────────────────────────

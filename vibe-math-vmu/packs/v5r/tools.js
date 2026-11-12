@@ -4612,6 +4612,44 @@ function callerFromTurn(kernel, exec) {
   try { const m = resolveTurnMember(kernel, exec); if (!m) return null; return typeof m === 'string' ? m : (m.id ? String(m.id) : null) } catch { return null }
 }
 
+/**
+ * ★★★ TB-2763 (RUN 81 attempt-3, FEEDBACK81 D-6, reproduced twice on m3/m6): the agenda string is ONE stored line whose
+ * separators are `;`, `；` and newlines — but the split was UNCONDITIONAL, so an agenda that WROTE about a separator
+ * (`…中文分号作分隔（；）；…`) was cut INSIDE the parentheses and minted empty-shell items (`"中文分号作分隔（"`, `"）"`).
+ * The splitter now tracks PAIRED brackets `（）()[]【】` and quotes `""''「」“”‘’` (nesting via a depth stack) and only cuts
+ * at depth 0. Unpaired input is NOT silently split as if level 0: the caller receives `balanced:false` + which token is
+ * unclosed, and the pre-fix top-level split is used as the documented fallback.
+ */
+const AGENDA_BRACKET_PAIRS = Object.freeze({ '（': '）', '(': ')', '[': ']', '【': '】', '「': '」', '“': '”', '‘': '’' })
+const AGENDA_BRACKET_CLOSERS = new Set(Object.values(AGENDA_BRACKET_PAIRS))
+function splitAgendaText (text) {
+  const src = String(text === undefined || text === null ? '' : text)
+  const parts = []
+  const stack = [] // expected closers, innermost last
+  const unbalanced = []
+  let quote = null // a straight " or ' that was opened and not yet closed
+  let buf = ''
+  for (const ch of src) {
+    if (stack.length === 0 && quote === null && (ch === ';' || ch === '；' || ch === '\n')) { parts.push(buf); buf = ''; continue }
+    if (quote !== null) { if (ch === quote) quote = null; buf += ch; continue }
+    if (ch === '"' || ch === "'") { quote = ch; buf += ch; continue }
+    if (Object.prototype.hasOwnProperty.call(AGENDA_BRACKET_PAIRS, ch)) { stack.push(AGENDA_BRACKET_PAIRS[ch]); buf += ch; continue }
+    if (stack.length > 0 && ch === stack[stack.length - 1]) { stack.pop(); buf += ch; continue }
+    if (AGENDA_BRACKET_CLOSERS.has(ch)) { unbalanced.push({ kind: 'bracket', open: null, expected: ch }); buf += ch; continue }
+    buf += ch
+  }
+  parts.push(buf)
+  for (let i = stack.length - 1; i >= 0; i -= 1) unbalanced.push({ kind: 'bracket', open: null, expected: stack[i] })
+  if (quote !== null) unbalanced.push({ kind: 'quote', quote })
+  const items = parts.map((x) => x.trim()).filter((x) => x !== '')
+  const balanced = unbalanced.length === 0
+  // Unpaired input: keep the PRE-FIX behaviour (top-level split) so nothing silently moves between items, and let the
+  // receipt name the fallback instead of pretending the brackets were understood.
+  return balanced
+    ? { items, balanced: true, unbalanced: [] }
+    : { items: src.split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== ''), balanced: false, unbalanced }
+}
+
 function toolMeeting(args = {}, { kernel, exec } = {}) {
   // ★★★ RUN 248-N / task-67: ONE action word, resolved once. `op` is the alias the appointment notice prints
   // (`{op:"attend", …}`); `action` is the older spelling. Resolving it here keeps the two dispatch tables (this face and
@@ -4741,8 +4779,12 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // `;`, `；` and a newline split; `,` and `、` do NOT (a purpose like "确认 (2k−1,2k) 的界" is ONE item — a comma is
   // punctuation inside a sentence, and `、` is a list marker inside Chinese prose, not an agenda boundary). An ARRAY
   // agenda keeps its elements VERBATIM: its items are never re-split by any separator.
+  // ★★★ TB-2763: ONE bracket/quote-aware splitter for BOTH single-source doors (`agenda` and the legacy
+  // `materials` name); `agendaSplit` is what the receipt prints as the mode + the unpaired-token reading.
+  let agendaSplit = null
   if (agendaItems.length === 0 && agendaText.trim() !== '') {
-    agendaItems = agendaText.split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== '')
+    agendaSplit = splitAgendaText(agendaText)
+    agendaItems = agendaSplit.items
   }
   // ★★★ TB-2750 follow-up (RUN 80 / F80-2, LEAD DECISION "option ②"): `materials` is the KERNEL-side name for this
   // same stored line, so — having refused the BOTH-supplied call above — the legacy name has to be legal ALONE as well.
@@ -4753,7 +4795,8 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   if (agendaFromLegacyName) {
     agendaText = str(args.materials)
     if (agendaText.trim() !== '') {
-      agendaItems = agendaText.split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== '')
+      agendaSplit = splitAgendaText(agendaText)
+      agendaItems = agendaSplit.items
     }
   }
   if (!has(args.agenda) && !agendaFromLegacyName) {
@@ -5138,9 +5181,17 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // two convenes of RUN 79 both passed ARRAYS, so 「逗号不是分隔符」 was never challenged on the string path. A reader
     // must be able to tell the paths apart without re-reading the transcript.
     agendaInputShape: Array.isArray(args.agenda) ? 'array' : 'string',
+    // ★★★ TB-2763 (RUN 81 attempt-3, FEEDBACK81 D-6): the string split is now BRACKET- AND QUOTE-AWARE (nesting is
+    // counted); an UNPAIRED bracket/quote is a NAMED fallback, never a silent top-level split.
+    agendaSplitMode: Array.isArray(args.agenda) ? 'verbatim-array' : (agendaSplit === null ? null : 'bracket-aware'),
+    agendaSplitUnbalanced: agendaSplit !== null && agendaSplit.balanced === false ? agendaSplit.unbalanced : null,
+    agendaSplitUnbalancedMeans: agendaSplit === null || agendaSplit.balanced === true
+      ? null
+      : 'the agenda string has unpaired bracket/quote(s): ' + agendaSplit.unbalanced.map((u) => (u.kind === 'quote' ? 'a straight quote with no closing pair' : 'a closing "' + u.expected + '" with no opener')).join('; ')
+        + ' — guessing a repair would silently MOVE text between items, so this call used the PRE-RUN-81 top-level split (every `;`/`；`/newline separated) and NAMES that fallback here instead of pretending the brackets were understood; close the pair to keep those separators inside the span',
     agendaSplitMeans: Array.isArray(args.agenda)
       ? 'the caller passed an ARRAY: its elements ARE the agenda items, in order, and are NOT re-split on any separator (a comma or a 、 inside an element stays inside that element)'
-      : 'the caller passed ONE STRING: it was split on `;`, `；` and newlines only — `,` and `、` are NOT separators (a purpose like "确认 (2k−1,2k) 的界" is ONE item), and empty pieces after trimming are dropped',
+      : 'the caller passed ONE STRING: it was split on `;`, `；` and newlines ONLY AT DEPTH 0 — separators inside paired brackets （）()[]【】 or quotes "" 「」 “” ‘’ are NOT boundaries (nesting is counted: the last-opened pair must close first); `,` and `、` are NOT separators at any depth (a purpose like "确认 (2k−1,2k) 的界" is ONE item), and empty pieces after trimming are dropped',
     formalAgenda: args.formal_agenda !== undefined && args.formal_agenda !== null && args.formal_agenda !== false,
     // ★ RUN 240-I: the read faces' own fields, spread from the kernel's opening receipt, so a caller compares THIS
     // receipt with the stored meeting instead of being told a boolean it can no longer check.
@@ -6599,11 +6650,40 @@ function environmentReadingsAt(kernelObj, observed = null) {
  * apply), so a caller can diff the two doors field by field, and a reader can ask "did it produce a pdf, and with
  * which argv" the same way in both places.
  */
+/**
+ * ★★★ TB-2768 (RUN 81 attempt-3, MEASURED): "a PDF exists" and "the mathematics printed" are TWO readings. The kernel
+ * latex face reads the engine log after a successful compile and reports which glyphs the font dropped; this projects
+ * that reading onto the paper receipt so it can never be true that `ok:true` arrives while a `Missing character` line
+ * sits in the log with ZERO counters. One reading, every door (final / compile / status.pdfCompiled).
+ */
+function glyphLossOf (pdfLike) {
+  const r = pdfLike && typeof pdfLike === 'object' ? pdfLike : {}
+  return {
+    glyphLossDetected: r.glyphLossDetected === true,
+    missingCharacterCount: r.missingCharacterCount === undefined ? null : r.missingCharacterCount,
+    glyphsUnrepaired: Array.isArray(r.glyphsUnrepaired) ? r.glyphsUnrepaired : [],
+    glyphLossCode: r.glyphLossCode === undefined ? null : r.glyphLossCode,
+    glyphLossMeans: r.glyphLossMeans === undefined ? null : r.glyphLossMeans,
+    glyphLossHint: r.glyphLossHint === undefined ? null : r.glyphLossHint,
+    logPath: r.logPath === undefined ? null : r.logPath,
+    logRead: r.logRead === true,
+  }
+}
+/** The same reading under the name TB-2768 asks for: the engine-log findings, visible next to the toolchain fields. */
+function glyphFindingsOf (pdfLike) {
+  const g = glyphLossOf(pdfLike)
+  return { source: 'engine-log', logPath: g.logPath, logRead: g.logRead, missingCharacterCount: g.missingCharacterCount,
+    glyphLossDetected: g.glyphLossDetected, glyphLossCode: g.glyphLossCode, means: g.glyphLossMeans }
+}
+
 function projectPdfBlock(pdf, target) {
   // ★★ RUN 158 (run 6 / item 6 + N5): the projection carries the outDir/sourceName that were TRIED and discloses when
   // the two tails are the same text — one failure structure for `final` and `compile`, see kit/paper.js compilePdf.
   const p = pdf || {}
   const ok = p.ok === true
+  // ★★★ TB-2768 (RUN 81 attempt-3): the glyph verdict is decided ONCE here and travels on the pdf block, inside `math`,
+  // and as `stderrFindings` — so `ok:true` can never arrive beside an unread `Missing character` log.
+  const glyph = glyphLossOf(p)
   const enginesRaw = Array.isArray(p.triedEngines) ? p.triedEngines : (Array.isArray(p.tried) ? p.tried : [])
   const engines = enginesRaw.slice(0, 12)
   // ★★★ RUN 252 (F72-7): `produced` is decided ONCE here, so `missing` and `archiveArtifacts` below are derived from
@@ -6662,12 +6742,23 @@ function projectPdfBlock(pdf, target) {
       : 'the one thing this compile needed and did not get is the pdf. The compiler toolchain is `toolchainAbsent` (an environment fact, never merged into this list), and the artifact ROWS are `archiveArtifacts.missing`',
     toolchainAbsent,
     toolchainAbsentMeans: toolchainAbsentMeans(toolchainAbsent),
+    // ★★★ TB-2768 (RUN 81 attempt-3): the engine-log reading, ON the pdf block AND on the receipt top level (the caller
+    // must not have to find it under `math`); `stderrFindings` is the name TB-2768 asked for.
+    ...glyph,
+    stderrFindings: glyphFindingsOf(p),
     archiveArtifacts,
     // ★★ RUN 217 (run 54 / FEEDBACK53 1.4): `produced:true` answers "is there a file", NOT "were the formulas
     // typeset". The kit measures that in the SAME pass that builds the .tex (inline-math spans, prose carets and
     // underscores, glyphs it had to repair) - and a door that does not project the measurement hides it. One block,
     // both doors, `null` when the kit did not measure (a failure produced no .tex, so nothing was typeset).
-    math: p.math && typeof p.math === 'object' ? p.math : null,
+    math: p.math && typeof p.math === 'object'
+      ? Object.assign({}, p.math, { glyphsUnrepaired: glyph.glyphsUnrepaired, glyphLossDetected: glyph.glyphLossDetected,
+        glyphLossMeans: glyph.glyphLossMeans, glyphLossCode: glyph.glyphLossCode, missingCharacterCount: glyph.missingCharacterCount,
+        logPath: glyph.logPath })
+      : (glyph.glyphLossDetected
+        ? { glyphsUnrepaired: glyph.glyphsUnrepaired, glyphLossDetected: true, glyphLossMeans: glyph.glyphLossMeans,
+          glyphLossCode: glyph.glyphLossCode, missingCharacterCount: glyph.missingCharacterCount, logPath: glyph.logPath }
+        : null),
   }
 }
 
@@ -6839,6 +6930,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const pdfSha256MatchesDisk = pdfRowSha === null || pdfDiskSha === null ? null : pdfRowSha === pdfDiskSha
       const pdfSha256Mismatch = pdfSha256MatchesDisk === false
       return { ok: true, tool, action, target, exists,
+        // ★★★ TB-2768: the SAME engine-log reading on the status door (status never compiles, so this is the LAST
+        // compile's measured verdict — `logRead:false` means it was not measured, never "clean").
+        ...glyphLossOf(compiledRow),
+        stderrFindings: glyphFindingsOf(compiledRow),
         // ★★★ RUN 256 (TB-2624 item 1): the same four environment keys, same names, at the TOP level of this door too.
         ...envLedgerRead,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
@@ -7008,7 +7103,7 @@ async function toolPaper(args = {}, { kernel } = {}) {
                 : (blockedBy === 'toolchain-absent'
                   ? 'the paper was finalized and parts exist, but the compile found the LaTeX toolchain unusable (' + envLedgerRead.toolchainAbsent.join(', ') + '): a MEASURED absence, see `toolchainProbe:"ran-absent"`'
                   : 'the paper was finalized and parts exist, and the compile was never observed producing a PDF (toolchainProbe:' + String(envLedgerRead.toolchainProbe) + '): re-run vibe_v5_paper { action: "compile", target: "' + stateTarget + '" } and read its receipt'))
-            return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, pdfSha256: null, engine: null,
+            return { pdfCompiled: { ...glyphLossOf(null), produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, pdfSha256: null, engine: null,
               blockedBy, blockedByMeans,
               // ★★★ RUN 249 (F-08): no ledger row ⇒ NO record can name the file on disk. Stated as a field (not silence)
               // so a reader never has to infer "recordId:null" means "the file exists but no row wrote it".
@@ -7028,6 +7123,7 @@ async function toolPaper(args = {}, { kernel } = {}) {
           const recompiled = finalPdfRecordId !== null && ledger && ledger.id !== undefined && ledger.id !== null
             && String(ledger.id) !== String(finalPdfRecordId)
           return { pdfCompiled: {
+            ...glyphLossOf(ledger),
             produced: true,
             matchedBy: matchTitle(ledger.title),
             target: stateTarget,
@@ -7308,7 +7404,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
         completeMeans: finCompleteMeans,
         unfinished: finUnfinished,
         reachableInstead: finReachable,
-        ...envFin, final: {
+        ...envFin,
+        // ★★★ TB-2768 (RUN 81 attempt-3): `ok:true` + a `Missing character` log is exactly what this round removes from
+        // invisibility — the glyph verdict is a TOP-LEVEL reading of the final receipt (and inside final.pdf via projection).
+        ...glyphLossOf(finalized.pdf),
+        stderrFindings: glyphFindingsOf(finalized.pdf),
+        final: {
         ok: finalized.ok === true, finalized: finalized.finalized === true, target: finalized.target,
         // ★★★ RUN 258 (TB-2638 / P43): the same two facts INSIDE the nested block, because that is where a reader who
         // looks at `receipt.final` first will ask the question. One value, two projections — not a second estimate.
@@ -7513,7 +7614,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // ★★★ RUN 256 (TB-2624 item 1): same four top-level environment keys, read by the same producer.
       return { ok: true, tool, action, target,
         ...environmentReadingsAt(kernel, { pdf: compiled }),
-        compiled: projectPdfBlock(compiled, target) }
+        compiled: projectPdfBlock(compiled, target),
+        // ★★★ TB-2768: the glyph verdict at the TOP level of this receipt too (never only nested in `compiled`).
+        ...glyphLossOf(compiled),
+        stderrFindings: glyphFindingsOf(compiled) }
     }
     case 'consult_state':
       // Read side (the same discipline as `order` on the meeting face): the ledger was WRITE-ONLY from the tool face, so

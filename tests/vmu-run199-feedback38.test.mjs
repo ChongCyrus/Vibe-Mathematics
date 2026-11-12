@@ -15,7 +15,7 @@
 //      that a `complete` card is LOCKED (so the pointer cannot be corrected afterwards).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -37,8 +37,8 @@ const has = (hay, needle, msg) => ok(String(hay).includes(needle), msg + ' — m
 // got undefined while the value was right there one level down.
 const advanceOf = (r) => (r && r.advance) || r
 
-async function assemble(dir, opts = {}) {
-  const entry = await import(pathToFileURL(ENTRY).href)
+async function assemble(dir, opts = {}, entryUrl = null) {
+  const entry = await import(entryUrl || pathToFileURL(ENTRY).href)
   const specs = []
   const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { async register(s) { specs.push(s); return () => {} } } }
   const handle = await entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root: dir, ...(opts.vmu ? { vmu: opts.vmu } : {}) })
@@ -152,22 +152,53 @@ test('RUN 199 §2 — advance names WHO REFUSED apart from WHO WAS NEVER COUNTED
     ok(reopened.ok === true, '§2h premise: round 2 opened', reopened.code || reopened.ok)
     // ★ run 39's shape: nobody has filed a round-2 review yet, and every newest durable row belongs to round 1
     const held = advanceOf(await call('vibe_v5_paper', { action: 'advance', target: 'p-199' }))
-    ok(held.ok === true && held.unanimous === false, '§2i ★ the round is NOT unanimous', held)
+    // ★★★ TB-2761（RUN 81 D-1）：round 变了但被判正文没变 ⇒ 旧票仍然计数。run 39 现场（round 2 没有任何新评审行）
+    // 因此是 UNANIMOUS，不是「两人 stale + 退回 writing」。旧断言断的正是被 TB-2761 取代的 round 代理语义。
+    ok(held.ok === true && held.unanimous === true && held.to === 'awaiting-editor',
+      '§2i（TB-2761）跨轮但正文未变的两张票仍计数 ⇒ round 2 unanimous、推进 awaiting-editor', { unanimous: held.unanimous, to: held.to })
     ok(Array.isArray(held.refusers) && held.refusers.length === 0,
-      '§2j ★★ NOBODY REFUSED — the old receipt put both members in `refusers`', held)
-    ok(Array.isArray(held.stale) && held.stale.slice().sort().join(',') === 'r-1,r-2',
-      '§2k ★★ both members are STALE (their rows are round 1) — the fact is named, not flattened into dissent', held)
+      '§2j 没有拒收（两张票都是 deliverable:true，且判的正文未变）', held)
+    ok(Array.isArray(held.stale) && held.stale.length === 0,
+      '§2k（TB-2761）没有因轮次作废的票：stale 为空且显式', held)
     ok(Array.isArray(held.notYetReviewed) && held.notYetReviewed.length === 0,
-      '§2l and the "no row at all" list is empty here (they do have rows — for another round)', held)
-    ok(/nobody refused/.test(String(held.refusersMeans || '')), '§2m the emptiness is said ON PURPOSE, not left to interpretation', held)
-    ok(/ROUND MISMATCH, not a refusal/.test(String(held.staleMeans || '')),
-      '§2n ★ the stale list carries the sentence that a round mismatch is not a vote against the paper', held)
+      '§2l 「一条行都没有」的列表也为空（他们都有行，只是写在 round 1）', held)
+    ok(/ON PURPOSE/.test(String(held.refusersMeans || '')), '§2m 空列表是刻意说明的，不是留白', held)
+    const cov199 = held.perRoundReviewCoverage
+    ok(cov199 && Array.isArray(cov199.covered) && cov199.covered.length === 2 && cov199.missing.length === 0 && Array.isArray(cov199.voidReviews) && cov199.voidReviews.length === 0,
+      '§2n（TB-2761）读数：covered 两席、missing 空、voidReviews 空（没有票因为轮次被作废）', cov199 && { covered: cov199.covered, missing: cov199.missing, voidReviews: cov199.voidReviews })
     const back = await call('vibe_v5_paper', { action: 'status', target: 'p-199' })
-    // The disagreement branch is RUN 197's: a round that is not unanimous SENDS THE PAPER BACK TO WRITING. So "stale" is
-    // not a neutral label — the two members were counted as dissent and the paper moved. That is precisely why the counts
-    // have to be named correctly, and the assertion reads the stage, not the prose.
-    ok(back.ok === true && back.paper && back.paper.stage === 'writing',
-      '§2o the non-unanimous round really sent the paper back to writing (the stale rows were counted as dissent)', back.paper && back.paper.stage)
+    ok(back.ok === true && back.paper && back.paper.stage === 'awaiting-editor',
+      '§2o（TB-2761）论文真的走到 awaiting-editor（新语义没有把它退回 writing）', back.paper && back.paper.stage)
+    // ★ TB-2761 反灯：整树副本把指纹绑定退回 round 绑定 ⇒ 同一场景必须退回「两人 stale、退回 writing」的旧事实。
+    {
+      const lampDir = mkdtempSync(join(tmpdir(), 'run199-lamp-'))
+      try {
+        cpSync(join(ROOT, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+        const kitPath = join(lampDir, 'vibe-math-vmu', 'kit', 'paper.js')
+        let mut = readFileSync(kitPath, 'utf8')
+        const p1 = "if (judged.partChanged) return out(false, 'part-text-changed')"
+        const p2 = 'if (crossEarlier && judgedEarlier.bound === true && !judgedEarlier.partChanged) {'
+        ok(mut.indexOf(p1) !== -1 && mut.indexOf(p2) !== -1, '§2 lamp-setup：两个 mutation 点都在')
+        mut = mut.replace(p1, "if (rowRound !== round) return out(false, 'part-text-changed')").replace(p2, 'if (false) {')
+        writeFileSync(kitPath, mut)
+        const lampRoot = mkdtempSync(join(tmpdir(), 'run199-lamp-ws-'))
+        const L = await assemble(lampRoot, {}, pathToFileURL(join(lampDir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?lamp=1')
+        const lampCall = L.call
+        await lampCall('vibe_v5_start', { researcherCount: 2 })
+        const lc = await lampCall('vibe_v5_record_proposition', { id: 'rec-lamp199', title: '证据卡', statement: 'n + n = 2n', value: 0.9, motive: '算术', p: 0.9, member: 'r-acad' })
+        await lampCall('vibe_v5_paper', { action: 'start', target: 'p-lamp', participants: ['r-1', 'r-2'] })
+        for (const m of ['r-1', 'r-2']) await lampCall('vibe_v5_paper', { action: 'part', target: 'p-lamp', member: m, part: m, body: m + ' body', evidence: ['rec-lamp199'] })
+        await lampCall('vibe_v5_paper', { action: 'advance', target: 'p-lamp' })
+        for (const m of ['r-1', 'r-2']) await lampCall('vibe_v5_paper', { action: 'review', target: 'p-lamp', member: m, deliverable: true, comments: 'ok' })
+        await lampCall('vibe_v5_paper', { action: 'advance', target: 'p-lamp' })
+        await lampCall('vibe_v5_paper', { action: 'final', target: 'p-lamp', member: 'r-acad', decision: 'revise', note: 'lamp' })
+        await lampCall('vibe_v5_paper', { action: 'advance', target: 'p-lamp' })
+        const lampHeld = advanceOf(await lampCall('vibe_v5_paper', { action: 'advance', target: 'p-lamp' }))
+        ok(lampHeld && lampHeld.to === 'writing' && Array.isArray(lampHeld.stale) && lampHeld.stale.length === 2,
+          '§2 lamp RED-worthy：退回 round 绑定 ⇒ 两张跨轮票又成 stale、论文退回 writing（run 39/81 的旧代理语义）', lampHeld && { to: lampHeld.to, stale: lampHeld.stale })
+        rmSync(lampRoot, { recursive: true, force: true })
+      } finally { rmSync(lampDir, { recursive: true, force: true }) }
+    }
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 

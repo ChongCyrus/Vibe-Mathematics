@@ -413,6 +413,9 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // what it answers IS a turn. The op records the report into the kernel's ONE structured slot and answers with a
       // READBACK computed after recording, so the caller sees which fields were really taken, not what it hoped.
       if (op === 'reply') {
+        // ★★★ TB-2764 D-8: the ONLY accepted declaration on this channel is "none" (this turn mounted no vote tool).
+        // The kernel refuses any other value and refuses a declaration that a measured table contradicts.
+        const declaredMountedTools = typeof args.mounted_tools === 'string' && args.mounted_tools.trim() !== '' ? args.mounted_tools.trim() : null
         if (!kernel.turn || typeof kernel.turn.supplyStructuredReply !== 'function') {
           return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel has no structured-report channel on the turn loop',
             'assemble a kernel that exposes turn.supplyStructuredReply; until then report through the fenced json object: op:"step" with reply:"```json { ... }```"')
@@ -448,6 +451,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
               return await kernel.turn.supplyStructuredReply({}, {
                 forMember: typeof args.reply_for === 'string' && args.reply_for ? args.reply_for : null,
                 meeting: typeof args.meeting === 'string' && args.meeting.trim() !== '' ? args.meeting.trim() : null,
+                mountedTools: declaredMountedTools,
               })
             } catch (e) {
               return refused((e && e.code) || 'VMU_ENGINE_UNAVAILABLE', (e && e.message) || String(e), (e && e.hint) || null)
@@ -465,7 +469,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // ★ 用户裁决 B 第 2 步：所办替成员跑一轮时，可以指名这一轮属于哪场会议 —— 于是成员那句 say 被记成
           // 成员本人的发言（onBehalf），而不是躺在 notes 里。不传就保持原行为（回执说明为什么没派发）。
           const forMeeting = typeof args.meeting === 'string' && args.meeting.trim() !== '' ? args.meeting.trim() : null
-          return await kernel.turn.supplyStructuredReply(report, { forMember, meeting: forMeeting })
+          return await kernel.turn.supplyStructuredReply(report, { forMember, meeting: forMeeting, mountedTools: declaredMountedTools })
         } catch (e) {
           return refused((e && e.code) || 'VMU_ENGINE_UNAVAILABLE', (e && e.message) || String(e), (e && e.hint) || null)
         }
@@ -737,6 +741,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         // container shape and leaves the per-field shapes to the owner that dispatches them.
         report: param('object', '★ op:"reply"：★ 本回合的结构化汇报（对象）。字段与围栏 JSON 完全同一张表：' + REPORT_FIELDS_DOC +
           '。未知字段由内核按 vmu.turn.unknownReplyFieldMode 收下或具名拒；空对象与"一个字段都不认识"都具名拒'),
+      mounted_tools: param('string', '★ 仅 op:"reply"（caller 模式）：唯一合法值 "none"——所办显式声明「这一回合成员没有挂载 vibe_vmu_vote 工具」。它只补一个观测不到的缺（caller 模式读不到成员挂载表），绝不覆盖实测表：挂载表/可见表里的确有 vote 工具时声明会被具名拒 VMU_TURN_REPLY_CONFLICT。省略＝不声明（不可证就仍记 tool-visibility-unprovable，不猜）'),
       reply: param('string', '★ 兼容通道（仅当交付接缝是 deliverByReturning 时需要）：★ 上一次 step／drive 交回的成员提示词，★其【成员自己的回复】放在这里送回；★ 首选是用 op:"reply" 的 report 汇报'),
         next_step: param('string', '下一步要做什么'),
         tools: param('string', '★ step 专用：none＝清空；或 JSON 字符串 {"allow":["<工具名>"]}＝只挂这些（校验后生效）；缺省＝按角色收窄'),

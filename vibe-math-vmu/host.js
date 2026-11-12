@@ -2473,36 +2473,73 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const resolved = member ? kernel.resolveMemberToolDeny(member) : { all: false, allow: stickyAllow.slice(), deny: [], slot: 'member' }
       const deny = new Set(resolved.deny || [])
       try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ applied: 1 + ((kernel.toolFacePull && kernel.toolFacePull().applied) || 0), lastMember: member || '(sticky)', lastResolution: member ? 'member' : 'sticky-no-member' }) } catch { /* diagnostics */ }
-      // ★ PHASE 9 / round 4: ONE COMPUTATION, TWO CONSUMERS. The effective names are computed HERE and used for BOTH
-      // the wire (`out.tools` / restrict) and the prompt block below — no second name table is ever built.
-      if (resolved.all) out.tools = []
-      else if (Array.isArray(resolved.allow)) out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => resolved.allow.includes(t && t.name))
-      else out.tools = (Array.isArray(out.tools) ? out.tools : []).filter((t) => !deny.has(t && t.name))
-      const effectiveNames = (Array.isArray(out.tools) ? out.tools : []).map((t) => (t && typeof t === 'object' ? t.name : t)).filter((n) => typeof n === 'string')
-      // Remember what this Agent was actually given, so a later request that cannot resolve the member reuses the
-      // narrow list instead of the full catalogue (the "narrow or unchanged, never wider" invariant).
-      if (agentId) {
+      // ★★★ TB-2770 (RUN 81 / P0, MEASURED: 59/59 member system messages said "0 个（本回合没有可用工具）" while the same
+      // turns' wire held 79 tools and 39/39 calls succeeded): `out.tools` is the WATERFALL's copy of the tool list, not a
+      // member child session's wire — there it is simply absent. The old code degraded "absent" to `[]` silently and the
+      // "0" branch then asserted "this turn has no available tools": a FALSE FACT, and writing that empty list into
+      // `narrowFaceByAgent` made it a self-lock. The authority for "what this agent can actually call" is the SAME source
+      // `applyMemberToolFace` reads: `agent.ctx.tools.schemas()` (`:2365-2373`). When even that is unreadable the block
+      // says so BY NAME (`wire-unknown`) and never turns "not observed" into "none".
+      const observedTools = Array.isArray(out.tools) ? out.tools : null
+      const nameOfTool = (t) => (t && typeof t === 'object' ? (t.name || t.id) : t)
+      const filterWireNames = (names) => names.filter((n) => (resolved.all ? false : (Array.isArray(resolved.allow) ? resolved.allow.includes(n) : !deny.has(n))))
+      const namesFromAgentWire = () => {
+        try {
+          const agentForWire = (context && context.agent) || (member ? resolveMemberAgent(member).agent : null)
+          const tools = agentForWire && agentForWire.ctx && agentForWire.ctx.tools
+          if (!tools || typeof tools.schemas !== 'function') return null
+          const list = tools.schemas()
+          if (!Array.isArray(list)) return null
+          return list.map(nameOfTool).filter((n) => typeof n === 'string')
+        } catch { return null }
+      }
+      let effectiveNames
+      let wireSource
+      if (observedTools !== null) {
+        // the waterfall handed us the list the host is narrowing: that reading is the wire this build produces
+        if (resolved.all) out.tools = []
+        else if (Array.isArray(resolved.allow)) out.tools = observedTools.filter((t) => resolved.allow.includes(nameOfTool(t)))
+        else out.tools = observedTools.filter((t) => !deny.has(nameOfTool(t)))
+        effectiveNames = out.tools.map(nameOfTool).filter((n) => typeof n === 'string')
+        wireSource = 'out.tools'
+      } else {
+        const agentWire = namesFromAgentWire()
+        if (agentWire === null) { effectiveNames = null; wireSource = 'wire-unknown' }
+        else { effectiveNames = filterWireNames(agentWire); wireSource = 'agent.ctx.tools.schemas' }
+      }
+      const observable = Array.isArray(effectiveNames)
+      // Remember what this Agent was actually given, so a later request that cannot resolve the member reuses the narrow
+      // list instead of the full catalogue (the "narrow or unchanged, never wider" invariant). AN EMPTY OR UNOBSERVED LIST
+      // IS NOT A NARROWING: caching it would fail the NEXT request closed to zero (the run-81 self-lock), so the write is
+      // skipped and the previous sticky face (if any) stays in force.
+      let cacheWrite = 'skipped-wire-unknown'
+      if (agentId && observable && effectiveNames.length > 0) {
         narrowFaceByAgent.set(agentId, effectiveNames.slice())
         if (narrowFaceByAgent.size > 64) narrowFaceByAgent.delete(narrowFaceByAgent.keys().next().value)
-      }
+        cacheWrite = 'written'
+      } else if (agentId && observable) cacheWrite = 'skipped-empty'
       const slot = resolved.slot || 'member'
-      const namesText = effectiveNames.join('、')
-      const nativeBlockText = effectiveNames.length
-        ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + namesText +
-          // ★★★★★★★ LIVE RUN 2026-10-25 (a REAL multi-agent run, the first one): this caption used to read
-          // 「这份列表与你这回合的 wire 完全一致」 - a promise the producer cannot keep in every session. MEASURED:
-          // a subagent child session's prompt carried 70 names here while that session's wire held the framework's own
-          // tools too, so the list was BOTH short (27 wire tools unnamed) and long (17 pack faces the child's wire did
-          // not carry). The list IS a real snapshot - it is built from `out.tools` at assembly time - but "identical to
-          // the wire for this turn" is a claim about a later moment, and a caption that asserts it turns a snapshot into
-          // a lie. The caption now says what the producer actually knows, and names the tie-break rule.
-          '（这段是本段生成那一刻的 wire 快照；若与本回合的 wire 不一致，以 wire 为准，并把差异当作本轮的缺陷上报——' +
-          '角色段里的静态清单只作职责说明）'
-        : '【本轮你实际能调用的工具｜' + slot + '】0 个（本回合没有可用工具；角色段里的静态清单不代表本回合可用性）'
-      const ptcBlockText = effectiveNames.length
-        ? '【本轮工具呈现｜' + slot + '】本回合以 run_code 呈现：下列 ' + effectiveNames.length + ' 个工具可通过代码调用：' + namesText +
-          '（它们不在 wire 的顶层目录里，这是呈现方式的差异，不是收窄；角色段里的静态清单只作职责说明，以本段为准）'
-        : '【本轮工具呈现｜' + slot + '】本回合没有可用工具（run_code 也不呈现空清单；角色段里的静态清单不代表本回合可用性）'
+      const namesText = observable ? effectiveNames.join('、') : ''
+      const nativeBlockText = !observable
+        ? '【本轮你实际能调用的工具｜' + slot + '】wire-unknown：本段没有观测到本回合的 wire（工具可用性以实际 wire 为准，绝不据此推断为零；角色段里的静态清单只作职责说明）'
+        : (effectiveNames.length
+            ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + namesText +
+              // ★★★★★★★ LIVE RUN 2026-10-25 (a REAL multi-agent run, the first one): this caption used to read
+              // 「这份列表与你这回合的 wire 完全一致」 - a promise the producer cannot keep in every session. MEASURED:
+              // a subagent child session's prompt carried 70 names here while that session's wire held the framework's own
+              // tools too, so the list was BOTH short (27 wire tools unnamed) and long (17 pack faces the child's wire did
+              // not carry). The list IS a real snapshot - it is built from the SAME reading the wire itself uses - but
+              // "identical to the wire for this turn" is a claim about a later moment, and a caption that asserts it turns
+              // a snapshot into a lie. The caption now says what the producer actually knows, and names the tie-break rule.
+              '（这段是本段生成那一刻的 wire 快照；若与本回合的 wire 不一致，以 wire 为准，并把差异当作本轮的缺陷上报——' +
+              '角色段里的静态清单只作职责说明）'
+            : '【本轮你实际能调用的工具｜' + slot + '】0 个（本回合没有可用工具；角色段里的静态清单不代表本回合可用性）')
+      const ptcBlockText = !observable
+        ? '【本轮工具呈现｜' + slot + '】wire-unknown：本段没有观测到本回合的 wire（工具可用性以实际 wire 为准，绝不据此推断为零）'
+        : (effectiveNames.length
+            ? '【本轮工具呈现｜' + slot + '】本回合以 run_code 呈现：下列 ' + effectiveNames.length + ' 个工具可通过代码调用：' + namesText +
+              '（它们不在 wire 的顶层目录里，这是呈现方式的差异，不是收窄；角色段里的静态清单只作职责说明，以本段为准）'
+            : '【本轮工具呈现｜' + slot + '】本回合没有可用工具（run_code 也不呈现空清单；角色段里的静态清单不代表本回合可用性）')
       const deferSuffix = presentationState && presentationState.mode === 'defer' && Array.isArray(presentationState.deferLoading) && presentationState.deferLoading.length
         ? '；其中部分工具需 load 后才可调用（deferLoading）'
         : ''
@@ -2525,7 +2562,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         if (!next.name) next.name = 'v5r-effective-tools'
         if (idx >= 0) sections[idx] = next
       }
-      try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ effectiveBlock: placement, effectiveCount: effectiveNames.length }) } catch { /* diagnostics */ }
+      try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ effectiveBlock: placement, effectiveCount: observable ? effectiveNames.length : null, effectiveWireSource: wireSource, effectiveCacheWrite: cacheWrite }) } catch { /* diagnostics */ }
       // ★ PHASE 9 / round 5: THE MISSING THIRD SEAM. Mail was sent, but nothing ever put its notice into the member's
       // prompt. Inject it HERE, in the same assembly hook that already knows the member: non-urgent mail contributes
       // ONLY its notice (N entries, senders, subjects); urgent mail additionally carries its body. `flush` with a local

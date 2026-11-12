@@ -23,9 +23,12 @@ import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_ROLE_BINDINGS, CHARTER_BINDIN
 import { v5rRoleSection as V5R_ROLE_SECTION } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 const V5R_ROLE_SECTION_VARS = V5R_ROLE_SECTION.vars
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const REPO_DIR = fileURLToPath(new URL('..', import.meta.url))
 
 let passed = 0
 let failed = 0
@@ -1906,6 +1909,72 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(rec && rec.votesCast === 0 && rec.eligible.length === 0 && /closure-vote permission/.test(String(rec.reason)),
     '★★ R45d: with no roster seam the reading is 0/empty AND says why (the fix did not silently change the tally path)',
     { votesCast: rec && rec.votesCast, eligible: rec && rec.eligible, reason: rec && String(rec.reason).slice(0, 60) })
+}
+
+// ★★★ TB-2764 D-8 (RUN 81 / FEEDBACK81 D-8): CALLER MODE cannot read the member wire, so `vote_solved` in a reply was
+// structurally unprovable (`keptWhy:"tool-visibility-unprovable"`, mounted-why: provider-threw:VMU_MEMBER_SESSION_NOT_LIVE)
+// and the lawful reply-vote channel was dead. The office may now DECLARE `mounted_tools:"none"`; that declaration fills the
+// ABSENCE (it is written on the adopting row) and it is refused by name when a measured table contradicts it.
+{
+  const rt = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), deliver: deliverByReturning(),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const opened = await rt.step({ members: ['r-1'], membersInferred: false, why: '§D8 park a caller-mode turn' })
+  ok(!!opened && opened.awaiting === true, '§D8a a caller-mode (returning) turn is parked', opened && { awaiting: opened.awaiting })
+  const rec = rt.supplyStructuredReply({ vote_solved: true }, { forMember: 'r-1', mountedTools: 'none' })
+  ok(rec.ok === true && rec.keptNow === true && rec.keptWhy === 'tool-not-mounted' && rec.mountedToolsDeclared === 'none-by-caller',
+    '§D8b ★ the receipt answers NOW: the declared absence makes the vote count (keptNow:true / tool-not-mounted)', rec && { keptNow: rec.keptNow, keptWhy: rec.keptWhy, declared: rec.mountedToolsDeclared })
+  ok(rec.readback && rec.readback.mountedToolsDeclared === 'none-by-caller' && Array.isArray(rec.fieldsKeeping) && rec.fieldsKeeping[0] && rec.fieldsKeeping[0].mountedToolsDeclared === 'none-by-caller',
+    '§D8c the declaration travels with the held report and is echoed on the verdict', { readback: rec.readback, keeping: rec.fieldsKeeping })
+  const settled = await rt.step({ why: '§D8 complete the held turn' })
+  const rc = settled && settled.receipt ? settled.receipt : null
+  const row = ((rc && (rc.fieldsKeeping || [])) || []).filter((r) => r && r.field === 'vote_solved')[0] || null
+  ok(!!row && row.kept === true && row.keptWhy === 'tool-not-mounted' && row.mountedToolsDeclared === 'none-by-caller',
+    '§D8d ★ the apply row adopts it by the SAME declared fact and names the declaration', row)
+  const tally = rt.status({ roster: ['r-1'], may: () => true, permission: 'vote' })
+  ok(tally && tally.closureVote && tally.closureVote.votesCast === 1 && tally.closureVote.for.indexOf('r-1') !== -1,
+    '§D8e ★ closureVote.votesCast really moved +1 (a counted vote, not a ghost)', tally && tally.closureVote)
+}
+{
+  // FORGERY: a measured table DOES name the vote tool ⇒ the declaration is refused by name and nothing is recorded.
+  const rt = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), deliver: deliverByReturning(),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  rt.setVisibleToolsProvider(() => ['vibe_vmu_vote', 'vibe_v5_say'])
+  const opened = await rt.step({ members: ['r-2'], membersInferred: false, why: '§D8 forge test' })
+  let forged = null
+  try { rt.supplyStructuredReply({ vote_solved: true }, { forMember: 'r-2', mountedTools: 'none' }) } catch (e) { forged = e }
+  ok(!!forged && forged.code === 'VMU_TURN_REPLY_CONFLICT' && /declaration/i.test(String(forged.message)),
+    '§D8f ★ a declaration that a measured table contradicts is REFUSED by name (never overrides a measurement)', forged && { code: forged.code, message: forged.message })
+  const tally = rt.status({ roster: ['r-2'], may: () => true, permission: 'vote' })
+  ok(opened.awaiting === true && tally.closureVote.votesCast === 0 && rt.structuredReply() === null,
+    '§D8g …and nothing was recorded (no report slot, no vote)', { votesCast: tally.closureVote.votesCast, slot: rt.structuredReply() })
+}
+{
+  // NO declaration ⇒ the old fail-closed reading stays: existence of the channel never opens it by itself.
+  const rt = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), deliver: deliverByReturning(),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  await rt.step({ members: ['r-1'], membersInferred: false, why: '§D8 no declaration' })
+  const rec = rt.supplyStructuredReply({ vote_solved: true }, { forMember: 'r-1' })
+  ok(rec.keptNow === false && rec.keptWhy === 'tool-visibility-unprovable' && rec.mountedToolsDeclared === null,
+    '§D8h ★ 邻位：没有声明时仍是不可证/不计票（不会因为通道存在就默认打开）', rec && { keptNow: rec.keptNow, keptWhy: rec.keptWhy })
+}
+{
+  // LAMP: a copied tree with the declaration transport dropped must show the run-81 defect again.
+  const dir = mkdtempSync(join(tmpdir(), 'vmu-turn-d8-lamp-'))
+  try {
+    cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+    const copyTurn = join(dir, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
+    const src = readFileSync(copyTurn, 'utf8')
+    const anchor = 'recorded.mountedToolsDeclared = declaredMountedTools'
+    ok(src.indexOf(anchor) !== -1, '§D8 lamp-setup: the mutation point is present')
+    writeFileSync(copyTurn, src.replace(anchor, 'recorded.mountedToolsDeclared = null'))
+    const mod2 = await import(pathToFileURL(copyTurn).href + '?d8lamp=1')
+    const rt2 = mod2.createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), deliver: mod2.deliverByReturning(),
+      faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+    await rt2.step({ members: ['r-1'], membersInferred: false, why: '§D8 lamp' })
+    const rec2 = rt2.supplyStructuredReply({ vote_solved: true }, { forMember: 'r-1', mountedTools: 'none' })
+    ok(rec2.keptNow === false && rec2.keptWhy === 'tool-visibility-unprovable',
+      '§D8 lamp RED-worthy: 抹掉声明的传递 ⇒ 回执退回「结构性不可达」（run 81 D-8 的原状）', rec2 && { keptNow: rec2.keptNow, keptWhy: rec2.keptWhy })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -822,6 +822,10 @@ export function createPaperFlow({
       // 1970. They were never timestamps; they were the ROUND the paper was started and last changed in. The names now say
       // so (`createdRound`/`updatedRound`), so no reader has to guess a unit the value never had.
       createdRound: 1, updatedRound: 1,
+      // ★★★ TB-2761 (RUN 81 D-5): `round` and `updatedRound` are different NAMES for different facts; this sentence is the
+      // reading rule so a receipt can never show two numbers with no explanation. `updatedRound` is advanced with every write
+      // (a part, a review, a round-advancing advance) in this build, so a lagging value on an OLD state is history, not a clock.
+      updatedRoundMeans: '`round` is the cross-review round in progress; `updatedRound` is the round in which this paper was last STORED (a part/review write, or a round-advancing advance). In this build every write moves both, so a state where they differ is an OLDER snapshot: `round` is authoritative for the gate; `updatedRound` only says when the bytes last changed',
     }
     ensureTrack()
     const put = writeState(state)
@@ -1093,19 +1097,35 @@ export function createPaperFlow({
   }
 
   /**
-   * ★★★ TB-2713 (RUN 76 / A5, MEASURED): A ROUND THAT INVALIDATED LAST ROUND'S VERDICTS MUST SAY SO.
-   * Run 76 filed `deliverable:true` reviews in round 2, the paper bounced to round 3, and the same rows were then read
-   * as `stale:["r-acad"]` with nothing on the receipt naming the members whose verdict a round boundary had invalidated.
-   * The mechanism is DELIBERATE and stays: a review judges the prose of ITS round, so a row from round N−1 is durable
-   * history, not a vote on round N (see `readReview`'s `durable-other-round` branch and `requireCrossReview`, which both
-   * count `body.round === state.round` only). What was missing was the READING, so this function computes it ONCE and
-   * both doors (`advance`, `status`) print the same object — the two faces must not each own a copy of this arithmetic.
-   *
-   * `covered` needs all three facts to be true of the member's NEWEST durable review row: its `round` is the paper's
-   * round, its verdict is `deliverable:true`, and its `of` names ANOTHER member (self-review is never coverage).
-   * A member whose newest row belongs to an earlier round is named in `invalidatedByRound` (with the row and its round)
-   * instead of being silently dropped; a member with no row at all is simply `missing`.
+   * ★★★ TB-2761 (RUN 81 D-1/D-2): THE COVERAGE GATE BINDS **THE TEXT**, NOT THE ROUND.
+   * Run 81 measured: a part was replaced, `advance` bumped the paper round 1 → 2, and the TWO authors whose sections were
+   * NOT touched were counted as coverage gaps (`missing:["r-2","r-3"]`) although their reviews still judged the text on
+   * file. The rule's own sentence is "a review judges the prose of its round"; the ROUND was only ever the proxy for
+   * "has this text changed since the vote". `judgedPartFingerprint` IS that fact, so the gate reads it now:
+   *   · deliverable:true + `of` another member + the judged part's fingerprint UNCHANGED ⇒ COUNTED, even when the row was
+   *     written in an earlier round (an untouched section is not a coverage gap because the paper moved);
+   *   · the judged part's fingerprint CHANGED ⇒ NOT counted, named `part-text-changed` (the reviewer must read the new text);
+   *   · a legacy row that never bound a fingerprint ⇒ the old round rule, named `previous-round` when it fails.
+   * An unstated / `deliverable:false` verdict is a REFUSAL or SILENCE, never a void — it stays in `missing` (and in the
+   * advance receipt's `refusers`), exactly as before.
    */
+  const coverageVerdictOf = (state, body) => {
+    const round = Number(state.round)
+    const rowRound = body && body.round !== undefined && body.round !== null && Number.isFinite(Number(body.round)) ? Number(body.round) : null
+    const judged = body ? judgedPartReading(state, body) : null
+    const of = body && body.of !== undefined && body.of !== null ? str(body.of) : ''
+    const member = body && body.member !== undefined && body.member !== null ? str(body.member) : ''
+    const out = (counts, voidWhy) => ({ counts, voidWhy, judged, rowRound })
+    if (!body) return out(false, null)
+    if (body.deliverable !== true) return out(false, null) // a refusal / silence is not a void
+    if (of === '' || (member !== '' && of === member)) return out(false, null) // self-review is never coverage
+    if (!judged || judged.bound !== true) {
+      // legacy row: no fingerprint binding on file — the old round rule is the only available reading, and it SAYS so.
+      return out(rowRound === round, rowRound === round ? null : 'previous-round')
+    }
+    if (judged.partChanged) return out(false, 'part-text-changed')
+    return out(true, null)
+  }
   function perRoundReviewCoverageOfState(state) {
     const round = Number(state.round)
     const participants = (Array.isArray(state.participants) ? state.participants : []).map(String)
@@ -1124,44 +1144,66 @@ export function createPaperFlow({
     const exempt = participants.filter((id) => !expected.includes(id))
     const covered = []
     const missing = []
-    const invalidatedByRound = []
-    // ★★★ TB-2743: a vote that votes deliverable ON THIS ROUND but judged an EARLIER TEXT of the part is neither
-    // coverage nor a refusal — it is STALE, and it is named here (with both fingerprints) so the reading cannot hide it.
-    const staleReviews = []
+    const voidEntries = []
     for (const member of expected) {
       let found = null
       try { found = reviewRowOf(state, member) } catch (e) { found = null }
       const body = found && found.body ? found.body : null
-      const rowRound = body && body.round !== undefined && body.round !== null && Number.isFinite(Number(body.round)) ? Number(body.round) : null
-      const votedThisRound = !!(body && rowRound === round && body.deliverable === true && str(body.of === undefined || body.of === null ? '' : body.of) !== member)
-      const judged = body ? judgedPartReading(state, body) : null
-      const countsForThisRound = votedThisRound && judged !== null && judged.fresh
-      if (countsForThisRound) { covered.push({ member, recordId: found.recordId || null, round }); continue }
+      const verdict = coverageVerdictOf(state, body)
+      if (verdict.counts) {
+        covered.push({ member, recordId: found.recordId || null, round })
+        continue
+      }
       missing.push(member)
-      if (votedThisRound && judged !== null && !judged.fresh) {
-        const stale = staleReviewReading(state, member, found)
-        if (stale) staleReviews.push(stale)
-      }
-      if (body && rowRound !== null && rowRound !== round) {
-        invalidatedByRound.push({ member, recordId: found.recordId || null, round: rowRound, why: 'previous-round',
-          whyMeans: 'why:"previous-round" means the newest durable review row for this member belongs to round ' + String(rowRound) + ', not the paper\'s current round (' + String(round) + '): that row is durable HISTORY — a review judges the prose of its own round — so it is NOT counted for round ' + String(round) + ' and the member must file a verdict again after reading the current text' })
-      }
+      if (verdict.voidWhy === null) continue
+      const judged = verdict.judged || {}
+      const whyMeans = verdict.voidWhy === 'part-text-changed'
+        ? 'the text of the judged part changed after this vote was cast: the vote is bound to fingerprint ' + String(judged.boundFingerprint) + ', and the part on file now carries ' + String(judged.currentFingerprint) + ' — this is a DIFFERENT text, so the vote is not counted'
+        : verdict.voidWhy === 'previous-round'
+          ? 'the newest durable review row for this member belongs to round ' + String(verdict.rowRound) + ', not the paper\'s current round (' + String(round) + '), and the row carries NO part fingerprint to prove the text is unchanged: it is not counted for round ' + String(round) + ' (re-file a verdict after reading the current part)'
+          : 'the vote was cast in round ' + String(judged.boundRound) + ' while the paper is in round ' + String(judged.currentRound) + ' and its text could not be proven unchanged'
+      voidEntries.push({ member, recordId: found.recordId || null, why: verdict.voidWhy,
+        rowRound: verdict.rowRound, judgedPartRound: judged.boundRound === undefined ? null : judged.boundRound, currentRound: round,
+        judgedPartFingerprint: judged.boundFingerprint === undefined ? null : judged.boundFingerprint,
+        currentFingerprint: judged.currentFingerprint === undefined ? null : judged.currentFingerprint,
+        whyMeans })
     }
+    // ★★★ TB-2761 D-2: ONE VOID LIST, GROUPED BY WHY, WITH COUNTS. The old pair (`invalidatedByRound` + `staleReviews`)
+    // described the same fact under two names with different rules and neither carried a count, so "no vote was voided"
+    // and "two votes were voided" read alike when one column was empty. `voidReviews` is the reading; the old two names
+    // stay as FILTERED VIEWS of it (no second arithmetic) so existing readers keep working.
+    const byWhy = new Map()
+    for (const entry of voidEntries) {
+      if (!byWhy.has(entry.why)) byWhy.set(entry.why, [])
+      byWhy.get(entry.why).push(entry)
+    }
+    const voidReviews = [...byWhy.keys()].sort().map((why) => ({
+      why, count: byWhy.get(why).length, members: byWhy.get(why).map((e) => e.member),
+      entries: byWhy.get(why).slice(),
+      whyMeans: byWhy.get(why)[0].whyMeans,
+    }))
+    const invalidatedByRound = voidReviews.filter((g) => g.why === 'previous-round').flatMap((g) => g.entries.map((e) => ({ member: e.member, recordId: e.recordId, round: e.rowRound, why: 'previous-round', whyMeans: e.whyMeans })))
+    const staleReviews = voidReviews.filter((g) => g.why === 'part-text-changed' || g.why === 'round-changed').flatMap((g) => g.entries.map((e) => ({ by: e.member, of: null, judgedPartFingerprint: e.judgedPartFingerprint, currentFingerprint: e.currentFingerprint, judgedPartRound: e.judgedPartRound, currentRound: e.currentRound, recordId: e.recordId, why: e.why, whyMeans: e.whyMeans })))
     return { round, expected, covered, missing, invalidatedByRound, staleReviews,
+      // ★★★ TB-2761 D-2: the merged, counted reading (the two names above are its filtered views).
+      voidReviews,
+      voidReviewsMeans: voidReviews.length === 0
+        ? 'empty ON PURPOSE: no expected member holds a vote that was voided — every count-relevant row either counts for this round or is simply not filed/not deliverable (see `missing`)'
+        : 'grouped by `why` with a COUNT per group: `part-text-changed` = the vote judged an earlier TEXT of that part (its fingerprint differs from the part on file now); `previous-round` = a legacy row from an earlier round with no fingerprint binding to prove the text unchanged. A voided vote is NOT a refusal and NOT coverage: the member re-files after reading the current part',
       staleReviewsMeans: staleReviews.length === 0
-        ? 'empty ON PURPOSE: every counted vote for this round judged the TEXT the part carries now (its fingerprint and round still match the part slot), so no verdict is bound to prose that was replaced'
-        : 'NOT empty: these votes said deliverable THIS round but judged an EARLIER TEXT of the part — each entry names the member (by), the judged author (of), the fingerprint the vote is bound to, the fingerprint the part carries NOW, and both rounds. They are NOT counted as coverage and are NOT refusals: re-file a verdict after reading the current part (vibe_v5_paper { action: "review", target: "<paper>", member: "<by>", of: "<of>", deliverable: true })',
+        ? 'empty ON PURPOSE: every counted vote for this round judged the TEXT the part carries now (its fingerprint still matches the part slot), so no verdict is bound to prose that was replaced'
+        : 'NOT empty: these votes said deliverable but judged an EARLIER TEXT of the part — each entry names the member (by), the fingerprint the vote is bound to, the fingerprint the part carries NOW, and both rounds. They are NOT counted as coverage and are NOT refusals: re-file a verdict after reading the current part (vibe_v5_paper { action: "review", target: "<paper>", member: "<by>", of: "<of>", deliverable: true })',
       expectedMeans: 'the members who OWE a counted cross-review verdict for round ' + String(round) + ' (rule: ' + rule + ' — '
         + (rule === 'assignment' ? 'the paper\'s own `reviewOf` rotation assigns each of them another member\'s part'
           : rule === 'authored-parts' ? 'no `reviewOf` assignment is on the record, so the members who wrote a part owe the review of each other\'s prose'
             : 'this paper has no parts and no assignment yet, so every participant owes one')
         + (exempt.length > 0 ? '); EXEMPT this round (' + exempt.join(', ') + '): no other member\'s part exists for them to review. A member is never expected to review their own part' : ')'),
-      coveredMeans: 'these members hold a COUNTED deliverable cross-review verdict for round ' + String(round) + ': each entry names the member, the durable review recordId whose body carries the verdict, and the round that row was written in — `round` here always equals the paper\'s round (a row from another round appears in `invalidatedByRound`, never here); a vote that voted deliverable this round but is bound to an EARLIER TEXT of the part is NOT counted here — it is named in `staleReviews` with both fingerprints',
-      missingMeans: 'these EXPECTED members hold NO counted deliverable verdict for round ' + String(round) + ': the row may not exist yet, may vote deliverable:false, or may belong to an earlier round (that last case is named line by line in `invalidatedByRound`). While this list is non-empty the paper cannot reach unanimity — `advance` will keep it in reviewing or send it back to writing, and this reading says who it is waiting for',
+      coveredMeans: 'these members hold a COUNTED deliverable cross-review verdict: each entry names the member, the durable review recordId whose body carries the verdict, and the TEXT it is bound to (`judgedPartFingerprint`, plus `rowRound`/`judgedPartRound` as history). The binding is the FINGERPRINT of the judged part NOW: a vote from an earlier round still counts while the part text it judged is unchanged (the round moved, the prose did not), and a vote whose part was RECOMPOSED does not count (it appears in `voidReviews` with why `part-text-changed`)',
+      missingMeans: 'these EXPECTED members hold NO counted deliverable verdict: the row may not exist yet, may vote deliverable:false, or may be VOID (its judged text was replaced, or it is a legacy row from another round) — that last case is enumerated line by line in `voidReviews`. While this list is non-empty the paper cannot reach unanimity — `advance` will keep it in reviewing or send it back to writing, and this reading says who it is waiting for',
       invalidatedByRoundMeans: invalidatedByRound.length === 0
-        ? 'empty ON PURPOSE: no expected member holds a review row from an earlier round, so no verdict was invalidated by a round boundary'
-        : 'NOT empty: these members DID file a review, but on an EARLIER round — the round advanced (the paper bounced back to writing or the editor sent it back for revision) and the body the old vote judged may no longer be the current text, so that row is NOT counted for round ' + String(round) + '. Each entry names the member, the old recordId, the round the row belongs to, and `whyMeans` says why it does not count; re-file a verdict for the current round to cover them',
-      means: 'perRoundReviewCoverage answers ONE question — which expected member holds a COUNTED deliverable cross-review verdict for round ' + String(round) + ' right now — and it is computed by ONE function (`perRoundReviewCoverageOfState`) that both the advance and status doors print, so the two receipts cannot disagree about the covered set. The mechanism that invalidates a round-N−1 vote is deliberate and unchanged: a review judges the prose of its own round. This field is the READING of that rule, not a change to it' }
+        ? 'empty ON PURPOSE: no expected member holds a legacy earlier-round row that fails the text test (round-old votes on UNCHANGED text now COUNT — see `covered`)'
+        : 'NOT empty (a FILTERED view of `voidReviews` where why=="previous-round"): these members filed a review on an EARLIER round and the row carries no part fingerprint to prove its text unchanged; re-file a verdict for the current part to cover them',
+      means: 'perRoundReviewCoverage answers ONE question — which expected member holds a COUNTED deliverable cross-review verdict whose judged TEXT is still the text on file — and it is computed by ONE function (`perRoundReviewCoverageOfState`) that both the advance and status doors print, so the two receipts cannot disagree about the covered set. Since RUN 81 the gate binds the part FINGERPRINT, not the round number: a round bump alone does not invalidate a verdict on an untouched section. `voidReviews` carries the counted, grouped reading of every vote that does not count' }
   }
 
   function requireCrossReview(state, where) {
@@ -1189,8 +1231,10 @@ export function createPaperFlow({
     // the part is not a crosser: the gate must wait for a vote on the current prose, and the refusal must NAME it (both
     // fingerprints) instead of reporting "these members never reviewed" — the row exists and looks right, which is
     // exactly the shape run 79 filed while the part still carried the round-1 text.
-    const crossers = required.filter((id) => { const b = rowOf(id); return votedThisRound(b, id) && judgedPartReading(state, b).fresh })
-    const stalePartIds = required.filter((id) => { const b = rowOf(id); return votedThisRound(b, id) && !judgedPartReading(state, b).fresh })
+    // ★★★ TB-2761 (RUN 81 D-1): the SAME predicate the coverage reading prints — the binding is the judged part's
+    // FINGERPRINT, so a round bump alone does not invalidate a verdict on an untouched section.
+    const crossers = required.filter((id) => coverageVerdictOf(state, rowOf(id)).counts)
+    const stalePartIds = required.filter((id) => { const b = rowOf(id); const v = coverageVerdictOf(state, b); return v.voidWhy === 'part-text-changed' })
     if (required.length > 0 && crossers.length === required.length) return crossers
     // ★★ RUN 162: state BOTH readings, so a mismatch between the cache and the record is visible in the refusal
     // instead of presenting itself as "the members never reviewed" (run 10 lost an hour to exactly that).
@@ -1290,7 +1334,11 @@ export function createPaperFlow({
     // was recorded in. `advance`/`status` count the vote only while both still match the slot (see `judgedPartReading`).
     const judgedPartFingerprint = ofId === '' ? null : partFingerprintOf(state, ofId)
     const judgedPartRound = ofId === '' ? null : partRoundOf(state, ofId)
-    const staleAtVote = judgedPartRound !== null && judgedPartRound !== Number(state.round)
+    // ★★★ TB-2761 (RUN 81 D-1/D-4): A ROUND MISMATCH ALONE IS NOT STALENESS. The binding that invalidates a vote is the
+    // TEXT's fingerprint; at the moment it is cast the vote BINDS the current text, so stalePart is false here. The
+    // reading (advance/status) later says why a vote does not count (`voidReviews[].why` = part-text-changed/previous-round),
+    // and it never calls equal fingerprints "different".
+    const staleAtVote = false
     const review = { target: str(state.target), member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000),
       judgedPartFingerprint, judgedPartRound }
     const put = records.put({ track: TRACK, kind: 'paper-review', title: recordName(state.target, 'review|' + review.member), body: JSON.stringify(review), by: author })
@@ -1301,8 +1349,8 @@ export function createPaperFlow({
     return { ok: true, recorded: review.member, of: review.of, deliverable: review.deliverable, round: state.round,
       judgedPartFingerprint, judgedPartRound, stalePart: staleAtVote,
       judgedPartMeans: judgedPartFingerprint === null
-        ? 'this vote is bound to NO part text under `of` (that slot holds no recorded part yet), so there is no fingerprint to go stale — the round still has to match (`advance`/`status` state the binding either way)'
-        : 'this vote binds the TEXT it judged: `of` names the author, `judgedPartFingerprint` is that part record fingerprint AT VOTE TIME and `judgedPartRound` the round whose text it was. If the part is replaced later this vote is STALE: `advance`/`status` name it in `staleReviews` instead of counting it against prose it never saw' + (staleAtVote ? ' — ★ this vote ALREADY judged an older round than the paper is in, so it will be stale immediately: read the current part and re-file' : ''),
+        ? 'this vote is bound to NO part text under `of` (that slot holds no recorded part yet), so there is no fingerprint to go stale — the reading falls back to the round rule and says so'
+        : 'this vote binds the TEXT it judged: `of` names the author, `judgedPartFingerprint` is that part record fingerprint AT VOTE TIME and `judgedPartRound` the round whose text it was. If that TEXT is replaced later this vote does not count: `advance`/`status` name it in `voidReviews` (why:"part-text-changed") instead of counting it against prose it never saw. A round bump alone does NOT invalidate it — the round moved, the prose did not',
       // ★★ RUN 170 (run 16 / FEEDBACK16 F16-8): `part` answered with the row it wrote and `review` did not, so the one
       // receipt that files the gate's evidence was the only one a caller could not point at afterwards.
       recordId: put && put.id ? put.id : null, fingerprint: put && put.fingerprint ? put.fingerprint : null }
@@ -1320,6 +1368,12 @@ export function createPaperFlow({
       const roundTo = Number(state.round)
       if (roundTo !== Number(roundFrom)) {
         return { roundFrom: Number(roundFrom), roundTo, roundMoved: true,
+          // ★★★ TB-2761 (RUN 81 D-5): the two round numbers on one screen must be explained and in sync; run 81 read
+          // `round:3` beside `updatedRound:2` and had no rule for which one the gate uses.
+          updatedRound: Number(state.updatedRound), updatedRoundSameAsRound: Number(state.updatedRound) === roundTo,
+          updatedRoundMeans: state.updatedRoundMeans || (Number(state.updatedRound) === roundTo
+            ? '`updatedRound` equals `round` on this receipt (every write moves both in this build)'
+            : '`updatedRound` differs from `round` on this OLD state: `round` is the authoritative stage; `updatedRound` only records the last stored write — it is history, not a second stage'),
           roundMeans: 'the round ADVANCED (' + String(roundFrom) + ' → ' + String(roundTo) + ') and the paper moved ' + fromStage + ' → ' + toStage + ': this is not a retry of round ' + String(roundFrom) + ', it is the next round' }
       }
       return { roundFrom: Number(roundFrom), roundTo, roundMoved: false,
@@ -1401,13 +1455,30 @@ export function createPaperFlow({
         try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { body = null }
         if (!body || String(body.member) !== String(member)) return { deliverable: false, comments: '', source: 'none', recordId: row.id }
         if (Number(body.round) !== Number(state.round)) {
-          // ★★ RUN 172 (FEEDBACK17 P1-C): the receipt said `deliverable:false` about a row whose own body says `true`,
-          // and a reader could only conclude the member voted "not deliverable" — the vote that was actually cast
-          // belonged to ANOTHER round. That is a ROUND MISMATCH, not a refusal, and the receipt now says so instead of
-          // flattening it into a vote nobody cast (the row's own reading travels with the verdict).
+          // ★★★ TB-2761 (RUN 81 D-1): AN EARLIER-ROUND ROW IS NOT AUTOMATICALLY STALE. A part was replaced, `advance` bumped
+          // the paper round, and the reviewers whose sections were NOT touched were counted as coverage gaps. The binding is
+          // the part's FINGERPRINT: unchanged ⇒ the verdict still counts (and the cache is re-healed onto the durable row);
+          // changed ⇒ stale TEXT (the reviewer must read the new text); no binding ⇒ the old round mismatch, said by name.
+          const judgedEarlier = judgedPartReading(state, body)
+          const ofEarlier = body.of === undefined || body.of === null ? '' : str(body.of)
+          const crossEarlier = ofEarlier !== '' && ofEarlier !== String(member)
+          if (crossEarlier && judgedEarlier.bound === true && !judgedEarlier.partChanged) {
+            state.reviews[member] = { recordId: row.id, fingerprint: row.fingerprint || null, deliverable: body.deliverable === true, of: body.of, round: body.round, comments: str(body.comments),
+              judgedPartFingerprint: judgedEarlier.boundFingerprint, judgedPartRound: judgedEarlier.boundRound, stalePart: false }
+            return { deliverable: body.deliverable === true, comments: str(body.comments), source: 'durable', recordId: row.id,
+              countedFromEarlierRound: true, rowRound: body.round, rowOf: judgedEarlier.of || null,
+              judgedPartFingerprint: judgedEarlier.boundFingerprint, judgedPartRound: judgedEarlier.boundRound,
+              means: 'the review row belongs to round ' + body.round + ' but the part text it judged is UNCHANGED (fingerprint ' + String(judgedEarlier.boundFingerprint) + '): since RUN 81 the gate binds the TEXT, not the round number, so this verdict counts for round ' + state.round }
+          }
+          if (crossEarlier && body.deliverable === true && judgedEarlier.bound === true && judgedEarlier.partChanged) {
+            return { deliverable: false, comments: 'the review row for an earlier round judged a text of the part that has since been replaced', source: 'durable-stale-part', recordId: row.id,
+              stalePart: true, rowDeliverable: true, rowRound: body.round, rowOf: judgedEarlier.of || null,
+              judgedPartFingerprint: judgedEarlier.boundFingerprint, currentFingerprint: judgedEarlier.currentFingerprint, judgedPartRound: judgedEarlier.boundRound,
+              means: 'the newest review row for this member belongs to round ' + body.round + ' and is BOUND to part fingerprint ' + String(judgedEarlier.boundFingerprint) + ' while the part on file now carries ' + String(judgedEarlier.currentFingerprint) + ': the text it judged was replaced, so the vote is STALE — not counted, and not a refusal' }
+          }
           return { deliverable: false, comments: 'a review row exists for round ' + body.round + ', not this round (' + state.round + ')', source: 'durable-other-round', recordId: row.id,
             rowDeliverable: body.deliverable === true, rowRound: body.round, rowOf: body.of === undefined ? null : str(body.of),
-            means: 'the newest review row for this member belongs to round ' + body.round + ' (rowDeliverable:' + (body.deliverable === true) + '); it is STALE for round ' + state.round + ' and is not counted — that is a ROUND MISMATCH, not a member refusing' }
+            means: 'the newest review row for this member belongs to round ' + body.round + ' and carries no part fingerprint proving its judged text unchanged; it is not counted — that is a ROUND MISMATCH, not a member refusing' }
         }
         // ★★★ TB-2743: the row belongs to THIS round but is bound to an EARLIER TEXT of the part. That is not a round
         // mismatch and not a refusal: the member voted deliverable about prose that has since been replaced. It travels
@@ -1439,6 +1510,8 @@ export function createPaperFlow({
         // ★★★ TB-2743: a stale-TEXT vote travels under its own name with both fingerprints, so a reader can tell it
         // from a round mismatch and from a refusal without opening the row.
         if (v.stalePart === true) { row.stalePart = true; row.judgedPartFingerprint = v.judgedPartFingerprint; row.currentFingerprint = v.currentFingerprint; row.judgedPartRound = v.judgedPartRound }
+        // ★ TB-2761 D-1: a verdict counted ACROSS a round boundary says so (the round moved, the text did not).
+        if (v.countedFromEarlierRound === true) { row.countedFromEarlierRound = true; row.rowRound = v.rowRound; row.means = v.means }
         return row
       })
       // ★★ RUN 199 (run 39 / FEEDBACK38 1.3, MEASURED): THIS LIST CONFLATED TWO FACTS. Run 39 read
@@ -1487,19 +1560,31 @@ export function createPaperFlow({
         return id + '：' + (v.source === 'durable-other-round' ? '最近一条评审行属于别的轮次（ROUND MISMATCH，不计为拒收）' : '还没有本轮的评审行（未表态，不计为拒收）')
       })).concat(stalePartReviews.map((id) => {
         const v = verdicts.filter((x) => x.member === id)[0] || {}
-        return id + '：本轮的票绑的是旧正文（STALE PART：judgedPartFingerprint ' + String(v.judgedPartFingerprint === null || v.judgedPartFingerprint === undefined ? '（无）' : v.judgedPartFingerprint) + ' ≠ 当前 ' + String(v.currentFingerprint === null || v.currentFingerprint === undefined ? '（无）' : v.currentFingerprint) + '，不计为拒收也不计为覆盖）'
+        const shown = (x) => (x === null || x === undefined ? '（无）' : String(x))
+        // ★★★ TB-2761 (RUN 81 D-4): only print ≠ when the fingerprints are REALLY different. Run 81 printed
+        // "judgedPartFingerprint f56eba11… ≠ current f56eba11…" — the same hash on both sides — and a reader had to
+        // discover that the invalidation was about the ROUND, not about the bytes. When they are equal the line says so.
+        const sameBytes = String(shown(v.judgedPartFingerprint)) === String(shown(v.currentFingerprint))
+        const why = v.stalePartWhy === 'part-text-changed' || (!sameBytes && v.judgedPartFingerprint !== undefined) ? 'part-text-changed' : 'round-changed'
+        return id + '：本轮的票绑的是旧正文（STALE PART：' + (sameBytes
+          ? 'judgedPartFingerprint 与当前相同（＝ ' + shown(v.currentFingerprint) + '；作废原因是轮次/无绑定，不是字节）'
+          : 'judgedPartFingerprint ' + shown(v.judgedPartFingerprint) + ' ≠ 当前 ' + shown(v.currentFingerprint)) + '；why:"' + why + '"；不计为拒收也不计为覆盖）'
       })).join('；') }
       state.disagreement = (state.disagreement || []).concat([entry])
       // ★★ RUN 201 (run 40 / FEEDBACK39 1.3): the receipt said "goes back to writing" and did not say the ROUND moved,
       // so the editor read a round-3 paper as a retry of round 2. The two numbers are read BEFORE the increment.
       const roundFrom = state.round
       if (state.round < roundsCap()) {
-        state.round += 1; state.status = 'writing'; state.stage = 'writing'; state.reviews = {}
+        state.round += 1; state.updatedRound = state.round; state.status = 'writing'; state.stage = 'writing'; state.reviews = {}
         writeState(state)
         // ★★ RUN 197 (run 38 / FEEDBACK37 1.3, MEASURED): the UNANIMOUS branch stated `refusers: []` with a note claiming the
         // disagreement branches "carry the same field with names in it" — and neither did. Run 38's editor read
         // `refusers:["r-1"]` with no sentence saying what the list means or what happens next.
         return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'writing', round: state.round, roundFrom, roundTo: state.round,
+          // ★★★ TB-2761 D-5: this branch writes its round fields directly (not through `roundReading`), so it carries the
+          // same two-numbers sentence itself — run 81 read round:3 beside updatedRound:2 with no rule for either.
+          updatedRound: Number(state.updatedRound), updatedRoundSameAsRound: Number(state.updatedRound) === state.round,
+          updatedRoundMeans: state.updatedRoundMeans,
           roundMeans: 'the round ADVANCED (' + String(roundFrom) + ' → ' + String(state.round) + ') and the paper went back to writing: this is not a retry of round ' + String(roundFrom) + ', it is the next round with the disagreement recorded',
           unanimous: false, refusers, stale, notYetReviewed, stalePartReviews,
           stalePartReviewsMeans: stalePartReviews.length === 0
@@ -1779,7 +1864,7 @@ export function createPaperFlow({
     state.final = fin
     const capNow = roundsCap()
     if (state.round < capNow) {
-      state.round += 1; state.status = 'writing'; state.stage = 'writing'
+      state.round += 1; state.updatedRound = state.round; state.status = 'writing'; state.stage = 'writing'
       state.disagreement = (state.disagreement || []).concat([{ round: state.round - 1, members: [fin.by], detail: (pdfLessFinal ? '定稿未产出 PDF 的修复轮（RUN 176：编译失败不再定稿，历史残件由这里救回）：' : '定稿代表要求修订：') + (fin.note || '（未说明）') }])
       writeState(state)
       // ★★ RUN 158 (run 6 / N5): this branch moved the paper awaiting-editor → writing but reported `from:null,to:null`
@@ -1898,8 +1983,12 @@ export function createPaperFlow({
     // and the receipt said `produced:true` - an answer to "is the file there", never to "did the mathematics print".
     // Unicode math glyphs are now re-spelled as LaTeX math commands (amsmath/amssymb are already in REPAIR_CORE), and the
     // count travels in the receipt so a caller can tell "nothing was repaired" from "five glyphs were".
-    const TEX_MATH_GLYPH = { '≥': '\\geq', '≤': '\\leq', '≠': '\\neq', '≈': '\\approx', '∎': '\\blacksquare', '∞': '\\infty', '∈': '\\in', '⊆': '\\subseteq', '⇒': '\\Rightarrow', '→': '\\rightarrow', '±': '\\pm', '×': '\\times', '·': '\\cdot', '÷': '\\div' }
-    const MATH_GLYPH_RE = /[≥≤≠≈∎∞∈⊆⇒→±×·÷]/g
+    // ★★★ TB-2768 (RUN 81 attempt-3, MEASURED): the table below did NOT cover six glyphs that were in the paper body, so
+    // xelatex logged 16 `Missing character` lines (ℤ×4, ∀×2, ∣×6, ∩×2, ∪×1, ⋯×1 — all lmroman10-regular) and the PDF
+    // silently dropped them while `final` answered `ok:true`. This table is the ONE place a unicode math glyph is
+    // re-spelled; extend THIS table, never a second copy (the kernel-side detection below is only a safety net).
+    const TEX_MATH_GLYPH = { '≥': '\\geq', '≤': '\\leq', '≠': '\\neq', '≈': '\\approx', '∎': '\\blacksquare', '∞': '\\infty', '∈': '\\in', '⊆': '\\subseteq', '⇒': '\\Rightarrow', '→': '\\rightarrow', '±': '\\pm', '×': '\\times', '·': '\\cdot', '÷': '\\div', 'ℤ': '\\mathbb{Z}', '∀': '\\forall', '∣': '\\mid', '∩': '\\cap', '∪': '\\cup', '⋯': '\\cdots' }
+    const MATH_GLYPH_RE = /[≥≤≠≈∎∞∈⊆⇒→±×·÷ℤ∀∣∩∪⋯]/g
     const texMath = { glyphsRepaired: 0, proseCarets: 0, proseUnderscores: 0, inlineMathSpans: 0, displayMathSpans: 0, unpairedDisplayMarkers: 0 }
     const repairInMath = (s) => String(s).replace(MATH_GLYPH_RE, (ch) => { texMath.glyphsRepaired += 1; return TEX_MATH_GLYPH[ch] })
     const repairInText = (s) => String(s).replace(MATH_GLYPH_RE, (ch) => { texMath.glyphsRepaired += 1; return '$' + TEX_MATH_GLYPH[ch] + '$' })
@@ -2181,7 +2270,13 @@ export function createPaperFlow({
       // latex seam's success return, which counted and hashed the same buffer). A row that carries only a byte count
       // cannot prove the disk file is the compiled file — run 75's verifier could compute sha256(disk)=591d23a6… while
       // the archive row carried only its OWN body fingerprint, so the check ended ARITHMETIC-BLOCKED.
-      body: JSON.stringify({ pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, pdfSha256: r.pdfSha256 === undefined ? null : r.pdfSha256, engine: r.engine, tried: r.tried, argv: r.argv, elapsedMs: r.elapsedMs, timeoutMs: r.timeoutMs }),
+      // ★★★ TB-2768 (RUN 81 attempt-3): the same row also records the GLYPH verdict, so a later `status` read can answer
+      // "did the PDF keep the mathematics" without re-compiling.
+      body: JSON.stringify({ pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, pdfSha256: r.pdfSha256 === undefined ? null : r.pdfSha256, engine: r.engine, tried: r.tried, argv: r.argv, elapsedMs: r.elapsedMs, timeoutMs: r.timeoutMs,
+        glyphLossDetected: r.glyphLossDetected === true,
+        missingCharacterCount: r.missingCharacterCount === undefined ? null : r.missingCharacterCount,
+        glyphsUnrepaired: Array.isArray(r.glyphsUnrepaired) ? r.glyphsUnrepaired : [],
+        logPath: r.logPath === undefined ? null : r.logPath, logRead: r.logRead === true }),
       settled: true, by: author,
     })
     return { ok: true, target: state.target, engine: r.engine, pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, pdfSha256: r.pdfSha256 === undefined ? null : r.pdfSha256,
@@ -2191,6 +2286,18 @@ export function createPaperFlow({
       // old line printed `state.id + '.tex'`, so a minted id and the folder disagreed in the same receipt.
       argv: Array.isArray(r.argv) ? r.argv.slice(0, 16) : [], outDir: r.outDir || null, sourceName: folder + '.tex',
       tried: r.tried, elapsedMs: r.elapsedMs, recordId: put && put.id,
+      // ★★★ TB-2768: the GLYPH verdict the kernel read from the engine log travels with the compile receipt ("a PDF
+      // exists" and "the mathematics printed" are two readings). `glyphLossDetected` is at THIS level too, so it is
+      // never buried under `math` alone.
+      glyphLossDetected: r.glyphLossDetected === true,
+      missingCharacterCount: r.missingCharacterCount === undefined ? null : r.missingCharacterCount,
+      glyphsUnrepaired: Array.isArray(r.glyphsUnrepaired) ? r.glyphsUnrepaired : [],
+      glyphLossCode: r.glyphLossCode === undefined ? null : r.glyphLossCode,
+      glyphLossMeans: r.glyphLossMeans === undefined ? null : r.glyphLossMeans,
+      glyphLossHint: r.glyphLossHint === undefined ? null : r.glyphLossHint,
+      logPath: r.logPath === undefined ? null : r.logPath,
+      logRead: r.logRead === true,
+      ...(r.logReadWhy === undefined ? {} : { logReadWhy: r.logReadWhy }),
       // ★★★ RUN 217: the same repair counts travel with the compile receipt, so "PDF produced" and "formulas printed" are
       // two readings instead of one optimistic `ok`.
       math: PaperTexBody({ target }).math,

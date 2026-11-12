@@ -81,8 +81,17 @@ ok(SRC_PAPER.includes('READS AS TEXT in the PDF instead of as mathematics'),
   '★ ① and the receipt says what an escaped caret MEANS: the formula reads as text', SRC_PAPER.includes('READS AS TEXT'))
 ok(SRC_PAPER.includes('REPAIRS') || SRC_PAPER.includes('this paper needed repair before LaTeX could print it'),
   '★ ① the math block distinguishes "nothing needed repair" from "N glyphs were repaired"', SRC_PAPER.includes('needed repair before LaTeX'))
-ok(SRC_PROMPTS.includes('行内数学') && SRC_PROMPTS.includes('$'),
-  '★ ① the writing prompt TEACHES the paired-$ convention (the run 54 members wrote bare `_{i=1}^{n}` and it printed as text)', SRC_PROMPTS.includes('行内数学'))
+ok(SRC_PROMPTS.includes('公式一律写成成对 `$…$`') && SRC_PROMPTS.includes('`$$…$$`'),
+  '★ ① the writing prompt TEACHES paired-$ for INLINE and DISPLAY math (run 81 final measured inlineMathSpans:0 / displayMathSpans:0)', SRC_PROMPTS.includes('公式一律写成成对'))
+ok(!SRC_PROMPTS.includes('行内数学要用成对'),
+  '★ ① the retired inline-only sentence is GONE (it taught `$` but never named `$$`)', SRC_PROMPTS.includes('行内数学要用成对'))
+{
+  // ★ TB-2765 A-3: this pin must be able to fail — swapping the sentence back to the retired wording turns it red.
+  const accurate = (t) => t.includes('公式一律写成成对 `$…$`') && t.includes('`$$…$$`') && !t.includes('行内数学要用成对')
+  ok(accurate(SRC_PROMPTS), '★ ① the accurate predicate holds on the shipped writing guide', true)
+  const relapsed = SRC_PROMPTS.split('公式一律写成成对 `$…$`').join('行内数学要用成对的 `$` 包起来') + ' 行内数学要用成对'
+  ok(!accurate(relapsed), '★ ① anti-lamp: the retired inline-only wording turns the predicate red', accurate(relapsed))
+}
 
 ok(SRC_BLUEPRINT.includes('const continuedBase = target === null'),
   '★ ② the blueprint write names which row the text joined (or that none was)', SRC_BLUEPRINT.includes('const continuedBase'))
@@ -201,6 +210,31 @@ ok(typeof plain.foldedMeans === 'string' && /NOT a declared value/.test(plain.fo
   '★★★ ③ ...and foldedMeans says the folded value is the EFFECTIVE state, not a declaration', { foldedMeans: plain.foldedMeans })
 ok(plain.proofState === null,
   '★★★ ③ ...while proofState is unchanged (the fold must never be reported as a declaration)', { proofState: plain.proofState })
+
+console.log('=== N. TB-2768: six MORE unicode math glyphs are re-spelled (ℤ ∀ ∣ ∩ ∪ ⋯) so the font never drops them ===')
+{
+  const P6 = 'run217-glyphs6'
+  const st6 = await A.call('vibe_v5_paper', { action: 'start', participants: ['r-1', 'r-2'], target: P6 })
+  ok(st6.ok !== false, 'the second paper opens (a refused start would make the assertions below vacuous)', { ok: st6.ok, code: st6.code })
+  const BODY6 = '设 ℤ 上 m ∣ k，A ∩ B，A ∪ B，∀x，⋯ 无限。'
+  const p6 = await A.call('vibe_v5_paper', { action: 'part', target: P6, member: 'r-1', part: '第一节', body: BODY6, evidence: [] })
+  ok(p6.ok !== false, 'the part with the six glyphs is written', { ok: p6.ok, code: p6.code })
+  const r6 = await A.call('vibe_v5_paper', { action: 'render', target: P6 })
+  // the record writes are queued (store is fire-and-forget), so give the fold a moment before reading rows back
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const m6 = r6.math || null
+  ok(m6 !== null && m6.glyphsRepaired >= 6, '★★ 正(TB-2768)：all SIX newly-covered glyphs are counted as repaired (run-81 dropped these)', m6 && { n: m6.glyphsRepaired })
+  // Read the .tex row by the ID this render returned (a track-wide list lags the queued fold writes; the id is the
+  // row this call actually wrote, so the assertion cannot read a DIFFERENT paper's tex).
+  const texId6 = r6 && r6.recordIds && typeof r6.recordIds.tex === 'string' ? r6.recordIds.tex : null
+  ok(texId6 !== null, 'the render receipt names the .tex row id', r6 && r6.recordIds)
+  const tex6 = texId6 === null ? '' : String(kernel.records.get({ id: texId6 }).body || '')
+  ok(tex6.includes('\mathbb{Z}'), 'the .tex row THIS render wrote carries the re-spelled commands (ℤ → \mathbb{Z})', { texId: texId6 })
+  for (const ch of ['ℤ', '∀', '∣', '∩', '∪', '⋯']) ok(!tex6.includes(ch), '★ 正：the raw glyph ' + ch + ' no longer reaches the .tex', { ch })
+  for (const [ch, cmd] of [['ℤ', '\\mathbb{Z}'], ['∀', '\\forall'], ['∣', '\\mid'], ['∩', '\\cap'], ['∪', '\\cup'], ['⋯', '\\cdots']]) {
+    ok(tex6.includes('$' + cmd + '$'), '★★ 正：' + ch + ' became $' + cmd + '$ inside the .tex (math mode, not bare text)', { cmd })
+  }
+}
 
 console.log('')
 if (failed === 0) console.log('=== RUN 217 FEEDBACK53: ' + passed + ' passed, 0 failed ===')

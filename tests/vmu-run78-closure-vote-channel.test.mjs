@@ -25,7 +25,7 @@
 // Run: node tests/vmu-run78-closure-vote-channel.test.mjs   Last line: N passed, M failed
 
 import { mkdtemp, rm } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -89,12 +89,19 @@ try {
     '§0b the fact has three decidable states: provable, unprovable-with-why, and (by absence) legacy')
   ok(turnSource.includes("keptWhy: 'tool-visibility-unprovable'") && turnSource.includes("keptWhy: 'legacy-row'") && turnSource.includes("keptWhy: 'tool-not-mounted'"),
     '§0c each vote-channel outcome is named on the row, not left to a bare `kept:false`')
-  ok(/mounted\.provable !== true\) \{\s*bookkeeping\.push\(\{ field: 'vote_solved', kept: false, keptWhy: 'tool-visibility-unprovable'/.test(turnSource),
-    '§0d an unprovable turn is REJECTED before any adoption (the branch runs before the only adopting else)')
-  const adoptAt = turnSource.indexOf("keptWhy: 'tool-not-mounted'")
-  const unprovableAt = turnSource.indexOf("keptWhy: 'tool-visibility-unprovable'")
-  ok(adoptAt > 0 && unprovableAt > 0 && unprovableAt < adoptAt,
-    '§0e the adopting branch can only be reached AFTER the unprovable branch (source order, not just presence)')
+  // ★ TB-2764 D-8 added a DECLARED adoption branch: the unprovable/legacy states are still fail-closed, and the
+  // UNCONDITIONAL adopting `else` (the measured `tool-not-mounted`) must still sit after them. Pin the APPLY region so the
+  // receipt-side copy of the same branch tree cannot satisfy the source-order check by accident.
+  const applyVoteAt = turnSource.indexOf('const turnIdForVote = opts &&')
+  const applyVote = applyVoteAt < 0 ? '' : turnSource.slice(applyVoteAt, applyVoteAt + 14000)
+  ok(/mounted\.provable !== true\) \{[\s\S]{0,1400}keptWhy: 'tool-visibility-unprovable'/.test(applyVote),
+    '§0d an unprovable turn is REJECTED on the apply path unless the caller DECLARED the absence (no declaration ⇒ no adoption)')
+  const unprovableAt = applyVote.indexOf("keptWhy: 'tool-visibility-unprovable'")
+  const finalAdoptAt = applyVote.indexOf("adoptedBecause: 'turn ' + turnIdForVote + ' mounted '")
+  ok(applyVoteAt > 0 && unprovableAt > 0 && finalAdoptAt > 0 && unprovableAt < finalAdoptAt,
+    '§0e the UNCONDITIONAL adopting else can only be reached AFTER the unprovable branch (source order, not just presence)')
+  ok(applyVote.includes("if (declaredMountedTools !== null) {") && (applyVote.match(/adoptDeclared\(/g) || []).length >= 3,
+    '§0e2 ★ every declared adoption is guarded by the named `declaredMountedTools` fact (never a blanket adoption)')
   ok(/namedEmpty: typeof patch\.notices\.namedEmpty === 'boolean' \? patch\.notices\.namedEmpty : null/.test(turnSource),
     '§0f the ledger whitelist CARRIES the fourth notice key (the RUN 77 producer already computed it)')
   ok((turnSource.match(/\{lines, rendered, blockChars, namedEmpty\}/g) || []).length >= 2,

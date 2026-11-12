@@ -281,10 +281,13 @@ ok(JSON.stringify(stPaper && stPaper.paper && stPaper.paper.title).includes(T),
 // Legacy readability: a consult id minted by the OLD format is still answerable. The paper state row is the one
 // record that holds the consult ledger, so the legacy id is written there exactly as an old kernel would have.
 const T2 = '旧标题论文'
-await receipt(b, 'vibe_v5_paper', { action: 'start', target: T2, participants: [ACAD], format: 'md' })
+// ★ TB-2761：互审必须真的有「别人」的部分与绑定指纹的票；单席自审在旧 round 规则下能过，新门会具名拒。
+await receipt(b, 'vibe_v5_paper', { action: 'start', target: T2, participants: [ACAD, R1], format: 'md' })
 await receipt(b, 'vibe_v5_paper', { action: 'part', target: T2, member: ACAD, part: '第一部分', solution: '正文', evidence: ['Members/' + ACAD + '/Propos/pe-1.md'] })
+await receipt(b, 'vibe_v5_paper', { action: 'part', target: T2, member: R1, part: '第二部分', solution: '正文二', evidence: ['Members/' + R1 + '/Propos/pe-2.md'] })
 await receipt(b, 'vibe_v5_paper', { action: 'advance', target: T2 })
-await receipt(b, 'vibe_v5_paper', { action: 'review', target: T2, member: ACAD, deliverable: true, notes: '可交付' })
+await receipt(b, 'vibe_v5_paper', { action: 'review', target: T2, member: ACAD, of: R1, deliverable: true, notes: '可交付' })
+await receipt(b, 'vibe_v5_paper', { action: 'review', target: T2, member: R1, of: ACAD, deliverable: true, notes: '可交付' })
 await receipt(b, 'vibe_v5_paper', { action: 'advance', target: T2 })
 const opened2 = (await receipt(b, 'vibe_v5_paper', { action: 'final', target: T2, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
 eq(codeOf(opened2), 'VMU_OFFICE_CONSULT_REQUIRED', '前置：第二篇也开出了问询（旧 id 可读性需要一个在等的请求）')

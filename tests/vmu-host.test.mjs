@@ -16,6 +16,7 @@
 // host-side zero-mechanism assertion to fail.
 
 import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { cpSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -722,6 +723,62 @@ if (SELF_PROBE) {
   kernel.clearMemberToolOverride('member-a')
   ok(kernel.toolFacePull && kernel.toolFacePull().effectiveBlock === 'appended',
     '★ 无 pack 占位段 ⇒ 记录 effectiveBlock=appended（不静默）', kernel.toolFacePull && kernel.toolFacePull().effectiveBlock)
+  // ★★★ TB-2770 (RUN 81 / P0): in a MEMBER CHILD session the waterfall hands this hook an assembly with NO tool list
+  // (`out.tools` absent). The block used to degrade that to `[]` and then print "0 个（本回合没有可用工具）" while the
+  // SAME turn's wire held 79 tools and 39/39 calls succeeded. The authority is agent.ctx.tools.schemas() — the same
+  // source applyMemberToolFace reads. When even that is unreadable the block must say `wire-unknown`, never "none".
+  const noWire = async (agent) => {
+    const out = await hook({ sections: [] }, { agent }, () => Promise.resolve({ sections: [] }))
+    return { out, block: (out.sections || []).find((s) => s.name === 'v5r-effective-tools') || null }
+  }
+  const wireOut = await noWire(agentA)
+  const wireNames = agentA.ctx.tools.schemas().map((s) => s.name).filter((n) => n !== 'vibe_v5_say') // member slot denies vibe_v5_say
+  ok(wireOut.block && /1 个：vibe_vmu_status/.test(wireOut.block.text) && !/0 个/.test(wireOut.block.text),
+    '★★ TB-2770: out.tools 不可观测 ⇒ 块用 agent.ctx.tools.schemas()（与 applyMemberToolFace 同源），不再渲染 0 个',
+    wireOut.block && wireOut.block.text)
+  const blockNames = (wireOut.block.text.match(/vibe_[A-Za-z0-9_]+/g) || []).sort()
+  ok(JSON.stringify(blockNames) === JSON.stringify(wireNames.slice().sort()),
+    '★★ TB-2770: 块声明的 vibe_* 名集 == 该会话 wire 的 vibe_* 名集', { block: blockNames, wire: wireNames })
+  ok(kernel.toolFacePull().effectiveWireSource === 'agent.ctx.tools.schemas' && kernel.toolFacePull().effectiveCount === wireNames.length,
+    '★★ TB-2770: 回执自报读数来源与数量（agent.ctx.tools.schemas / N）', kernel.toolFacePull())
+  const noWireAgent = { id: 'member-a', ctx: {} }
+  const unknownOut = await noWire(noWireAgent)
+  ok(unknownOut.block && /wire-unknown/.test(unknownOut.block.text) && !/没有可用工具/.test(unknownOut.block.text) && !/0 个/.test(unknownOut.block.text),
+    '★★ TB-2770: 真不可观测 ⇒ 只渲染具名 wire-unknown，绝不断言「没有可用工具」', unknownOut.block && unknownOut.block.text)
+  ok(kernel.toolFacePull().effectiveWireSource === 'wire-unknown' && kernel.toolFacePull().effectiveCount === null && kernel.toolFacePull().effectiveCacheWrite === 'skipped-wire-unknown',
+    '★★ TB-2770: 不可观测不写 narrowFaceByAgent（每回合自锁的根因），也不谎报计数', kernel.toolFacePull())
+  // TB-2770 lamp: a whole-tree copy with the OLD silent degradation (absent => []) must show the defect again.
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2770-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = 'const observedTools = Array.isArray(out.tools) ? out.tools : null'
+      ok(src.indexOf(anchor) !== -1, 'TB-2770 lamp: mutation point present')
+      await writeFile(copyHost, src.replace(anchor, 'const observedTools = Array.isArray(out.tools) ? out.tools : []'))
+      const hm2 = await import(pathToFileURL(copyHost).href + '?tb2770=1')
+      const k2 = km.createKernel({ clock })
+      k2.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: ['vote'] }])
+      await k2.members.hire({ id: 'member-lamp', slot: 'member', institution: 'sim' })
+      const lampAgent = { id: 'member-lamp', ctx: { tools: { schemas: () => ['vibe_vmu_status', 'vibe_vmu_turn'].map((name) => ({ name })), restrict: () => () => {} } } }
+      const listeners2 = {}
+      const ctx2 = {
+        tools: { register: async () => () => {}, schemas: () => [] },
+        effect: (fn) => fn(),
+        on: (e, fn) => { (listeners2[e] = listeners2[e] || []).push(fn) },
+        get: (name) => (name === 'agents' ? { get: (id) => (id === 'member-lamp' ? lampAgent : null) } : null),
+      }
+      const adapter2 = hm2.createHostAdapter({ ctx: ctx2, kernel: k2, settings: {} })
+      await adapter2.install()
+      const hook2 = (listeners2['system-prompt/assemble'] || [])[0]
+      const out2 = await hook2({ sections: [] }, { agent: lampAgent }, () => Promise.resolve({ sections: [] }))
+      const blk2 = (out2.sections || []).find((s) => s.name === 'v5r-effective-tools')
+      ok(blk2 && /0 个/.test(blk2.text) && !/wire-unknown/.test(blk2.text),
+        'TB-2770 lamp RED-worthy: 把「不可观测」降级回 [] ⇒ 块又写 0 个/本回合没有可用工具（真机 59/59 的假事实）',
+        blk2 && blk2.text)
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
   const placeholder = { tools: [{ name: 'vibe_v5_say' }, { name: 'vibe_vmu_status' }], sections: [{ name: 'v5r-effective-tools', text: 'OLD' }] }
   const replacedOut = await hook(placeholder, { agent: agentA }, () => Promise.resolve(placeholder))
   const replacedBlocks = (replacedOut.sections || []).filter((s) => s.name === 'v5r-effective-tools')
@@ -852,8 +909,11 @@ if (SELF_PROBE) {
     !/与你这回合的 wire 完全一致/.test(native.block.text) && !/run_code|呈现/.test(native.block.text),
     '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状，且块自称"快照"而不是自称"与 wire 完全一致"', native.block && native.block.text)
   const hostSrc = await readFile(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
-  ok((hostSrc.match(/const effectiveNames =/g) || []).length === 1,
-    '★ 名字只有一个来源：源码里 effectiveNames 只声明一次，块与 wire 只能从它取名字', (hostSrc.match(/const effectiveNames =/g) || []).length)
+  // TB-2770: the single declaration now has TWO input branches (the waterfall's `out.tools` when observed, the agent's
+  // own `ctx.tools.schemas()` when it is not) — they are still ONE variable/one computation, and the block and the wire
+  // both read it. Pinning the declaration count (not the assignment count) keeps that shape honest.
+  ok((hostSrc.match(/\b(?:const|let) effectiveNames\b/g) || []).length === 1,
+    '★ 名字只有一个来源：源码里 effectiveNames 只声明一次（两个输入分支共用它），块与 wire 只能从它取名字', (hostSrc.match(/\b(?:const|let) effectiveNames\b/g) || []).length)
 }
 
 // ── PHASE 9+ / G5: every TOOL_NAMES row is either REGISTERED or has an explicit false family/surface ───────────────
