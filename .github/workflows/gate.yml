@@ -145,12 +145,12 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     # GATE_RELEASE is set ONLY for a manual release dispatch with the box ticked. An ordinary push must never
     # silently run the release sweep (it is slower and its results mean something else).
+    # Job-level `env` may reference only github/needs/strategy/matrix/vars/inputs. `runner` is a STEP-only
+    # context: an earlier version put `${{ runner.temp }}` here and GitHub rejected the whole workflow at parse
+    # time (measured: run 43251354698 → 422 "Unrecognized named-value: 'runner'", the gate never started).
+    # tests/ci-exclusions.test.mjs guards that rule; step-scoped values live on their step below.
     env:
       GATE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.full_release && '1' || '0' }}
-      # TB-2748: an EMPTY SCRATCH corpus root. Suites that measure a locally captured corpus still fail by name
-      # (they are the excluded rows); suites that only need a writable root to BUILD a corpus must not try
-      # `mkdir <filesystem-root>/_tmp/sim` on a runner whose filesystem root is not writable.
-      VMU_CORPUS_ROOT: ${{ runner.temp }}/sim-corpus
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -178,6 +178,13 @@ jobs:
       # 0-byte untracked `shard-report.json` from this very step is what made it red on CI.
       - name: run shard ${{ matrix.shard }}
         shell: bash
+        # TB-2748: an EMPTY SCRATCH corpus root. Suites that measure a locally captured corpus still fail by name
+        # (they are the excluded rows); suites that only need a writable root to BUILD a corpus must not try
+        # `mkdir <filesystem-root>/_tmp/sim` on a runner whose filesystem root is not writable. It is declared on
+        # THIS step (not the job): `runner` is a step-only context, and job-level env with it makes the whole
+        # workflow unparsable (run 43251354698, 422 "Unrecognized named-value: 'runner'").
+        env:
+          VMU_CORPUS_ROOT: ${{ runner.temp }}/sim-corpus
         run: |
           set -uo pipefail
           rc=0

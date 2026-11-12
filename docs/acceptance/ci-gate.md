@@ -35,7 +35,7 @@ static ──► partition ──► suite(1..8, matrix) ──► union
 
 ### 生成物为什么全部落在 `$RUNNER_TEMP`（TB-2748）
 
-第一次真机 run 里 `repo-hygiene.test.mjs` 红了，红的是 `H2 0 字节普通文件（untracked） "shard-report.json" 0 B`——这个文件不是产品留下的，是**我们自己 workflow 的 shell 重定向**落在 checkout 根目录、并且 `suite` 片里正好同时跑着 repo-hygiene。一个因为门禁自己乱丢垃圾而红的 CI，教所有人「红不用看」。现在 `shard-plan.json`、`meta.json`、`shard-report.json`、`shard-log.txt`、`shard-meta.json`、`union-summary.json` 与下载目录都在 runner 的临时目录里，按绝对路径上传；`suite` job 还导出一个**空的**可写 `VMU_CORPUS_ROOT`，让「需要临时根来**建**语料」的套件（如 `sim-scenario-contracts`）不再去 `mkdir <盘根>/_tmp/sim`（那正是它在 CI 上 `EACCES` 的原因）。
+第一次真机 run 里 `repo-hygiene.test.mjs` 红了，红的是 `H2 0 字节普通文件（untracked） "shard-report.json" 0 B`——这个文件不是产品留下的，是**我们自己 workflow 的 shell 重定向**落在 checkout 根目录、并且 `suite` 片里正好同时跑着 repo-hygiene。一个因为门禁自己乱丢垃圾而红的 CI，教所有人「红不用看」。现在 `shard-plan.json`、`meta.json`、`shard-report.json`、`shard-log.txt`、`shard-meta.json`、`union-summary.json` 与下载目录都在 runner 的临时目录里，按绝对路径上传；`suite` job 的 **run-shard step** 还导出一个**空的**可写 `VMU_CORPUS_ROOT`（**step 级 `env`**，不是 job 级：job 级 `env` 只接受 `github/needs/strategy/matrix/vars/inputs`，`runner` 是 step-only 上下文——放进 job 级会让 GitHub 在**解析期**直接 422 拒绝整份 workflow，实测 run `43251354698` 0 秒失败；静态判据在 `tests/ci-exclusions.test.mjs`），让「需要临时根来**建**语料」的套件（如 `sim-scenario-contracts`）不再去 `mkdir <盘根>/_tmp/sim`（那正是它在 CI 上 `EACCES` 的原因）。
 
 ## 3. 排除表：CI 上跑不起来的判据（而不是「关掉坏的」）
 
@@ -132,7 +132,7 @@ count(i) = floor((expected - i) / N) + 1      (1-based i；expected < i 时为 0
 | 仓外 fixture | `brief-claims-match-product`、`run79-brief-corrections` | 列入 `out-of-repo-fixture` |
 | 门禁自身 litter | `repo-hygiene`（`shard-report.json` 0 B） | **修 workflow**，不排除 |
 | 夹具跨平台缺陷 | `release-ready`（red team `A16b` masked） | **交 rec-a**，不排除 |
-| 环境可修 | `sim-scenario-contracts`（`EACCES mkdir '/_tmp/sim'`） | **修 workflow**（空 `VMU_CORPUS_ROOT`），不排除 |
+| 环境可修 | `sim-scenario-contracts`（`EACCES mkdir '/_tmp/sim'`） | **修 workflow**（空 `VMU_CORPUS_ROOT`，step 级 `env`），不排除 |
 | 旁路 portable-path（sim-lane） | `sim-expected-refusals` audit 的 `A5 CONTRACT_UNREADABLE`（`receipts.mjs:133` 硬编码作者机路径）、`audit-corpus-nested-keys` harvest 的 `real.mjs:50` 硬编码 `D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu` | 在报告里交 sim-lane，本轮不排除（不是环境属性，是代码里写死的路径） |
 
 > 第一次真机 push 前必须先把派生计数刷到 `--check` 无变化；CI 的第一次红必须是**产品/判据事实**，不许是收口记账号。一条因为「我们自己的派生文档过期」而红的 CI，会训练所有人忽略红。
@@ -174,7 +174,7 @@ done
 
 本机 **没有** Python 的 `yaml` 模块（`ModuleNotFoundError: No module named yaml`），仓库又是零依赖。所以本地自证分两层：
 
-- 结构层：`tests/ci-exclusions.test.mjs` §4 直接读 `gate.yml` 文本断言关键契约——`permissions: contents: read` 存在、全文无 `continue-on-error`、所有 `uses:` 都落在 `@v4`、四 job 与 `needs:` 关系存在、`--shard i/8` 存在、`--exclude` **由表派生**（不再有手抄的三条）、生成物写入 `$RUNNER_TEMP`、`union-verify write-meta`、artifact 名含 `run_id`/`attempt`、无 `|| true`、`GATE_RELEASE` 只在 dispatch；
+- 结构层：`tests/ci-exclusions.test.mjs` §4 直接读 `gate.yml` 文本断言关键契约——`permissions: contents: read` 存在、全文无 `continue-on-error`、所有 `uses:` 都落在 `@v4`、四 job 与 `needs:` 关系存在、`--shard i/8` 存在、`--exclude` **由表派生**（不再有手抄的三条）、生成物写入 `$RUNNER_TEMP`、`union-verify write-meta`、artifact 名含 `run_id`/`attempt`、无 `|| true`、`GATE_RELEASE` 只在 dispatch；**并且所有 workflow 的 job 级 `env`/`with` 不得引用 step-only 上下文（`runner`/`steps`/`job`）**——实测 `runner.temp` 放进 job 级 `env` 会让 GitHub 解析期 422 拒绝整份 workflow（run `43251354698` 0 秒失败），该判据自带反灯；
 - 解析层：GitHub 自己在 push 时解析 YAML。若本地需要更硬的解析，用一次性工具（不写进依赖）：`npx --yes js-yaml .github/workflows/gate.yml > /dev/null`。
 
 两层都不做「生成一份 YAML 再声称它是真的」：那只是把同一个错误抄了两遍。

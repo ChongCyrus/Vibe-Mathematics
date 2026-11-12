@@ -15,7 +15,7 @@
 // It also runs its own small lamps (fake label, short why, empty guard, empty table, too many shards) so the
 // plan cannot pass by printing a pretty JSON object and exiting 0.
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs' // fs-purpose: the CI suite reads ci-exclusions.json, the plan, the docs and gate.yml, and synthesizes artifact dirs
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs' // fs-purpose: the CI suite reads ci-exclusions.json, the plan, the docs, gate.yml and every workflow, and synthesizes artifact dirs
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { REPO } from './_lib/repo-root.mjs'
@@ -178,12 +178,61 @@ if (workflow) {
   ok(/needs: suite/.test(workflow), 'union runs after the suite matrix')
   ok(/if: always\(\)/.test(workflow), 'union runs even when a shard failed, so the red can name the shard')
   ok(/node scripts\/ci\/union-verify\.mjs/.test(workflow) && /--dir "\$RUNNER_TEMP\/ci-artifacts"/.test(workflow), 'union verifies the downloaded artifacts with union-verify, from outside the checkout')
-  ok(/VMU_CORPUS_ROOT: \$\{\{ runner\.temp \}\}\/sim-corpus/.test(workflow), '★ TB-2748: the suite job exports an EMPTY writable corpus root, so a corpus-BUILDING suite does not mkdir at a filesystem root')
+  // ★ TB-2748 + the parse-time rule (measured run 43251354698): the EMPTY writable corpus root is declared on the
+  // shard STEP, not on the job. `${{ runner.temp }}` is a STEP-only context; job-level `env`/`with` may use only
+  // github/needs/strategy/matrix/vars/inputs, and GitHub rejects the WHOLE workflow at parse time when that is
+  // violated (422 "Unrecognized named-value: 'runner'", a 0-second run — a gate that never existed, not a red one).
+  ok(/^ {10}VMU_CORPUS_ROOT: \$\{\{ runner\.temp \}\}\/sim-corpus$/m.test(workflow), '★ TB-2748: the shard STEP (step-level env) exports an EMPTY writable corpus root, so a corpus-BUILDING suite does not mkdir at a filesystem root')
+  ok(!/^ {6}VMU_CORPUS_ROOT:/m.test(workflow), '★★ the corpus root is NOT declared in the job-level env (the `runner` context does not exist there)')
   ok(/--expected-run "\$RUN_ID"/.test(workflow) && /--expected-attempt "\$RUN_ATTEMPT"/.test(workflow), 'union expects THIS run and THIS attempt, not whatever artifact happens to be around')
   ok(/pattern: '\*-\$\{\{ env\.RUN_ID \}\}-\$\{\{ env\.RUN_ATTEMPT \}\}\*'/.test(workflow), 'union downloads only artifacts whose names carry this run_id and attempt')
   ok(/GATE_RELEASE: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.full_release && '1' \|\| '0' \}\}/.test(workflow), 'GATE_RELEASE is set only for a manual release dispatch')
   ok(!/\|\|\s*true/.test(workflow), '★★ no step swallows its exit status with || true (a red plan must stay red)')
   ok(/union-summary\.json/.test(workflow), 'the union proof is artifacted so a red survives the log')
+
+  // ── GitHub Actions CONTEXTS: a step-only value at job level is a PARSE-TIME defect, not a runtime surprise ──
+  // MEASURED (run 43251354698, 2026-11-13): the suite job's job-level `env` carried `${{ runner.temp }}`; GitHub
+  // answered 422 "Unrecognized named-value: 'runner'" and the workflow never ran (0 seconds — not a red gate, a
+  // gate that does not exist). pyyaml parses the file happily: the rule is GitHub's context table, so the judge
+  // has to encode it. Job-level `env`/`with` accept github/needs/strategy/matrix/vars/inputs only.
+  const STEP_ONLY_CONTEXTS = ['runner', 'steps', 'job']
+  const JOB_LEVEL_ALLOWED = ['github', 'needs', 'strategy', 'matrix', 'vars', 'inputs']
+  function jobLevelContextProblems(text, label) {
+    const problems = []
+    const lines = String(text).split('\n')
+    let inJobs = false
+    for (let i = 0; i < lines.length; i++) {
+      if (/^jobs:\s*$/.test(lines[i])) { inJobs = true; continue }
+      if (inJobs && /^[A-Za-z]/.test(lines[i])) inJobs = false
+      if (!inJobs) continue
+      const open = /^ {4}(env|with):\s*$/.exec(lines[i])
+      if (open === null) continue
+      for (let j = i + 1; j < lines.length; j++) {
+        const line = lines[j]
+        if (line.trim() === '' || /^\s*#/.test(line)) continue
+        const indent = line.length - line.trimStart().length
+        if (indent <= 4) break
+        const ctx = /\$\{\{\s*([A-Za-z_]\w*)\s*\./.exec(line)
+        if (ctx === null || !STEP_ONLY_CONTEXTS.includes(ctx[1])) continue
+        problems.push(label + ':' + (j + 1) + ': job-level ' + open[1] + ' uses the step-only context `' + ctx[1] + '`; job-level env/with allow only ' + JOB_LEVEL_ALLOWED.join('/'))
+      }
+    }
+    return problems
+  }
+  const workflowDir = join(REPO, '.github', 'workflows')
+  const workflowNames = existsSync(workflowDir) ? readdirSync(workflowDir).filter((name) => /\.ya?ml$/.test(name)) : []
+  ok(workflowNames.length > 0, '★ the workflows directory yields at least one file (a context scan over zero files is not a scan)', workflowNames)
+  const contextProblems = workflowNames.flatMap((name) => jobLevelContextProblems(readText(join(workflowDir, name)) || '', '.github/workflows/' + name))
+  ok(contextProblems.length === 0, '★★ no job-level env/with references a step-only GitHub context (runner/steps/job): GitHub rejects the whole workflow at parse time', contextProblems)
+  // The lamp is the MEASURED shape, and its control is the same expression one level down. A judge that merely
+  // counted `${{ runner.` occurrences would red the legal step-level form too; a judge that only looked for YAML
+  // syntax errors would pass the broken one. The level is the fact that matters.
+  const jobLevelLamp = 'jobs:\n  demo:\n    runs-on: ubuntu-latest\n    env:\n      BROKEN: ${{ runner.temp }}/x\n    steps:\n      - run: echo ok\n'
+  const stepLevelControl = 'jobs:\n  demo:\n    runs-on: ubuntu-latest\n    steps:\n      - name: s\n        env:\n          FINE: ${{ runner.temp }}/x\n        run: echo ok\n'
+  ok(jobLevelContextProblems(jobLevelLamp, 'lamp').length === 1 && /^lamp:5:/.test(jobLevelContextProblems(jobLevelLamp, 'lamp')[0]),
+    '★ LAMP: the broken shape (runner.temp in JOB-level env) is named with file:line', jobLevelContextProblems(jobLevelLamp, 'lamp'))
+  ok(jobLevelContextProblems(stepLevelControl, 'control').length === 0,
+    '★ CONTROL: the same expression on a STEP env stays legal (the judge is about the level, not the string)', jobLevelContextProblems(stepLevelControl, 'control'))
 }
 
 // ─────────────────────────── §5 in-suite lamps: the plan must red for each failure ───────────────────────────
