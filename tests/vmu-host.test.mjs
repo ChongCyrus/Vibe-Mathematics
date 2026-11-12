@@ -739,8 +739,12 @@ if (SELF_PROBE) {
   const blockNames = (wireOut.block.text.match(/vibe_[A-Za-z0-9_]+/g) || []).sort()
   ok(JSON.stringify(blockNames) === JSON.stringify(wireNames.slice().sort()),
     '★★ TB-2770: 块声明的 vibe_* 名集 == 该会话 wire 的 vibe_* 名集', { block: blockNames, wire: wireNames })
-  ok(kernel.toolFacePull().effectiveWireSource === 'agent.ctx.tools.schemas' && kernel.toolFacePull().effectiveCount === wireNames.length,
-    '★★ TB-2770: 回执自报读数来源与数量（agent.ctx.tools.schemas / N）', kernel.toolFacePull())
+  // ★★★ TB-2773: the source label now says WHICH read produced the name set, because the old scope-less read was the
+  // defect: `agent.ctx.tools.schemas(scope)` = the registered view, `agent.ctx.tools.schemas(scope,toolSet)` = the
+  // request's own per-turn projection (the one the wire is built from). Here the context carries no toolSet, so the
+  // registered view is the truthful label — never a bare 'agent.ctx.tools.schemas' implying the wire.
+  ok(/^agent\.ctx\.tools\.schemas\(scope\)$/.test(String(kernel.toolFacePull().effectiveWireSource)) && kernel.toolFacePull().effectiveCount === wireNames.length,
+    '★★ TB-2770/TB-2773: 回执自报读数来源与数量（agent.ctx.tools.schemas(scope[,toolSet]) / N）', kernel.toolFacePull())
   const noWireAgent = { id: 'member-a', ctx: {} }
   const unknownOut = await noWire(noWireAgent)
   ok(unknownOut.block && /wire-unknown/.test(unknownOut.block.text) && !/没有可用工具/.test(unknownOut.block.text) && !/0 个/.test(unknownOut.block.text),
@@ -903,17 +907,172 @@ if (SELF_PROBE) {
   const native = await mkPtc(false)
   // ★ LIVE RUN 2026-10-25: the caption used to be asserted verbatim as 「这份列表与你这回合的 wire 完全一致」 — a promise
   // the producer cannot keep in every session (a subagent child's snapshot was 70 names against a wire that also held the
-  // framework's tools). The assertion now pins what the caption must DO: name itself a snapshot and name the tie-break.
+  // framework's tools). The assertion pinned what the caption must DO: name the source and the tie-break.
+  // ★★★ TB-2773 (RUN 82): the '本段生成那一刻的 wire 快照' caption was MEASURED false (block said 1 name, the same
+  // request's wire carried 79), so it is gone. The caption must now name the per-turn tool table as the source (the same
+  // read the wire is built from) and keep the tie-break; it must never claim to BE the wire.
   ok(native.presentCalls.length === 0 && native.block && /【本轮你实际能调用的工具｜member】2 个：vibe_v5_say、vibe_vmu_status/.test(native.block.text) &&
-    /本段生成那一刻的 wire 快照/.test(native.block.text) && /以 wire 为准/.test(native.block.text) &&
+    /per-turn 工具表/.test(native.block.text) && /request\/header\.tools 同一来源/.test(native.block.text) &&
+    /以 wire 为准/.test(native.block.text) && !/快照/.test(native.block.text) &&
     !/与你这回合的 wire 完全一致/.test(native.block.text) && !/run_code|呈现/.test(native.block.text),
-    '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状，且块自称"快照"而不是自称"与 wire 完全一致"', native.block && native.block.text)
+    '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状，且块称"per-turn 工具表同源"（TB-2773 删掉已被证伪的 wire 快照句）而不是"与 wire 完全一致"', native.block && native.block.text)
   const hostSrc = await readFile(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
   // TB-2770: the single declaration now has TWO input branches (the waterfall's `out.tools` when observed, the agent's
   // own `ctx.tools.schemas()` when it is not) — they are still ONE variable/one computation, and the block and the wire
   // both read it. Pinning the declaration count (not the assignment count) keeps that shape honest.
   ok((hostSrc.match(/\b(?:const|let) effectiveNames\b/g) || []).length === 1,
     '★ 名字只有一个来源：源码里 effectiveNames 只声明一次（两个输入分支共用它），块与 wire 只能从它取名字', (hostSrc.match(/\b(?:const|let) effectiveNames\b/g) || []).length)
+}
+
+// ── ★★★ TB-2773 (RUN 82 / P0): the member block must name the SAME per-turn tool table as request/header.tools ──────
+// MEASURED on the 82nd real-machine run: EVERY member/temp-worker/chair prompt block said 「1 个：working_directory」
+// while the SAME request's `request/header.tools` carried 79 tools (10 host + 69 `vibe_*`) and the model made 39 calls.
+// Root cause: TB-2770's source `agent.ctx.tools.schemas()` was called with NO arguments, and in that form it reads the
+// GLOBAL tool layer only (dsh-tools/lib/index.js:589-591 → definitions(scope, toolSet) (`:579-581`) → view(scope)
+// (`:477-508`), where view(undefined) is the root layer). The ONLY globally mounted tool in this deployment is
+// `working_directory` (dsh-base/cordis.patch.yml:169-170 → dsh-tool-working-directory/lib/index.js:16); the other 8 host
+// tools are mounted by the agent preset and the 69 pack tools by the pack — all scope-local and invisible to that read.
+// The wire instead uses definitions(scope, toolSet): dsh-agent-loop/lib/index.js:673-685 passes {scope: agent, toolSet}
+// into systemPrompt.assemble, dsh-tools/lib/index.js:418-424 renders those definitions, and the native executor
+// (dsh-tool-executor-native/lib/index.js:12-13) projects them into the header. The block now passes the SAME two
+// arguments inside the SAME assemble call that produces the request, so the criterion below is provable per request.
+{
+  // The SAME request's tool names, taken from the RUN 82 journal: session 3d692508-e3f2-4a50-acd3-3a770270fe12 (agent
+  // preset vibe-math-vmu-member, subagent vmu-turn-t-1), `request/header` seq 12. Embedded on purpose: the criterion must
+  // run without D:/_tmp, and no inspector is changed to make it pass.
+  const RUN82_WIRE = [
+    'edit', 'glob', 'grep', 'math_computation', 'read', 'read_image',
+    'skill', 'todo_write', 'vibe_v5_assign', 'vibe_v5_blueprint', 'vibe_v5_configure', 'vibe_v5_feedback',
+    'vibe_v5_fidelity_conclude', 'vibe_v5_fire', 'vibe_v5_hire', 'vibe_v5_inbox', 'vibe_v5_lean_archive', 'vibe_v5_lean_job',
+    'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_run', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message',
+    'vibe_v5_motion', 'vibe_v5_nudge', 'vibe_v5_overview', 'vibe_v5_paper', 'vibe_v5_pause', 'vibe_v5_poll_close',
+    'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_prioritize', 'vibe_v5_read_library', 'vibe_v5_record_method', 'vibe_v5_record_progress',
+    'vibe_v5_record_proposition', 'vibe_v5_record_subproblem', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_say', 'vibe_v5_script',
+    'vibe_v5_second', 'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_task_create', 'vibe_v5_task_get',
+    'vibe_v5_task_list', 'vibe_v5_task_update', 'vibe_v5_tool_help', 'vibe_v5_verdict', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final',
+    'vibe_v5_verified_promote', 'vibe_v5_wait', 'vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_direction', 'vibe_vmu_env',
+    'vibe_vmu_human', 'vibe_vmu_mailbox', 'vibe_vmu_mathjobs', 'vibe_vmu_mathtools', 'vibe_vmu_meeting', 'vibe_vmu_middleware',
+    'vibe_vmu_pack', 'vibe_vmu_panel', 'vibe_vmu_records', 'vibe_vmu_report', 'vibe_vmu_reviewers', 'vibe_vmu_set',
+    'vibe_vmu_status', 'vibe_vmu_task', 'vibe_vmu_tools', 'vibe_vmu_turn', 'vibe_vmu_vote', 'working_directory',
+    'write',
+  ]
+  // The profile-root (global) layer in this deployment: exactly what the scope-less `schemas()` could see.
+  const RUN82_GLOBAL_ONLY = ['working_directory']
+  const vibeSet = (names) => [...new Set((names || []).filter((n) => String(n).startsWith('vibe_')))].sort()
+  const blockNames = (block) => (String(block && block.text).match(/vibe_[A-Za-z0-9_]+/g) || [])
+  // THE CRITERION (TB-2773 §4.1): the block's `vibe_*` set == the SAME request's header.tools `vibe_*` set (equality,
+  // not a subset) — and, when the wire is unobservable, the block may only say wire-unknown/wire-not-rendered.
+  const matchesWire = (block, wire) => {
+    if (!block) return false
+    if (/wire-unknown|wire-not-rendered/.test(block.text)) return false
+    return JSON.stringify(vibeSet(blockNames(block))) === JSON.stringify(vibeSet(wire))
+  }
+  // A member Agent whose `ctx.tools.schemas(scope, toolSet)` has the REAL DSH 0.2.2-rc.1 semantics: without a scope it
+  // reads the global layer (the measured bug), with the request's scope + step toolSet it reads what the wire carries.
+  const mkRun82 = async (hostModule, { deny = [] } = {}) => {
+    const listeners = {}
+    const mkToolSet = (names) => ({ view: (scope) => new Map(names.map((name) => [name, { name }])) })
+    const toolSet = mkToolSet(RUN82_WIRE)
+    const agent = {
+      id: 'member-r82',
+      ctx: { tools: {
+        schemas: (scope, set) => {
+          if (scope === undefined) return RUN82_GLOBAL_ONLY.map((name) => ({ name }))
+          const source = set && typeof set.view === 'function' ? [...set.view(scope).keys()] : RUN82_WIRE
+          return source.map((name) => ({ name }))
+        },
+        restrict: () => () => {},
+      } },
+    }
+    const kernel = km.createKernel({ clock })
+    kernel.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: ['vote'] }])
+    if (deny.length) kernel.declarePackToolFaces({ member: { deny } }, { by: 'probe-pack' })
+    await kernel.members.hire({ id: 'member-r82', slot: 'member', institution: 'sim' })
+    const ctx = {
+      tools: { register: async () => () => {} },
+      effect: (fn) => fn(),
+      on: (event, fn) => { (listeners[event] = listeners[event] || []).push(fn) },
+      get: (name) => (name === 'agents' ? { get: (id) => (id === 'member-r82' ? agent : null) } : null),
+    }
+    const adapter = hostModule.createHostAdapter({ ctx, kernel, settings: {} })
+    await adapter.install()
+    const hook = (listeners['system-prompt/assemble'] || [])[0]
+    const call = async (set = toolSet, context = null) => {
+      const c = context || { agent, scope: agent, toolSet: set }
+      const out = await hook({ sections: [] }, c, () => Promise.resolve({ sections: [] }))
+      return { out, block: (out.sections || []).find((s) => s.name === 'v5r-effective-tools') || null, context: c }
+    }
+    return { kernel, agent, toolSet, mkToolSet, call, adapter }
+  }
+  const good = await mkRun82(hm)
+  const first = await good.call()
+  ok(first.block && /79 个：/.test(first.block.text) && !/1 个：working_directory/.test(first.block.text),
+    '★★★ 正：成员块声明 79 个（== 同请求 header.tools 的 79），不再是「1 个：working_directory」', first.block && first.block.text)
+  ok(matchesWire(first.block, RUN82_WIRE) && vibeSet(blockNames(first.block)).length === 69,
+    '★★★ 判据：块声明的 vibe_* 名集 == 同一请求 header.tools 的 vibe_* 名集（集合相等 69/69）',
+    { block: vibeSet(blockNames(first.block)).length, wire: vibeSet(RUN82_WIRE).length })
+  ok(/per-turn 工具表/.test(first.block.text) && /request\/header\.tools 同一来源/.test(first.block.text) && !/快照/.test(first.block.text),
+    '★★ 块不再自称「wire 快照」（第 82 次实测它是假事实），改称 per-turn 工具表同源', first.block && first.block.text)
+  ok(good.kernel.toolFacePull().effectiveWireSource === 'agent.ctx.tools.schemas(scope,toolSet)' && good.kernel.toolFacePull().effectiveCount === 79,
+    '★★ 回执自报读数来源 = request 期投影（schemas(scope,toolSet)）与数量 79', good.kernel.toolFacePull())
+  // ★ THE SAME ROOT CAUSE HAD A SECOND FACE (a RECEIPT, not the prompt): `visibleToolsOf`/the kernel's visible-tools
+  // provider called `schemas()` with no scope too — the global layer only, i.e. 「1 tool」 for a member whose wire has 79.
+  // Both readers now ask for the Agent's scope, and they must agree with each other and with the block.
+  const receipt = good.adapter.visibleToolsOf('member-r82')
+  ok(receipt && receipt.ok === true && receipt.tools.length === 79 &&
+    JSON.stringify(receipt.tools.slice().sort()) === JSON.stringify(RUN82_WIRE.slice().sort()) &&
+    JSON.stringify(vibeSet(receipt.tools)) === JSON.stringify(vibeSet(blockNames(first.block))),
+    '★★ 读数面同修：visibleToolsOf 读到 79（与块、与同请求 wire 一致），不再是全局层那 1 个', receipt && receipt.tools.length)
+  // ★ PER-REQUEST, NOT A FIRST-ASSEMBLY SNAPSHOT: the same session's requests vary (the journal carries 58-name requests
+  // too), so each assemble must render ITS OWN per-turn table. This request is a 77-name table: the block must follow it.
+  const smaller = RUN82_WIRE.filter((n) => n !== 'vibe_v5_say' && n !== 'write')
+  const second = await good.call(good.mkToolSet(smaller))
+  ok(second.block && /77 个：/.test(second.block.text) && matchesWire(second.block, smaller) && !matchesWire(second.block, RUN82_WIRE),
+    '★★ 正：每个 step 用该请求自己的 per-turn 表（77 名字集 == 该请求 wire），不是首个装配的快照', second.block && second.block.text)
+  // ★ ONE READING PER ASSEMBLE CALL (this hook is registered TWICE: root global + agent scope). A member face that DENIES
+  // one name would otherwise drop it twice — once by the wire filter, once because the hook's own restrict() narrowed the
+  // table before the second invocation — and print 77 where the request's wire holds 78.
+  const denied = await mkRun82(hm, { deny: ['vibe_v5_say'] })
+  const dupCtx = { agent: denied.agent, scope: denied.agent, toolSet: denied.toolSet }
+  const dup1 = await denied.call(denied.toolSet, dupCtx)
+  const dup2 = await denied.call(denied.toolSet, dupCtx)
+  ok(/78 个：/.test(dup1.block.text) && dup2.block.text === dup1.block.text && !/77 个：/.test(dup2.block.text),
+    '★★ 反：同一 assemble context 的两次监听调用读到同一份 wire（首读为准，不会二次收窄成 77）', { first: dup1.block.text.slice(0, 60), second: dup2.block.text.slice(0, 60) })
+  // ★ 反灯 1: put the source BACK to the assembly-time, scope-less `agent.ctx.tools.schemas()` ⇒ the criterion must go RED.
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2773a-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = 'const admitted = tools.schemas(wireScope, requestToolSet)'
+      ok(src.indexOf(anchor) !== -1, 'TB-2773 反灯 1：变异点存在')
+      await writeFile(copyHost, src.replace(anchor, 'const admitted = tools.schemas()'))
+      const lampHost = await import(pathToFileURL(copyHost).href + '?tb2773=lamp1')
+      const lamp = await mkRun82(lampHost)
+      const lampOut = await lamp.call()
+      ok(lampOut.block && /1 个：working_directory/.test(lampOut.block.text) && !matchesWire(lampOut.block, RUN82_WIRE),
+        '★★ 反灯 1（源退回装配期 schemas()）⇒ 块又写「1 个：working_directory」，判据红', lampOut.block && lampOut.block.text)
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+  // ★ 反灯 2: truncate the name set by ONE ⇒ the set-equality criterion must go RED (a subset would have passed it).
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2773b-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = "return { names, source: 'agent.ctx.tools.schemas(scope,toolSet)' }"
+      ok(src.indexOf(anchor) !== -1, 'TB-2773 反灯 2：变异点存在')
+      await writeFile(copyHost, src.replace(anchor, "return { names: names.filter((n) => n !== 'vibe_v5_say'), source: 'agent.ctx.tools.schemas(scope,toolSet)' }"))
+      const lampHost = await import(pathToFileURL(copyHost).href + '?tb2773=lamp2')
+      const lamp = await mkRun82(lampHost)
+      const lampOut = await lamp.call()
+      ok(lampOut.block && /78 个：/.test(lampOut.block.text) && !matchesWire(lampOut.block, RUN82_WIRE) &&
+        vibeSet(blockNames(lampOut.block)).length === 68,
+        '★★ 反灯 2（名集截断一个）⇒ 68/69，集合相等判据红（不是子集判据）', lampOut.block && lampOut.block.text)
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
 }
 
 // ── PHASE 9+ / G5: every TOOL_NAMES row is either REGISTERED or has an explicit false family/surface ───────────────

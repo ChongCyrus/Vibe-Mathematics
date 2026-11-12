@@ -100,6 +100,10 @@ const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
 // (paper-write is not in collect()'s normal/meeting set; the office persona enters no seat prompt), so the measured
 // water levels are UNCHANGED: chair 29,550 / member 26,046 / temp 22,668 = 78,264, and TB2752_RUN80_FIXES stays
 // { chair: 51, member: 45, temp: 0, sum: 96 }. Verified: audit-prompt-budget --check PASS (chair/meeting 35,987).
+// ★ TB-2772 (2026-11-13, prompt-lane): the paper-write guide now forbids bare unicode math glyphs and names the LaTeX
+// replacements (run 82 lost 23 glyphs), and the `part` prompt carries a self-check line. Both land in the paper-write
+// phase — outside collect()'s normal/meeting set and outside the budget gate's phases — so the measured water levels
+// are UNCHANGED again: TB2752_RUN80_FIXES stays { chair: 51, member: 45, temp: 0, sum: 96 }.
 const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair // 29547
 const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 296
 const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29843

@@ -153,6 +153,20 @@ test('§5 TB-2765 teaching: formulas are `$…$`/`$$…$$` in the assembled pape
   ok(bulletAt >= 0 && !READ_OK(reporting.slice(0, bulletAt)), '§5k anti-lamp: deleting the read-face bullet turns the predicate red')
 })
 
+test('§6 TB-2772 teaching: the paper prompt forbids bare unicode math glyphs and names the LaTeX replacement', async () => {
+  console.log('=== 6. TB-2772: LATEX-ONLY MATH (run 82 lost 23 glyphs: ⌊⌋∉① …) ===')
+  const write = await paperAt('paper-write')
+  ok(says(write, '不写裸 unicode 数学符号'), '§6a assembled paper-write says formulas use LaTeX commands, not bare unicode math', { len: write.length })
+  ok(says(write, '`ℤ`→`') && says(write, 'mathbb{Z}') && says(write, 'lfloor') && says(write, 'varnothing'), '§6b the mapping is concrete: ℤ→\mathbb{Z}, ⌊→\lfloor, ∅→\varnothing …')
+  ok(says(write, '写完自检：正文里不该出现 `ℤ⌊⌋∅∉①` 这类字符'), '§6c the part prompt adds the self-check sentence with the exact glyph set')
+  ok(says(write, '替换表只是**兜底'), '§6d the replacement table is named as a fallback, not a guarantee')
+  ok(denies(write, '会被自动换成 LaTeX 数学命令'), '§6e the retired promise ("unicode is auto-replaced") is GONE')
+  // anti-lamp — delete the rule from the assembled text: the same predicate must go false.
+  const RULE_OK = (t) => t.includes('不写裸 unicode 数学符号') && t.includes('写完自检：正文里不该出现') && !t.includes('会被自动换成 LaTeX 数学命令')
+  ok(RULE_OK(write), '§6f the accurate predicate holds on the assembled prompt')
+  ok(!RULE_OK(write.split('**正文一律用 LaTeX 命令、不写裸 unicode 数学符号**').join('')), '§6g anti-lamp: deleting the rule turns the SAME predicate red')
+})
+
 test('§4 anti-lamps: mutating the prompt or the accounting turns this suite red', async () => {
   console.log('=== 4. THE TWO LAMPS ===')
   // Lamp 1 — put the FALSE ABSOLUTE back into the assembled paper-write text. §0c (no "all paths refused") and §2a must

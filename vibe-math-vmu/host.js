@@ -2290,6 +2290,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   // momentarily unresolvable (measured: the outer step timed out, its finally cleared the active member, and the
   // member's next request found no member) — the face may NARROW or stay the same, never WIDEN to the full catalogue.
   const narrowFaceByAgent = new Map()
+  // ★★★ TB-2773: ONE READING OF A REQUEST'S WIRE PER ASSEMBLE CALL. This hook is registered TWICE (root global +
+  // the agent scope, see attachPromptListeners below) and it narrows the table near its end; without a memo the second
+  // invocation would read the table AFTER the first one narrowed it and overwrite the block with a shorter list than
+  // the request's own wire. The FIRST reading is the one the request's wire was built from, so it is the one kept.
+  const requestWireReads = new WeakMap()
   const resolveMemberAgent = (member) => {
     let agents = null
     try { agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null } catch { agents = null }
@@ -2477,26 +2482,66 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       // turns' wire held 79 tools and 39/39 calls succeeded): `out.tools` is the WATERFALL's copy of the tool list, not a
       // member child session's wire — there it is simply absent. The old code degraded "absent" to `[]` silently and the
       // "0" branch then asserted "this turn has no available tools": a FALSE FACT, and writing that empty list into
-      // `narrowFaceByAgent` made it a self-lock. The authority for "what this agent can actually call" is the SAME source
-      // `applyMemberToolFace` reads: `agent.ctx.tools.schemas()` (`:2365-2373`). When even that is unreadable the block
-      // says so BY NAME (`wire-unknown`) and never turns "not observed" into "none".
+      // `narrowFaceByAgent` made it a self-lock. When the wire is unreadable the block says so BY NAME (`wire-unknown`)
+      // and never turns "not observed" into "none".
+      //
+      // ★★★ TB-2773 (RUN 82 / P0, MEASURED: EVERY member/temp-worker/chair prompt block said 「1 个：working_directory」
+      // while the SAME request's `request/header.tools` carried 79 (10 host + 69 `vibe_*`) and the model made 39 calls):
+      // TB-2770 changed the source to `agent.ctx.tools.schemas()`, but that call takes TWO arguments and it was given
+      // NONE. In that form it reads the GLOBAL tool layer only —
+      //   `dsh-tools/lib/index.js:589-591` schemas(scope, toolSet) → `definitions(scope, toolSet)` (`:579-581`) →
+      //   `view(scope)` (`:477-508`), where `view(undefined)` is the root layer.
+      // In this deployment the ONLY globally mounted tool is `working_directory`
+      // (`dsh-base/cordis.patch.yml:169-170` → `dsh-tool-working-directory/lib/index.js:16`); the other 8 host tools are
+      // mounted by the AGENT PRESET (`agent.cordis.yml:55-95`) and the 69 pack tools by the pack — all SCOPE-LOCAL, so
+      // `schemas()` could never see them. The wire has no such blind spot: `dsh-agent-loop/lib/index.js:673-685`
+      // resolves the step's `toolSet` and passes `{scope: agent, toolSet}` into `systemPrompt.assemble`, the prompt
+      // provider (`dsh-tools/lib/index.js:418-424`) renders `definitions(scope, toolSet)`, and the native executor
+      // projects those very definitions into `request/header.tools` (`dsh-tool-executor-native/lib/index.js:12-13`).
+      // THE FIX (method A, no timing problem: those arguments are ALREADY in this hook's context): read the wire through
+      // the SAME call with the SAME two arguments, inside the SAME assemble call that produces the request —
+      // `schemas(scope, toolSet)` — so the block's name set is the request's per-turn tool table, not a global shadow.
       const observedTools = Array.isArray(out.tools) ? out.tools : null
       const nameOfTool = (t) => (t && typeof t === 'object' ? (t.name || t.id) : t)
       const filterWireNames = (names) => names.filter((n) => (resolved.all ? false : (Array.isArray(resolved.allow) ? resolved.allow.includes(n) : !deny.has(n))))
+      const agentForWire = (context && context.agent) || (member ? resolveMemberAgent(member).agent : null)
+      // `assembleContextFor` (dsh-agent/lib/index.js:407-413) sets scope = agent; the per-step toolSet rides beside it.
+      const wireScope = (context && (context.scope !== undefined ? context.scope : context.agent)) || agentForWire || null
+      const requestToolSet = (context && context.toolSet) || null
       const namesFromAgentWire = () => {
-        try {
-          const agentForWire = (context && context.agent) || (member ? resolveMemberAgent(member).agent : null)
-          const tools = agentForWire && agentForWire.ctx && agentForWire.ctx.tools
-          if (!tools || typeof tools.schemas !== 'function') return null
-          const list = tools.schemas()
+        if (!wireScope || !wireScope.ctx || !wireScope.ctx.tools) return null
+        const tools = wireScope.ctx.tools
+        if (typeof tools.schemas !== 'function') return null
+        const readRegistered = () => {
+          const list = tools.schemas(wireScope)
           if (!Array.isArray(list)) return null
           return list.map(nameOfTool).filter((n) => typeof n === 'string')
+        }
+        const read = () => {
+          if (requestToolSet === null) { const names = readRegistered(); return names === null ? null : { names, source: 'agent.ctx.tools.schemas(scope)' } }
+          // The toolSet is only the wire of the agent it was resolved FOR (`dsh-tools/lib/index.js:564-570` returns an
+          // empty view for another scope or after disposal). A foreign/closed set must never be read as "the wire is
+          // empty", so an empty admission falls back to the registered view for THIS scope instead of becoming a zero.
+          const admitted = tools.schemas(wireScope, requestToolSet)
+          if (!Array.isArray(admitted)) return null
+          const names = admitted.map(nameOfTool).filter((n) => typeof n === 'string')
+          if (names.length === 0) { const registered = readRegistered(); if (registered !== null && registered.length > 0) return { names: registered, source: 'agent.ctx.tools.schemas(scope)' } }
+          return { names, source: 'agent.ctx.tools.schemas(scope,toolSet)' }
+        }
+        try {
+          // ONE READING PER ASSEMBLE CALL (see requestWireReads): first reading wins, both listener invocations agree.
+          if (context && typeof context === 'object' && requestWireReads.has(context)) return requestWireReads.get(context)
+          const value = read()
+          if (context && typeof context === 'object') requestWireReads.set(context, value)
+          return value
         } catch { return null }
       }
       let effectiveNames
       let wireSource
       if (observedTools !== null) {
-        // the waterfall handed us the list the host is narrowing: that reading is the wire this build produces
+        // the waterfall handed us the list the host is narrowing: that reading is the wire this build produces.
+        // (A real DSH build never sets it — `dsh-system-prompt/lib/index.js:396-405` attaches `tools` only to the
+        // waterfall's RETURN value, after this listener has run — so this branch serves the assembly-shaped callers.)
         if (resolved.all) out.tools = []
         else if (Array.isArray(resolved.allow)) out.tools = observedTools.filter((t) => resolved.allow.includes(nameOfTool(t)))
         else out.tools = observedTools.filter((t) => !deny.has(nameOfTool(t)))
@@ -2504,8 +2549,8 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         wireSource = 'out.tools'
       } else {
         const agentWire = namesFromAgentWire()
-        if (agentWire === null) { effectiveNames = null; wireSource = 'wire-unknown' }
-        else { effectiveNames = filterWireNames(agentWire); wireSource = 'agent.ctx.tools.schemas' }
+        if (!agentWire) { effectiveNames = null; wireSource = 'wire-unknown' }
+        else { effectiveNames = filterWireNames(agentWire.names); wireSource = agentWire.source }
       }
       const observable = Array.isArray(effectiveNames)
       // Remember what this Agent was actually given, so a later request that cannot resolve the member reuses the narrow
@@ -2520,19 +2565,18 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       } else if (agentId && observable) cacheWrite = 'skipped-empty'
       const slot = resolved.slot || 'member'
       const namesText = observable ? effectiveNames.join('、') : ''
+      // ★★★ TB-2773: the old caption called this list 「本段生成那一刻的 wire 快照」. RUN 82 measured that it was NOT a
+      // wire snapshot at all (1 name vs 79 in the same request), so the caption was itself a false fact — the exact class
+      // of defect this block exists to prevent. It now states what the producer actually knows: the name set is read
+      // through the per-turn tool table of THIS request (the same read the request's wire is built from); if it still
+      // disagrees, the wire wins and that is a defect to report. It makes no "identical" promise.
+      const wireCaption = (wireSource === 'out.tools' || String(wireSource).indexOf('toolSet') !== -1)
+        ? '（名集取自本请求的 per-turn 工具表——与 request/header.tools 同一来源；若仍与本回合的 wire 不一致，以 wire 为准，并把差异当作本轮的缺陷上报——角色段里的静态清单只作职责说明）'
+        : '（名集取自本 Agent 的注册可见面，本回合没拿到 per-turn 工具表，因此它不是 wire 快照；以 request/header.tools 为准——角色段里的静态清单只作职责说明）'
       const nativeBlockText = !observable
         ? '【本轮你实际能调用的工具｜' + slot + '】wire-unknown：本段没有观测到本回合的 wire（工具可用性以实际 wire 为准，绝不据此推断为零；角色段里的静态清单只作职责说明）'
         : (effectiveNames.length
-            ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + namesText +
-              // ★★★★★★★ LIVE RUN 2026-10-25 (a REAL multi-agent run, the first one): this caption used to read
-              // 「这份列表与你这回合的 wire 完全一致」 - a promise the producer cannot keep in every session. MEASURED:
-              // a subagent child session's prompt carried 70 names here while that session's wire held the framework's own
-              // tools too, so the list was BOTH short (27 wire tools unnamed) and long (17 pack faces the child's wire did
-              // not carry). The list IS a real snapshot - it is built from the SAME reading the wire itself uses - but
-              // "identical to the wire for this turn" is a claim about a later moment, and a caption that asserts it turns
-              // a snapshot into a lie. The caption now says what the producer actually knows, and names the tie-break rule.
-              '（这段是本段生成那一刻的 wire 快照；若与本回合的 wire 不一致，以 wire 为准，并把差异当作本轮的缺陷上报——' +
-              '角色段里的静态清单只作职责说明）'
+            ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + namesText + wireCaption
             : '【本轮你实际能调用的工具｜' + slot + '】0 个（本回合没有可用工具；角色段里的静态清单不代表本回合可用性）')
       const ptcBlockText = !observable
         ? '【本轮工具呈现｜' + slot + '】wire-unknown：本段没有观测到本回合的 wire（工具可用性以实际 wire 为准，绝不据此推断为零）'
@@ -2659,7 +2703,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         throw e
       }
       const r = resolveMemberAgent(member)
-      return (r.agent.ctx.tools.schemas() || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
+      // ★★★ TB-2773 (same root cause as the prompt block, a RECEIPT face this time): `schemas()` with no scope reads
+      // the GLOBAL tool layer only (`dsh-tools/lib/index.js:477-508,579-591`) — in this deployment that is the single
+      // globally mounted `working_directory`, so `toolsView` used to answer 「1 tool」 for a member whose wire carries
+      // 79. Pass the Agent scope exactly like `visibleToolsOf` (:2744) does, so the two readers of the same judgement
+      // cannot disagree. (No step toolSet is available here: this provider answers outside a step, so the registered
+      // visible view for that Agent is the truthful reading.)
+      return (r.agent.ctx.tools.schemas(r.agent) || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
     })
   }
   publishToolFaceCatalogue()

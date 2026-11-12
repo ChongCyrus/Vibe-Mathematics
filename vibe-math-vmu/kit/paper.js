@@ -75,6 +75,48 @@ function refuse(code, message, hint, extra = null) {
  * Create the paper subsystem over ONE kernel. Every method is a pure state transition over records; there is no timer
  * and no global: the pack's turn/middleware layer calls `pass()` when it wants the flow to move.
  */
+// ★★★ TB-2768 (RUN 81 attempt-3) + ★★★ TB-2772 (RUN 82 attempt-1): THE GLYPH REPAIR TABLE IS THE ONE PLACE a unicode
+// math glyph is re-spelled. attempt-3 measured ℤ×4/∀×2/∣×6/∩×2/∪×1/⋯×1; attempt-2 measured a DIFFERENT set —
+// ⌊U+230A×5 / ⌋U+230B×5 / ∉U+2209×1 / ①U+2460×3 / ②U+2461×3 / ③U+2462×3 / ④U+2463×2 / ⑤U+2464×1 (xelatex log) —
+// so the table is expanded SYSTEMATICALLY (sets/logic, arrows, relations, operators, brackets, number sets, circled
+// digits), not only for the observed characters. TWO invariants keep it honest:
+//   · `MATH_GLYPH_RE` is DERIVED from these keys (one source — delete a key and its repair disappears with it,
+//     which is exactly what the anti-lamp drives), and
+//   · every alphabetic control word carries a `{}` terminator, because the replacement lands mid-text: `⌊x` must
+//     become a braced command (`lfloor{}x`): a bare control word fused with the next letter is UNDEFINED, and
+//     the text path wraps it in `$…$` while the math path inserts it verbatim, so `{}` is needed on both).
+//     it in `$…$`, the math path inserts it verbatim, so the terminator is needed on both).
+// The table is a FALLBACK, not the teaching: the part-write face tells authors to use LaTeX commands, not bare
+// unicode math characters; a glyph the table does not know is still caught by the kernel log detector
+// (`kernel/latex.js` → `glyphsUnrepaired` / `VMU_PAPER_GLYPH_UNCOVERED`).
+const TEX_MATH_GLYPH = { '≥': '\\geq', '≤': '\\leq', '≠': '\\neq', '≈': '\\approx', '∎': '\\blacksquare', '∞': '\\infty', '∈': '\\in', '⊆': '\\subseteq', '⇒': '\\Rightarrow', '→': '\\rightarrow', '±': '\\pm', '×': '\\times', '·': '\\cdot', '÷': '\\div', 'ℤ': '\\mathbb{Z}', '∀': '\\forall', '∣': '\\mid', '∩': '\\cap', '∪': '\\cup', '⋯': '\\cdots',
+  // TB-2772 observed on RUN 82 (23 Missing-character lines): floors, not-in, circled digits
+  "⌊": "\\lfloor{}", "⌋": "\\rfloor{}", "∉": "\\notin{}", "①": "(1)", "②": "(2)", "③": "(3)", "④": "(4)", "⑤": "(5)", "⑥": "(6)", "⑦": "(7)", "⑧": "(8)", "⑨": "(9)", "⑩": "(10)", "⑪": "(11)", "⑫": "(12)", "⑬": "(13)", "⑭": "(14)", "⑮": "(15)", "⑯": "(16)", "⑰": "(17)", "⑱": "(18)", "⑲": "(19)", "⑳": "(20)",
+  // systematic: ceilings, sets/logic
+  "⌈": "\\lceil{}", "⌉": "\\rceil{}", "∋": "\\ni{}", "∌": "\\not\\ni{}", "∅": "\\emptyset{}", "⊂": "\\subset{}", "⊃": "\\supset{}", "⊇": "\\supseteq{}", "⊄": "\\not\\subset{}", "⊅": "\\not\\supset{}", "⊈": "\\not\\subseteq{}", "⊉": "\\not\\supseteq{}", "∃": "\\exists{}", "∄": "\\nexists{}", "¬": "\\neg{}", "∧": "\\wedge{}", "∨": "\\vee{}", "⊕": "\\oplus{}", "⊗": "\\otimes{}", "←": "\\leftarrow{}", "↔": "\\leftrightarrow{}",
+  // systematic: arrows
+  "⇐": "\\Leftarrow{}", "⇔": "\\Leftrightarrow{}", "↦": "\\mapsto{}", "↑": "\\uparrow{}", "↓": "\\downarrow{}", "↕": "\\updownarrow{}", "⟶": "\\longrightarrow{}", "⟵": "\\longleftarrow{}", "⟹": "\\Longrightarrow{}", "⟺": "\\Longleftrightarrow{}", "≡": "\\equiv{}", "≅": "\\cong{}",
+  // systematic: relations and operators
+  "≃": "\\simeq{}", "∼": "\\sim{}", "∝": "\\propto{}", "≪": "\\ll{}", "≫": "\\gg{}", "≐": "\\doteq{}", "∥": "\\parallel{}", "⊥": "\\perp{}", "∓": "\\mp{}", "⋅": "\\cdot{}", "∗": "\\ast{}", "∘": "\\circ{}", "∑": "\\sum{}", "∏": "\\prod{}", "∫": "\\int{}", "∬": "\\iint{}", "∮": "\\oint{}", "√": "\\surd{}", "∂": "\\partial{}", "∇": "\\nabla{}", "⟨": "\\langle{}",
+  // systematic: brackets, ellipsis, number sets
+  "⟩": "\\rangle{}", "‖": "\\|", "…": "\\ldots{}", "ℕ": "\\mathbb{N}", "ℚ": "\\mathbb{Q}", "ℝ": "\\mathbb{R}", "ℂ": "\\mathbb{C}", "ℙ": "\\mathbb{P}" }
+// DERIVED from the keys above (one source): regex metacharacters are escaped so a future key like `]` cannot
+// silently break the character class.
+const MATH_GLYPH_RE = new RegExp('[' + Object.keys(TEX_MATH_GLYPH).map((ch) => ch.replace(/[\\\]^$.*+?()[{}|]/g, '\\$&')).join('') + ']', 'g')
+
+/** The rewrite advice printed by a REFUSED finalisation: one line per dropped glyph, naming the LaTeX command. */
+function glyphAdviceOf (rows) {
+  const list = Array.isArray(rows) ? rows : []
+  return list.map((r) => {
+    const ch = r && r.char !== undefined && r.char !== null ? String(r.char) : '?'
+    const code = r && r.u !== undefined && r.u !== null ? String(r.u) : ''
+    const mapped = TEX_MATH_GLYPH[ch]
+    const rewrite = mapped === undefined ? '（替换表未收录：请改用等价的 LaTeX 命令，或删去该字符）' : mapped.replace(/[{}]/g, '')
+    const count = r && Number.isFinite(Number(r.count)) ? Number(r.count) : 1
+    return '「' + ch + '」（' + code + '，' + String(count) + ' 次）→ ' + rewrite
+  }).join('；')
+}
+
 export function createPaperFlow({
   kernel,
   sections = [],
@@ -202,6 +244,16 @@ export function createPaperFlow({
             // instead of letting "bytes match" stand in for "same file".
             pdfSha256: body.pdfSha256 === undefined ? null : body.pdfSha256,
             engine: body.engine === undefined ? null : body.engine,
+            // ★★★ TB-2772: the glyph verdict is a READING of the compile row, so the status face must carry it after a
+            // refused final — otherwise "the PDF exists" would be the only thing visible on the face that explains why.
+            glyphLossDetected: body.glyphLossDetected === true,
+            missingCharacterCount: body.missingCharacterCount === undefined ? null : body.missingCharacterCount,
+            glyphsUnrepaired: Array.isArray(body.glyphsUnrepaired) ? body.glyphsUnrepaired : [],
+            glyphLossCode: body.glyphLossCode === undefined ? null : body.glyphLossCode,
+            glyphLossMeans: body.glyphLossMeans === undefined ? null : body.glyphLossMeans,
+            glyphLossHint: body.glyphLossHint === undefined ? null : body.glyphLossHint,
+            logPath: body.logPath === undefined ? null : body.logPath,
+            logRead: body.logRead === true,
             tried: Array.isArray(body.tried) ? body.tried : [] }
           const key = [
             Number.isFinite(Number(row.updatedAt)) ? Number(row.updatedAt) : 0,
@@ -1074,9 +1126,15 @@ export function createPaperFlow({
     const currentRound = Number(state.round)
     const partChanged = boundFingerprint !== currentFingerprint
     const roundChanged = !(boundRound === null || (Number.isFinite(boundRound) && boundRound === currentRound))
-    return { of, bound: body.judgedPartFingerprint !== undefined,
+    const bound = body.judgedPartFingerprint !== undefined
+    // ★★★ TB-2774 (RUN 82): ONE predicate. The FINGERPRINT is the only evidence that the judged TEXT changed; the round
+    // is narrative. A fingerprint-bound vote stays FRESH while the text on file is the text it judged, even when the
+    // paper's round moved (a revise round does not rewrite every part). A legacy row with no binding keeps the old round
+    // rule — and says so (`freshnessRule:'legacy-round'`) instead of borrowing the text wording.
+    const fresh = bound ? !partChanged : !roundChanged
+    return { of, bound,
       boundFingerprint, currentFingerprint, boundRound, currentRound,
-      partChanged, roundChanged, fresh: !partChanged && !roundChanged }
+      partChanged, roundChanged, freshnessRule: bound ? 'fingerprint' : 'legacy-round', fresh }
   }
 
   /** the ONE shape both doors print for a vote that judged text the part no longer carries (null when the vote is fresh). */
@@ -1090,10 +1148,10 @@ export function createPaperFlow({
       judgedPartFingerprint: judged.boundFingerprint, currentFingerprint: judged.currentFingerprint,
       judgedPartRound: judged.boundRound, currentRound: judged.currentRound,
       recordId: (found && found.recordId) || null,
-      why: judged.partChanged ? 'part-text-changed' : 'round-changed',
-      whyMeans: judged.partChanged
-        ? 'the text of the judged part changed after this vote was cast: the vote is bound to fingerprint ' + String(judged.boundFingerprint) + ', and the part on file now carries ' + String(judged.currentFingerprint) + ' — this is a DIFFERENT text, so the vote is not counted'
-        : 'the vote was cast in round ' + String(judged.boundRound) + ' while the paper is in round ' + String(judged.currentRound) }
+      why: judged.bound ? 'part-text-changed' : 'round-changed',
+      whyMeans: judged.bound
+        ? 'the text of the judged part changed after this vote was cast: the vote is bound to fingerprint ' + String(judged.boundFingerprint) + ', and the part on file now carries ' + String(judged.currentFingerprint) + ' — this is a DIFFERENT text, so the vote is not counted (a round change alone never prints this: the fingerprints decide)'
+        : 'LEGACY row (no judgedPartFingerprint binding): the vote was cast in round ' + String(judged.boundRound) + ' while the paper is in round ' + String(judged.currentRound) + ' — the old round rule is the only available reading here, and it is NOT a text-replacement verdict' }
   }
 
   /**
@@ -1294,7 +1352,7 @@ export function createPaperFlow({
   /** ③ a review: deliverable must be a real boolean ("未表态不算可交付", the original's wording). */
   function recordReview({ target, member, deliverable, comments = '', of = null } = {}) {
     const { state } = requireState(target)
-    if (state.status !== 'reviewing') throw refuse(CODES.STATE, 'the paper is not in its cross-review stage (now: ' + state.status + ')', 'advance() moves writing → reviewing')
+    if (state.status !== 'reviewing') throw refuse(CODES.STATE, 'the paper is not in its cross-review stage (now: ' + state.status + ')', '`vibe_v5_paper { action: "advance", target: "' + str(state.target) + '" }` moves writing → reviewing (a seat calls the tool, not a bare function name)')
     if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a review participant of this paper', 'participants: ' + state.participants.join(', '))
     if (deliverable !== true && deliverable !== false) {
       throw refuse('VMU_INVALID_ARGUMENT', 'deliverable must be true or false (an unstated verdict is NOT deliverable)', 'pass deliverable:true/false — "未表态不算可交付"')
@@ -1791,6 +1849,46 @@ export function createPaperFlow({
       // `missing` was the pre-compile artefact list and the compile had just succeeded. The list is recomputed around the
       // compile that actually ran, so the two statements can no longer contradict each other.
       const missingAfter = (Array.isArray(rendered.missing) ? rendered.missing : []).filter((m) => !(pdf && pdf.ok === true && m === 'pdf'))
+
+      // ★★★ TB-2772 (RUN 82 attempt-1): A PDF THAT DROPPED GLYPHS IS NOT A DELIVERABLE. The compile exits 0 and writes the
+      // file, yet xelatex's log named 23 dropped glyphs and the PDF was missing them — silently delivering that is worse
+      // than failing. The detection lives in kernel/latex.js (`glyphLossDetected`); THIS is the gate: roll the
+      // finalisation back to awaiting-editor (exactly like a failed compile) and refuse BY NAME with the rewrite advice.
+      // There is no override: an undeliverable artefact must fail loudly.
+      if (pdf && pdf.ok === true && pdf.glyphLossDetected === true) {
+        if (before.hadFinal && before.final !== undefined) state.final = before.final
+        else delete state.final
+        state.status = before.status
+        state.stage = before.stage
+        writeState(state)
+        const glyphRows = Array.isArray(pdf.glyphsUnrepaired) ? pdf.glyphsUnrepaired : []
+        const glyphAdvice = glyphAdviceOf(glyphRows)
+        const glyphCount = Number.isFinite(Number(pdf.missingCharacterCount))
+          ? Number(pdf.missingCharacterCount)
+          : glyphRows.reduce((n, r) => n + (Number(r && r.count) || 0), 0)
+        return {
+          ok: false,
+          code: 'VMU_PAPER_GLYPH_UNCOVERED',
+          message: 'this PDF is NOT deliverable: the compile wrote a file but xelatex dropped ' + String(glyphCount) + ' glyph(s) the font does not have, so the PDF text is missing those characters (the file existing is not the same as the mathematics printing)',
+          hint: 'rewrite these characters in your parts as LaTeX commands, then call final again: ' + glyphAdvice,
+          finalized: false,
+          target: state.target,
+          final: fin,
+          stage: state.status,
+          artifacts: rendered.artifacts,
+          missing: missingAfter,
+          pdf,
+          glyphLossDetected: true,
+          missingCharacterCount: glyphCount,
+          glyphsUnrepaired: glyphRows,
+          glyphLossCode: 'VMU_PAPER_GLYPH_UNCOVERED',
+          logPath: pdf.logPath === undefined ? null : pdf.logPath,
+          rolledBack: { from: 'finalized', to: state.status, keptEarlierFinal: before.hadFinal === true },
+          reviseAvailable: true,
+          means: 'the paper was NOT finalised: compile exited 0 but the font dropped glyphs, so the state went back to '
+            + String(state.status) + ' with rounds/repairs untouched — fix the body (rewrite the characters named in glyphsUnrepaired) and call final again; a PDF missing glyphs is a non-deliverable artefact, not a warning',
+        }
+      }
       // ★★ RUN 176 (run 21 A1 / FEEDBACK21 F1): the compile is PART of the finalisation gate. RUN 154's G10 decision
       // ("finalise anyway, report pdf.ok:false") was honest about the artefact and deadlocked the paper — status became
       // `finalized` BEFORE the compile ran, so a failure left nothing that could be revised. A failed compile now rolls the
@@ -1987,8 +2085,6 @@ export function createPaperFlow({
     // xelatex logged 16 `Missing character` lines (ℤ×4, ∀×2, ∣×6, ∩×2, ∪×1, ⋯×1 — all lmroman10-regular) and the PDF
     // silently dropped them while `final` answered `ok:true`. This table is the ONE place a unicode math glyph is
     // re-spelled; extend THIS table, never a second copy (the kernel-side detection below is only a safety net).
-    const TEX_MATH_GLYPH = { '≥': '\\geq', '≤': '\\leq', '≠': '\\neq', '≈': '\\approx', '∎': '\\blacksquare', '∞': '\\infty', '∈': '\\in', '⊆': '\\subseteq', '⇒': '\\Rightarrow', '→': '\\rightarrow', '±': '\\pm', '×': '\\times', '·': '\\cdot', '÷': '\\div', 'ℤ': '\\mathbb{Z}', '∀': '\\forall', '∣': '\\mid', '∩': '\\cap', '∪': '\\cup', '⋯': '\\cdots' }
-    const MATH_GLYPH_RE = /[≥≤≠≈∎∞∈⊆⇒→±×·÷ℤ∀∣∩∪⋯]/g
     const texMath = { glyphsRepaired: 0, proseCarets: 0, proseUnderscores: 0, inlineMathSpans: 0, displayMathSpans: 0, unpairedDisplayMarkers: 0 }
     const repairInMath = (s) => String(s).replace(MATH_GLYPH_RE, (ch) => { texMath.glyphsRepaired += 1; return TEX_MATH_GLYPH[ch] })
     const repairInText = (s) => String(s).replace(MATH_GLYPH_RE, (ch) => { texMath.glyphsRepaired += 1; return '$' + TEX_MATH_GLYPH[ch] + '$' })
@@ -2276,6 +2372,9 @@ export function createPaperFlow({
         glyphLossDetected: r.glyphLossDetected === true,
         missingCharacterCount: r.missingCharacterCount === undefined ? null : r.missingCharacterCount,
         glyphsUnrepaired: Array.isArray(r.glyphsUnrepaired) ? r.glyphsUnrepaired : [],
+        glyphLossCode: r.glyphLossCode === undefined ? null : r.glyphLossCode,
+        glyphLossMeans: r.glyphLossMeans === undefined ? null : r.glyphLossMeans,
+        glyphLossHint: r.glyphLossHint === undefined ? null : r.glyphLossHint,
         logPath: r.logPath === undefined ? null : r.logPath, logRead: r.logRead === true }),
       settled: true, by: author,
     })

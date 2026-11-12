@@ -723,3 +723,13 @@ A2 caliber RUN 260: a2=[]
 - **A-4/A-5**：A-4 是下一轮任务书的取证方式建议（见报告，不进产品提示词）；A-5 是 TB-2770 的产品缺陷，按 Lead 指示**不在提示词里绕**，暂缓。
 - **判据**：`vmu-run80-prompt-corrections` 新增 §5（A-3 装配 grep/旧句 0/反灯 + A-1/A-2/D-7 所办 persona 断言 + 反灯）；`vmu-run217-feedback53` 升级；`audit-prompt-names` 扫描面已含 paper-write/paper-review，故新教的两个回执计数键被扫到（`BLOCKERS 0`，2 个既有 paper-review gap 仍是具名计划）。
 - **被量相位净增 0 的证据**：三处文字改动分别落在 paper-write 相位（`collect()` 的 normal/meeting 不含）与 host persona（不进席位装配）；实测 `collect()` 与上一轮一致：chair 29,550 / member 26,046 / temp 22,668 = 78,264（对 RUN 272 水位 +51/+45/0=+96，与 `TB2752_RUN80_FIXES` 一致）；门禁 `audit-prompt-budget --check` PASS，chair/meeting **35,987 ≤ 36,500**（余 513）。该「不涨」已写进 `tests/vmu-run256-prompts-compress.test.mjs` 的记账注释（一次到位，无第二次追读数）。
+
+### §20.2 TB-2772 prompt 侧（2026-11-13）：论文正文用 LaTeX 命令、不写裸 unicode 数学字符
+
+来自第 82 次真机 V15/V16 双 FAIL：PDF 丢 23 处字形（`⌊` U+230A、`⌋` U+230B、`∉` U+2209、`①` U+2460 等——xelatex 字体不认），替换表只是兜底；机制侧（`kit/paper.js` 替换表、`tools.js` 的 `part` 文案）归 impl-lane，本记录只覆盖提示词侧。**被量相位净增 0**，`TB2752_RUN80_FIXES` 仍 `{ chair: 51, member: 45, temp: 0, sum: 96 }`，cap/ratchet 未动。
+
+- **旧句（已 0 命中）**：`≥`/`≤`/`∎` 这类 unicode 数学符号会被自动换成 LaTeX 数学命令（回执 `math.glyphsRepaired` 计数），但你仍应优先写成数学模式。——「会被自动换」是**过度承诺**：替换表未覆盖的字形会被 xelatex 静默丢掉（第 82 次丢 23 处）。
+- **新句①（`v5r-paper-prompts.js` 写作指南，paper-write 相位）**：在成对 `$…$`/`$$…$$` 规则后加「**正文一律用 LaTeX 命令、不写裸 unicode 数学符号**（`ℤ`→`\mathbb{Z}`、`⌊`→`\lfloor`、`⌋`→`\rfloor`、`∅`→`\varnothing`、`∉`→`\notin`、`①`→`1`）；`$…$` 里的 `^`/`_` 同样。回执 `math.glyphsRepaired` 的替换表只是**兜底、不是保证**——未覆盖的字形会被 xelatex **静默丢掉**。」
+- **新句②（`v5r-blocks-b.js` 的 `part` 写入提示）**：「★ **写完自检：正文里不该出现 `ℤ⌊⌋∅∉①` 这类字符**——公式一律用 LaTeX 命令（见写作指南的对照表：`ℤ`→`\mathbb{Z}`、`⌊`→`\lfloor`、`⌋`→`\rfloor`、`∅`→`\varnothing`、`∉`→`\notin`、`①`→`1`）；替换表只是兜底。」
+- **判据**：`vmu-run80-prompt-corrections` 新增 §6——装配后 paper-write 真提示词 grep：新规则 1 命中、`写完自检` 1 命中、映射串（`mathbb{Z}`/`lfloor`/`varnothing`）命中；旧承诺 `会被自动换成 LaTeX 数学命令` **0 命中**；反灯：把新规则从装配文本删掉 ⇒ 同一谓词翻红（§6f/§6g）。读数 **61/0**。
+- **预算**：两处都在 paper-write 相位 ⇒ `collect()`（normal/meeting）与门禁量程都不含 ⇒ 被量净增 **0**；`audit-prompt-budget --check` PASS，chair/meeting **35,987 ≤ 36,500**（余 513）。

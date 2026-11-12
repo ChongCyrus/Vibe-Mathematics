@@ -524,6 +524,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '',
         '★ 用法：这一步【不再】靠回执字段提交（`paper_part` 这类字段解析器已不接受，会被判 VMU_TURN_UNKNOWN_FIELD）。',
         '★ **公式写成成对 `$…$`（行内）/ 成对 `$$…$$`（display）**：不写成对符号的 `^`/`_` 会被当成字面文本，PDF 读作文本（`math.inlineMathSpans`/`displayMathSpans` 会读 0）。',
+        '★ **写完自检：正文里不该出现 `ℤ⌊⌋∅∉①` 这类字符**——公式一律用 LaTeX 命令（见写作指南的对照表：`ℤ`→`\\mathbb{Z}`、`⌊`→`\\lfloor`、`⌋`→`\\rfloor`、`∅`→`\\varnothing`、`∉`→`\\notin`、`①`→`1`）；替换表只是兜底。',
         '★ 请调用工具 `vibe_v5_paper`，action 为 `part`：',
         '    vibe_v5_paper { action: "part", target: "<论文 target>", part: "你这个部分的标题",',
         '                    body: "你对**原问题完整解法**的贡献（推理链与结论，只写有证据的）" }',

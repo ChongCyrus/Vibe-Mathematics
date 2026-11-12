@@ -127,7 +127,7 @@ const rendered = await A.call('vibe_v5_paper', { action: 'render', target: PAPER
 ok(rendered.ok !== false, 'the render runs on the real flow', { ok: rendered.ok, code: rendered.code, message: String(rendered.message || '').slice(0, 160) })
 const math = rendered.math || null
 ok(math !== null && typeof math === 'object', '★ ① the render receipt carries a `math` block (without it, "produced" is the only claim available)', rendered.math)
-ok(math !== null && math.glyphsRepaired === 2, '★★ ① both unicode math glyphs (≥ and ∎) were re-spelled, and the count says so', math && math.glyphsRepaired)
+ok(math !== null && math.glyphsRepaired === 3, '★★ ① both unicode math glyphs (≥ and ∎) were re-spelled, AND the renderer\'s own placeholder ellipsis … (U+2026, now covered by the expanded table) counts too — the count says so', math && math.glyphsRepaired)
 ok(math !== null && math.inlineMathSpans === 1, '★ ① the paired-$ span was counted as real math', math && math.inlineMathSpans)
 ok(math !== null && math.proseCarets === 1, '★★ ① the caret OUTSIDE a $ span is counted as escaped-to-text (that is the run-54 formula shape)', math && math.proseCarets)
 ok(math !== null && typeof math.means === 'string' && math.means.includes('needed repair'),

@@ -232,9 +232,20 @@ console.log('§2 H1：缓存丢了评审条目，磁盘上的评审行仍然作�
       f3.advance({ target: T3 })
       f3.recordReview({ target: T3, member: 'r-2', deliverable: true, comments: '第二轮可交付' })
       let lamp = null
-      try { lamp = f3.advance({ target: T3 }) } catch (e) { lamp = { threw: e && e.code } }
-      ok(lamp && (lamp.threw === 'VMU_REVIEW_STALE' || (Array.isArray(lamp.stale) && lamp.stale.indexOf('r-1') !== -1)),
-        'lamp TB-2761 RED-worthy：退回 round 绑定 ⇒ 跨轮票又被当成作废（run 81 D-1 的原状）', lamp && { stale: lamp.stale, to: lamp.to })
+      try { lamp = f3.advance({ target: T3 }) } catch (e) {
+        lamp = { threw: e && e.code, message: String((e && e.message) || ''),
+          crossReviewers: e && e.crossReviewers, staleReviews: e && e.staleReviews, reviewsOnDisk: e && e.reviewsOnDisk }
+      }
+      // ★ TB-2774 changed the SHAPE of this lamp's red: with the fingerprint predicate in place, reverting coverage to
+      // round-only makes r-1's round-1 vote uncounted, and `advance` cannot reach unanimity — it either refuses by name
+      // `VMU_REVIEW_STALE` (staleReviews names r-1) or, because staleReviewReading now calls the same vote FRESH, falls
+      // to the named "only N crossers" refusal with crossReviewers missing r-1. BOTH are "the cross-round vote was
+      // treated as void" — the old fact, in the new shape. The main assertions above are NOT relaxed.
+      const lampRed = !!lamp && ((lamp.threw === 'VMU_REVIEW_STALE' && JSON.stringify(lamp.staleReviews || []).includes('r-1'))
+        || (lamp.threw === 'VMU_INVALID_ARGUMENT' && /互审必须由两位不同的/.test(lamp.message)
+          && !(Array.isArray(lamp.crossReviewers) && lamp.crossReviewers.includes('r-1'))))
+      ok(lampRed,
+        'lamp TB-2761 RED-worthy：退回 round 绑定 ⇒ 跨轮票又被当成作废（run 81 D-1 的原状）', lamp)
     } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) }
   }
 }

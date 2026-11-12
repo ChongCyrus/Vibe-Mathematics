@@ -29,6 +29,9 @@
 // and every "it worked" is READ BACK from a receipt, not assumed from a call that returned ok.
 // Run: node tests/vmu-run252-paper-artifact-truth.test.mjs   Last line: === RUN-252 PAPER ARTIFACT TRUTH: N passed, M failed ===
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cpSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { missingCharactersOf } from '../vibe-math-vmu/kernel/latex.js'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
@@ -73,6 +76,19 @@ const boot = async (config = {}) => {
     tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
   }
   const handle = entry.apply(ctx, Object.assign({ clock: () => 1000 }, config))
+  await handle.ready()
+  return { handle, state, names: state.specs.map((s) => s.name), specOf: (n) => state.specs.find((s) => s.name === n) }
+}
+/** The SAME boot contract as `boot`, but from an arbitrary entry module (the anti-lamp boots a MUTATED copy). */
+const bootOf = async (entryUrl, config = {}) => {
+  const mod = await import(entryUrl)
+  const state = { specs: [], effects: [] }
+  const ctx = {
+    effect(fn, label) { state.effects.push(label); return fn() },
+    on() { return () => {} },
+    tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
+  }
+  const handle = mod.apply(ctx, Object.assign({ clock: () => 1000 }, config))
   await handle.ready()
   return { handle, state, names: state.specs.map((s) => s.name), specOf: (n) => state.specs.find((s) => s.name === n) }
 }
@@ -147,7 +163,7 @@ const writeFakePdf = async (request) => {
   await mkdir(request.outDir, { recursive: true })
   const pdfPath = join(request.outDir, request.sourceName.replace(/\.tex$/, '.pdf'))
   await writeFile(pdfPath, PDF_TEXT, 'utf8')
-  return { ok: true, engine: 'xelatex', pdfPath, pdfBytes: byteLen(PDF_TEXT), argv: ['xelatex', '-interaction=nonstopmode', request.sourceName], tried: [{ engine: 'xelatex', phase: 'compile', code: null }], outDir: request.outDir, elapsedMs: 3 }
+  return { ok: true, engine: 'xelatex', pdfPath, pdfBytes: byteLen(PDF_TEXT), pdfSha256: createHash('sha256').update(PDF_TEXT).digest('hex'), argv: ['xelatex', '-interaction=nonstopmode', request.sourceName], tried: [{ engine: 'xelatex', phase: 'compile', code: null }], outDir: request.outDir, elapsedMs: 3 }
 }
 // The kernel exposes `latex` as a GETTER (kernel/index.js builds the face at construction and returns it from
 // `get latex()`), so a test cannot assign over it. Redefine the property instead: the descriptor is configurable,
@@ -205,8 +221,15 @@ const diskPdf = await readFile(diskPath).catch(() => null)
 ok(diskPdf !== null, '前置(RULE E)：编译产物真的落在磁盘上（下面的字节数是量出来的）', !!diskPdf)
 eq(c && c.pdfBytes, byteLen(PDF_TEXT), '★ 正(F72-6)：pdf 块的 pdfBytes = 整个文件的字节数（量过磁盘）')
 eq(diskPdf === null ? null : diskPdf.length, byteLen(PDF_TEXT), '★ 正(F72-6)：磁盘上的 PDF 字节数与回执一致')
-ok(!!c && Object.keys(c).filter((k) => /sha256/i.test(k)).length === 0,
-  '★ 正(F72-6)：pdf 块没有任何 sha 字段 —— 不存在"覆盖正文却写成文件"的同类缺陷', c && Object.keys(c).filter((k) => /sha/i.test(k)))
+// ★★★ TB-2772 / audit4 P1: the pdf block now CARRIES the FILE hash — `final` is the moment the compile happens, so a
+// reader must not need a second `status` call to learn which bytes were finalised. The F72-6 rule still holds: this hash
+// is the WHOLE FILE's (compared with the bytes on disk), never a body fingerprint wearing a file name.
+const diskSha = diskPdf === null ? null : createHash('sha256').update(diskPdf).digest('hex')
+ok(!!c && typeof c.pdfSha256 === 'string' && /^[0-9a-f]{64}$/.test(c.pdfSha256) && c.pdfSha256 === diskSha,
+  '★★ 正(TB-2772/audit4)：pdf 块的 pdfSha256 是整个磁盘 PDF 的 sha256（final/compile 回执自足，不必再调 status）',
+  c && { pdfSha256: c.pdfSha256, diskSha })
+ok(!!c && typeof c.pdfSha256Means === 'string' && /file|bytes/i.test(c.pdfSha256Means),
+  '★ 正(F72-6)：pdfSha256Means 明说这是【文件字节】的哈希，不是正文指纹', c && c.pdfSha256Means)
 
 // ── §2. THE OFFICE STATUS FACE CARRIES THE SAME TWO READINGS ──────────────────────────────────────────────────
 console.log('=== 2. status：同一个矛盾不允许在两个门里活着 ===')
@@ -358,6 +381,304 @@ ok(!!glyphReceipt && glyphReceipt.compiled && glyphReceipt.compiled.stderrFindin
   '★★ 正：compiled.stderrFindings 是 TB-2768 点名的「把 Missing character 计入回执」', glyphReceipt && glyphReceipt.compiled && glyphReceipt.compiled.stderrFindings)
 ok(typeof glyphReceipt.glyphLossMeans === 'string' && /could not print/.test(glyphReceipt.glyphLossMeans),
   '★ 正：means 明说「PDF 存在但字形没打印」', glyphReceipt && glyphReceipt.glyphLossMeans)
+
+// ── §6. TB-2772: A PDF WITH DROPPED GLYPHS IS A NAMED REFUSAL, NOT A DELIVERABLE ─────────────────────────────────
+console.log('=== 6. TB-2772：final 检测到缺字 ⇒ ok:false + VMU_PAPER_GLYPH_UNCOVERED + 逐字改写 hint（不留 awaiting-editor 之外的状态）===')
+{
+  // The REAL 23 `Missing character` lines from RUN 82 attempt-1's paper-p1.log (sanitised: same characters/fonts/counts).
+  const RUN82_LOG = [
+    'Missing character: There is no ∉ (U+2209) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌊ (U+230A) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌋ (U+230B) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌊ (U+230A) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌋ (U+230B) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌊ (U+230A) in font [lmroman10-bold]:mapping=t',
+    'Missing character: There is no ⌋ (U+230B) in font [lmroman10-bold]:mapping=t',
+    'Missing character: There is no ⌊ (U+230A) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌋ (U+230B) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌊ (U+230A) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⌋ (U+230B) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ① (U+2460) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ① (U+2460) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ① (U+2460) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ② (U+2461) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ② (U+2461) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ② (U+2461) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ③ (U+2462) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ③ (U+2462) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ③ (U+2462) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ④ (U+2463) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ④ (U+2463) in font [lmroman10-regular]:mapping=t',
+    'Missing character: There is no ⑤ (U+2464) in font [lmroman10-regular]:mapping=t',
+  ].join('\n')
+  const hist = missingCharactersOf(RUN82_LOG)
+  ok(hist.length === 10, '★ 正(TB-2772)：第 82 次的 23 行日志收敛为 10 行（同一字符两种字体各一行）', hist)
+  ok(hist.reduce((n, r) => n + r.count, 0) === 23, '★ 正：合计 23 次（与 V15 的 uffff=23 同数）', hist.reduce((n, r) => n + r.count, 0))
+  const OBS82 = ['⌊', '⌋', '∉', '①', '②', '③', '④', '⑤']
+  const distinct82 = [...new Set(hist.map((r) => r.char))].sort()
+  ok(JSON.stringify(distinct82) === JSON.stringify(OBS82.slice().sort()),
+    '★★ 正：8 个 distinct 字形就是 run-lane 的 V15 清单（∉ ⌊ ⌋ ① ② ③ ④ ⑤）', distinct82)
+
+  // helper: drive a paper to awaiting-editor with a body carrying the given text
+  const makePaperAtEditor = async (target, bodyText) => {
+    const cardId = target === 'p-glyph-unknown' ? 'tb2772u' : 'tb2772-' + target
+    const card = await receipt(v5r, 'vibe_v5_record_proposition', { id: cardId, statement: '缺字闸的正文（' + target + '）', value: 0.5, motive: 'TB-2772 判定：' + target, p: 0.5 })
+    ok(card.parsed && card.parsed.ok === true, '前置(' + target + ')：证据卡落库', card.parsed && { code: card.parsed.code, recordId: card.parsed.recordId, track: card.parsed.track })
+    // the records fold write is queued (fire-and-forget), so let the pointer resolve before the part references it
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    const st = await receipt(v5r, 'vibe_v5_paper', { action: 'start', target, participants: [ACAD, R1], format: 'both' })
+    ok(st.parsed && st.parsed.ok === true, '前置(' + target + ')：论文开题', st.parsed && st.parsed.code)
+    const partA = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target, member: ACAD, part: 'A 的第一部分', solution: bodyText, evidence: ['Members/' + ACAD + '/Propos/' + cardId + '.md'] })
+    ok(partA.parsed && partA.parsed.ok === true, '前置(' + target + ')：ACAD 的 part 写入成功', partA.parsed && { code: partA.parsed.code, message: String(partA.parsed.message || '').slice(0, 200), hint: String(partA.parsed.hint || '').slice(0, 200) })
+    const partB = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target, member: R1, part: 'R1 的第二部分', solution: '补充说明：' + bodyText, evidence: ['Members/' + ACAD + '/Propos/' + cardId + '.md'] })
+    ok(partB.parsed && partB.parsed.ok === true, '前置(' + target + ')：R1 的 part 写入成功', partB.parsed && { code: partB.parsed.code, message: String(partB.parsed.message || '').slice(0, 200), hint: String(partB.parsed.hint || '').slice(0, 200) })
+    await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target })
+    await receipt(v5r, 'vibe_v5_paper', { action: 'review', target, member: ACAD, of: R1, deliverable: true, notes: '可交付' })
+    await receipt(v5r, 'vibe_v5_paper', { action: 'review', target, member: R1, of: ACAD, deliverable: true, notes: '可交付' })
+    const adv = await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target })
+    eq(adv.parsed && adv.parsed.advance && adv.parsed.advance.to, 'awaiting-editor', '前置(' + target + ')：advance 到 awaiting-editor')
+    // the office-consult gate may arm on this assembly: answer it once so the NEXT final reaches the glyph gate
+    const probeFinal = await receipt(v5r, 'vibe_v5_paper', { action: 'final', target, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })
+    if (probeFinal.parsed && probeFinal.parsed.code === 'VMU_OFFICE_CONSULT_REQUIRED') {
+      const cs = (await receipt(v5r, 'vibe_v5_paper', { action: 'consult_state', target })).parsed
+      const req = cs && cs.consult && cs.consult.awaiting && cs.consult.awaiting.id
+      ok(typeof req === 'string' && req !== '', '前置(' + target + ')：所办问询 id 可读', req)
+      await receipt(v5r, 'vibe_v5_paper', { action: 'consult', target, member: OFFICE, request_id: req, answer: '看过正文，可交付' })
+    }
+  }
+  const glyphRows82 = hist.map((r) => ({ char: r.char, u: r.u, count: r.count, font: r.font, where: '2, 5' }))
+  const glyphStub = (rows, count) => async (request) => {
+    const base = await writeFakePdf(request)
+    return Object.assign({}, base, { logRead: true, logPath: 'fake.log', glyphLossDetected: true, missingCharacterCount: count,
+      glyphsUnrepaired: rows, glyphLossCode: 'VMU_PAPER_GLYPH_UNCOVERED',
+      glyphLossMeans: 'the compile EXITED 0 and wrote a PDF, but its log names ' + String(rows.length) + ' distinct glyph(s) the font could not print' })
+  }
+
+  // ① the run-82 fixture set ⇒ final REFUSES by name, hint names every rewrite, state stays awaiting-editor
+  const TG = 'p-glyph-refuse'
+  await makePaperAtEditor(TG, '设 ⌊x⌋ 与 A ∉ B；① ② ③ ④ ⑤ 五步。')
+  // FIRST prove the EXPANDED TABLE covers the observed set on the real pack: render that body and read the .tex row back.
+  const rend82 = (await receipt(v5r, 'vibe_v5_paper', { action: 'render', target: TG })).parsed
+  ok(!!rend82 && rend82.math && rend82.math.glyphsRepaired >= 8, '★★ 正(TB-2772 扩表)：8 个观察到的字形都被替换表修复', rend82 && rend82.math && rend82.math.glyphsRepaired)
+  const texRow82Id = rend82 && rend82.recordIds && typeof rend82.recordIds.tex === 'string' ? rend82.recordIds.tex : null
+  ok(texRow82Id !== null, '前置：render 回执给出 .tex 行 id', rend82 && rend82.recordIds)
+  const texRow82 = texRow82Id === null ? null : kernel.records.get({ id: texRow82Id })
+  const tex82 = String((texRow82 && texRow82.body) || '')
+  ok(OBS82.every((ch) => !tex82.includes(ch)), '★★ 正：8 个裸 unicode 字符不再进入 .tex（字体拿不到它们）', OBS82.filter((ch) => tex82.includes(ch)))
+  ok(tex82.includes('\\lfloor{}') && tex82.includes('\\rfloor{}') && tex82.includes('\\notin{}') && tex82.includes('(1)') && tex82.includes('(5)'),
+    '★★ 正：.tex 里是 LaTeX 命令（⌊⌋∉ + ①..⑤→(1)..(5)）', tex82.slice(0, 200))
+  stubLatex(kernel, { check: glyphStub(glyphRows82, 23) })
+  const beforeSt = (await receipt(v5r, 'vibe_v5_paper', { action: 'status', target: TG })).parsed
+  const roundBefore = beforeSt && beforeSt.paper ? beforeSt.paper.round : null
+  const refused = (await receipt(v5r, 'vibe_v5_paper', { action: 'final', target: TG, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  eq(refused && refused.ok, false, '★★ 正(TB-2772)：缺字时 final 是 ok:false（不可交付物不得静默交付）')
+  eq(refused && refused.code, 'VMU_PAPER_GLYPH_UNCOVERED', '★★ 正：具名码 VMU_PAPER_GLYPH_UNCOVERED')
+  eq(refused && refused.finalized, false, '★★ 正：finalized:false（没有定稿）')
+  eq(refused && refused.stage, 'awaiting-editor', '★★ 正：状态停在 awaiting-editor')
+  // RULE E: the equality below compares TWO collections, so both sides are proven non-empty FIRST (two empty lists
+  // compare equal and would make this check vacuous) — `hist` comes from the real log fixture, `glyphsUnrepaired` from
+  // the refusal, and both must carry rows before "same length" means anything.
+  ok(hist.length > 0, '前置(RULE E)：真实 run-82 日志收敛出的字形行非空', hist.length)
+  ok(Array.isArray(refused && refused.glyphsUnrepaired) && refused.glyphsUnrepaired.length > 0,
+    '前置(RULE E)：拒收回执的 glyphsUnrepaired 非空（空集上的 .every() 恒真）', refused && refused.glyphsUnrepaired)
+  ok(Array.isArray(refused && refused.glyphsUnrepaired) && refused.glyphsUnrepaired.length === hist.length,
+    '★★ 正：顶层带 ' + String(hist.length) + ' 行 glyphsUnrepaired（char/码位/次数/字体；同字两字体各一行）', refused && refused.glyphsUnrepaired)
+  ok(refused && Array.isArray(refused.glyphsUnrepaired) && refused.glyphsUnrepaired.length > 0 && refused.glyphsUnrepaired.every((g) => typeof g.char === 'string' && /^U\+[0-9A-F]+$/.test(String(g.u)) && Number.isFinite(Number(g.count)) && typeof g.font === 'string'),
+    '★ 正：每行都含 char / 码位 / 次数 / 字体', refused && refused.glyphsUnrepaired)
+  const hint = String((refused && refused.hint) || '')
+  ok(OBS82.every((ch) => hint.includes(ch)), '★★ 正：hint 逐字列出本轮 8 个字符', { hint })
+  ok(hint.includes('\\lfloor') && hint.includes('\\rfloor') && hint.includes('\\notin') && hint.includes('(1)'),
+    '★★ 正：hint 逐字给出对应 LaTeX 写法（⌊→\\lfloor、⌋→\\rfloor、∉→\\notin、①→(1)）', { hint })
+  ok(/call final again|再调/.test(hint), '★ 正：hint 明说改完正文后再调 final', { hint })
+  const stAfterRefuse = (await receipt(v5r, 'vibe_v5_paper', { action: 'status', target: TG })).parsed
+  eq(stAfterRefuse && stAfterRefuse.paper && stAfterRefuse.paper.status, 'awaiting-editor', '★★ 正：status 也证明停在 awaiting-editor')
+  eq(stAfterRefuse && stAfterRefuse.paper && stAfterRefuse.paper.round, roundBefore, '★★ 正：拒后 rounds 不推进')
+  eq(stAfterRefuse && stAfterRefuse.pdfCompiled && stAfterRefuse.pdfCompiled.produced, true,
+    '★ 正：final 之外的面仍能看到读数（pdfCompiled.produced:true，pdf 行已写）', stAfterRefuse && stAfterRefuse.pdfCompiled && stAfterRefuse.pdfCompiled.produced)
+  eq(stAfterRefuse && stAfterRefuse.pdfCompiled && stAfterRefuse.pdfCompiled.glyphLossDetected, true,
+    '★ 正：status.pdfCompiled 也带 glyphLossDetected:true', stAfterRefuse && stAfterRefuse.pdfCompiled && stAfterRefuse.pdfCompiled.glyphLossDetected)
+
+  // same paper, table/stub clean ⇒ final SUCCEEDS (the refusal is about the dropped glyphs, not about the paper)
+  stubLatex(kernel, { check: writeFakePdf })
+  const fixed = (await receipt(v5r, 'vibe_v5_paper', { action: 'final', target: TG, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  eq(fixed && fixed.ok, true, '★★ 正：扩表/改写后同一篇 final 成功（ok:true）')
+  eq(fixed && fixed.final && fixed.final.finalized, true, '★★ 正：定稿真的发生（final.finalized）')
+
+  // ② one UNCOVERED character (not in the repair table): refused too, and the hint says it is not in the table
+  const TU = 'p-glyph-unknown'
+  await makePaperAtEditor(TU, '未覆盖字符 𝐀 出现在这里。')
+  stubLatex(kernel, { check: glyphStub([{ char: '𝐀', u: 'U+1D400', count: 1, font: 'lmroman10-regular', where: '1' }], 1) })
+  const unknownRef = (await receipt(v5r, 'vibe_v5_paper', { action: 'final', target: TU, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  eq(unknownRef && unknownRef.code, 'VMU_PAPER_GLYPH_UNCOVERED', '★★ 正：表外字符同样被具名拒')
+  ok(/未收录/.test(String((unknownRef && unknownRef.hint) || '')), '★★ 正：表外字符的 hint 明说「替换表未收录」，并指路改用 LaTeX 命令', unknownRef && unknownRef.hint)
+
+  // ③ anti-lamp: boot a COPY whose kit no longer refuses ⇒ the same final comes back ok:true (the gate is load-bearing)
+  const copyRoot = await mkdtemp(join(__tmpRoot(), 'run252-glyph-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(copyRoot, 'vibe-math-vmu'), { recursive: true })
+  const kitCopy = join(copyRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kitSrc = await readFile(kitCopy, 'utf8')
+  const guard = 'if (pdf && pdf.ok === true && pdf.glyphLossDetected === true) {'
+  ok(kitSrc.includes(guard), 'lamp-setup：拒字闸在 kit/paper.js 里按名字可定位')
+  await writeFile(kitCopy, kitSrc.split(guard).join('if (false) {'), 'utf8')
+  const lampV5r = await bootOf(pathToFileURL(join(copyRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(copyRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  try {
+    const lampKernel = lampV5r.handle.kernel
+    await lampKernel.members.hire({ id: ACAD, slot: 'chair' })
+    await lampKernel.members.hire({ id: R1, slot: 'member' })
+    await lampKernel.members.hire({ id: OFFICE, slot: 'member' })
+    const lampTarget = 'p-glyph-lamp'
+    const lampCard = await receipt(lampV5r, 'vibe_v5_record_proposition', { id: 'tb2772-lamp', statement: '灯', value: 0.5, motive: '灯', p: 0.5 })
+    ok(lampCard.parsed && lampCard.parsed.ok === true, 'lamp：副本里证据卡可写', lampCard.parsed && lampCard.parsed.code)
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'start', target: lampTarget, participants: [ACAD, R1], format: 'both' })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'part', target: lampTarget, member: ACAD, part: 'A 的第一部分', solution: '设 ⌊x⌋ ∉ A', evidence: ['Members/' + ACAD + '/Propos/tb2772-lamp.md'] })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'part', target: lampTarget, member: R1, part: 'R1 的第二部分', solution: '补充：⌊x⌋', evidence: ['Members/' + ACAD + '/Propos/tb2772-lamp.md'] })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'advance', target: lampTarget })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'review', target: lampTarget, member: ACAD, of: R1, deliverable: true, notes: '可交付' })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'review', target: lampTarget, member: R1, of: ACAD, deliverable: true, notes: '可交付' })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'advance', target: lampTarget })
+    stubLatex(lampKernel, { check: glyphStub([{ char: '⌊', u: 'U+230A', count: 1, font: 'lmroman10-regular', where: '1' }], 1) })
+    const lampFinal = (await receipt(lampV5r, 'vibe_v5_paper', { action: 'final', target: lampTarget, member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+    ok(lampFinal && lampFinal.ok === true && lampFinal.final && lampFinal.final.finalized === true,
+      '★★★ LAMP(RED-worthy)：把拒字闸去掉后，同一份缺字 PDF 又被静默定稿了（ok:true/finalized:true）—— 上面对 ok:false 的断言因此是有牙的',
+      lampFinal && { ok: lampFinal.ok, finalized: lampFinal.final && lampFinal.final.finalized, code: lampFinal.code })
+  } finally {
+    await rm(copyRoot, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+// ── §7. TB-2774: ONE PREDICATE — the FINGERPRINT decides "text changed"; the round is narrative ───────────────
+console.log('=== 7. TB-2774：readReview / coverage / voidReviews 同一行不得相反（指纹唯一判据，round 只叙事）===')
+{
+  const tb2774Boot = async (cfg = {}) => {
+    const b = await bootOf(pathToFileURL(ENTRY).href, Object.assign({ root: await mkdtemp(join(__tmpRoot(), 'tb2774-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' }, cfg))
+    const k = b.handle.kernel
+    for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k.members.hire({ id, slot })
+    return b
+  }
+  // scenario driver: two parts, cross reviews, then `final{revise}` puts the paper in round 2 WITHOUT rewriting any part
+  const twoPartsAndReviews = async (b, target, cardId) => {
+    const card = await receipt(b, 'vibe_v5_record_proposition', { id: cardId, statement: 'TB-2774 证据 ' + target, value: 0.5, motive: 'm', p: 0.5 })
+    ok(card.parsed && card.parsed.ok === true, '前置(' + target + ')：证据卡落库', card.parsed && card.parsed.code)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    const ev = ['Members/' + ACAD + '/Propos/' + cardId + '.md']
+    await receipt(b, 'vibe_v5_paper', { action: 'start', target, participants: [ACAD, R1], format: 'both' })
+    await receipt(b, 'vibe_v5_paper', { action: 'part', target, member: ACAD, part: 'A 节', solution: 'A 的正文', evidence: ev })
+    await receipt(b, 'vibe_v5_paper', { action: 'part', target, member: R1, part: 'B 节', solution: 'B 的正文', evidence: ev })
+    await receipt(b, 'vibe_v5_paper', { action: 'advance', target })
+    await receipt(b, 'vibe_v5_paper', { action: 'review', target, member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+    await receipt(b, 'vibe_v5_paper', { action: 'review', target, member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+    const toAwait = await receipt(b, 'vibe_v5_paper', { action: 'advance', target })
+    ok(toAwait.parsed && toAwait.parsed.advance && toAwait.parsed.advance.to === 'awaiting-editor', '前置(' + target + ')：互审到 awaiting-editor', toAwait.parsed && (toAwait.parsed.code || toAwait.parsed.message))
+    const rev = await receipt(b, 'vibe_v5_paper', { action: 'final', target, member: ACAD, decision: 'revise', note: '再来一轮' })
+    ok(rev.parsed && rev.parsed.ok === true && rev.parsed.final && rev.parsed.final.moved === true, '前置(' + target + ')：final{revise} 打回 writing（round 推进）', rev.parsed && { code: rev.parsed.code, message: rev.parsed.message, final: rev.parsed.final && { ok: rev.parsed.final.ok, moved: rev.parsed.final.moved } })
+  }
+  // THE INVARIANT under test: a row whose judged fingerprint EQUALS the current fingerprint is never described as
+  // "replaced"/stale, and every counted vote in reviewsRead is also in coverage.covered (and vice versa).
+  const contradictionsOf = (receiptObj) => {
+    const problems = []
+    const adv = receiptObj && receiptObj.advance ? receiptObj.advance : {}
+    const read = Array.isArray(adv.reviewsRead) ? adv.reviewsRead : []
+    for (const row of read) {
+      if (row && row.judgedPartFingerprint !== undefined && row.judgedPartFingerprint !== null && row.currentFingerprint !== undefined && row.currentFingerprint !== null &&
+          String(row.judgedPartFingerprint) === String(row.currentFingerprint) && (row.stalePart === true || /replaced|text .*changed/i.test(String(row.means || '')))) {
+        problems.push({ where: 'reviewsRead', member: row.member, sameFingerprint: true, stalePart: row.stalePart, means: String(row.means || '').slice(0, 120) })
+      }
+    }
+    const stale = Array.isArray(adv.stale) ? adv.stale : ((receiptObj && Array.isArray(receiptObj.staleReviews)) ? receiptObj.staleReviews : [])
+    for (const row of stale) {
+      if (row && row.judgedPartFingerprint !== undefined && row.currentFingerprint !== undefined && String(row.judgedPartFingerprint) === String(row.currentFingerprint)) {
+        problems.push({ where: 'stale', by: row.by, sameFingerprint: true, why: row.why, whyMeans: String(row.whyMeans || '').slice(0, 120) })
+      }
+    }
+    const cov = adv.perRoundReviewCoverage || {}
+    const coveredMembers = new Set((Array.isArray(cov.covered) ? cov.covered : []).map((c) => c && c.member))
+    const countedMembers = new Set(read.filter((r) => r && r.deliverable === true).map((r) => r.member))
+    for (const m of countedMembers) if (!coveredMembers.has(m)) problems.push({ where: 'coverage-vs-read', member: m, reason: 'counted in reviewsRead but absent from coverage.covered' })
+    for (const m of coveredMembers) if (!countedMembers.has(m)) problems.push({ where: 'coverage-vs-read', member: m, reason: 'covered but not counted in reviewsRead' })
+    return problems
+  }
+
+  // ── A. round moved, text UNCHANGED ⇒ no stale wording anywhere; all four columns agree ──
+  {
+    const A2 = await tb2774Boot()
+    const TA = 'p2774a'
+    await twoPartsAndReviews(A2, TA, 'c2774a')
+    // writing → reviewing opens round 2; reviewing → awaiting-editor is the receipt that READS the round-1 votes
+    const advOpen = await receipt(A2, 'vibe_v5_paper', { action: 'advance', target: TA })
+    ok(advOpen.parsed && advOpen.parsed.advance && advOpen.parsed.advance.to === 'reviewing', '★ 前置：round 2 的第一次 advance 到 reviewing', advOpen.parsed && advOpen.parsed.advance && advOpen.parsed.advance.to)
+    const advA = await receipt(A2, 'vibe_v5_paper', { action: 'advance', target: TA })
+    const advObj = advA.parsed && advA.parsed.advance
+    ok(!!advObj && advObj.to === 'awaiting-editor', '★ 前置：round 2 的第一次 advance 到 awaiting-editor', advObj && advObj.to)
+    const problemsA = contradictionsOf(advA.parsed)
+    eq(problemsA.length, 0, '★★ 正(TB-2774)：round 变了但指纹没变 ⇒ readReview/coverage/stale 四栏不得给出「text replaced」或相反结论', problemsA)
+    ok(advObj && Array.isArray(advObj.reviewsRead) && advObj.reviewsRead.length === 2 && advObj.reviewsRead.every((r) => r.deliverable === true && r.stalePart !== true),
+      '★★ 正：两条 round-1 票都按指纹判为仍有効（deliverable:true，无 stalePart）', advObj && advObj.reviewsRead)
+    ok(advObj && advObj.perRoundReviewCoverage && Array.isArray(advObj.perRoundReviewCoverage.covered) && advObj.perRoundReviewCoverage.covered.length === 2 &&
+      Array.isArray(advObj.reviewsRead) && advObj.perRoundReviewCoverage.covered.length === advObj.reviewsRead.length,
+      '★★ 正：coverage.covered == reviewsRead 计入数（2/2，一个谓词）', advObj && advObj.perRoundReviewCoverage)
+    ok(advObj && Array.isArray(advObj.stale) && advObj.stale.length === 0 &&
+      Array.isArray(advObj.perRoundReviewCoverage.staleReviews) && advObj.perRoundReviewCoverage.staleReviews.length === 0,
+      '★★ 正：stale / staleReviews 都为空（没有任何一行被判「text replaced」）')
+
+    // ★ LAMP 1: revert the freshness predicate to the OLD round-inclusive rule on a COPY ⇒ the same scenario prints a
+    // contradiction (same fingerprint, stale wording) — so the assertion above is red-worthy.
+    const lampRoot = await mkdtemp(join(__tmpRoot(), 'tb2774-lamp1-'))
+    cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+    const kitP = join(lampRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+    const kitS = await readFile(kitP, 'utf8')
+    const oldFresh = "const fresh = bound ? !partChanged : !roundChanged"
+    ok(kitS.includes(oldFresh), 'lamp1-setup：单谓词行可定位')
+    await writeFile(kitP, kitS.split(oldFresh).join('const fresh = !partChanged && !roundChanged'), 'utf8')
+    const L1b = await bootOf(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lampRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+    const lk = L1b.handle.kernel
+    for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await lk.members.hire({ id, slot })
+    await twoPartsAndReviews(L1b, 'p2774al', 'c2774al')
+    const lAdv = await receipt(L1b, 'vibe_v5_paper', { action: 'advance', target: 'p2774al' })
+    const lProblems = contradictionsOf(lAdv.parsed)
+    ok(lProblems.length > 0, '★★★ LAMP1(RED-worthy)：退回旧（round 参与 fresh）谓词后，同一场景出现「指纹相同却判 stale/replaced」的自相矛盾', lProblems)
+    await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+  }
+
+  // ★ LAMP 2: the OLD round-only coverage predicate on the SAME durable rows would count 0 of 2 (the rows were
+  // written in round 1 and the paper is in round 2) while reviewsRead counts 2 — i.e. reverting coverage to the round
+  // rule would flip the consistency assertion above. The numbers are read from the scenario-A receipt, not invented.
+  {
+    const A3 = await tb2774Boot()
+    await twoPartsAndReviews(A3, 'p2774d', 'c2774d')
+    await receipt(A3, 'vibe_v5_paper', { action: 'advance', target: 'p2774d' })
+    const advD = await receipt(A3, 'vibe_v5_paper', { action: 'advance', target: 'p2774d' })
+    const dAdv = advD.parsed && advD.parsed.advance
+    const dRead = Array.isArray(dAdv && dAdv.reviewsRead) ? dAdv.reviewsRead : []
+    const dCounted = dRead.filter((r) => r && r.deliverable === true)
+    const roundOnlyWouldCount = dCounted.filter((r) => Number(r.boundRound) === Number(dAdv && dAdv.round)).length
+    const fingerprintCounts = dCounted.length
+    ok(fingerprintCounts === 2 && roundOnlyWouldCount === 0,
+      '★★★ LAMP2(RED-worthy)：同一批 durable 行，指纹谓词计 2/2，round-only 谓词只计 0/2 —— 退回旧 coverage 谓词会让 covered 与 reviewsRead 相反（上行断言因此有牙）',
+      { countedByFingerprint: fingerprintCounts, countedByRoundOnly: roundOnlyWouldCount, round: dAdv && dAdv.round })
+  }
+
+  // ── B. text REPLACED ⇒ only the row whose FINGERPRINT differs is stale; the other still counts; columns agree ──
+  {
+    const B2 = await tb2774Boot()
+    const TB2 = 'p2774b'
+    await twoPartsAndReviews(B2, TB2, 'c2774b')
+    // round 2, writing: replace ACAD's part text (its judged fingerprint WILL change)
+    const rew = await receipt(B2, 'vibe_v5_paper', { action: 'part', target: TB2, member: ACAD, part: 'A 节', solution: 'A 的新正文（已替换）', evidence: ['Members/' + ACAD + '/Propos/c2774b.md'] })
+    ok(rew.parsed && rew.parsed.ok === true, '前置：round 2 里替换 A 的正文', rew.parsed && (rew.parsed.code || rew.parsed.message))
+    await receipt(B2, 'vibe_v5_paper', { action: 'advance', target: TB2 }) // writing → reviewing
+    const advB = await receipt(B2, 'vibe_v5_paper', { action: 'advance', target: TB2 }) // reviewing → awaiting-editor? (r-1 must re-review)
+    const bProblems = contradictionsOf(advB.parsed)
+    eq(bProblems.length, 0, '★★ 正(TB-2774)：真替换的场合同样不得自相矛盾', bProblems)
+    eq(advB.parsed && advB.parsed.code, 'VMU_REVIEW_STALE', '★★ 正：覆盖失败时 advance 按名字拒 VMU_REVIEW_STALE（不是静默放过旧票）')
+    const bStale = (advB.parsed && Array.isArray(advB.parsed.staleReviews)) ? advB.parsed.staleReviews : []
+    ok(bStale.length >= 1 && bStale.every((s) => s && String(s.judgedPartFingerprint) !== String(s.currentFingerprint)),
+      '★★ 正：被判 stale 的行必须是【指纹真的不等】的那些（r-1 审的 A 旧文）', bStale)
+    ok(bStale.every((s) => s && s.why === 'part-text-changed'), '★★ 正：why 只有 part-text-changed —— round 变了不再冒充「正文被换」', bStale.map((s) => s.why))
+    ok(bStale.some((s) => s && s.by === R1) && !bStale.some((s) => s && s.by === ACAD),
+      '★★ 正：只有审了被替换正文的那一行（r-1）被判 stale；ACAD 审的未变正文不被牵连（round 从 1 到 2 不使它失效）',
+      bStale.map((s) => s && s.by))
+  }
+}
 
 // A Windows kernel keeps a handle on the member tree for a moment after a claim, so cleanup is
 // best-effort: the temp root is under D:/_tmp and the assertions above already read every byte they need.

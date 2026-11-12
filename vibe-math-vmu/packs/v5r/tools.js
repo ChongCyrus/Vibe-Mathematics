@@ -6707,6 +6707,13 @@ function projectPdfBlock(pdf, target) {
     engineSource: p.engine ? 'face' : ((engines[0] && engines[0].engine) ? 'triedEngines' : null),
     pdfPath: p.pdfPath || null,
     pdfBytes: p.pdfBytes === undefined || p.pdfBytes === null ? null : p.pdfBytes,
+    // ★★★ TB-2772 follow-up (audit4 P1): `final` is the moment the compile happens, so its pdf block must carry the FILE
+    // HASH too — otherwise a reader who wants "which bytes were finalised" has to call `status` afterwards (and a later
+    // recompile can move the file out from under that reading). `null` = this compile/receipt had no hash (named absence).
+    pdfSha256: p.pdfSha256 === undefined || p.pdfSha256 === null ? null : String(p.pdfSha256),
+    pdfSha256Means: p.pdfSha256 === undefined || p.pdfSha256 === null
+      ? 'this compile recorded no file hash (an older row/build), so "which bytes were finalised" is NOT provable from this receipt — read status.pdfCompiled.pdfSha256MatchesDisk instead of assuming'
+      : 'the sha256 of the PDF file THIS compile produced and recorded; `status.pdfCompiled` compares it with the file on disk later (a later `compile` rewrites the file, so this receipt is the moment-of-finalisation reading)',
     // ★★ RUN 205 (run 43 / FEEDBACK42 2.4, MEASURED): the final receipt's `pdf` block printed produced/engine/pdfBytes/pdfPath and
     // DROPPED `recordId`, which the compiler had already returned — the very row a caller was told to quote was readable only
     // from `status.pdfCompiled`. One compile, one id, both doors.
@@ -7369,6 +7376,34 @@ async function toolPaper(args = {}, { kernel } = {}) {
         note: str(args.note || ''),
         conclusion: str(args.conclusion || args.body || ''),
       })
+      // ★★★ TB-2772 (RUN 82 attempt-1): A PDF THAT DROPPED GLYPHS IS NOT A DELIVERABLE. The kit rolled the
+      // finalisation back to awaiting-editor and returned a NAMED refusal; this face hands the caller `ok:false` + the
+      // code + the glyph rows + the literal rewrite advice, so the loss is never delivered silently. No override.
+      if (finalized && finalized.ok === false && finalized.code === 'VMU_PAPER_GLYPH_UNCOVERED') {
+        const glyphRows = Array.isArray(finalized.glyphsUnrepaired) ? finalized.glyphsUnrepaired : []
+        const glyphCount = finalized.missingCharacterCount === undefined || finalized.missingCharacterCount === null
+          ? glyphRows.reduce((n, r) => n + (Number(r && r.count) || 0), 0)
+          : Number(finalized.missingCharacterCount)
+        const glyphStage = finalized.stage === undefined ? null : finalized.stage
+        return { ok: false, tool, action,
+          code: 'VMU_PAPER_GLYPH_UNCOVERED',
+          message: finalized.message === undefined ? null : finalized.message,
+          hint: finalized.hint === undefined ? null : finalized.hint,
+          target: finalized.target === undefined ? target : finalized.target,
+          stage: glyphStage,
+          finalized: false,
+          rolledBack: finalized.rolledBack === undefined ? null : finalized.rolledBack,
+          glyphLossDetected: true,
+          missingCharacterCount: glyphCount,
+          glyphsUnrepaired: glyphRows,
+          glyphLossCode: 'VMU_PAPER_GLYPH_UNCOVERED',
+          logPath: finalized.logPath === undefined ? null : finalized.logPath,
+          glyphLossMeans: finalized.means === undefined ? null : finalized.means,
+          final: { ok: false, finalized: false, code: 'VMU_PAPER_GLYPH_UNCOVERED', stage: glyphStage,
+            glyphLossDetected: true, missingCharacterCount: glyphCount, glyphsUnrepaired: glyphRows,
+            means: finalized.means === undefined ? null : finalized.means },
+          means: finalized.means === undefined ? null : finalized.means }
+      }
       // Projected, not re-exported: the flow returns `artifacts`/`missing`/`pdf` sharing references, and the host's
       // serializer labels a second occurrence of the same value "[circular]". A face that hands out a receipt full of
       // "[circular]" would make a reader think the receipt is broken.
@@ -8156,7 +8191,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
       member: { type: 'string', description: 'part/review/final：动作发起者的名册 id（由内核校验其参与资格/席位）；consult：答复人（所办，必须匹配 pack 声明的答复角色）' },
       by: { type: 'string', description: 'consult：member 的别名（谁在答复）' },
       part: { type: 'string', description: 'part：你这一份的标题；review：被审对象（of 的别名）' },
-      body: { type: 'string', description: 'part：正文；final：结论别名。★ 正文里的 `Members/<成员>/<kind>/<x>.md` 指针按【记录 id】解析（不是文件名）：引用文件卡请写记录 id，或把它放进 evidence；与 `proof_ref` 的区别是——`proof_ref` 指「证明正文在哪」，可以指文件；正文里的指针必须是记录库里真有的那一行（RUN 209 / FEEDBACK45 2.3）。★★ RUN 211（run 48 / FEEDBACK47 2.2 实测）：这道闸是「出现即命」——**正文任何位置**（含括注、注释、解释性的一句话）出现该形状的路径都会被解析并在解析不到时被拒，所以要把文件卡路径从正文里**删掉**，不是换成记录 id 后在括号里再提一次' },
+      body: { type: 'string', description: 'part：正文；final：结论别名。★ 正文里的 `Members/<成员>/<kind>/<x>.md` 指针按【记录 id】解析（不是文件名）：引用文件卡请写记录 id，或把它放进 evidence；与 `proof_ref` 的区别是——`proof_ref` 指「证明正文在哪」，可以指文件；正文里的指针必须是记录库里真有的那一行（RUN 209 / FEEDBACK45 2.3）。★★ RUN 211（run 48 / FEEDBACK47 2.2 实测）：这道闸是「出现即命」——**正文任何位置**（含括注、注释、解释性的一句话）出现该形状的路径都会被解析并在解析不到时被拒，所以要把文件卡路径从正文里**删掉**，不是换成记录 id 后在括号里再提一次。★ TB-2772：**公式请写 LaTeX 命令，不要写裸 unicode 数学字符**（ℤ→`\\mathbb{Z}`、⌊→`\\lfloor`、∉→`\\notin`、①→`1`）——替换表只是兜底，表外字符会被 xelatex 丢掉并在回执里具名（`glyphsUnrepaired` / `VMU_PAPER_GLYPH_UNCOVERED`）' },
       solution: { type: 'string' }, methods: { type: 'string' }, rules: { type: 'string' }, limits: { type: 'string' },
       evidence: { type: 'array', description: 'part：证据指针列表' },
       deliverable: { type: 'boolean', description: 'review：true/false（未表态不交付）' },
