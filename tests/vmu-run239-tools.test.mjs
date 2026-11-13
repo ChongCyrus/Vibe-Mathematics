@@ -187,6 +187,36 @@ try {
   const oldSplit = (text) => String(text).split(/[;；\n]/).map((x) => x.trim()).filter((x) => x !== '')
   ok(oldSplit(RUN81_AGENDA).length === 4 && oldSplit(RUN81_AGENDA).includes('）'),
     '★★★ LAMP(RED-worthy): the OLD top-level splitter mints 4 items INCLUDING the empty shell "）" — the fixed 3-item reading above is load-bearing', oldSplit(RUN81_AGENDA))
+
+  // ── TB-2776 (RUN 82 attempt-2 / D-6, MEASURED): the READ faces re-split the stored line and answered 4 items where the
+  // write receipt said 3. The kernel now stores the write face's items (`agendaLines`) and every read projection returns
+  // them verbatim; `agendaItemsSource` names which reading a caller is looking at.
+  const mid = typeof sp.meeting === 'string' ? sp.meeting : (sp.meeting && (sp.meeting.id || (Array.isArray(sp.meeting) && sp.meeting[0] && sp.meeting[0].id)))
+  ok(typeof mid === 'string' && mid !== '', 'TB-2776 前置：convene 回执给出会议 id（读面按它回读）', { meeting: sp.meeting })
+  const sum = await call('vibe_vmu_meeting', { action: 'summary', id: mid })
+  ok(sum && sum.ok === true, 'TB-2776 前置：summary 读面可用', sum && { code: sum.code, message: String(sum.message || '').slice(0, 120) })
+  deepEq(sum && sum.agendaItems, sp.agendaItems,
+    '★★ TB-2776：summary 的 agendaItems 与写面逐项相等（3 项，第二项 `中文分号作分隔（；）` 整段不裂）')
+  eq(sum && sum.agendaItemsSource, 'stored-write-face', '★★ TB-2776：summary 明说它读的是写面存下的 items（不是再切一遍）')
+  ok(sum && typeof sum.agendaItemsMeans === 'string' && /depth 0|bracket/i.test(sum.agendaItemsMeans),
+    '★★ TB-2776：agendaItemsMeans 与 bracket-aware 行为一致（不再自述"只按 ; ； 换行切"）', sum && sum.agendaItemsMeans)
+  const stR = await call('vibe_vmu_meeting', { action: 'status', id: mid })
+  deepEq(stR && stR.agendaItems, sp.agendaItems, '★★ TB-2776：status 的 agendaItems 同样与写面逐项相等')
+  eq(stR && stR.agendaItemsSource, 'stored-write-face', '★★ TB-2776：status 也点名读的是写面 items')
+  const listed = await call('vibe_vmu_meeting', { action: 'list' })
+  const listedRow = (Array.isArray(listed && listed.unionMeetings) ? listed.unionMeetings : []).filter((m) => m && m.id === mid)[0] || null
+  ok(listedRow === null || listedRow.agendaItems === undefined || (Array.isArray(listedRow.agendaItems) && JSON.stringify(listedRow.agendaItems) === JSON.stringify(sp.agendaItems)),
+    '★ TB-2776：list 的同一场会议没有另一套 agendaItems（要么不投影，要么与写面一致）', listedRow && { id: listedRow.id, items: listedRow.agendaItems })
+  const rv2 = await call('vibe_v5_meeting', { action: 'receiptsView', limit: 5 })
+  const rvOpen = (Array.isArray(rv2 && rv2.receipts) ? rv2.receipts : []).filter((r) => r && r.action === 'open')[0] || null
+  ok(rvOpen === null || rvOpen.agendaItems === undefined || (Array.isArray(rvOpen.agendaItems) && JSON.stringify(rvOpen.agendaItems) === JSON.stringify(sp.agendaItems)),
+    '★ TB-2776：receiptsView 的 open 回执没有另切一套 agendaItems', rvOpen && { action: rvOpen.action, items: rvOpen.agendaItems })
+  // ★ LAMP(RED-worthy): the stored `materials` line, split the OLD top-level way, still yields FOUR items (empty shell "）");
+  // the read faces above answer THREE because they return the stored items. Reverting the read face to the old split would
+  // therefore fail the deep-equal assertions — the fix is what makes them true, not a relaxed comparison.
+  ok(oldSplit(String(sum && sum.materials)).length === 4 && Array.isArray(sum && sum.agendaItems) && sum.agendaItems.length === 3,
+    '★★★ LAMP(RED-worthy)：读面若退回顶层 split，同一 materials 会得 4 项（含空壳 "）"）—— 上面 summary/status 的 3 项相等断言因此有牙',
+    { oldSplit: oldSplit(String(sum && sum.materials)), readItems: sum && sum.agendaItems })
 } catch (e) {
   failed += 1
   failures.push({ name: 'threw', detail: String(e && e.stack || e) })

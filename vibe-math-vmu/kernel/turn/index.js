@@ -5181,6 +5181,15 @@ export function createTurnOrchestrator({
       const asmSources = resumeSource ? (Number(asm.sourcesCount) || 0) : asm.sources.length
       if (!resumeSource) archivePrompt(turn && turn.id, turn && turn.member, asm && asm.text, asm && asm.statusBlock)
       if (!resumeSource) rememberStatusBlockReading(turn && turn.id, asm && asm.statusBlock)
+      // ★★★ TB-2777 D-3 (RUN 82 attempt-2, MEASURED): THE PROMPT A RESUMED TURN ANSWERS IS STILL A PROMPT. The temp seats
+      // deliver through the RESUMED path, which skipped the archive entirely, so `vibe_vmu_turn { op:"prompt", member:"r-temp" }`
+      // — an ACTIVE turn's page — answered `VMU_NO_SUCH_OBJECT` "no assembled member prompt is retained for seat r-temp"
+      // while the same receipt listed the retained seats. The caller holds the text on a resume, so archiving it here
+      // re-uses the one archive and stays bounded (PROMPT_ARCHIVE_CAP); NOTHING is re-assembled: no notices are drained
+      // and no `assembled` count moves (that is the TB-2616 rule this branch exists to protect).
+      if (resumeSource && !promptArchive.has(String(turn && turn.id))) {
+        archivePrompt(turn && turn.id, turn && turn.member, resumeSource.text, null)
+      }
       const raw = await deliverTurn(turn, asm.text)
       // ★★★★★★★ RUN 245 (audit round 12 H2): THE ANSWER OF AN ABANDONED TURN IS NOT APPLIED. `op:"abandon"` is the
       // release path for a delivery that never returns; when that delivery DOES return after the release, the member

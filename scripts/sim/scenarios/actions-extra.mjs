@@ -447,6 +447,64 @@ export async function scenario(h, { log = () => {} } = {}) {
     const st = task4Reassign.task && task4Reassign.task.state
     if (st !== 'assigned') throw new Error('F/task_update/reassign-from-assigned: expected task.state=assigned (live pre-state), got ' + JSON.stringify(st))
   }
+  // ★ TB-2750 / F80-1 — TWO-SIDED PROBE (lead ruling, task-12). "A task is taken only after its brief" is a sentence
+  // about a GATE, so it has to be measured on BOTH sides; a scenario that only writes the brief first proves the
+  // satisfying path and never that the refusal exists (or that it refuses by name, or that a refused take leaves the
+  // board untouched):
+  //   (a) create (no owner) -> assign with NO brief  => named refusal VMU_TASK_BRIEF_MISSING, owner stays null;
+  //   (b) brief -> assign                            => accepted, owner becomes the assignee.
+  // The refusal is PREDICTED through expect() (which pins this very seq, so it is evidence, not a mechanism defect);
+  // the positives are hard contract checks pushed into `failures`, so a regression turns the run red BY NAME.
+  const task5 = await step('F/task/create-5', () => h.call('vibe_vmu_task', {
+    action: 'create', title: '仿真任务：无简报直接派工（应被拒）', objective: '量 F80-1 的拒绝侧：没有 brief 不得被派工',
+    write_scopes: ['Shared/'], priority: 2,
+  }))
+  const task5Id = firstId(task5)
+  const task5AssignUnbriefed = await step('F/task_update/assign-unbriefed', async () => h.call('vibe_v5_task_update', {
+    action: 'assign', task_id: task5Id, expected_revision: await revNow(task5Id), owner: 'r-2', why: '仿真：无 brief 直接派工（期望具名拒）',
+  }, as('r-acad')))
+  if (task5AssignUnbriefed && task5AssignUnbriefed.ok === false) {
+    expect('vibe_v5_task_update', task5AssignUnbriefed.code, 'F80-1：无 brief 的 assign 必须按名拒 VMU_TASK_BRIEF_MISSING（a title is a name, not work）')
+    if (task5AssignUnbriefed.code !== 'VMU_TASK_BRIEF_MISSING') {
+      failures.push({
+        code: 'F80-1-REFUSAL-CODE', step: 'F/task_update/assign-unbriefed',
+        message: 'assign of an unbriefed task was refused, but NOT by the named code: got ' + String(task5AssignUnbriefed.code),
+        means: 'the refusal exists but a caller cannot branch on it — the F80-1 contract is named VMU_TASK_BRIEF_MISSING',
+        receipt: pick(task5AssignUnbriefed, ['ok', 'code', 'message', 'hint', 'id', 'readable', 'contentSource']),
+      })
+    }
+  } else {
+    failures.push({
+      code: 'F80-1-NOT-REFUSED', step: 'F/task_update/assign-unbriefed',
+      message: 'assign of an UNBRIEFED task was ACCEPTED: ' + JSON.stringify(pick(task5AssignUnbriefed, ['ok', 'owner', 'task', 'code'])),
+      means: 'the F80-1 gate is gone: a task can be taken before its assignor wrote the work text',
+      receipt: pick(task5AssignUnbriefed, ['ok', 'owner', 'task', 'code']),
+    })
+  }
+  // the refusal must not have planted an owner: "refused loudly, assigned anyway" is worse than a silent refusal
+  const task5AfterRefusal = await step('F/task_get-5-after-refusal', () => h.call('vibe_v5_task_get', { id: task5Id }, as('r-1')))
+  const task5OwnerAfterRefusal = task5AfterRefusal && task5AfterRefusal.task ? task5AfterRefusal.task.owner : null
+  if (task5OwnerAfterRefusal !== null && task5OwnerAfterRefusal !== undefined) {
+    failures.push({
+      code: 'F80-1-OWNER-LEAKED', step: 'F/task_get-5-after-refusal',
+      message: 'a REFUSED assign still left owner=' + JSON.stringify(task5OwnerAfterRefusal) + ' on the task',
+      means: 'the refusal answered with a code but wrote the assignment anyway: the board now names an owner for work nobody briefed',
+      receipt: pick(task5AfterRefusal, ['ok', 'task']),
+    })
+  }
+  // (b) the satisfying path: after the brief, the same door must ACCEPT and must land the owner
+  const task5Brief = await step('F/task/brief-5', () => h.call('vibe_vmu_task', { action: 'brief', id: task5Id, text: '仿真：无简报派工探针的简报（写完必须能被派工）' }))
+  const task5AssignAfterBrief = await step('F/task_update/assign-after-brief', async () => h.call('vibe_v5_task_update', {
+    action: 'assign', task_id: task5Id, expected_revision: await revNow(task5Id), owner: 'r-2', why: '仿真：先写 brief 再派工（必须接受）',
+  }, as('r-acad')))
+  if (!(task5AssignAfterBrief && task5AssignAfterBrief.ok === true && task5AssignAfterBrief.task && task5AssignAfterBrief.task.owner === 'r-2')) {
+    failures.push({
+      code: 'F80-1-ASSIGN-AFTER-BRIEF', step: 'F/task_update/assign-after-brief',
+      message: 'brief-then-assign did not succeed with owner=r-2: ' + JSON.stringify(pick(task5AssignAfterBrief, ['ok', 'code', 'owner', 'task'])),
+      means: 'the F80-1 gate also refuses work that HAS a brief — the gate would block the normal hire/assign path',
+      receipt: pick(task5AssignAfterBrief, ['ok', 'code', 'owner', 'task']),
+    })
+  }
   const taskPri = await step('F/prioritize', () => h.call('vibe_v5_prioritize', {
     order: [{ task_id: taskId, priority: 5 }, { task_id: task2Id, priority: 1 }], why: '仿真：优先级落板',
   }))
@@ -470,6 +528,10 @@ export async function scenario(h, { log = () => {} } = {}) {
     get: pick(taskGet, ['ok', 'id', 'revision', 'status', 'code']),
     listPack: pick(taskListPack, ['ok', 'count', 'tasks', 'code']),
     update: { assign: pick(taskUpdateAssign, ['ok', 'code']), transition: pick(taskUpdateTransition, ['ok', 'code']), reassign: pick(taskUpdateReassign, ['ok', 'code']), reassignFromAssigned: pick(task4Reassign, ['ok', 'task', 'code']), complete: pick(taskUpdateComplete, ['ok', 'code']), reopen: pick(taskUpdateReopen, ['ok', 'code']) },
+    // F80-1 two-sided probe (task-12): the refusal side carries its named code, the satisfying side carries the owner
+    assignUnbriefed: pick(task5AssignUnbriefed, ['ok', 'code', 'id', 'readable', 'contentSource', 'message']),
+    get5AfterRefusal: pick(task5AfterRefusal, ['ok', 'task']),
+    assignAfterBrief: pick(task5AssignAfterBrief, ['ok', 'owner', 'task', 'code']),
     prioritize: pick(taskPri, ['ok', 'applied', 'order', 'code']),
     assignPack: pick(taskAssignPack, ['ok', 'assigned', 'code']),
   }

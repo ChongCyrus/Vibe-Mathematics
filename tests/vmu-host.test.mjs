@@ -732,13 +732,17 @@ if (SELF_PROBE) {
     return { out, block: (out.sections || []).find((s) => s.name === 'v5r-effective-tools') || null }
   }
   const wireOut = await noWire(agentA)
-  const wireNames = agentA.ctx.tools.schemas().map((s) => s.name).filter((n) => n !== 'vibe_v5_say') // member slot denies vibe_v5_say
-  ok(wireOut.block && /1 个：vibe_vmu_status/.test(wireOut.block.text) && !/0 个/.test(wireOut.block.text),
-    '★★ TB-2770: out.tools 不可观测 ⇒ 块用 agent.ctx.tools.schemas()（与 applyMemberToolFace 同源），不再渲染 0 个',
+  // ★★★ TB-2775 (RUN 82 attempt-2): the block does NOT subtract the seat face a second time. The per-turn table IS the
+  // request's wire, and the face reaches the wire by restricting the NEXT request — measured: each turn's first request
+  // had 79 wire tools while the old block said 58, and the 21 difference was announced as tool-addition on that request.
+  // So here the block must equal the SOURCE the fake Agent reports, not the deny-complement.
+  const wireNames = agentA.ctx.tools.schemas().map((s) => s.name) // unfiltered: the same table the wire is built from
+  ok(wireOut.block && /2 个：vibe_v5_say、vibe_vmu_status/.test(wireOut.block.text) && !/0 个/.test(wireOut.block.text),
+    '★★ TB-2770/TB-2775: out.tools 不可观测 ⇒ 块用 agent.ctx.tools.schemas(scope) 的同一份表（不渲染 0 个，也不替角色面做二次过滤）',
     wireOut.block && wireOut.block.text)
   const blockNames = (wireOut.block.text.match(/vibe_[A-Za-z0-9_]+/g) || []).sort()
   ok(JSON.stringify(blockNames) === JSON.stringify(wireNames.slice().sort()),
-    '★★ TB-2770: 块声明的 vibe_* 名集 == 该会话 wire 的 vibe_* 名集', { block: blockNames, wire: wireNames })
+    '★★ TB-2770/TB-2775: 块声明的 vibe_* 名集 == 同一份 per-turn 表的 vibe_* 名集（面在下一请求的 toolSet 上生效，不在块里二次过滤）', { block: blockNames, wire: wireNames })
   // ★★★ TB-2773: the source label now says WHICH read produced the name set, because the old scope-less read was the
   // defect: `agent.ctx.tools.schemas(scope)` = the registered view, `agent.ctx.tools.schemas(scope,toolSet)` = the
   // request's own per-turn projection (the one the wire is built from). Here the context carries no toolSet, so the
@@ -1029,15 +1033,17 @@ if (SELF_PROBE) {
   const second = await good.call(good.mkToolSet(smaller))
   ok(second.block && /77 个：/.test(second.block.text) && matchesWire(second.block, smaller) && !matchesWire(second.block, RUN82_WIRE),
     '★★ 正：每个 step 用该请求自己的 per-turn 表（77 名字集 == 该请求 wire），不是首个装配的快照', second.block && second.block.text)
-  // ★ ONE READING PER ASSEMBLE CALL (this hook is registered TWICE: root global + agent scope). A member face that DENIES
-  // one name would otherwise drop it twice — once by the wire filter, once because the hook's own restrict() narrowed the
-  // table before the second invocation — and print 77 where the request's wire holds 78.
+  // ★ ONE READING PER ASSEMBLE CALL (this hook is registered TWICE: root global + agent scope). The first reading is the
+  // one the request's wire was collected from; the hook's own restrict() lands at the end of its first invocation, so a
+  // second read would see the NARROWED table and the two invocations would disagree. ★ TB-2775: the block now reports the
+  // wire's truth (79) without subtracting the face, so what must be stable is the SOURCE reading (79), not a face-filtered
+  // number — if the memo were missing, the second invocation would read 58 and write a shorter block than the wire.
   const denied = await mkRun82(hm, { deny: ['vibe_v5_say'] })
   const dupCtx = { agent: denied.agent, scope: denied.agent, toolSet: denied.toolSet }
   const dup1 = await denied.call(denied.toolSet, dupCtx)
   const dup2 = await denied.call(denied.toolSet, dupCtx)
-  ok(/78 个：/.test(dup1.block.text) && dup2.block.text === dup1.block.text && !/77 个：/.test(dup2.block.text),
-    '★★ 反：同一 assemble context 的两次监听调用读到同一份 wire（首读为准，不会二次收窄成 77）', { first: dup1.block.text.slice(0, 60), second: dup2.block.text.slice(0, 60) })
+  ok(/79 个：/.test(dup1.block.text) && dup2.block.text === dup1.block.text && !/78 个：/.test(dup2.block.text),
+    '★★ 反：同一 assemble context 的两次监听调用读到同一份 wire（首读为准 79，第二次不会读到收窄后的 58）', { first: dup1.block.text.slice(0, 60), second: dup2.block.text.slice(0, 60) })
   // ★ 反灯 1: put the source BACK to the assembly-time, scope-less `agent.ctx.tools.schemas()` ⇒ the criterion must go RED.
   {
     const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2773a-'))
@@ -1071,6 +1077,162 @@ if (SELF_PROBE) {
       ok(lampOut.block && /78 个：/.test(lampOut.block.text) && !matchesWire(lampOut.block, RUN82_WIRE) &&
         vibeSet(blockNames(lampOut.block)).length === 68,
         '★★ 反灯 2（名集截断一个）⇒ 68/69，集合相等判据红（不是子集判据）', lampOut.block && lampOut.block.text)
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+}
+
+// ── ★★★ TB-2775 (RUN 82 attempt-2 / P0): the block must match the wire of THE REQUEST, not the face-narrowed future ──
+// MEASURED (audit5, per request): chair 20/20 matched; member/temp matched on the NARROW requests (58/48, 39/29) but every
+// turn's FIRST request had 79 wire tools while the block said 58 (member) / 39 (temp) — 13/49 FAIL. The mechanism is the
+// restriction TIMING, not a stale table: each turn starts a fresh child Agent whose scope has no restriction yet, so
+// `dsh-agent-loop/lib/index.js:673-685` resolves a WIDE toolSet and `assemble()` collects the wide wire; this hook's
+// `tools.restrict(...)` lands at the END of the same assemble, so it can only narrow the NEXT request. The block used to
+// subtract the seat face a SECOND time, printing a strict subset on exactly those requests — while the model-visible
+// `developer/message` (source.kind "tool-registry") announced the same names as `tool-addition`, i.e. they really were
+// callable. TB-2775 removes that second filter: the per-turn table IS the wire (same expression,
+// `dsh-tools/lib/index.js:418-424`), so equality holds for every request whatever the timing.
+{
+  // The SAME session's request tables, from the run-85 journal (member r-3 6f7aeca8…; temp r-temp f438019a…). The first
+  // request of a turn = 79 (10 host + 69 vibe); later requests = 79 − the seat face (member: 21, temp: 40), which is
+  // exactly what the journal's headers carry. Embedded so the criterion runs without D:/_tmp.
+  const RUN85_WIRE = [
+    'edit', 'glob', 'grep', 'math_computation', 'read', 'read_image',
+    'skill', 'todo_write', 'vibe_v5_assign', 'vibe_v5_blueprint', 'vibe_v5_configure', 'vibe_v5_feedback',
+    'vibe_v5_fidelity_conclude', 'vibe_v5_fire', 'vibe_v5_hire', 'vibe_v5_inbox', 'vibe_v5_lean_archive', 'vibe_v5_lean_job',
+    'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_run', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message',
+    'vibe_v5_motion', 'vibe_v5_nudge', 'vibe_v5_overview', 'vibe_v5_paper', 'vibe_v5_pause', 'vibe_v5_poll_close',
+    'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_prioritize', 'vibe_v5_read_library', 'vibe_v5_record_method', 'vibe_v5_record_progress',
+    'vibe_v5_record_proposition', 'vibe_v5_record_subproblem', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_say', 'vibe_v5_script',
+    'vibe_v5_second', 'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_task_create', 'vibe_v5_task_get',
+    'vibe_v5_task_list', 'vibe_v5_task_update', 'vibe_v5_tool_help', 'vibe_v5_verdict', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final',
+    'vibe_v5_verified_promote', 'vibe_v5_wait', 'vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_direction', 'vibe_vmu_env',
+    'vibe_vmu_human', 'vibe_vmu_mailbox', 'vibe_vmu_mathjobs', 'vibe_vmu_mathtools', 'vibe_vmu_meeting', 'vibe_vmu_middleware',
+    'vibe_vmu_pack', 'vibe_vmu_panel', 'vibe_vmu_records', 'vibe_vmu_report', 'vibe_vmu_reviewers', 'vibe_vmu_set',
+    'vibe_vmu_status', 'vibe_vmu_task', 'vibe_vmu_tools', 'vibe_vmu_turn', 'vibe_vmu_vote', 'working_directory',
+    'write',
+  ]
+  const MEMBER_DENY_21 = ['vibe_v5_assign', 'vibe_v5_configure', 'vibe_v5_fidelity_conclude', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message', 'vibe_v5_nudge', 'vibe_v5_overview', 'vibe_v5_pause', 'vibe_v5_poll_close', 'vibe_v5_poll_open', 'vibe_v5_prioritize', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_script', 'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final', 'vibe_v5_verified_promote']
+  const TEMP_DENY_40 = ['vibe_v5_assign', 'vibe_v5_blueprint', 'vibe_v5_configure', 'vibe_v5_feedback', 'vibe_v5_fidelity_conclude', 'vibe_v5_fire', 'vibe_v5_hire', 'vibe_v5_lean_archive', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_run', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message', 'vibe_v5_motion', 'vibe_v5_nudge', 'vibe_v5_overview', 'vibe_v5_paper', 'vibe_v5_pause', 'vibe_v5_poll_close', 'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_prioritize', 'vibe_v5_record_method', 'vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe_v5_record_subproblem', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_script', 'vibe_v5_second', 'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_task_create', 'vibe_v5_verdict', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final', 'vibe_v5_verified_promote']
+  const vibeSet = (names) => [...new Set((names || []).filter((n) => String(n).startsWith('vibe_')))].sort()
+  const blockNames = (block) => (String(block && block.text).match(/vibe_[A-Za-z0-9_]+/g) || [])
+  const matchesWire = (block, wire) => !!block && !/wire-unknown|wire-not-rendered/.test(block.text) &&
+    JSON.stringify(vibeSet(blockNames(block))) === JSON.stringify(vibeSet(wire))
+
+  // FAITHFUL DSH 0.2.2-rc.1 timing model:
+  //   · a step's toolSet is a SNAPSHOT of the scope's admitted names (`tools.resolve`);
+  //   · `toolSet.view(scope)` re-checks the CURRENT view (`dsh-tools/lib/index.js:564-570`), so a restriction applied
+  //     during the previous assemble removes names from the NEXT request, never from the one already collected;
+  //   · `tools.restrict()` (this hook, at the end) narrows the scope for later requests — that is the only mutation.
+  const mkRun85 = async (hostModule, { deny, slot = 'member', id = 'member-r85' } = {}) => {
+    const listeners = {}
+    let current = RUN85_WIRE.slice()
+    const agent = { id, ctx: { tools: {
+      schemas: (scope, set) => {
+        if (scope === undefined) return ['working_directory'].map((name) => ({ name })) // global layer only (TB-2773)
+        const names = set && typeof set.view === 'function' ? [...set.view(scope).keys()] : current
+        return names.map((name) => ({ name }))
+      },
+      restrict: (filter) => {
+        const denySet = new Set((filter && filter.deny) || [])
+        const allowSet = Array.isArray(filter && filter.allow) ? new Set(filter.allow) : null
+        current = current.filter((n) => (allowSet === null || allowSet.has(n)) && !denySet.has(n))
+        return () => {}
+      },
+    } } }
+    const toolSetOf = () => {
+      const admitted = current.slice()
+      return { view: (scope) => new Map(admitted.filter((n) => current.includes(n)).map((name) => [name, { name }])) }
+    }
+    const kernel = km.createKernel({ clock })
+    kernel.declareSlots([{ id: slot, label: slot, capacity: 0, permissions: [] }])
+    // The seat face is a DENY override — the production path (`packs/v5r/member-scope.js` → `setMemberToolOverride`).
+    kernel.setMemberToolOverride({ member: id, deny: deny.slice() })
+    await kernel.members.hire({ id, slot, institution: 'sim' })
+    const ctx = {
+      tools: { register: async () => () => {} },
+      effect: (fn) => fn(),
+      on: (event, fn) => { (listeners[event] = listeners[event] || []).push(fn) },
+      get: (name) => (name === 'agents' ? { get: (aid) => (aid === id ? agent : null) } : null),
+    }
+    await hostModule.createHostAdapter({ ctx, kernel, settings: {} }).install()
+    const hook = (listeners['system-prompt/assemble'] || [])[0]
+    const request = async (given = null) => {
+      const wire = given ? null : [...current] // what this request's wire will carry (collected before this hook narrows)
+      const toolSet = given ? given.toolSet : toolSetOf()
+      const context = given || { agent, scope: agent, toolSet }
+      const out = await hook({ sections: [] }, context, () => Promise.resolve({ sections: [] }))
+      const block = (out.sections || []).find((s) => s.name === 'v5r-effective-tools') || null
+      return { wire, block, context, receipt: kernel.toolFacePull() }
+    }
+    return { agent, kernel, request, currentOf: () => current.slice(), toolSetOf }
+  }
+
+  // ── member seat: first request of the turn = 79 (the face lands only on later requests) ──
+  const member = await mkRun85(hm, { deny: MEMBER_DENY_21 })
+  const m1 = await member.request()
+  ok(m1.block && /79 个：/.test(m1.block.text) && matchesWire(m1.block, m1.wire),
+    '★★★ TB-2775 判据：每回合首个请求 块 vibe_* 集合 == 同请求 wire 的 vibe_* 集合（79 / 69），不再是 58/48', { wire: m1.wire.length, block: m1.block && m1.block.text.slice(0, 40) })
+  ok(m1.block && MEMBER_DENY_21.every((n) => blockNames(m1.block).includes(n)),
+    '★★★ 那 21 个「面 deny、但本请求 wire 上真可调」的名字现在被块如实声明（不是替角色面做二次过滤）',
+    MEMBER_DENY_21.filter((n) => !blockNames(m1.block).includes(n)))
+  ok(m1.receipt.effectiveCount === 79 && m1.receipt.effectiveWireSource === 'agent.ctx.tools.schemas(scope,toolSet)',
+    '★★ 回执自报：这里读的是本请求的 per-turn 表（79），不是角色面投影', m1.receipt)
+  // ONE ASSEMBLE CALL, TWO LISTENER INVOCATIONS (root global + agent scope): the first read is the request's wire; the
+  // memo must keep the second invocation from reading the table AFTER this hook's own restrict() narrowed it. Without it
+  // the two invocations would disagree (79 then 58) and the later one would win, re-creating the subset defect.
+  const dup = await mkRun85(hm, { deny: MEMBER_DENY_21 })
+  const dupCtx = { agent: dup.agent, scope: dup.agent, toolSet: dup.toolSetOf() } // admitted 79 at this request
+  const d1 = await dup.request(dupCtx)
+  const d2 = await dup.request(dupCtx)
+  ok(d1.block && /79 个：/.test(d1.block.text) && d2.block && d2.block.text === d1.block.text && !/58 个：/.test(d2.block.text),
+    '★★ 反：同一 assemble context 的两次监听调用都读到本请求的 79（首读为准，第二次不会读到被自己收窄后的 58）',
+    { first: d1.block && d1.block.text.slice(0, 26), second: d2.block && d2.block.text.slice(0, 26) })
+  const m2 = await member.request()
+  ok(m2.wire.length === 58 && /58 个：/.test(m2.block.text) && matchesWire(m2.block, m2.wire),
+    '★★ 下一请求：面已由上一请求的 restrict() 落到 wire（58/48），块与该请求 wire 一致', { wire: m2.wire.length, block: m2.block && m2.block.text.slice(0, 30) })
+  ok(MEMBER_DENY_21.every((n) => !blockNames(m2.block).includes(n)),
+    '★★ 窄请求里那 21 个确实不在了（与 wire 同步收窄，不是块自己另算）', MEMBER_DENY_21.filter((n) => blockNames(m2.block).includes(n)))
+  // ── temp seat: the same mechanism with 40 denied (first 79, later 39) ──
+  const temp = await mkRun85(hm, { deny: TEMP_DENY_40, slot: 'temp', id: 'temp-r85' })
+  const t1 = await temp.request()
+  const t2 = await temp.request()
+  ok(t1.block && /79 个：/.test(t1.block.text) && matchesWire(t1.block, t1.wire) &&
+    t2.wire.length === 39 && /39 个：/.test(t2.block.text) && matchesWire(t2.block, t2.wire),
+    '★★ temp 席：首请求 79 == wire 79；窄请求 39 == wire 39（40 个面 deny 只在窄请求生效）',
+    { first: { wire: t1.wire.length, block: t1.block && t1.block.text.slice(0, 26) }, later: { wire: t2.wire.length, block: t2.block && t2.block.text.slice(0, 26) } })
+  // ★ 反灯 1: put the source BACK to the assembly-time, scope-less read ⇒ the block says「1 个」and the criterion goes RED.
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2775a-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = 'const admitted = tools.schemas(wireScope, requestToolSet)'
+      ok(src.indexOf(anchor) !== -1, 'TB-2775 反灯 1：变异点存在')
+      await writeFile(copyHost, src.replace(anchor, 'const admitted = tools.schemas()'))
+      const lampHost = await import(pathToFileURL(copyHost).href + '?tb2775=lamp1')
+      const lamp = await mkRun85(lampHost, { deny: MEMBER_DENY_21 })
+      const l1 = await lamp.request()
+      ok(l1.block && /1 个：working_directory/.test(l1.block.text) && !matchesWire(l1.block, l1.wire),
+        '★★ 反灯 1（源退回装配期无参 schemas()）⇒ 块又写「1 个：working_directory」，首请求判据红', l1.block && l1.block.text)
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+  // ★ 反灯 2: re-introduce the seat-face filter on the block ⇒ 首请求 58 ≠ wire 79, the criterion goes RED (this is the
+  // exact run-82-attempt-2 defect shape: a strict SUBSET of the request's wire).
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2775b-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = 'effectiveNames = agentWire.names.slice()'
+      ok(src.indexOf(anchor) !== -1, 'TB-2775 反灯 2：变异点存在')
+      await writeFile(copyHost, src.replace(anchor, 'effectiveNames = filterWireNames(agentWire.names.slice())'))
+      const lampHost = await import(pathToFileURL(copyHost).href + '?tb2775=lamp2')
+      const lamp = await mkRun85(lampHost, { deny: MEMBER_DENY_21 })
+      const l1 = await lamp.request()
+      ok(l1.block && /58 个：/.test(l1.block.text) && !matchesWire(l1.block, l1.wire) && vibeSet(blockNames(l1.block)).length === 48,
+        '★★ 反灯 2（把角色面过滤加回块）⇒ 首请求又写 58/48 而 wire 是 79/69，集合判据红（正是 attempt-2 的 13/49 FAIL 形状）', l1.block && l1.block.text.slice(0, 40))
     } finally { await rm(dir, { recursive: true, force: true }) }
   }
 }

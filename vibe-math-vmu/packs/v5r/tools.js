@@ -5060,6 +5060,10 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // opt-in (`labelRequired`) so direct service callers and the ~70 unlabelled fixtures keep working; a PACK face that
     // is the rule's own tool passes true and gets the named refusal when neither `kind` nor `title` was given.
     labelRequired: true, kind, materials: materialsText, secretary, wallLimitMs,
+    // ★★★ TB-2776: hand the READ face the items THIS face already split (bracket/quote aware, TB-2763). The kernel stores
+    // them and every read projection returns them verbatim — otherwise the read face re-split the joined line on every
+    // `;`/`；` and a `；` inside `（…）` turned 3 items into 4 on the very same meeting.
+    ...(Array.isArray(agendaItems) && agendaItems.length > 0 ? { agendaLines: agendaItems } : {}),
     ...(formalAgendaParam === null ? {} : { formalAgenda: formalAgendaParam }),
     ...(lateAdmission === null ? {} : { lateAdmission }),
     subject: subject === null || subject === undefined ? null : subject, at, title, sequence,
@@ -6592,8 +6596,13 @@ const environmentObserved = new WeakMap()
  *   · `not-run`     — nobody asked: absence is UNKNOWN (the empty `toolchainAbsent` list is NOT a verdict).
  */
 export function toolchainProbeOf({ latexAvailable = null, asked = false } = {}) {
+  // ★★★ TB-2777 D-7: an ABSENCE verdict needs an absent NAME, not merely "somebody asked". The old branch returned
+  // `ran-absent` for `latexAvailable:null, asked:true` — that is how a run printed `toolchainProbe:"ran-absent"` beside
+  // `toolchainAbsent:[]` and `latexAvailable:null` (three fields denying each other). `asked` is kept in the signature
+  // for callers/tests that pass it, but it can no longer manufacture an absence: no verdict ⇒ `not-run`.
   if (latexAvailable === true) return 'ran-present'
-  return asked === true ? 'ran-absent' : 'not-run'
+  if (latexAvailable === false) return 'ran-absent'
+  return 'not-run'
 }
 
 function environmentReadingsOf(observed, fallback) {
@@ -6610,7 +6619,19 @@ function environmentReadingsOf(observed, fallback) {
     if (hasVerdict) {
       toolchainAbsent = observedAbsent.length > 0 ? observedAbsent.slice() : (missingFlag ? ENVIRONMENT_KEYS.slice() : [])
       pdfEnvironmentMissing = toolchainAbsent.length > 0 || missingFlag
-      latexAvailable = toolchainAbsent.length > 0 ? false : (pdf !== null && pdf.ok === true ? true : null)
+      // ★★★ TB-2777 D-7 (RUN 82 attempt-2, MEASURED): a compile that RAN and failed on the DOCUMENT still proves the engine
+      // is installed — the old `pdf.ok === true ? true : null` read every non-ok compile as "never measured", so
+      // `final{revise}`/`status` answered `toolchainProbe:"ran-absent"` + `latexAvailable:null` + `toolchainAbsent:[]`
+      // (an absence verdict with NO absent name) while the same machine compiled a PDF minutes later. Presence is
+      // evidenced by REACHING an engine (argv/tried/engine/produced), not by the document being correct; `null` stays
+      // only for an observation that carries no presence/absence evidence at all.
+      const engineAttempted = pdf !== null && (
+        pdf.ok === true || pdf.produced === true
+        || (typeof pdf.engine === 'string' && pdf.engine !== '')
+        || (typeof pdf.engineSource === 'string' && pdf.engineSource !== '')
+        || (Array.isArray(pdf.triedEngines) && pdf.triedEngines.length > 0)
+        || (Array.isArray(pdf.argv) && pdf.argv.length > 0))
+      latexAvailable = toolchainAbsent.length > 0 ? false : (engineAttempted ? true : null)
     }
   }
   const means = latexAvailable === false
@@ -6627,7 +6648,7 @@ function environmentReadingsOf(observed, fallback) {
   const asked = known || (priorProbe !== null && priorProbe !== 'not-run')
   const toolchainProbe = toolchainProbeOf({ latexAvailable, asked })
   const toolchainProbeMeans = toolchainProbe === 'not-run'
-    ? 'toolchainProbe:"not-run" together with toolchainAbsent:[] means the compiler question was NOT ASKED in this session — NOT that the toolchain is installed: nothing was measured, so absence is UNKNOWN. Run `vibe_vmu_env { action: "probe", need: "' + ENGINE_NEED + '" }` (or a compile) to turn this into a verdict'
+    ? 'toolchainProbe:"not-run" together with toolchainAbsent:[] means the engine question was NOT ASKED (or an observation carried no presence/absence evidence), so NO verdict was measured — NOT that the toolchain is installed: absence is UNKNOWN. Run `vibe_vmu_env { action: "probe", need: "' + ENGINE_NEED + '" }` (or a compile) to turn this into a verdict'
     : (toolchainProbe === 'ran-absent'
       ? 'toolchainProbe:"ran-absent": a compile/finalisation DID ask the engine question and the toolchain was not usable (' + (toolchainAbsent.join(', ') || 'no usable latex engine') + ') — this IS a measured absence, not an opinion'
       : 'toolchainProbe:"ran-present": a compile/finalisation DID ask, and the engine was available then; this is an OBSERVATION from that run, not an installation claim made by a read')
@@ -7623,7 +7644,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // ★★★ RUN 256 (TB-2624 item 1): this refusal is where the engine question is actually ASKED, so it carries the
         // same four top-level environment keys as `final`/`status` — byte-equal readings inside one session.
         return { ok: true, tool, action, target,
-          ...environmentReadingsAt(kernel, { pdf: { ok: false, code: (e && e.code) || null, faceCode: (e && e.faceCode) || null } }),
+          // ★★★ TB-2777 D-7: the engine question is answered by EVIDENCE — a compile that threw because the DOCUMENT failed
+          // still reached an engine (`argv`/`triedEngines`/`engine` are on the error). Feeding the reading only {ok:false,
+          // code, faceCode} made "asked but nothing measured" look like an ABSENT toolchain (ran-absent + null + []).
+          ...environmentReadingsAt(kernel, { pdf: { ok: false, produced: false, code: (e && e.code) || null, faceCode: (e && e.faceCode) || null,
+            engine: (e && e.engine) || null, engineSource: (e && e.engineSource) || null,
+            argv: (e && e.argv) || null, triedEngines: (e && e.triedEngines) || null } }),
           compiled: projectPdfBlock({
           ok: false,
           code: (e && e.code) || null,

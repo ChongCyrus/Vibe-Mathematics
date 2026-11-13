@@ -41,6 +41,8 @@ const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const PAPER_PACK = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')
+// the gate temp root may not exist yet (another lane's clean-temp can remove it mid-session); mkdtemp needs the parent
+await mkdir(__tmpRoot(), { recursive: true }).catch(() => {})
 const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
 const QUALITY = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')
 
@@ -678,6 +680,80 @@ console.log('=== 7. TB-2774：readReview / coverage / voidReviews 同一行不�
       '★★ 正：只有审了被替换正文的那一行（r-1）被判 stale；ACAD 审的未变正文不被牵连（round 从 1 到 2 不使它失效）',
       bStale.map((s) => s && s.by))
   }
+}
+
+// ── §8. TB-2777: "asked but nothing measured" is NOT "absent" — the toolchain probe is three-valued, honestly ─────
+console.log('=== 8. TB-2777 D-7：编译跑了但文档失败 ≠ 引擎缺席（ran-absent 必须带缺席名字）===')
+{
+  // direct predicate: no absence verdict can no longer be manufactured by `asked`
+  const probeOf = (await import(pathToFileURL(TOOLS).href)).toolchainProbeOf
+  eq(probeOf({ latexAvailable: null, asked: true }), 'not-run',
+    '★★ 正(TB-2777)：latexAvailable:null + asked:true ⇒ not-run（不再伪造成 ran-absent）')
+  eq(probeOf({ latexAvailable: false, asked: true }), 'ran-absent', '★ 正：缺失裁决（false）才是 ran-absent')
+  eq(probeOf({ latexAvailable: true, asked: true }), 'ran-present', '★ 正：在场裁决（true）是 ran-present')
+  // ★ LAMP(RED-worthy): the OLD mapping (`asked ? ran-absent : not-run`) would answer ran-absent here; that shape is what a
+  // reader saw beside toolchainAbsent:[] and latexAvailable:null. The assertion above is load-bearing.
+  const oldMapping = ({ latexAvailable = null, asked = false } = {}) => (latexAvailable === true ? 'ran-present' : (asked === true ? 'ran-absent' : 'not-run'))
+  eq(oldMapping({ latexAvailable: null, asked: true }), 'ran-absent',
+    '★★★ LAMP(RED-worthy)：旧映射对同一输入给 ran-absent —— 上面的 not-run 断言因此有牙')
+
+  // behavioural: a compile that RAN and failed on the DOCUMENT still proves the engine is installed
+  const TD = 'p-d7-docfail'
+  const cardD = await receipt(v5r, 'vibe_v5_record_proposition', { id: 'tb2777-d7', statement: 'TB-2777 D-7 证据（独立正文）', value: 0.5, motive: 'D-7', p: 0.5 })
+  ok(cardD.parsed && cardD.parsed.ok === true, '前置(D-7)：证据卡落库', cardD.parsed && cardD.parsed.code)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  await receipt(v5r, 'vibe_v5_paper', { action: 'start', target: TD, participants: [ACAD, R1], format: 'both' })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD, member: ACAD, part: 'A 节', solution: 'D-7 的正文', evidence: ['Members/' + ACAD + '/Propos/tb2777-d7.md'] })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD, member: R1, part: 'B 节', solution: 'D-7 的另一段', evidence: ['Members/' + ACAD + '/Propos/tb2777-d7.md'] })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: TD })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD, member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD, member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  const advD = await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: TD })
+  ok(advD.parsed && advD.parsed.advance && advD.parsed.advance.to === 'awaiting-editor', '前置(D-7)：论文到 awaiting-editor', advD.parsed && advD.parsed.advance && advD.parsed.advance.to)
+  // a compile that REACHED the engine (argv + triedEngines) and failed on the document
+  const argvD = ['xelatex', '-interaction=nonstopmode', '-halt-on-error', '-output-directory=D:/ws/Paper/paper-p-d7-docfail', 'D:/ws/Paper/paper-p-d7-docfail/paper-p-d7-docfail.tex']
+  stubLatex(kernel, { check: async (request) => ({
+    ok: false, produced: false, code: 'VMU_PAPER_LATEX_FAILED', faceCode: null,
+    engine: 'xelatex', engineSource: 'variant', argv: argvD,
+    triedEngines: [{ engine: 'xelatex', phase: 'compile', code: 'VMU_PAPER_LATEX_FAILED' }],
+    triedEnginesTotal: 1, triedEnginesTruncated: false,
+    outDir: request.outDir, sourceName: 'paper-p-d7-docfail.tex',
+    stdout: '! Undefined control sequence.', stderr: '', stderrTail: '! Undefined control sequence.', stdoutTail: '! Undefined control sequence.', tailSource: 'stdout',
+  }) })
+  const compD = (await receipt(v5r, 'vibe_v5_paper', { action: 'compile', target: TD })).parsed
+  ok(compD && compD.compiled && compD.compiled.produced === false, '★ 正：这次 compile 是文档失败（produced:false）', compD && compD.compiled && compD.compiled.produced)
+  console.log('DBG-D7', JSON.stringify({ keys: compD && Object.keys(compD), compiledKeys: compD && compD.compiled && Object.keys(compD.compiled), argv: compD && compD.compiled && compD.compiled.argv, tried: compD && compD.compiled && compD.compiled.triedEngines, probe: compD && compD.toolchainProbe, latex: compD && compD.latexAvailable }))
+eq(compD && compD.toolchainProbe, 'ran-present', '★★ 正(TB-2777)：引擎真的跑了（argv/triedEngines 在场）⇒ ran-present，不是 ran-absent')
+  eq(compD && compD.latexAvailable, true, '★★ 正：latexAvailable:true（引擎在场是观察，不是文档正确性的结论）')
+  eq(JSON.stringify(compD && compD.toolchainAbsent), '[]', '★★ 正：toolchainAbsent:[] 与 ran-present 自洽（不再与 ran-absent 同屏）')
+  ok(compD && typeof compD.toolchainProbeMeans === 'string' && /OBSERVATION|available/i.test(compD.toolchainProbeMeans),
+    '★ 正：toolchainProbeMeans 说明这是观察读数', compD && compD.toolchainProbeMeans)
+  const stD = (await receipt(v5r, 'vibe_v5_paper', { action: 'status', target: TD })).parsed
+  eq(stD && stD.toolchainProbe, 'ran-present', '★★ 正：随后的 status 读面同一读数（同一生产者）')
+  eq(stD && stD.latexAvailable, true, '★ 正：status 的 latexAvailable 也是 true')
+}
+
+// ── §9. TB-2777 D-3: the temp seat's prompt is RETAINED (resumed delivery must not vanish from the archive) ─────────
+console.log('=== 9. TB-2777 D-3：resume 路径的 prompt 也进 kernel 存档（temp 席可读）===')
+{
+  const KIT_TURN_SRC = await readFile(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
+  ok(/if \(resumeSource && !promptArchive\.has\(String\(turn && turn\.id\)\)\) \{/.test(KIT_TURN_SRC) &&
+    /archivePrompt\(turn && turn\.id, turn && turn\.member, resumeSource\.text, null\)/.test(KIT_TURN_SRC),
+    '★★ 正(TB-2777 D-3)：resume 路径把调用方手里已有的 prompt 文本写进同一个 kernel 存档（不重新组装、不碰 notices/assembled 计数）')
+  ok(KIT_TURN_SRC.includes('TB-2777 D-3'), '★ 正：该分支带 TB-2777 D-3 注记（读者能顺着号找到缺陷）')
+  // behavioural, on the reachable path: a turn opened for the temp seat is archived under its own member
+  const A9 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2777-d3-')), packs: ['v5r'] })
+  ok(A9 && A9.handle && A9.handle.kernel, '前置(D-3)：kernel 启动', !!A9)
+  const k9 = A9.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], ['r-temp', 'temp']]) await k9.members.hire({ id, slot })
+  const step9 = await receipt(A9, 'vibe_vmu_turn', { op: 'step', member: 'r-temp', phase: 'normal' })
+  const archived = typeof k9.turn.promptTurns === 'function' ? k9.turn.promptTurns() : []
+  const hits = archived.map((tid) => k9.turn.promptOf(tid)).filter((x) => x && x.member === 'r-temp')
+  ok(archived.length > 0 && hits.length > 0,
+    '★★ 正(TB-2777 D-3)：temp 席的 turn 真的在 kernel 存档里（member 是 r-temp），op:"prompt" 不再只能答 OBJECT-MISSING',
+    { ok: step9.parsed && step9.parsed.ok, turns: archived, hits: hits.map((h) => ({ id: h.turnId, member: h.member, chars: h.chars })) })
+  ok(hits.length === 0 || (typeof hits[0].text === 'string' && hits[0].text.length > 0),
+    '★ 正：存档里带的是可读的 prompt 正文（不是只有一个空 id）', hits[0] && { chars: hits[0].chars })
 }
 
 // A Windows kernel keeps a handle on the member tree for a moment after a claim, so cleanup is

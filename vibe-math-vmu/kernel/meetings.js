@@ -328,7 +328,7 @@ function mergeLiveMeeting(local, stored) {
   // fields this instance never filled in: adopt, do not overwrite local knowledge
   // ★★ ROUND 120: `kind` and the roster's provenance are carried facts too — a row written by another instance that
   // knew them must be ADOPTED, not lost by the merge.
-  for (const k of ['subject', 'title', 'kind', 'materials', 'reason', 'committeeReport', 'recess', 'startedLate', 'waitStartedAt', 'waitDecisionDue', 'previousConfirmed', 'rosterNarrowed', 'rosterSource']) {
+  for (const k of ['subject', 'title', 'kind', 'materials', 'agendaLines', 'reason', 'committeeReport', 'recess', 'startedLate', 'waitStartedAt', 'waitDecisionDue', 'previousConfirmed', 'rosterNarrowed', 'rosterSource']) {
     const empty = (v) => v === null || v === undefined || v === false
     if (empty(local[k]) && !empty(stored[k])) { local[k] = stored[k]; changed.push(k) }
   }
@@ -1169,7 +1169,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   const AGENDA_ITEM_SEPARATORS = /[;；\n]/
   const agendaItemsOf = (text) => String(text === null || text === undefined ? '' : text)
     .split(AGENDA_ITEM_SEPARATORS).map((x) => x.trim()).filter((x) => x !== '')
-  const AGENDA_ITEMS_MEANS = 'the SAME agenda string split on `;`, `；` and newlines only — the exact separators the convene face can produce, since it joins an agenda ARRAY with "; ". Each item is trimmed and order is preserved. The comma and `、` are NOT separators: `(2k-1,2k)` is one mathematical tuple inside one item, and a prose list that used either character reads as ONE item (RUN 78 / TB-2734). The STRING is the truth and this is a reading of it'
+  const AGENDA_ITEMS_MEANS = 'a READING of the `materials` line (not a second record): for a meeting recorded before this round it falls back to the old top-level split on `;`, `；` and newlines, which CANNOT see bracket/quote depth — so an item containing `；` inside `（…）` may read as two items; new meetings carry the write face\'s own items as `agendaLines` (`agendaItemsSource`). Each item is trimmed and order is preserved. The comma and `、` are NOT separators: `(2k-1,2k)` is one mathematical tuple inside one item, and a prose list that used either character reads as ONE item (RUN 78 / TB-2734). The canonical split is the write face\'s (`agendaSplitMode:"bracket-aware"`, TB-2763)'
+  const AGENDA_ITEMS_STORED_MEANS = 'the items the WRITE face already split from the agenda string (bracket/quote aware: `;`, `；` and newlines only at depth 0, so a `；` inside `（…）` stays inside one item) — stored at convene and returned VERBATIM, so the write receipt and every read face agree item for item (TB-2776). `agenda`/`materials` is the joined line; these are the lines it was made of'
   // ★★★ ROUND 240 (FEEDBACK63 ①6, MEASURED): THE FORMAL AGENDA HAD A NAME AND NO WRITER. `formalAgendaItems` was
   // computed from `m.formalAgenda` / `m.formal_agenda`, but nothing wrote either key: `openSeq()` took only a
   // `materials` line and the pack passed `formal_agenda:true` as a boolean that reached no kernel field at all. So
@@ -1225,10 +1226,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   }
   const agendaBlockOf = (m) => {
     const agenda = (m && m.materials !== undefined) ? m.materials : null
+    // ★★★ TB-2776: prefer the items the WRITE face computed and stored. The fallback exists only for rows recorded before
+    // that field existed, and `agendaItemsSource` names which one a reader is looking at.
+    const storedItems = Array.isArray(m && m.agendaLines) ? m.agendaLines.map((x) => String(x)) : null
+    const items = storedItems !== null ? storedItems : agendaItemsOf(agenda)
     return {
       agenda,
-      agendaItems: agendaItemsOf(agenda),
-      agendaItemsMeans: AGENDA_ITEMS_MEANS,
+      agendaItems: items,
+      agendaItemsSource: storedItems !== null ? 'stored-write-face' : 'read-face-split-fallback',
+      agendaItemsMeans: storedItems !== null ? AGENDA_ITEMS_STORED_MEANS : AGENDA_ITEMS_MEANS,
       materials: agenda,
       materialsMeans: '`materials` is the name this face has always used for the agenda — the ONE text line the convene face stores (an `agenda` array is joined with "; " before it lands here). It is the SAME value as `agenda` in this block; the second name exists because readers already parse `materials`, not because there is a second fact',
       // ★ RUN 240: the per-item formal agenda reading lives in ONE builder (`formalAgendaOf`, which also reads rows
@@ -4682,7 +4688,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   // not a defect of the rail (the rail only guards a convene that INSTALLS a chair); it is a missing FACT: who convened.
   // `convenedBy` names the originator when it is not the caller's own act — 'v5r.stall-meeting' for the automatic path,
   // null when the caller acted directly. Without it, an automatic meeting and a chair's meeting are indistinguishable.
-  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], members = null, labelRequired = false, size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, reuseArchivedId = false, convenedBy = null,
+  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], members = null, labelRequired = false, size = null, materials = null, agendaLines = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, reuseArchivedId = false, convenedBy = null,
     // ★★ ROUND 49 / F-25 — THE GATE'S VERDICT MUST SURVIVE THE RECEIPT. run 49 measured the office reading
       // `subjectGate` off the open receipt, then finding that NOTHING could read it afterwards: summary/status carried
       // no gate, snapshot addresses the primitive registry (and refused), so the only record of "why this debate was
@@ -4805,6 +4811,22 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         'pass materials:"<agenda pointer>" or omit it', enforced)
     }
     const materialsRef = (materials === null || materials === undefined || String(materials).trim() === '') ? null : String(materials).trim()
+    // ★★★ TB-2776 (RUN 82 attempt-2 / D-6, MEASURED): THE WRITE FACE ALREADY SPLIT THE AGENDA CORRECTLY, AND THE READ FACE
+    // SPLIT IT AGAIN — differently. The pack's convene splits on `;`/`；`/newline at bracket depth 0 (TB-2763) and joins the
+    // items into `materials` with "; "; the read face re-split that ONE line on every `;`/`；`, so an item containing a
+    // full-width `；` inside `（…）` came back as TWO items (write 3, read 4, same meeting). The kernel cannot call the pack's
+    // splitter (layering), so the pack HANDS OVER the items it already computed: `agendaLines`. The read face uses them
+    // verbatim; a meeting recorded before this round has no `agendaLines` and the read face falls back to splitting the
+    // line — named by `agendaItemsSource`, never silent, because that fallback cannot see bracket depth.
+    if (agendaLines !== null && agendaLines !== undefined && !Array.isArray(agendaLines)) {
+      throw deny('VMU_INVALID_ARGUMENT', 'agendaLines must be an ARRAY of non-empty strings (the items the write face already split from `materials`); got ' + typeof agendaLines,
+        'pass the split items (the convene face does this for you), or omit it and the read face falls back to splitting `materials`', enforced)
+    }
+    const agendaLinesRef = (() => {
+      if (!Array.isArray(agendaLines)) return null
+      const lines = agendaLines.map((x) => (x === null || x === undefined ? '' : String(x)).trim()).filter((x) => x !== '')
+      return lines.length === 0 ? null : lines
+    })()
     // ★★★ ROUND 240 (FEEDBACK63 ①6, MEASURED): THE DECLARATION NOW HAS A RECORD. `formalAgenda` is either a boolean
     // (declare the agenda formal; items stay the materials line) or an ARRAY of items (record them, ids assigned here).
     // Anything else is refused BY NAME with both accepted shapes — silently stringifying an object would store
@@ -5023,6 +5045,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       subject: subjectRef,
       title: titleRef,
       materials: materialsRef,
+      // ★★★ TB-2776: the write face's OWN split of `materials` (null for meetings recorded before this round, and for
+      // callers that only passed the line). `agendaBlockOf` reads it back so write and read cannot disagree about items.
+      agendaLines: agendaLinesRef,
       // ★★★ ROUND 240 (FEEDBACK63 ①6): the FORMAL AGENDA declaration as recorded data — the flag (so a boolean
       // `formal_agenda:true` is no longer a fact that dies in the receipt), the per-item list when the caller recorded
       // one (`formalAgendaRef`, null when only the flag was given), and who declared it when. `agendaBlockOf` /

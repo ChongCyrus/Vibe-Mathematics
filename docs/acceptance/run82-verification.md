@@ -67,6 +67,8 @@
 | 7 | V5 行 **`state.json（233 252 B）… closure_votes 5 处命中`** | 终态盘 `state.json` = **261 069 B**、`closure_votes` **6** 处；233 252 是运行中某刻快照，报告**未标时刻** ⇒ 不可终态复核 | P3（不可复核） |
 
 > 同报告**准确**项（不冤枉）：`final.pdf.recordId:"rec-38"`、render `recordIds md/tex/meta = rec-35/36/37` 与读数一致；V15 `text_chars:3512` 与我 pymupdf 3508／pdftotext 3697 是工具差异，`uffff/ufffd=0` 与审计一致；`tokenTotal/transcriptEvents` 写「未测量」可接受（所办确不可达，但按 RUN 82 教训宜注明「宿主账本口径」）。**`run-inspect-slvp265.log` 中文 mojibake 仍在**（P3，attempt-1 已报、未修）。
+>
+> **第 5 条（V16 假 PASS）不是产品缺陷，是报告纪律缺陷（TB-2778）**：office 用「静态 allow 集 / 席位面」当 wire 的替代物并升格为 PASS——本页把它记在「office 误判」，**不记入 §8 产品缺陷表**；下一轮任务书（TB-2779 §9.2 起）已把「报告取数纪律」（取数方式/时刻、取不到即 `NO-EVIDENCE`+原因码、禁止替代物升格、`toolCalls`/时长/会话数只认驱动 done 行+metadata+journal 文件数）写成硬要求。
 
 ---
 
@@ -318,7 +320,7 @@
 
 1. **「半修」也要判 FAIL**：TB-2768 的检测链做好不等于交付合格——a1 PDF 仍有 23 个 `U+FFFF`、`final` 仍 `finalized:true/complete:true`；TB-2770 去掉「0 个」假否定后仍写「1 个」而 wire 有 79 个。**detection ✅ / coverage ❌ 的正确写法是 FAIL（半修）。** 同理 TB-2773 把 chair 修到 20/20、窄请求修对，但宽请求仍错 ⇒ 仍是 FAIL（TB-2775）。
 2. **验收字段没取 = NO-EVIDENCE，不许用替代证据升格**：a1 的 V14 `status` 五字段没取，run-lane 用「磁盘 sha == ledger 行 sha」做实质替证——实质链成立（另记 PASS 理由），但验收表点名字段仍是 `NO-EVIDENCE/RUN-DID-NOT-REACH`；**a2 取到了才判 PASS**。标准不因「反正同值」而降。
-3. **office 自报两轮都至少有 7–8 处读数/判定错误**（§2.1/§2.2）：build「未测」→ 实有、toolCalls 38/45 → 47/76、会话 5+1 → 7、acts 6 vs 5、chair「无块」、`glyphsUnrepaired`「缺席」、V1 误 NE、V12 偏保守、V16 假 PASS、temp 误 NE。**自报只能当被审对象**；凡「不可读」要写「本所不可达」，不能写成「产品缺该件」。
+3. **office 自报两轮都至少有 7–8 处读数/判定错误**（§2.1/§2.2）：build「未测」→ 实有、toolCalls 38/45 → 47/76、会话 5+1 → 7、acts 6 vs 5、chair「无块」、`glyphsUnrepaired`「缺席」、V1 误 NE、V12 偏保守、V16 假 PASS、temp 误 NE。**自报只能当被审对象**；凡「不可读」要写「本所不可达」，不能写成「产品缺该件」。其中 **V16 假 PASS 不是产品缺陷，是报告纪律缺陷（TB-2778）**——用「静态 allow 集 / 席位面」当 wire 的替代证据并升格为 PASS；下一轮任务书 TB-2779 §9.2 起以「报告取数纪律」堵住（取不到 ⇒ `NO-EVIDENCE`+原因码，禁止替代物升格）。
 4. **抽查式 pin 与「同一请求内自洽」是两件事**：a1 V16 只抽一条 `system/message` 会以为只是「首装配快照过期」；对齐同一请求的 `request/header` 才看到每个请求都错。a2 更进一步：**只抽窄请求（58/48）会以为已修**，必须抽**每回合第一个请求**（wire 79/69）——这正是 office 假 PASS 的成因。
 5. **宿主 `[...]` 是读数的一部分**：a1 full status、a2 `receiptsView` 都被吞中段；审计要按字段正则，报告要贴 `receiptMeta`/被吞位置，不能把「我 parse 失败」写成「产品没给」。
 6. **「不测试」与「测试了但半修」要分开记**：a1/a2 的 V15/V16 都是**真机跑到了位**；a2 V15 是「干净 PASS」，但 TB-2772 的**拒收分支是「没触发」**——这两件事必须分开写，**不能把「没触发」记成「已验」**。

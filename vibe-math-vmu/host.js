@@ -2550,16 +2550,32 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       } else {
         const agentWire = namesFromAgentWire()
         if (!agentWire) { effectiveNames = null; wireSource = 'wire-unknown' }
-        else { effectiveNames = filterWireNames(agentWire.names); wireSource = agentWire.source }
+        else {
+          // ★★★ TB-2775 (RUN 82 attempt-2 / P0, MEASURED: every turn's FIRST request carried 79 tools on the wire while
+          // the block said 58 (member) / 39 (temp)): NO SECOND FILTER HERE. The per-turn table read above IS the exact
+          // expression the request's wire provider evaluates (`definitions(scope, toolSet)`, `dsh-tools/lib/index.js:418-424`),
+          // so its name set == `request/header.tools` by construction — whatever the restriction timing is.
+          // Subtracting the seat face a second time made the block a strict SUBSET of the wire on the first request of
+          // every turn: each turn starts a fresh child Agent, whose scope has no restriction yet, so the wire is collected
+          // WIDE (79) before this hook calls `restrict()` at the end of the same assemble (a restriction can only affect
+          // the NEXT request, `dsh-agent-loop/lib/index.js:673-685` resolves the toolSet before `assemble()` collects).
+          // The measured evidence is the model-visible `developer/message` (source.kind "tool-registry") that announced 21
+          // `tool-addition`s on exactly those requests: the 21 tools really were callable there. Truth is the wire, and the
+          // face is already reflected in the per-turn table of every LATER request (58 / 39), which this same read returns.
+          effectiveNames = agentWire.names.slice()
+          wireSource = agentWire.source
+        }
       }
       const observable = Array.isArray(effectiveNames)
       // Remember what this Agent was actually given, so a later request that cannot resolve the member reuses the narrow
-      // list instead of the full catalogue (the "narrow or unchanged, never wider" invariant). AN EMPTY OR UNOBSERVED LIST
-      // IS NOT A NARROWING: caching it would fail the NEXT request closed to zero (the run-81 self-lock), so the write is
-      // skipped and the previous sticky face (if any) stays in force.
+      // list instead of the full catalogue (the "narrow or unchanged, never wider" invariant). ★ TB-2775: the CACHE keeps
+      // the seat-face-narrowed projection (never the wider wire set) — the block tells the wire's truth, but the sticky
+      // face must still fail closed. AN EMPTY OR UNOBSERVED LIST IS NOT A NARROWING: caching it would fail the NEXT
+      // request closed to zero (the run-81 self-lock), so the write is skipped and the previous sticky face stays in force.
+      const faceNarrowed = observable ? filterWireNames(effectiveNames) : null
       let cacheWrite = 'skipped-wire-unknown'
-      if (agentId && observable && effectiveNames.length > 0) {
-        narrowFaceByAgent.set(agentId, effectiveNames.slice())
+      if (agentId && observable && faceNarrowed.length > 0) {
+        narrowFaceByAgent.set(agentId, faceNarrowed.slice())
         if (narrowFaceByAgent.size > 64) narrowFaceByAgent.delete(narrowFaceByAgent.keys().next().value)
         cacheWrite = 'written'
       } else if (agentId && observable) cacheWrite = 'skipped-empty'
