@@ -1139,6 +1139,89 @@ console.log('=== 14. TB-2786：part 正文缺「证据等级」行 ⇒ final 具
     '★★★ LAMP2(RED-worthy)：正文等级仍是 draft（卡片 lean-verified 不合并进 grade）—— 合并两者的实现会被这条抓住', pc && { grade: pc.grade, fromCards: pc.fromCards.grade })
 }
 
+// ── §15. TB-2788: the cap and the legal moves are READINGS (a seat can see it is two advances away) ─────────────
+console.log('=== 15. TB-2788：status 披露 roundsCap/atCap/forcedAfterCapAvailable/nextMoves；final 状态门拒带 currentStage+nextMoves ===')
+{
+  const NL = String.fromCharCode(10)
+  const gradeBody = '正文。' + NL + '证据等级：draft'
+  const A15 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2788-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k15 = A15.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k15.members.hire({ id, slot })
+  const card15 = await receipt(A15, 'vibe_v5_record_proposition', { id: 'tb2788-c', statement: 'TB-2788 证据（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  ok(card15.parsed && card15.parsed.ok === true, '前置：证据卡落库', card15.parsed && card15.parsed.code)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const ev15 = ['Members/' + ACAD + '/Propos/tb2788-c.md']
+  await receipt(A15, 'vibe_v5_paper', { action: 'start', target: 'p-cap', participants: [ACAD, R1], format: 'md' })
+  await receipt(A15, 'vibe_v5_paper', { action: 'part', target: 'p-cap', member: ACAD, part: 'A 节', solution: gradeBody, evidence: ev15 })
+  await receipt(A15, 'vibe_v5_paper', { action: 'part', target: 'p-cap', member: R1, part: 'B 节', solution: gradeBody, evidence: ev15 })
+  // drive DISAGREEMENT rounds until writing/round3 (cap=3): each round = advance → two reviews (one deliverable, one not) → advance
+  for (let r = 1; r <= 2; r += 1) {
+    await receipt(A15, 'vibe_v5_paper', { action: 'advance', target: 'p-cap' })
+    await receipt(A15, 'vibe_v5_paper', { action: 'review', target: 'p-cap', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+    await receipt(A15, 'vibe_v5_paper', { action: 'review', target: 'p-cap', member: R1, of: ACAD, deliverable: false, notes: 'no' })
+    await receipt(A15, 'vibe_v5_paper', { action: 'advance', target: 'p-cap' })
+  }
+  const stCap = (await receipt(A15, 'vibe_v5_paper', { action: 'status', target: 'p-cap' })).parsed
+  ok(stCap && stCap.paper && stCap.paper.status === 'writing' && stCap.paper.round >= 3,
+    '前置：论文在 writing 且 round >= cap（30 秒后就是 audit8 现场）', stCap && stCap.paper && { status: stCap.paper.status, round: stCap.paper.round })
+  eq(stCap && stCap.roundsCap, 3, '★★ 正(TB-2788)：status 披露 roundsCap（当前 cap 值）')
+  eq(stCap && stCap.atCap, true, '★★ 正：status 披露 atCap（round >= cap）')
+  eq(stCap && stCap.forcedAfterCapAvailable, false, '★★ 正：writing 阶段 forcedAfterCapAvailable:false（它只在 reviewing 可直接强制）')
+  const movesCap = Array.isArray(stCap && stCap.nextMoves) ? stCap.nextMoves : []
+  const advMove = movesCap.filter((m) => m && m.action === 'advance')[0] || null
+  ok(advMove && /forcedAfterCap|WITHOUT unanimity/.test(String(advMove.why) + ' ' + String(advMove.requires)),
+    '★★★ 正：atCap 时 nextMoves 的 advance 明说「从 reviewing 再 advance 可不等一致进 awaiting-editor」', advMove)
+  ok(!movesCap.some((m) => m && m.action === 'final'), '★★ 正：writing 阶段 nextMoves 不含 final（final 只在该阶段合法）')
+  // the STATEGATE refusal must carry currentStage + nextMoves (and the cap reading)
+  const finBlocked = (await receipt(A15, 'vibe_v5_paper', { action: 'final', target: 'p-cap', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  eq(finBlocked && finBlocked.code, 'VMU_PACK_V5R_CORE_PAPER_STATE', '★★ 正：writing 阶段 final 被状态门拒（原行为）')
+  eq(finBlocked && finBlocked.currentStage, 'writing', '★★ 正(TB-2788)：状态门拒回执带 currentStage（不只说 not awaiting its editor）')
+  ok(Array.isArray(finBlocked && finBlocked.nextMoves) && finBlocked.nextMoves.some((m) => m && m.action === 'advance'),
+    '★★★ 正：状态门拒回执带 nextMoves（含 advance）', finBlocked && finBlocked.nextMoves)
+  eq(finBlocked && finBlocked.roundsCap, 3, '★ 正：状态门拒回执也带 roundsCap')
+  eq(finBlocked && finBlocked.atCap, true, '★ 正：状态门拒回执也带 atCap')
+  // two advances from here reach the editor WITHOUT unanimity
+  await receipt(A15, 'vibe_v5_paper', { action: 'advance', target: 'p-cap' })
+  const stReview = (await receipt(A15, 'vibe_v5_paper', { action: 'status', target: 'p-cap' })).parsed
+  eq(stReview && stReview.forcedAfterCapAvailable, true, '★★ 正：reviewing + atCap ⇒ forcedAfterCapAvailable:true')
+  const rvMove = (stReview.nextMoves || []).filter((m) => m && m.action === 'advance')[0] || null
+  ok(rvMove && /WITHOUT unanimity/.test(String(rvMove.why)), '★★ 正：该阶段的 advance 明说「不需要一致」', rvMove)
+  const advForced = (await receipt(A15, 'vibe_v5_paper', { action: 'advance', target: 'p-cap' })).parsed
+  eq(advForced && advForced.advance && advForced.advance.to, 'awaiting-editor', '★★ 正：atCap 的 advance 真的（不等一致）进 awaiting-editor')
+  eq(advForced && advForced.advance && advForced.advance.forcedAfterCap, true, '★★ 正：回执具名 forcedAfterCap:true（audit8 说的合法出路）')
+  const stEditor = (await receipt(A15, 'vibe_v5_paper', { action: 'status', target: 'p-cap' })).parsed
+  ok((stEditor.nextMoves || []).some((m) => m && m.action === 'final'), '★★ 正：awaiting-editor 阶段 nextMoves 才出现 final')
+
+  // evidenceGrades.parts[].recordId is the REAL paper-part row id (audit8 D4: it used to be null)
+  const eg15 = stEditor && stEditor.evidenceGrades
+  const partA15 = (eg15 && eg15.parts || []).filter((p) => p.member === ACAD)[0] || null
+  ok(partA15 && typeof partA15.recordId === 'string' && partA15.recordId.startsWith('rec-'),
+    '★★ 正(TB-2788 D4)：evidenceGrades.parts[].recordId 是真实 paper-part 行 id（不再 null）', partA15 && partA15.recordId)
+  const partHeads = ((k15.records.list({ track: 'paper', limit: 0 }).items || [])).filter((h) => h && String(h.kind) === 'paper-part').map((h) => h.id)
+  ok(partA15 && partHeads.includes(partA15.recordId), '★★ 正：该 id 确实在 paper 轨的 part 行里', { id: partA15 && partA15.recordId, partHeads })
+
+  // ★ LAMP(RED-worthy): revert the state-gate refusal enrichment on a COPY ⇒ the same final answer loses currentStage/nextMoves
+  // (the audit8 dead-end shape), so the assertions above are load-bearing.
+  const lampRoot = await mkdtemp(join(__tmpRoot(), 'tb2788-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+  const kitP = join(lampRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kitS = await readFile(kitP, 'utf8')
+  const facts = "{ currentStage: state.status, nextMoves: nextMovesOf(state), ...capNow }"
+  ok(kitS.includes(facts), 'lamp-setup：状态门拒的 facts 可定位')
+  await writeFile(kitP, kitS.split(facts).join('{}'), 'utf8')
+  const L15 = await bootOf(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lampRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const lk = L15.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await lk.members.hire({ id, slot })
+  const cardL = await receipt(L15, 'vibe_v5_record_proposition', { id: 'tb2788-l', statement: 'TB-2788 lamp（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  await receipt(L15, 'vibe_v5_paper', { action: 'start', target: 'p-lamp-cap', participants: [ACAD, R1], format: 'md' })
+  await receipt(L15, 'vibe_v5_paper', { action: 'part', target: 'p-lamp-cap', member: ACAD, part: 'A 节', solution: gradeBody, evidence: ['Members/' + ACAD + '/Propos/tb2788-l.md'] })
+  const fL = (await receipt(L15, 'vibe_v5_paper', { action: 'final', target: 'p-lamp-cap', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  ok(fL && fL.code === 'VMU_PACK_V5R_CORE_PAPER_STATE' && fL.currentStage === undefined && fL.nextMoves === undefined,
+    '★★★ LAMP(RED-worthy)：退回「只说 not awaiting its editor」后，拒收回执没有 currentStage/nextMoves（audit8 的死路形状）', fL && { code: fL.code, currentStage: fL.currentStage, nextMoves: fL.nextMoves })
+  await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+}
+
 // A Windows kernel keeps a handle on the member tree for a moment after a claim, so cleanup is
 // best-effort: the temp root is under D:/_tmp and the assertions above already read every byte they need.
 try { process.chdir(prevCwd) } catch { /* the temp tree is what matters */ }

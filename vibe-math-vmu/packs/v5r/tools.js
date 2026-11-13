@@ -6894,6 +6894,7 @@ function evidenceGradesOf (kernel, state, paper) {
       ? { grade: 'draft', source: 'no-evidence-pointer', evidenceCount: evidence.length }
       : { grade: strongest.grade, source: strongest.source, cardId: strongest.cardId, evidenceCount: evidence.length }
     parts.push({ member: String(member), part: slot && slot.title !== undefined ? slot.title : null,
+      recordId: auditEntry && auditEntry.recordId !== undefined ? auditEntry.recordId : null,
       evidenceCount: evidence.length,
       bodyGradeLine,
       fromBody: bodyGradeLine === null ? null : bodyGradeLine.grade,
@@ -7077,7 +7078,9 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ...envLedgerRead,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
-        // ★★★ TB-2782 (RUN 83 attempt-1): the evidence grades a reader like r-acad asked for, projected from the existing ledger
+        // ★★★ TB-2788 (RUN 85 attempt-1, audit8 D2): the CAP and the legal NEXT MOVES are readings, not deductions.
+        ...(exists && typeof paper.capReadingOf === 'function' ? paper.capReadingOf(got.state) : {}),
+        nextMoves: exists && typeof paper.nextMovesOf === 'function' ? paper.nextMovesOf(got.state) : [],        // ★★★ TB-2782 (RUN 83 attempt-1): the evidence grades a reader like r-acad asked for, projected from the existing ledger
         evidenceGrades: evidenceGradesOf(kernel, got && got.state, paper),
         // ★★★ TB-2713 (RUN 76 / A5, MEASURED): round 2's `deliverable:true` votes were read as stale on round 3, and no
         // receipt said which members a round boundary had invalidated. The reading now travels on the READ face too — and

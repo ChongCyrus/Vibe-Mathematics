@@ -1670,6 +1670,8 @@ export function createPaperFlow({
       writeState(state)
       // ★★ RUN 197 (same defect as the branch above): the CAPPED disagreement branch printed `refusers` and no meaning either.
       return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: false, refusers,
+        // ★ TB-2788: the receipt says WHICH rule moved it — a cap-forced move is not a unanimous round.
+        forcedAfterCap: true, forcedAfterCapRound: state.forcedAfterCapRound,
         ...consultPrediction(state),
         ...roundReading(roundFromCapped, 'reviewing', 'awaiting-editor'),
         crossReview: crossReviewCoverage(state),
@@ -1714,6 +1716,55 @@ export function createPaperFlow({
       transitions.push({ from: r.from, to: r.to, round: r.round })
     }
     return { ok: true, moved: transitions.length > 0, transitions, stopped: 'max-steps' }
+  }
+
+  // ── TB-2788 (RUN 85 attempt-1, audit8 D2): the paper DOES have a legal way to reach the editor when the round cap
+  // has been reached — `advance()` from `reviewing` at `round >= cap` moves to `awaiting-editor` WITHOUT unanimity
+  // (`forcedAfterCap:true`). Nothing on the read face said so, so a seat sitting at writing/round-3 was told only
+  // "not awaiting its editor" and never learned it was two advances away. This reader makes the cap and the moves
+  // visible; it changes NO transition rule.
+  const capReadingOf = (state) => {
+    const cap = roundsCap()
+    const round = Number(state && state.round)
+    const atCap = Number.isFinite(round) && round >= cap
+    const stage = state && state.status !== undefined ? String(state.status) : null
+    return {
+      round: Number.isFinite(round) ? round : null,
+      roundsCap: cap,
+      atCap,
+      forcedAfterCapAvailable: atCap && stage === 'reviewing',
+      capMeans: atCap
+        ? 'round ' + String(round) + ' >= roundsCap ' + String(cap) + ': from "reviewing" an advance() moves the paper to awaiting-editor WITHOUT unanimity (forcedAfterCap:true) — the editor gets the disagreement on the record; this is the last legal way to reach final'
+        : 'round ' + String(round) + ' < roundsCap ' + String(cap) + ': unanimity is still required before advance() moves reviewing → awaiting-editor',
+    }
+  }
+  /** The legal moves from the paper's CURRENT stage, each with why/requires — a refusal or a status read that hands a
+   *  caller a move the flow cannot take is a dead end (F-123a). `final` appears ONLY at awaiting-editor. */
+  const nextMovesOf = (state) => {
+    const target = state && state.target !== undefined ? String(state.target) : ''
+    const cap = capReadingOf(state)
+    const stage = state && state.status !== undefined ? String(state.status) : null
+    const call = (action, args) => 'vibe_v5_paper { action: "' + action + '"' + (args ? ', ' + args : '') + (target ? ', target: "' + target + '"' : '') + ' }'
+    const moves = []
+    if (stage === 'writing') {
+      moves.push({ action: 'part', call: call('part', 'part: "<name>", body: "<prose>", member: "<author>"'), why: 'write/replace your own section (a member has ONE part slot on this paper)', requires: 'stage "writing"' })
+      moves.push({ action: 'advance', call: call('advance'), why: cap.atCap
+        ? 'close writing and open the cross-review round; then (round ' + String(cap.round) + ' is AT the cap) a SECOND advance() from "reviewing" reaches awaiting-editor WITHOUT unanimity (forcedAfterCap)'
+        : 'close writing and open the cross-review round', requires: cap.atCap ? 'stage "writing" (two advances from here reach the editor at cap: writing→reviewing, then reviewing→awaiting-editor without unanimity)' : 'stage "writing"' })
+    } else if (stage === 'reviewing') {
+      moves.push({ action: 'review', call: call('review', 'of: "<author id>", member: "<reviewer id>", deliverable: true'), why: 'file the verdict for another member\'s part (self-review never counts)', requires: 'stage "reviewing"' })
+      moves.push({ action: 'advance', call: call('advance'), why: cap.forcedAfterCapAvailable
+        ? 'moves reviewing → awaiting-editor WITHOUT unanimity: round >= roundsCap, so the editor gets the recorded disagreement (forcedAfterCap:true)'
+        : 'moves reviewing → awaiting-editor / back to writing once the round is judged', requires: cap.forcedAfterCapAvailable ? 'round >= roundsCap (AT CAP — unanimity NOT required for this move)' : 'every expected cross-review counted (or the round ends with disagreement)' })
+    } else if (stage === 'awaiting-editor') {
+      moves.push({ action: 'final', call: call('final', 'member: "<chair id>", decision: "deliverable"'), why: 'finalise: runs the content/cross-review/grade-line/glyph gates (final is legal ONLY at awaiting-editor)', requires: 'stage "awaiting-editor" (this is the only stage where final is legal)' })
+      moves.push({ action: 'final', call: call('final', 'member: "<chair id>", decision: "revise"'), why: 'send the paper back to writing for another round', requires: 'stage "awaiting-editor"' })
+      moves.push({ action: 'compile', call: call('compile'), why: 're-typeset the current .tex and record the PDF reading', requires: 'stage "awaiting-editor"' })
+    } else if (stage === 'finalized') {
+      moves.push({ action: 'status', call: call('status'), why: 'read the finalised record (final is no longer callable)', requires: 'none — the paper is finalized' })
+      moves.push({ action: 'start', call: 'vibe_v5_paper { action: "start", target: "<new target>", participants: [...] }', why: 'a finalized paper cannot change; start a NEW paper for further work', requires: 'a new target' })
+    }
+    return moves
   }
 
   /** ★ F-123a: what a caller can DO from the paper's current status. A refusal that names an action the flow cannot
@@ -1781,7 +1832,15 @@ export function createPaperFlow({
     // and `part` only writes while writing. When the compile ledger holds NO successful PDF for this paper, `revise` is the
     // repair path and is allowed (the move is recorded as a repair, not as a claim that the paper was never finalised).
     const pdfLessFinal = state.status === 'finalized' && decision === 'revise' && compiledPdfRow(state) === null
-    if (state.status !== 'awaiting-editor' && !pdfLessFinal) throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')', nextMoveFor(state))
+    if (state.status !== 'awaiting-editor' && !pdfLessFinal) {
+      // ★★★ TB-2788 (RUN 85 attempt-1, audit8 D2): a state-gate refusal used to say only "not awaiting its editor (now: …)" —
+      // the seat could not see that at round cap TWO advances reach the editor without unanimity. The refusal now carries
+      // currentStage + nextMoves + the cap reading (facts only; the state machine is unchanged).
+      const capNow = capReadingOf(state)
+      throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')' + (capNow.atCap ? ' — NOTE: round ' + String(capNow.round) + ' is AT the cap ' + String(capNow.roundsCap) + ', so from "reviewing" an advance() reaches the editor WITHOUT unanimity (forcedAfterCap)' : ''),
+        nextMoveFor(state) + (capNow.atCap ? ' — AT CAP: an advance() from "reviewing" moves to awaiting-editor without unanimity (forcedAfterCap:true), and final is legal only there.' : ''),
+        { currentStage: state.status, nextMoves: nextMovesOf(state), ...capNow })
+    }
     // ★★ RUN 152: this refusal used to be ONE sentence for two different facts, and it printed
     // "this paper is not the academician's to finalise" even when the academician WAS the signer (the paper had been
     // started with a member id as its editor) — a message that is literally false about the state it describes. The
@@ -2580,6 +2639,9 @@ export function createPaperFlow({
     compiledPdfRow: (state) => compiledPdfRow(state),
     // ★ TB-2786: ONE grade-line reader for the final gate AND the status projection.
     gradeLinesOfState: (state) => gradeAuditOfState(state),
+    // ★ TB-2788: the cap/stage reading and the legal moves, shared by status and the state-gate refusal.
+    capReadingOf: (state) => capReadingOf(state),
+    nextMovesOf: (state) => nextMovesOf(state),
     // ★★ RUN 172 (FEEDBACK17 P3-16): the status face must be able to say "this name is not gone, it is in the TRASH" — the
     // same lookup `start` uses to refuse a reused name, so the two doors cannot disagree about one fact.
     // ★★★ TB-2713: the status door must print the SAME object the advance door prints. It asks this reader (which owns
