@@ -63,6 +63,21 @@ function runGate(itemMutation, extraArgs = []) {
 }
 const codesOf = (parsed) => ((parsed && parsed.problems) || []).map((p) => p.code)
 
+/**
+ * A SYNTHETIC declared gap, used to test the gap BEHAVIOUR (warning printed / --strict-unfinished refuses).
+ * The real ledger has no gaps any more (C10 was the last one, and it left through a public auditDispute), so a
+ * behaviour test written against the real ledger would either be vacuous (`gaps.every(...)` over []) or would
+ * re-pin the ledger (the RUN 242 "ruler measuring itself" defect). Mutating a DONE row in a COPY keeps the
+ * property while measuring only the gate's behaviour.
+ */
+const synthGap = (ledger) => {
+  const it = ledger.items.find((x) => x.id === 'D2')
+  it.status = 'PARTIAL'
+  it.next = 'synthetic fixture: needs a deployment with the capability this row names'
+  delete it.auditDispute
+  return it.id
+}
+
 // ── §0 the gate reads the second ledger and knows the vocabulary ─────────────────────────────────────────────────
 {
   console.log('\n=== §0 the gate reads the observation audit (source pins) ===')
@@ -96,19 +111,34 @@ const codesOf = (parsed) => ((parsed && parsed.problems) || []).map((p) => p.cod
   // the gate look green is still the fraud this test exists to catch — so a row that leaves the gap list must now
   // answer the observation audit in the open, with a maintained suite, not with silence.
   const d2 = real.items.find((it) => it.id === 'D2')
-  ok(gapIds.includes('C10'),
-    'the genuinely unobservable rule is still declared a gap (C10 needs a deployment with Lean), not quietly DONE', { gaps: gapIds })
+  // ★ RUN 86: C10 left the gap list through a REAL observation (leanprobe1: four verbs on a Lean 4.34.0 host),
+  // so the old pin ("C10 must stay a gap") became false. The invariant worth keeping is the one this suite exists
+  // for: a row that LEAVES the gap list must answer the observation audit in the open — DONE + acknowledged
+  // dispute + maintained-suite evidence + a written boundary note — never silence. Same pattern D2 is held to.
+  const c10 = real.items.find((it) => it.id === 'C10')
+  ok(c10.status === 'DONE' && c10.auditDispute && c10.auditDispute.acknowledged === true,
+    'C10 left the gap list only through a DONE that answers the observation audit', { status: c10.status })
+  ok(/^tests\/[^/]+\.mjs::/.test(String(c10.auditDispute && c10.auditDispute.evidence)) &&
+    String(c10.auditDispute.evidence).indexOf('tests/legacy/') === -1,
+    'C10 reconciliation cites a maintained suite and a pattern', { evidence: c10.auditDispute && c10.auditDispute.evidence })
+  ok(typeof c10.note === 'string' && c10.note.trim().length >= 24,
+    'C10 note names the boundary (office path observed, member path not)', { noteLen: typeof c10.note === 'string' ? c10.note.length : null })
+  ok(!gapIds.includes('C10'), 'C10 is no longer declared a gap', { gaps: gapIds })
   ok(d2.status === 'DONE' && d2.auditDispute && d2.auditDispute.acknowledged === true &&
     /^tests\/vmu-run248-/.test(String(d2.auditDispute.evidence)),
     'D2 left the gap list only through the user ruling, and the DONE answers the observation audit with a maintained suite',
     { status: d2.status, evidence: d2.auditDispute && d2.auditDispute.evidence })
-  ok(gaps.every((g) => typeof g.next === 'string' && g.next.trim().length >= 8), 'each gap says what would close it')
+  ok(gaps.length === 0, 'the real ledger declares no gaps today (the synthetic fixture below exercises the behaviour)', { gaps: gapIds })
 
   const green = runGate(null)
   ok(green.exitCode === 0, 'the real ledger passes --check', { exitCode: green.exitCode, problems: codesOf(green.parsed) })
   ok(!codesOf(green.parsed).includes('VMU_RULES_UNFINISHED'), 'declared gaps are warnings, not failures (default scope)')
-  ok(((green.parsed && green.parsed.warnings) || []).some((w) => w.code === 'VMU_RULES_UNFINISHED'),
-    'and they are still PRINTED as unfinished warnings (invisible gaps would be the old bug)')
+  const synthetic = runGate(synthGap)
+  const syntheticWarnings = ((synthetic.parsed && synthetic.parsed.warnings) || [])
+  ok(synthetic.exitCode === 0 && syntheticWarnings.some((w) => w.code === 'VMU_RULES_UNFINISHED' &&
+      JSON.stringify(w).indexOf('D2') !== -1),
+    'a declared gap is still PRINTED as a named unfinished warning (invisible gaps would be the old bug)',
+    { exitCode: synthetic.exitCode, warnings: syntheticWarnings.map((w) => w.code) })
 }
 
 // ── §2 remove the reconciliation from a disputed row ⇒ the gate refuses the DONE ────────────────────────────────
@@ -146,9 +176,11 @@ const codesOf = (parsed) => ((parsed && parsed.problems) || []).map((p) => p.cod
 // ── §4 the release flag still refuses declared gaps (a release is not a working tree) ───────────────────────────
 {
   console.log('\n=== §4 --strict-unfinished refuses the declared gaps ===')
-  const strict = runGate(null, ['--strict-unfinished'])
-  ok(strict.exitCode !== 0, 'the release scope fails while gaps exist', { exitCode: strict.exitCode })
-  ok(codesOf(strict.parsed).includes('VMU_RULES_UNFINISHED'), 'and names them', codesOf(strict.parsed))
+  const strict = runGate(synthGap, ['--strict-unfinished'])
+  ok(strict.exitCode !== 0, 'the release scope fails while a declared gap exists', { exitCode: strict.exitCode })
+  ok(codesOf(strict.parsed).includes('VMU_RULES_UNFINISHED') &&
+    JSON.stringify((strict.parsed && strict.parsed.problems) || []).indexOf('D2') !== -1,
+    'and names the gap it refuses', codesOf(strict.parsed))
 }
 
 console.log('\nTOTAL ' + (passed + failed) + ' PASS ' + passed + ' FAIL ' + failed)

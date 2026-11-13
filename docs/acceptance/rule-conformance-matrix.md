@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 92 | all four citations resolve |
-| ◐ PARTIAL | 1 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 93 | all four citations resolve |
+| ◐ PARTIAL | 0 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -59,7 +59,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 2/1/1/3 | — |
 | `C8` | 14 | p=1 的命题要标记 verified | ✅ DONE | 1/2/1/2 | — |
 | `C9` | 15 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 2/1/1/1 | — |
-| `C10` | 16 | Lean 代码与编译结果归档 | ◐ PARTIAL | 2/2/1/2 | Lean 代码与编译结果的归档读面需要 Lean face/spawn 接缝；本装配没有 Lean，`vibe_v5_lean_lib` 只能具名拒。需在带 Lean 的部署复验归档回执后转 DONE（或新增一个可测的 Lean 接缝）。 |
+| `C10` | 16 | Lean 代码与编译结果归档 | ✅ DONE | 2/2/1/5 | — |
 | `C11` | 16 | lean 通过后辩论只查描述/定义是否符合原意 | ✅ DONE | 2/1/1/1 | — |
 | `C12` | 16 | 鼓励开关：鼓励把小结/定义 Lean 化 | ✅ DONE | 1/1/1/1 | — |
 | `C13` | 17 | 经分派后各自负责部分的论文 | ✅ DONE | 1/1/1/3 | — |

@@ -18580,3 +18580,62 @@ TB-2741 的十条更正净 −66 字符（三席 normal 78 144→78 078），账
 - **TB-2741（已交付）**：十条提示词更正，`tests/vmu-run79-prompt-corrections.test.mjs` 11/0；本批 355.15.3 的两句事实与一个括注是它的净零预算的补账。
 
 本轮读数：TOTAL `882` PASS `882` FAIL 0（suites `796` · probes `86`，wall `713.8s（k=3）`，k=3），提交 `RUN 272 收口提交`；本文件行数 `18582`。
+
+## §355.16 2026-11-14 C10 真机复验（leanprobe1）
+
+> **一句话**：带 Lean 4.34.0 的宿主上，C10 的四动词（`lean_run` → `lean_job` → `lean_archive` → `lean_read` → `lean_lib`）全部被**真实观测**；归档行 `persisted:true` 落盘，`read` 回源逐字。C10 因此从 `PARTIAL` 升 `DONE`（**office/root 路径**；成员回合路径未观测，边界见 §355.16.3）。
+
+### 355.16.1 provenance
+
+- build `3b5f754d`、HEAD `3b5f754d40021cd9787713e01224ad88e980fc5c`；探针 clone `slvpLP1`、port 19823。
+- Lean **4.34.0** @ `D:\.elanin\lean.exe`（`vibe_v5_set` 写 `vmu.math.leanCommand`；**该写是本进程作用域**，见 355.16.3②）。
+- 原始证据：`D:\_tmp
+un-lane\leanprobeull-1114-034648.jsonl`，sha256 `7db2eeb97cdaea09c4a928cd7e601adbe7281fdb4b544a6e9d7698b2fd2a86c0`；行/seq：**344/37**（lean_run）、397/42、419/47（job running×2）、**514/59**（job settled）、**567/64**（archive）、**608/69**（read）、**625/74**（lib）。
+- 调用顺序：`lean_run` → `lean_job`（3 次：2 次 running → 1 次 settled）→ `lean_archive` → `lean_read` → `lean_lib`。
+- 负对照（audit10 自跑）：原字节 `.lean` ⇒ Lean exit 0；破坏版（改语句/空文件）⇒ exit 1；归档 (`persisted:true`) 与磁盘 `state.json::keys.leanlibrary[0]` 全等。
+
+### 355.16.2 逐字回执（原文，行/seq 见上）
+
+`lean_run`（line 344 / seq 37）：
+
+```json
+{"ok":true,"id":"lean-1","state":"queued","jobScope":"this-kernel-process","jobScopeMeans":"these job ids are minted and kept by THIS kernel process; the durable face is the job mirror (listMirrors(), Formal/Jobs/<id>.json) — a job number written into a card is not by itself a durable name","tool":"vibe_v5_lean_run","unapplied":[],"note":"the process, the timeout and the cancel path belong to the Lean face (spawn seam); this tool only submits","memberActed":false,"callerIsSeat":false,"callerIsSeatMeans":"this key answers ONE question: did this call run from the named seat and its own session? It does not say whether the seat carried the act out - that is what a delivered turn (turnReceipts, deliveryPath) answers","ranInOwnTurn":false,"ranInOwnTurnMeans":"true when this call ran from the seat own session, or when the kernel reported that a turn for this seat was actually DELIVERED and returned (out.turnDelivered) - the two facts that one key used to conflate","actedForMember":"r-acad","callerMember":null,"memberActedMeans":"this call ran from the OFFICE (a root session, which is not a seat) and named member \"r-acad\": the record was written IN THAT SEAT'S NAME, and NO delivered turn for that seat was reported (out.turnDelivered was not true). `memberActed:false` states that difference - orchestrating on a seat's behalf is not the same act as carrying it out, and a reader who needs the seat's own judgement should ask for it in a turn of that seat","receiptMeta":{"truncated":false,"elided":[],"hostElision":"possible","originalBytes":1471,"note":null}}
+```
+
+`lean_job` 最终 settled（line 514 / seq 59；前两次 running 见 397/419）：
+
+```json
+{"ok":true,"job":{"id":"lean-1","state":"settled","file":"D:\\_tmp\\slv-phase5\\slvpLP1-ws\\Lean\\probe.lean","statement":"(1:Nat)+1=2","exitCode":0,"hashUnchanged":true,"hashUnchangedState":"measured","hashUnchangedReason":null,"hashUnchangedCutShort":false,"passed":true,"hashUnchangedMeans":"the file content was the same before and after this compile (it is NOT a cache flag; dedupedOf answers \"reused a passed compile\")","startedAt":1794599536780,"endedAt":1794599542547,"attempts":1,"terminated":false,"hadHandle":true,"outputDroppedBytes":0,"outputLossy":false,"outputSpill":null,"dedupedOf":null,"code":null,"message":null,"hint":null,"stdoutTail":"","stderrTail":"","dropped":{"events":0}},"tool":"vibe_v5_lean_job","receiptMeta":{"truncated":false,"elided":[],"hostElision":"possible","originalBytes":727,"note":null}}
+```
+
+`lean_archive`（line 567 / seq 64）：
+
+```json
+{"ok":true,"name":"t_1p1","kind":"theorem","file":"D:\\_tmp\\slv-phase5\\slvpLP1-ws\\Lean\\probe.lean","hash":"a74ae0c3e2a1bbc4c017783aff9ba8c4da04c41df4afa7f8d31742786ee54df9","statement":"(1:Nat)+1=2","at":1794599559091,"exitCode":0,"diagnosticsTail":null,"jobId":"lean-1","compileAt":1794599542547,"outcome":"ok","outcomeMeans":"本条的编译结果来自本内核**已经存在**的那次 作业 lean-1（state=settled，exitCode=0）：归档只登记那次结果，不重新编译。diagnosticsTail 是那次作业诊断输出的末 400 个字符；compileAt 是那次作业结束的时间，at 是归档时间。","count":1,"persistence":{"shared":true,"key":"leanlibrary","pulls":1,"written":1,"refused":0,"means":"this library is durable through the store key \"leanlibrary\": a kernel that starts later reads the same rows back"},"persisted":true,"tool":"vibe_v5_lean_archive","mappedKind":"theorem","kindRequested":"proof","receiptMeta":{"truncated":false,"elided":[],"hostElision":"possible","originalBytes":789,"note":null}}
+```
+
+`lean_read`（line 608 / seq 69）——`content` 与磁盘逐字一致：
+
+```json
+{"ok":true,"name":"t_1p1","kind":"theorem","file":"D:\\_tmp\\slv-phase5\\slvpLP1-ws\\Lean\\probe.lean","hash":"a74ae0c3e2a1bbc4c017783aff9ba8c4da04c41df4afa7f8d31742786ee54df9","statement":"(1:Nat)+1=2","at":1794599559091,"outcome":"ok","exitCode":0,"diagnosticsTail":null,"jobId":"lean-1","compileAt":1794599542547,"outcomeMeans":"本条的编译结果来自本内核**已经存在**的那次 作业 lean-1（state=settled，exitCode=0）：归档只登记那次结果，不重新编译。diagnosticsTail 是那次作业诊断输出的末 400 个字符；compileAt 是那次作业结束的时间，at 是归档时间。","content":"theorem t_1p1 : (1:Nat) + 1 = 2 := rfl\n","dropped":{"bytes":0},"tool":"vibe_v5_lean_read","receiptMeta":{"truncated":false,"elided":[],"hostElision":"possible","originalBytes":578,"note":null}}
+```
+
+`lean_lib`（line 625 / seq 74）：
+
+```json
+{"ok":true,"count":1,"kinds":["theorem"],"entries":[{"name":"t_1p1","kind":"theorem","file":"D:\\_tmp\\slv-phase5\\slvpLP1-ws\\Lean\\probe.lean","hash":"a74ae0c3e2a1bbc4c017783aff9ba8c4da04c41df4afa7f8d31742786ee54df9","statement":"(1:Nat)+1=2","at":1794599559091,"outcome":"ok","exitCode":0,"diagnosticsTail":null,"jobId":"lean-1","compileAt":1794599542547,"outcomeMeans":"本条的编译结果来自本内核**已经存在**的那次 作业 lean-1（state=settled，exitCode=0）：归档只登记那次结果，不重新编译。diagnosticsTail 是那次作业诊断输出的末 400 个字符；compileAt 是那次作业结束的时间，at 是归档时间。"}],"persistence":{"shared":true,"key":"leanlibrary","pulls":3,"written":1,"refused":0,"means":"this library is durable through the store key \"leanlibrary\": a kernel that starts later reads the same rows back"},"tool":"vibe_v5_lean_lib","receiptMeta":{"truncated":false,"elided":[],"hostElision":"possible","originalBytes":755,"note":null}}
+```
+
+### 355.16.3 边界（如实写，不进 DONE 的「无限能力」）
+
+1. **归档是「只引不复制」**：`persistence.key:"leanlibrary"` 持久化的是**引用 + 编译结果**，不是文件内容；探针 clone 删掉后，后启动内核 `read` 会 `VMU_LEAN_FILE_UNREADABLE`（归档行仍在，内容不可恢复）。
+2. **`vibe_v5_set leanCommand` 是 `this-process` 作用域**：回执自报 `visibleToMemberKernels:false`、`crossKernelScope:"this-process"`、`reachableInstead:"NO face can make another kernel read this value…"` ⇒ **office/root 路径已验证；成员回合路径未观测**（成员内核仍读声明默认值，需 durable declaration/charter 才能让成员回合直接用 Lean）。
+3. **回执无 command 字段**：job 镜像只有不可逆 `contextHash` ⇒「实际 spawn 用的是绝对路径」= `NO-EVIDENCE`（本机 `lean` 也在 PATH，探针成功对默认与绝对路径都成立；只能靠源码推断设置被消费）。
+4. **kind 词表映射**：产品枚举 `def|lemma|proof|blocked`；本次 `kind:"proof"` ⇒ 回执 `mappedKind:"theorem"`（内核枚举 `def|lemma|theorem|assumption`，映射在 `kit/extras.js:211`）；任务书若写 `kind:"theorem"` 会被枚举拒。
+
+### 355.16.4 台账动作
+
+- `rules-ledger.json` C10：`PARTIAL → DONE`；`live` 换成本节四条逐字锚点；`next` 清空；`note` 记录上面四条边界；对 `sim-audit-rules.md` 的 `C10 🚫 UNREACHABLE` 加 `auditDispute`（environment-fact vs mechanism-absence，evidence 指向维护中套件）。
+- 历史：RUN 238（`c6453089`）把 C10 降为 PARTIAL，`next` 要求「带 Lean 的部署复验归档回执」——本节即该复验。
+
+本文件行数 `18641`.

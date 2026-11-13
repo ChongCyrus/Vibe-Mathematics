@@ -770,7 +770,7 @@
       "id": "C10",
       "rule": "16",
       "text": "Lean 代码与编译结果归档",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/lean.js::function compileResultFor",
         "vibe-math-vmu/kernel/lean.js::outcome: e.outcome === undefined"
@@ -783,11 +783,21 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::运行结果在 `vibe_v5_lean_run/job` 回执"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"jobId\":\"lean-2\"",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"mappedKind\":\"theorem\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"state\":\"settled\",\"file\":",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"exitCode\":0,\"hashUnchanged\":true",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"mappedKind\":\"theorem\",\"kindRequested\":\"proof\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"persisted\":true,\"tool\":\"vibe_v5_lean_archive\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"jobId\":\"lean-2\""
       ],
       "ruleText": "- 平时的一些命题的证明、对象的定义之类的lean代码及其编译结果。以减轻后续工作量。且只要lean通过的命题那么剩下的（在辩论时）只是检查代码中的命题、各种定义是否描述符合所需，只要符合那么就是完全正确的、布尔概率直接赋值为1、可以把相应命题（及其依赖的对象定义）加入verified。（通过参数可以开启鼓励开关：鼓励它们把平时一些小结论、小命题、定义给进行lean形式化、编译，来减少后续工作量。）",
-      "next": "Lean 代码与编译结果的归档读面需要 Lean face/spawn 接缝；本装配没有 Lean，`vibe_v5_lean_lib` 只能具名拒。需在带 Lean 的部署复验归档回执后转 DONE（或新增一个可测的 Lean 接缝）。"
+      "next": "",
+      "note": "四动词已在真机 Lean 4.34.0 上以 office/root 会话跑通（job settled exitCode 0/hashUnchanged/passed、archive outcome ok/persisted、read 回源逐字、lib count:1），证据见 phase12 §355.16（leanprobe1，build 3b5f754d）。边界四条：①归档只引不复制——持久化的是引用+编译结果，不是内容（`persistence.key:\"leanlibrary\"`；clone 删掉后 read 会 VMU_LEAN_FILE_UNREADABLE）；②`vibe_v5_set leanCommand` 是 this-process 作用域（`visibleToMemberKernels:false`、`crossKernelScope:\"this-process\"`）⇒ office/root 路径已验证，**成员回合路径未观测**（成员内核仍读声明默认值，需 durable declaration/charter）；③回执无 command 字段 ⇒「实际 spawn 用的是绝对路径」= NO-EVIDENCE（只能靠源码推断设置被消费）；④产品枚举 def|lemma|proof|blocked，`kind:\"proof\"`→`mappedKind:\"theorem\"`（内核枚举 def|lemma|theorem|assumption，映射 kit/extras.js:211）。",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "leanprobe1 / 2026-11-14",
+        "why": "sim-audit-rules.md 判 C10 UNREACHABLE 是因为当时观测的装配没有 Lean face/spawn；在带 Lean 4.34.0 的宿主上，同一装配的四动词全部被真实观测到（job lean-1 settled exitCode 0/hashUnchanged、archive outcome ok/persisted jobId lean-1、read 回源逐字、lib 列出一条 theorem）。UNREACHABLE 是环境事实，不是机制缺失。",
+        "evidence": "tests/vmu-b3-c8-c10.test.mjs::outcome === 'ok'"
+      }
     },
     {
       "id": "C11",
