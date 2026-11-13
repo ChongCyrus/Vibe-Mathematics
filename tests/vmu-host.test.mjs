@@ -1237,6 +1237,149 @@ if (SELF_PROBE) {
   }
 }
 
+// ── ★★★ TB-2780 (RUN 83 / HIGH): the block must use the wire SNAPSHOT, not a live table that a face apply can race ──
+// MEASURED (audit6, run 83 attempt-1): 4 of 37 scored requests FAILED with one shape — the request's wire carried 79/69
+// while the paired prompt block said 58/48 (the 21 missing names are exactly the member seat's deny list). Event order in
+// r-3 `721952c7`: `seq121 system/message` (block 58) → `seq123 request/header` (wire 79) → `seq124 developer/message`
+// (`source.kind:"tool-registry"`, 21 `tool-addition`s carrying `headerSeq:123`). The wire collection happens inside
+// `systemPrompt.assemble` BEFORE the waterfall (`dsh-system-prompt/lib/index.js:367-381` collect, `:401` waterfall), so a
+// seat face being (re)applied between those two moments made the block describe an older face than the request.
+// THE FIX: read the wire from a capture taken INSIDE the wire's own provider loop (same `{scope, toolSet}`, same
+// synchronous tick) — block == header by construction. This block reproduces that exact race with a fake host that
+// exposes `systemPrompt.tools(provider)` the way DSH 0.2.2-rc.1 does.
+{
+  const RUN83_WIRE = [
+    'edit', 'glob', 'grep', 'math_computation', 'read', 'read_image',
+    'skill', 'todo_write', 'vibe_v5_assign', 'vibe_v5_blueprint', 'vibe_v5_configure', 'vibe_v5_feedback',
+    'vibe_v5_fidelity_conclude', 'vibe_v5_fire', 'vibe_v5_hire', 'vibe_v5_inbox', 'vibe_v5_lean_archive', 'vibe_v5_lean_job',
+    'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_run', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message',
+    'vibe_v5_motion', 'vibe_v5_nudge', 'vibe_v5_overview', 'vibe_v5_paper', 'vibe_v5_pause', 'vibe_v5_poll_close',
+    'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_prioritize', 'vibe_v5_read_library', 'vibe_v5_record_method', 'vibe_v5_record_progress',
+    'vibe_v5_record_proposition', 'vibe_v5_record_subproblem', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_say', 'vibe_v5_script',
+    'vibe_v5_second', 'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_task_create', 'vibe_v5_task_get',
+    'vibe_v5_task_list', 'vibe_v5_task_update', 'vibe_v5_tool_help', 'vibe_v5_verdict', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final',
+    'vibe_v5_verified_promote', 'vibe_v5_wait', 'vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_direction', 'vibe_vmu_env',
+    'vibe_vmu_human', 'vibe_vmu_mailbox', 'vibe_vmu_mathjobs', 'vibe_vmu_mathtools', 'vibe_vmu_meeting', 'vibe_vmu_middleware',
+    'vibe_vmu_pack', 'vibe_vmu_panel', 'vibe_vmu_records', 'vibe_vmu_report', 'vibe_vmu_reviewers', 'vibe_vmu_set',
+    'vibe_vmu_status', 'vibe_vmu_task', 'vibe_vmu_tools', 'vibe_vmu_turn', 'vibe_vmu_vote', 'working_directory',
+    'write',
+  ]
+  const MEMBER_DENY_21 = ['vibe_v5_assign', 'vibe_v5_configure', 'vibe_v5_fidelity_conclude', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message', 'vibe_v5_nudge', 'vibe_v5_overview', 'vibe_v5_pause', 'vibe_v5_poll_close', 'vibe_v5_poll_open', 'vibe_v5_prioritize', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_script', 'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final', 'vibe_v5_verified_promote']
+  const vibeSet = (names) => [...new Set((names || []).filter((n) => String(n).startsWith('vibe_')))].sort()
+  const blockNames = (block) => (String(block && block.text).match(/vibe_[A-Za-z0-9_]+/g) || [])
+  const matchesWire = (block, wire) => !!block && !/wire-unknown|wire-not-rendered/.test(block.text) &&
+    JSON.stringify(vibeSet(blockNames(block))) === JSON.stringify(vibeSet(wire))
+  // The race the fixture must contain: at a new turn's first request the child Agent's scope is WIDE (79); the seat face
+  // is (re)applied while the step is being prepared, i.e. AFTER the wire's tool collection and BEFORE the waterfall
+  // listener runs. The host exposes `systemPrompt.tools(provider)` (DSH 0.2.2-rc.1 calls every provider inside
+  // `assemble()` before the waterfall), so the fixed block reads the provider-time capture.
+  const mkRun83 = async (hostModule) => {
+    const listeners = {}
+    const captureProviders = []
+    let current = RUN83_WIRE.slice()
+    const agent = { id: 'member-r83', ctx: { tools: {
+      schemas: (scope, set) => {
+        if (scope === undefined) return ['working_directory'].map((name) => ({ name }))
+        const names = set && typeof set.view === 'function' ? [...set.view(scope).keys()] : current
+        return names.map((name) => ({ name }))
+      },
+      restrict: (filter) => {
+        const denySet = new Set((filter && filter.deny) || [])
+        const allowSet = Array.isArray(filter && filter.allow) ? new Set(filter.allow) : null
+        current = current.filter((n) => (allowSet === null || allowSet.has(n)) && !denySet.has(n))
+        return () => {}
+      },
+    } } }
+    const toolSetOf = () => {
+      const admitted = current.slice()
+      return { view: (scope) => new Map(admitted.filter((n) => current.includes(n)).map((name) => [name, { name }])) }
+    }
+    const kernel = km.createKernel({ clock })
+    kernel.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: [] }])
+    kernel.setMemberToolOverride({ member: 'member-r83', deny: MEMBER_DENY_21.slice() })
+    await kernel.members.hire({ id: 'member-r83', slot: 'member', institution: 'sim' })
+    const ctx = {
+      tools: { register: async () => () => {} },
+      effect: (fn) => fn(),
+      on: (event, fn) => { (listeners[event] = listeners[event] || []).push(fn) },
+      get: (name) => {
+        if (name === 'agents') return { get: (id) => (id === 'member-r83' ? agent : null) }
+        // THE SEAM TB-2780 USES: the host's systemPrompt service, reached without `inject` (ctx.get), same as vmu does.
+        if (name === 'systemPrompt') return { tools: (provider) => { captureProviders.push(provider); return () => {} } }
+        return null
+      },
+    }
+    await hostModule.createHostAdapter({ ctx, kernel, settings: {} }).install()
+    const hook = (listeners['system-prompt/assemble'] || [])[0]
+    // One request as the real loop drives it: resolve the step's toolSet → providers run (capture!) → the seat face lands
+    // (race window) → the assemble waterfall runs this hook.
+    const request = async ({ raceAfterCapture = true } = {}) => {
+      const wire = [...current] // what this request's wire carries (collection happens before the waterfall)
+      const toolSet = toolSetOf()
+      const context = { agent, scope: agent, toolSet }
+      const captured = captureProviders.map((provider) => provider(context))
+      if (raceAfterCapture) current = current.filter((n) => !MEMBER_DENY_21.includes(n))
+      const out = await hook({ sections: [] }, context, () => Promise.resolve({ sections: [] }))
+      const block = (out.sections || []).find((s) => s.name === 'v5r-effective-tools') || null
+      return { wire, block, context, receipt: kernel.toolFacePull(), captured, currentAfter: current.slice() }
+    }
+    return { agent, kernel, request, captureProviders, currentOf: () => current.slice() }
+  }
+  const host83 = await mkRun83(hm)
+  ok(host83.captureProviders.length === 1,
+    '★★ TB-2780 前置：适配器在 systemPrompt.tools 上注册了「wire 快照捕获」provider（DSH 在 assemble 的 provider 循环里调用它）',
+    host83.captureProviders.length)
+  // ★ THE REGRESSION SAMPLE (run-83 a91f1098 seq158 / 86590fac seq159 / 721952c7 seq123): new turn's first request.
+  const first = await host83.request()
+  ok(first.block && /79 个：/.test(first.block.text) && matchesWire(first.block, first.wire),
+    '★★★ TB-2780 判据：新回合首请求的块 == 该请求 wire（79/69），不再是加面前面的 58/48', { wire: first.wire.length, block: first.block && first.block.text.slice(0, 34) })
+  ok(MEMBER_DENY_21.every((n) => blockNames(first.block).includes(n)),
+    '★★★ 那 21 个「wire 上有、块曾漏报」的名字现在都在块里', MEMBER_DENY_21.filter((n) => !blockNames(first.block).includes(n)))
+  ok(first.captured.length === 1 && first.captured[0] && first.captured[0].schemas.length === 0,
+    '★★ 捕获 provider 只观测、不往 wire 上加工具（返回空 schemas）', first.captured)
+  ok(first.receipt.wireCaptured >= 1 && first.receipt.lastWireCapturedCount === 79 &&
+    first.receipt.lastWireCapturedSource === 'agent.ctx.tools.schemas(scope,toolSet)',
+    '★★ 回执自报：块用的是 provider 期捕获（79 / 捕获来源），不是 waterfall 期的活表', first.receipt)
+  // the next request of the turn: the face has landed, so the wire itself is 58 and the block must follow it
+  const second = await host83.request()
+  ok(second.wire.length === 58 && second.block && /58 个：/.test(second.block.text) && matchesWire(second.block, second.wire),
+    '★★ 同回合下一请求：wire 已收窄到 58/48，块同步 == 该请求 wire', { wire: second.wire.length, block: second.block && second.block.text.slice(0, 30) })
+  // ★ 反灯 1: ignore the provider-time capture (block back on the live table) ⇒ exactly the run-83 defect (58 vs 79).
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2780a-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = "const captured = context && typeof context === 'object' ? wireSnapshotByContext.get(context) : null"
+      ok(src.indexOf(anchor) !== -1, 'TB-2780 反灯 1：变异点存在')
+      await writeFile(copyHost, src.replace(anchor, 'const captured = null'))
+      const lampHost = await import(pathToFileURL(copyHost).href + '?tb2780=lamp1')
+      const lamp = await mkRun83(lampHost)
+      const l1 = await lamp.request()
+      ok(l1.block && /58 个：/.test(l1.block.text) && !matchesWire(l1.block, l1.wire) && vibeSet(blockNames(l1.block)).length === 48,
+        '★★ 反灯 1（块按「加面前」的活表渲染）⇒ 首请求又写 58/48 而 wire 是 79/69，判据红（正是 run-83 的 4 FAIL 形状）', l1.block && l1.block.text.slice(0, 34))
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+  // ★ 反灯 2: truncate the declared name set by one ⇒ set equality goes RED.
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2780b-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = 'effectiveNames = agentWire.names.slice()'
+      ok(src.indexOf(anchor) !== -1, 'TB-2780 反灯 2：变异点存在')
+      await writeFile(copyHost, src.replace(anchor, "effectiveNames = agentWire.names.slice().filter((n) => n !== 'vibe_v5_assign')"))
+      const lampHost = await import(pathToFileURL(copyHost).href + '?tb2780=lamp2')
+      const lamp = await mkRun83(lampHost)
+      const l1 = await lamp.request()
+      ok(l1.block && /78 个：/.test(l1.block.text) && !matchesWire(l1.block, l1.wire) && vibeSet(blockNames(l1.block)).length === 68,
+        '★★ 反灯 2（名集截断一个）⇒ 78 个/68 个 vibe，集合相等判据红', l1.block && l1.block.text.slice(0, 34))
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+}
+
 // ── PHASE 9+ / G5: every TOOL_NAMES row is either REGISTERED or has an explicit false family/surface ───────────────
 {
   const settings = { 'vmu.tools.faces': ['*'], 'vmu.tools.allowAll': true }

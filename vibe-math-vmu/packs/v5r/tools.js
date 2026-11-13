@@ -6608,6 +6608,9 @@ export function toolchainProbeOf({ latexAvailable = null, asked = false } = {}) 
 function environmentReadingsOf(observed, fallback) {
   const memo = fallback && typeof fallback === 'object' ? fallback : null
   const known = !!(observed && typeof observed === 'object')
+  // ★ TB-2781 D3: whether THIS observation carried an engine verdict; assigned inside the `known` branch below and read
+  // after it (the probe/source fields are function-scope facts).
+  let observanceHadVerdict = false
   let toolchainAbsent = memo && Array.isArray(memo.toolchainAbsent) ? memo.toolchainAbsent.slice() : []
   let pdfEnvironmentMissing = memo && typeof memo.pdfEnvironmentMissing === 'boolean' ? memo.pdfEnvironmentMissing : null
   let latexAvailable = memo && typeof memo.latexAvailable === 'boolean' ? memo.latexAvailable : null
@@ -6615,7 +6618,12 @@ function environmentReadingsOf(observed, fallback) {
     const pdf = observed.pdf && typeof observed.pdf === 'object' ? observed.pdf : null
     const observedAbsent = toolchainAbsentOf(pdf)
     const missingFlag = observed.pdfEnvironmentMissing === true
-    const hasVerdict = pdf !== null || typeof observed.pdfEnvironmentMissing === 'boolean'
+    // ★★★ TB-2781 D3 (RUN 83 attempt-1, MEASURED): `final{decision:"revise"}` carries NO pdf of its own, and the old
+    // `typeof observed.pdfEnvironmentMissing === 'boolean'` counted the forwarded `false` as a VERDICT — which reset the
+    // memoised `ran-present` observation to null and made the receipt answer `not-run` 68 s after a successful compile.
+    // A verdict needs a real pdf (or an explicit TRUE absence flag); a plain `false` is the absence of a measurement.
+    const hasVerdict = pdf !== null || observed.pdfEnvironmentMissing === true
+    observanceHadVerdict = hasVerdict
     if (hasVerdict) {
       toolchainAbsent = observedAbsent.length > 0 ? observedAbsent.slice() : (missingFlag ? ENVIRONMENT_KEYS.slice() : [])
       pdfEnvironmentMissing = toolchainAbsent.length > 0 || missingFlag
@@ -6645,14 +6653,27 @@ function environmentReadingsOf(observed, fallback) {
   // `not-run` (nobody asked), `ran-absent` (a compile/finalisation ran and did not find the toolchain), `ran-present` (a
   // compile ran and the engine was there). It is a READING of what happened, never a completion claim.
   const priorProbe = memo && typeof memo.toolchainProbe === 'string' ? memo.toolchainProbe : null
-  const asked = known || (priorProbe !== null && priorProbe !== 'not-run')
+  const asked = observanceHadVerdict
   const toolchainProbe = toolchainProbeOf({ latexAvailable, asked })
+  // ★★★ TB-2781 D3: a face that did not ask must SAY so, and a reading inherited from an earlier observation must name
+  // itself. `toolchainProbeAsked:false` + `toolchainProbeSource:"last-observation"` is the honest shape for a receipt
+  // like `final{revise}` that never compiles: it reports the session's last measurement (e.g. ran-present) instead of
+  // silently falling back to `not-run`, and never pretends this face measured it.
+  const toolchainProbeAsked = observanceHadVerdict
+  const toolchainProbeSource = observanceHadVerdict
+    ? 'this-face'
+    : ((priorProbe !== null && priorProbe !== 'not-run') ? 'last-observation' : 'not-measured-here')
   const toolchainProbeMeans = toolchainProbe === 'not-run'
     ? 'toolchainProbe:"not-run" together with toolchainAbsent:[] means the engine question was NOT ASKED (or an observation carried no presence/absence evidence), so NO verdict was measured — NOT that the toolchain is installed: absence is UNKNOWN. Run `vibe_vmu_env { action: "probe", need: "' + ENGINE_NEED + '" }` (or a compile) to turn this into a verdict'
     : (toolchainProbe === 'ran-absent'
       ? 'toolchainProbe:"ran-absent": a compile/finalisation DID ask the engine question and the toolchain was not usable (' + (toolchainAbsent.join(', ') || 'no usable latex engine') + ') — this IS a measured absence, not an opinion'
       : 'toolchainProbe:"ran-present": a compile/finalisation DID ask, and the engine was available then; this is an OBSERVATION from that run, not an installation claim made by a read')
-  return { toolchainAbsent, pdfEnvironmentMissing, latexAvailable, toolchainProbe, toolchainProbeMeans, environmentMeans: means }
+  const toolchainProbeMeans2 = toolchainProbeAsked
+    ? toolchainProbeMeans
+    : (toolchainProbe === 'not-run'
+      ? toolchainProbeMeans
+      : toolchainProbeMeans + ' — ★ NOT measured by THIS face (toolchainProbeAsked:false): this is the LAST OBSERVATION of the session (toolchainProbeSource:"last-observation"), inherited because this receipt asked no compile question; it is not a fresh probe and not a claim this action measured the engine')
+  return { toolchainAbsent, pdfEnvironmentMissing, latexAvailable, toolchainProbe, toolchainProbeAsked, toolchainProbeSource, toolchainProbeMeans: toolchainProbeMeans2, environmentMeans: means }
 }
 
 function environmentReadingsAt(kernelObj, observed = null) {
@@ -6799,6 +6820,82 @@ function projectPdfBlock(pdf, target) {
  * the corpus measured missing was the READING, not the ability.
  */
 const PAPER_OK_MEANS = 'ok:true means the REQUEST was accepted and executed; it does NOT mean the paper is done. ★ `complete` is NOT ONE QUESTION across these doors: on `status` and `render` it asks whether the four ARCHIVE ROWS (md/tex/meta/pdf) are NAMED (on render it is the same value as `renderOk`); on `final` it asks whether the finalisation RAN and the pdf FILE exists. Read `completeMeans` on the receipt you hold instead of carrying the word between doors, and read `renderOk` (render), `missing` (what this request needed and did not get), `archiveArtifacts` (the row set under its own name) and `toolchainAbsent` (what the MACHINE lacks). `ok:true` with `complete:false` is a normal reading — e.g. a finalisation on a machine with no LaTeX.'
+
+const EVIDENCE_GRADE_RANK = Object.freeze({ draft: 0, 'verified-by-citation': 1, 'mechanically-checked': 2, 'lean-verified': 3 })
+const EVIDENCE_GRADES_MEANS = 'evidenceGrades projects the evidence grade the mechanism can ACTUALLY support for each part and each proposition: "draft" (no grade source on file), "verified-by-citation" (a verified-track row names this card as its source, written by the single writer promoteVerified), "mechanically-checked" (the card body carries an explicit machine-check verdict), "lean-verified" (the card body carries a PASSED Lean verdict). Every row names the field/source it read; a grade is never inferred from p or from prose, and a card with no grade source stays "draft" — an honest absent grade, not a fabricated promotion. This is a READ of the existing ledger, never a new judgement: to raise a grade, use the mechanism that writes it (debate/promoteVerified, a Lean pass, the machine-check writer), then read this face again.'
+/** TB-2782: one evidence pointer -> the grade the ledger can support, with the source that says so. */
+function evidenceGradeOfPointer (kernel, pointer) {
+  const raw = String(pointer === undefined || pointer === null ? '' : pointer)
+  let id = raw.replace(/#.*$/, '').trim()
+  const slash = id.split('/')
+  id = slash[slash.length - 1].trim()
+  if (id.endsWith('.md')) id = id.slice(0, -3).trim()
+  if (id === '') return { evidence: raw, cardId: null, grade: 'draft', source: 'unparseable-pointer', why: 'the pointer carries no record id this face can read (pass rec-<n> or Members/<member>/Propos/<rec-id>.md)' }
+  let row = null
+  try { const got = kernel && kernel.records && typeof kernel.records.get === 'function' ? kernel.records.get({ id }) : null; row = got && got.record ? got.record : got } catch (e) { row = null }
+  if (!row) return { evidence: raw, cardId: id, grade: 'draft', source: 'records.get:none', why: 'no record answers to this pointer, so no grade source was read (the grade is absent, not verified)' }
+  let body = null
+  try { body = JSON.parse(String((row && row.body) || '{}')) } catch (e) { body = null }
+  const facts = { track: row && row.track !== undefined ? String(row.track) : null,
+    p: body && body.p !== undefined && body.p !== null ? Number(body.p) : null,
+    proofState: body && body.proofState !== undefined && body.proofState !== null ? String(body.proofState) : null,
+    leanState: body && body.leanState !== undefined ? String(body.leanState) : null,
+    leanConformance: body && body.leanConformance !== undefined ? body.leanConformance : null }
+  const leanPassed = (body && body.leanConformance === true) || (body && typeof body.leanState === 'string' && body.leanState === 'passed') || (body && body.lean && body.lean.state === 'passed')
+  if (leanPassed) return { evidence: raw, cardId: id, track: facts.track, grade: 'lean-verified', source: body && body.leanConformance === true ? 'body.leanConformance:true' : (facts.leanState === 'passed' ? 'body.leanState:passed' : 'body.lean.state:passed'), facts, why: 'the card body carries a PASSED Lean verdict, so the strongest grade this build can name' }
+  const mech = body && (body.mechanicalCheck === true || body.mathJobState === 'passed' || body.checkedBy === 'mathjobs')
+  if (mech) return { evidence: raw, cardId: id, track: facts.track, grade: 'mechanically-checked', source: body.mechanicalCheck === true ? 'body.mechanicalCheck:true' : (body.mathJobState === 'passed' ? 'body.mathJobState:passed' : 'body.checkedBy:mathjobs'), facts, why: 'a machine-check writer recorded its verdict on this card' }
+  try {
+    const found = findVerified(kernel.records, id)
+    if (found) return { evidence: raw, cardId: id, track: facts.track, grade: 'verified-by-citation', source: 'verified:' + String(found.id), facts, why: 'a verified-track row names this card as its source (the single writer promoteVerified)' }
+  } catch (e) { /* the verified track may be undeclared in this deployment: named below, never silently upgraded */ }
+  return { evidence: raw, cardId: id, track: facts.track, grade: 'draft', source: 'no-grade-source', facts,
+    why: 'no verified row, no machine-check verdict and no Lean pass on file: this card is DRAFT until one of those mechanisms writes a grade (an unverified p/proofState is not a grade)' }
+}
+function evidenceGradesOf (kernel, state) {
+  const st = state && typeof state === 'object' ? state : null
+  const target = st && st.target !== undefined && st.target !== null ? String(st.target) : null
+  const rawParts = st && st.parts && typeof st.parts === 'object' ? st.parts : {}
+  // the EVIDENCE lives in the durable paper-part ROW body (kit's recordPart), not in the state slot — read the row, not a
+  // copy, so the grade is of what was actually filed.
+  let heads = []
+  try { const got = kernel && kernel.records && typeof kernel.records.list === 'function' ? kernel.records.list({ track: 'paper', limit: 0 }) : null; heads = Array.isArray(got && got.items) ? got.items : [] } catch (e) { heads = [] }
+  const partEvidenceOf = (member) => {
+    const suffix = '|part|' + String(member)
+    const rows = heads.filter((h) => h && String(h.kind || '') === 'paper-part' && String(h.title || '').endsWith(suffix))
+    if (rows.length === 0) return []
+    // same-instant writes tie on updatedAt (a fixed test clock / a fast turn), so the id number breaks the tie: ids are
+    // minted strictly increasing, and the newest row is the one that carries the evidence just filed.
+    const idNum = (v) => Number(String(v || '').split('-').pop() || 0)
+    const newest = rows.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0]
+    try {
+      const got = kernel.records.get({ id: newest.id })
+      const row = got && got.record ? got.record : got
+      const body = JSON.parse(String((row && row.body) || '{}'))
+      return Array.isArray(body.evidence) ? body.evidence.map(String) : []
+    } catch (e) { return [] }
+  }
+  const parts = []
+  const props = new Map()
+  for (const member of Object.keys(rawParts)) {
+    const slot = rawParts[member]
+    const evidence = partEvidenceOf(member)
+    const graded = evidence.map((pointer) => evidenceGradeOfPointer(kernel, pointer))
+    for (const g of graded) {
+      if (g.cardId === null) continue
+      const prev = props.get(g.cardId)
+      if (!prev || EVIDENCE_GRADE_RANK[g.grade] > EVIDENCE_GRADE_RANK[prev.grade]) props.set(g.cardId, g)
+    }
+    const strongest = graded.reduce((best, g) => (best === null || EVIDENCE_GRADE_RANK[g.grade] > EVIDENCE_GRADE_RANK[best.grade] ? g : best), null)
+    parts.push({ member: String(member), part: slot && slot.title !== undefined ? slot.title : null,
+      evidenceCount: evidence.length,
+      grade: strongest === null ? 'draft' : strongest.grade,
+      gradeSource: strongest === null ? 'no-evidence-pointer' : strongest.source,
+      evidence: graded,
+      why: strongest === null ? 'this part files no evidence pointer, so the only honest grade is draft' : null })
+  }
+  return { grades: ['draft', 'verified-by-citation', 'mechanically-checked', 'lean-verified'], target, parts, propositions: Array.from(props.values()), means: EVIDENCE_GRADES_MEANS }
+}
 
 async function toolPaper(args = {}, { kernel } = {}) {
   const action = str(args.action || 'status')
@@ -6966,6 +7063,8 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ...envLedgerRead,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
+        // ★★★ TB-2782 (RUN 83 attempt-1): the evidence grades a reader like r-acad asked for, projected from the existing ledger
+        evidenceGrades: evidenceGradesOf(kernel, got && got.state),
         // ★★★ TB-2713 (RUN 76 / A5, MEASURED): round 2's `deliverable:true` votes were read as stale on round 3, and no
         // receipt said which members a round boundary had invalidated. The reading now travels on the READ face too — and
         // it is the SAME object the advance door prints: `paper.perRoundReviewCoverage` owns the only arithmetic, this line
@@ -7414,6 +7513,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
           stage: glyphStage,
           finalized: false,
           rolledBack: finalized.rolledBack === undefined ? null : finalized.rolledBack,
+          // ★★★ TB-2781 D2 (RUN 83 attempt-1, MEASURED): the 2,688-char glyph refusal answered `rolledBack` but NOT
+          // `reviseAvailable`, while V17's criterion asks for the three names together (rolledBack/returned/reviseAvailable)
+          // — the caller was told the paper went back but not that it can be revised. The kit already returns the fact;
+          // this projection just stopped dropping it.
+          reviseAvailable: finalized.reviseAvailable !== false,
+          returned: glyphStage,
           glyphLossDetected: true,
           missingCharacterCount: glyphCount,
           glyphsUnrepaired: glyphRows,

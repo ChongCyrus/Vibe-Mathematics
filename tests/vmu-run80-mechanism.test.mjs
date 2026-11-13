@@ -162,7 +162,12 @@ console.log('=== VMU RUN80 MECHANISM ===')
   eq(noRow.ok, true, '§2a a paper can be started without a compile')
   const empty = await call(b, 'vibe_v5_paper', { action: 'status', target: 'p-none' })
   eq(empty.toolchainProbe, 'not-run', '§2b a paper with NO compile row still reads not-run (nothing invented)')
-  eq(empty.toolchainProbeSource, undefined, '§2c and it names no evidence source, because there was none')
+  // ★ TB-2781 D3 (disclosure design): when THIS receipt asked nothing AND the session has no prior probe, the source is
+  // named explicitly as 'not-measured-here' — an absence by name, never an invented evidence source (e.g. 'paper-ledger'
+  // or 'last-observation', which only exist when something WAS observed).
+  eq(empty.toolchainProbeSource, 'not-measured-here', '§2c names the absence by name (not an invented evidence source)')
+  ok(!['paper-ledger', 'last-observation', 'this-face'].includes(empty.toolchainProbeSource),
+    '§2c and it does NOT claim an evidence source that does not exist', empty.toolchainProbeSource)
   const started = await call(b, 'vibe_v5_paper', { action: 'start', target: 'p1', title: 'paper one', participants: ['r-1'] })
   eq(started.ok, true, '§2d a second paper starts')
   const put = await b.kernel.records.put({

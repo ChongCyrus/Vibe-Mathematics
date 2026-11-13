@@ -3226,6 +3226,33 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   }
   const closureVoteInput = () => ({
     votes: closureVotesMerged(),
+    // ★★★ TB-2782 (RUN 83 attempt-1): the finalisation instant the vote-staleness reading compares against. It is READ,
+    // never invented: the paper track's newest row whose body says status:"finalized" dates that finalisation (the row was
+    // rewritten at that moment). No such row ⇒ null, and the reading says the comparison is not judgeable. A build without
+    // a paper track answers null the same way.
+    finalizedAt: (() => {
+      try {
+        if (!records || typeof records.list !== 'function') return null
+        const got = records.list({ track: 'paper', limit: 0 })
+        const items = Array.isArray(got && got.items) ? got.items : []
+        let best = null
+        for (const head of items) {
+          if (!head || String(head.kind || '') !== 'paper-state') continue
+          let body = null
+          let rowAt = null
+          try {
+            const full = records.get({ id: head.id })
+            const row = full && full.record ? full.record : full
+            rowAt = Number(head.updatedAt !== undefined ? head.updatedAt : (row && row.updatedAt))
+            body = JSON.parse(String((row && row.body) || '{}'))
+          } catch (e) { body = null }
+          if (!body || String(body.status || '') !== 'finalized') continue
+          if (Number.isFinite(rowAt) && rowAt > 0 && (best === null || rowAt > best)) best = rowAt
+        }
+        return best
+      } catch (e) { return null }
+    })(),
+    finalizedAtSource: 'paper track: newest finalized paper-state row updatedAt',
     // ★★★ TB-2724 / RUN 77 (F77-C, second half) — THE TOOL FACE COULD NOT SEE THE JUDGEMENTS IT PROMISED TO RECORD.
     // `closureVoteOf` builds `notEligible` from the votes map AND the per-round `solved` map, and its Means sentence
     // promises that a seat which judged the question but holds no vote permission is "recorded, neither counted nor

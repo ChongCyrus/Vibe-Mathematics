@@ -477,6 +477,14 @@ console.log('=== 6. TB-2772：final 检测到缺字 ⇒ ok:false + VMU_PAPER_GLY
   eq(refused && refused.code, 'VMU_PAPER_GLYPH_UNCOVERED', '★★ 正：具名码 VMU_PAPER_GLYPH_UNCOVERED')
   eq(refused && refused.finalized, false, '★★ 正：finalized:false（没有定稿）')
   eq(refused && refused.stage, 'awaiting-editor', '★★ 正：状态停在 awaiting-editor')
+  // ★★★ TB-2781 D2: V17 asks for rolledBack / returned / reviseAvailable TOGETHER on this refusal; the receipt used to
+  // drop the third name.
+  eq(refused && refused.reviseAvailable, true, '★★ 正(TB-2781 D2)：缺字拒收回执带 reviseAvailable:true（与 rolledBack 同处）')
+  ok(refused && refused.rolledBack && typeof refused.rolledBack === 'object' && refused.returned === 'awaiting-editor',
+    '★★ 正：rolledBack/returned/reviseAvailable 三名同屏（读者知道退回哪里、能不能改）', refused && { rolledBack: refused.rolledBack, returned: refused.returned, reviseAvailable: refused.reviseAvailable })
+  // ★ LAMP(RED-worthy): a receipt missing the key is exactly the measured defect — the same predicate goes false.
+  const d2Without = Object.assign({}, refused); delete d2Without.reviseAvailable
+  eq(d2Without.reviseAvailable === true, false, '★★★ LAMP(RED-worthy)：删掉 reviseAvailable 键 ⇒ D2 的相等断言必红')
   // RULE E: the equality below compares TWO collections, so both sides are proven non-empty FIRST (two empty lists
   // compare equal and would make this check vacuous) — `hist` comes from the real log fixture, `glyphsUnrepaired` from
   // the refusal, and both must carry rows before "same length" means anything.
@@ -754,6 +762,162 @@ console.log('=== 9. TB-2777 D-3：resume 路径的 prompt 也进 kernel 存档�
     { ok: step9.parsed && step9.parsed.ok, turns: archived, hits: hits.map((h) => ({ id: h.turnId, member: h.member, chars: h.chars })) })
   ok(hits.length === 0 || (typeof hits[0].text === 'string' && hits[0].text.length > 0),
     '★ 正：存档里带的是可读的 prompt 正文（不是只有一个空 id）', hits[0] && { chars: hits[0].chars })
+}
+
+// ── §10. TB-2781 D3: a face that did not ASK must not erase the session's last observation ───────────────────────
+console.log('=== 10. TB-2781 D3：final{revise} 不编译 ⇒ 沿用本 run 最近观测并标 source（不静默回落 not-run）===')
+{
+  const TD3 = 'p-tb2781-d3'
+  const cardD3 = await receipt(v5r, 'vibe_v5_record_proposition', { id: 'tb2781-d3', statement: 'TB-2781 D3 证据', value: 0.5, motive: 'D3', p: 0.5 })
+  ok(cardD3.parsed && cardD3.parsed.ok === true, '前置(D3)：证据卡落库', cardD3.parsed && cardD3.parsed.code)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const evD3 = ['Members/' + ACAD + '/Propos/tb2781-d3.md']
+  await receipt(v5r, 'vibe_v5_paper', { action: 'start', target: TD3, participants: [ACAD, R1], format: 'both' })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD3, member: ACAD, part: 'A 节', solution: 'D3 正文', evidence: evD3 })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD3, member: R1, part: 'B 节', solution: 'D3 另一段', evidence: evD3 })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: TD3 })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD3, member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD3, member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  const advD3 = await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: TD3 })
+  ok(advD3.parsed && advD3.parsed.advance && advD3.parsed.advance.to === 'awaiting-editor', '前置(D3)：论文到 awaiting-editor', advD3.parsed && advD3.parsed.advance && advD3.parsed.advance.to)
+  // 1) a SUCCESSFUL compile (engine observed present ⇒ session memo = ran-present)
+  stubLatex(kernel, { check: writeFakePdf })
+  const compD3 = (await receipt(v5r, 'vibe_v5_paper', { action: 'compile', target: TD3 })).parsed
+  eq(compD3 && compD3.toolchainProbe, 'ran-present', '★★ 正：compile 观测到 ran-present（本 run 已有一次引擎读数）')
+  eq(compD3 && compD3.toolchainProbeSource, 'this-face', '★ 正：这一面自己问的 ⇒ source:"this-face"')
+  eq(compD3 && compD3.toolchainProbeAsked, true, '★ 正：asked:true（本次真的问了）')
+  // 2) `final{decision:"revise"}` does NOT compile — it must inherit the last observation, not answer not-run/null
+  const revD3 = (await receipt(v5r, 'vibe_v5_paper', { action: 'final', target: TD3, member: ACAD, decision: 'revise', note: '再改一轮' })).parsed
+  ok(revD3 && revD3.ok === true && revD3.final && revD3.final.moved === true, '前提(D3)：final{revise} 打回写作', revD3 && { code: revD3.code, final: revD3.final && { moved: revD3.final.moved } })
+  eq(revD3 && revD3.toolchainProbe, 'ran-present', '★★ 正(TB-2781 D3)：revise 回执沿用本 run 最近观测 ⇒ ran-present，不静默回落 not-run')
+  eq(revD3 && revD3.latexAvailable, true, '★★ 正：latexAvailable:true（沿用的观测，不是被清空成 null）')
+  eq(revD3 && revD3.toolchainProbeAsked, false, '★★ 正：toolchainProbeAsked:false —— 本面没问，就明说没问')
+  eq(revD3 && revD3.toolchainProbeSource, 'last-observation', '★★ 正：toolchainProbeSource:"last-observation"（读数来源具名）')
+  ok(revD3 && typeof revD3.toolchainProbeMeans === 'string' && /NOT measured by THIS face|last-observation/.test(revD3.toolchainProbeMeans),
+    '★★ 正：means 明说「不是本面测的，是上一次观测」', revD3 && revD3.toolchainProbeMeans)
+  // ★ LAMP(RED-worthy): without the inherited observation the same receipt would answer not-run/null (the measured
+  // defect) — so the assertions above distinguish "last observation" from "never asked-and-forgot".
+  const { toolchainProbeOf } = await import(pathToFileURL(TOOLS).href)
+  eq(toolchainProbeOf({ latexAvailable: null, asked: false }), 'not-run', '★★★ LAMP(RED-worthy)：若沿用逻辑失效（按本面未问、无观测算）⇒ not-run/null —— 上面 ran-present 的断言因此有牙')
+}
+
+// ── §11. TB-2782: voteStaleness — was the closure vote cast BEFORE or AFTER the finalisation? ───────────────────
+console.log('=== 11. TB-2782 voteStaleness：票与定稿的先后可读（before/after/不可判定 三态）===')
+{
+  let now = 1000000
+  const A11 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2782-stale-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off', clock: () => now })
+  const k11 = A11.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], ['r-2', 'member'], [OFFICE, 'member']]) await k11.members.hire({ id, slot })
+  // 1) a vote recorded BEFORE the paper is finalised
+  now = 1000
+  const v1 = await receipt(A11, 'vibe_vmu_vote', { member: R1, solved: true })
+  ok(v1.parsed && v1.parsed.ok === true, '前置：定稿前投下一票', v1.parsed && { code: v1.parsed.code, message: String(v1.parsed.message || '').slice(0, 120) })
+  // 2) finalise a paper AFTER that vote (no latex face ⇒ environment-gap finalisation, which still writes a finalized row)
+  const cardS = await receipt(A11, 'vibe_v5_record_proposition', { id: 'tb2782-stale', statement: 'TB-2782 voteStaleness 证据（独立正文）', value: 0.5, motive: 'S', p: 0.5 })
+  ok(cardS.parsed && cardS.parsed.ok === true, '前置：证据卡落库', cardS.parsed && cardS.parsed.code)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const evS = ['Members/' + ACAD + '/Propos/tb2782-stale.md']
+  await receipt(A11, 'vibe_v5_paper', { action: 'start', target: 'p-stale', participants: [ACAD, R1], format: 'md' })
+  await receipt(A11, 'vibe_v5_paper', { action: 'part', target: 'p-stale', member: ACAD, part: 'A 节', solution: 'S 正文', evidence: evS })
+  await receipt(A11, 'vibe_v5_paper', { action: 'part', target: 'p-stale', member: R1, part: 'B 节', solution: 'S 另一段', evidence: evS })
+  await receipt(A11, 'vibe_v5_paper', { action: 'advance', target: 'p-stale' })
+  await receipt(A11, 'vibe_v5_paper', { action: 'review', target: 'p-stale', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(A11, 'vibe_v5_paper', { action: 'review', target: 'p-stale', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  await receipt(A11, 'vibe_v5_paper', { action: 'advance', target: 'p-stale' })
+  now = 5000000
+  const finS = await receipt(A11, 'vibe_v5_paper', { action: 'final', target: 'p-stale', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })
+  ok(finS.parsed && finS.parsed.ok === true && finS.parsed.final && finS.parsed.final.finalized === true,
+    '前置：论文在 now=5000000 定稿（引擎缺席分支也写 finalized 行）', finS.parsed && { code: finS.parsed.code, final: finS.parsed.final && { ok: finS.parsed.final.ok, finalized: finS.parsed.final.finalized } })
+  const stBefore = (await receipt(A11, 'vibe_vmu_status', { detail: 'closure' })).parsed
+  const staleBefore = stBefore && stBefore.closureVote && stBefore.closureVote.voteStaleness
+  ok(!!staleBefore, '★★ 正(TB-2782)：closureVote 回执带 voteStaleness 对象', stBefore && stBefore.closureVote && Object.keys(stBefore.closureVote).filter((k) => /stale/i.test(k)))
+  ok(staleBefore && typeof staleBefore.finalizedAt === 'string' && typeof staleBefore.votesCastAt === 'string',
+    '★★ 正：finalizedAt / votesCastAt 两个时刻都具名（ISO 字符串）', staleBefore)
+  eq(staleBefore && staleBefore.afterFinalization, false, '★★ 正：票在定稿【前】投下 ⇒ afterFinalization:false')
+  ok(staleBefore && typeof staleBefore.means === 'string' && /BEFORE FINALIZATION/.test(staleBefore.means),
+    '★★ 正：means 明说「票在定稿前」，读者不必自己比时间', staleBefore && staleBefore.means)
+  ok(staleBefore && typeof staleBefore.finalizedAtSource === 'string' && staleBefore.finalizedAtSource.length > 0,
+    '★ 正：finalizedAtSource 说明定稿时刻从哪读来', staleBefore && staleBefore.finalizedAtSource)
+
+  // 3) re-vote AFTER the finalisation ⇒ afterFinalization:true (latest-wins row)
+  now = 9000000
+  const v2 = await receipt(A11, 'vibe_vmu_vote', { member: R1, solved: true })
+  ok(v2.parsed && v2.parsed.ok === true, '前置：定稿后重投一票', v2.parsed && { code: v2.parsed.code })
+  const stAfter = (await receipt(A11, 'vibe_vmu_status', { detail: 'closure' })).parsed
+  const staleAfter = stAfter && stAfter.closureVote && stAfter.closureVote.voteStaleness
+  eq(staleAfter && staleAfter.afterFinalization, true, '★★ 正：票在定稿【后】重投 ⇒ afterFinalization:true')
+  ok(staleAfter && typeof staleAfter.means === 'string' && /AFTER FINALIZATION/.test(staleAfter.means),
+    '★★ 正：means 明说「票在定稿后」，并指出这票不结算已定稿的问题', staleAfter && staleAfter.means)
+  ok(staleAfter && Date.parse(staleAfter.votesCastAt) > Date.parse(staleAfter.finalizedAt),
+    '★ 正：两个 ISO 时刻的先后与 afterFinalization 一致', staleAfter && { cast: staleAfter.votesCastAt, fin: staleAfter.finalizedAt })
+
+  // ★ LAMP(RED-worthy): with NO finalisation on file the comparison must be null + "NOT JUDGEABLE", never a silent false
+  // (the fabricated-fresh reading). A projector that defaulted false would make the equalities above unfalsifiable.
+  const { closureVoteOf } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')).href)
+  const lampStale = closureVoteOf({ rows: [{ member: 'r-1', solved: true, at: 1234 }], finalizedAt: null })
+  eq(lampStale.voteStaleness.afterFinalization, null, '★★★ LAMP(RED-worthy)：没有定稿记录 ⇒ afterFinalization:null（不是伪造的 false）')
+  ok(/NOT JUDGEABLE/.test(lampStale.voteStaleness.means), '★★ 正：且 means 明说不可判定、缺的是哪个事实', lampStale.voteStaleness.means)
+  eq(lampStale.voteStaleness.finalizedAt, null, '★ 正：缺的 finalizedAt 是 null（具名缺席）')
+}
+
+// ── §12. TB-2782: paper status.evidenceGrades — grades the ledger can support, never fabricated ─────────────────
+console.log('=== 12. TB-2782 evidenceGrades：draft/verified-by-citation/mechanically-checked/lean-verified（不伪造等级）===')
+{
+  const A12 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2782-grades-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k12 = A12.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k12.members.hire({ id, slot })
+  // 1) a PLAIN proposition card (p=0.5, no verified row, no lean/mech verdict): evidence exists but the grade is draft
+  const cPlain = await receipt(A12, 'vibe_v5_record_proposition', { id: 'grad-plain', statement: '证据等级投影的普通卡（独立正文）', value: 0.5, motive: 'E', p: 0.5 })
+  ok(cPlain.parsed && cPlain.parsed.ok === true, '前置：普通命题卡落库', cPlain.parsed && cPlain.parsed.code)
+  // 2) direct cards that carry a machine verdict (written through the records face, the same ledger the projector reads)
+  const putLean = k12.records.put({ track: 'propositions', kind: 'proposition', title: 'lean-card', body: JSON.stringify({ statement: 'lean pass', p: 1, leanConformance: true }) })
+  const putMech = k12.records.put({ track: 'propositions', kind: 'proposition', title: 'mech-card', body: JSON.stringify({ statement: 'mech pass', p: 1, mechanicalCheck: true }) })
+  ok(!!putLean && !!putLean.id && !!putMech && !!putMech.id, '前置：两张带机器裁决的卡写入记录面', { lean: putLean && putLean.id, mech: putMech && putMech.id })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const evAll = ['Members/' + ACAD + '/Propos/grad-plain.md', 'Members/' + ACAD + '/Propos/' + String(putLean.id) + '.md', 'Members/' + ACAD + '/Propos/' + String(putMech.id) + '.md']
+  await receipt(A12, 'vibe_v5_paper', { action: 'start', target: 'p-grades', participants: [ACAD, R1], format: 'md' })
+  await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: ACAD, part: 'A 节', solution: '带三种证据的正文', evidence: evAll })
+  await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: R1, part: 'B 节', solution: '没有证据指针的正文' })
+  const stG = (await receipt(A12, 'vibe_v5_paper', { action: 'status', target: 'p-grades' })).parsed
+  const eg = stG && stG.evidenceGrades
+  ok(!!eg && Array.isArray(eg.parts) && Array.isArray(eg.propositions) && Array.isArray(eg.grades),
+    '★★ 正(TB-2782)：status 带 evidenceGrades（parts/propositions/grades/means）', eg && Object.keys(eg))
+  eq(JSON.stringify(eg && eg.grades), JSON.stringify(['draft', 'verified-by-citation', 'mechanically-checked', 'lean-verified']), '★★ 正：等级词表就是任务书四个词，顺序有强弱')
+  const partA = (eg && eg.parts || []).filter((p) => p.member === ACAD)[0] || null
+  const partB = (eg && eg.parts || []).filter((p) => p.member === R1)[0] || null
+  ok(partA && partA.evidenceCount === 3 && partA.evidence && partA.evidence.length === 3,
+    '★★ 正：ACAD 那节的三个证据指针都被投影（来源是 paper-part 行，不是 state 摘要）', partA && { n: partA.evidenceCount })
+  const gradeOf = (cardId) => (partA && partA.evidence || []).filter((e) => e.cardId === cardId)[0] || null
+  const gPlain = gradeOf('grad-plain')
+  eq(gPlain && gPlain.grade, 'draft', '★★ 正：无机器裁决的普通卡 = draft（p=0.5/无 verified 行不是等级）')
+  eq(gPlain && gPlain.source, 'no-grade-source', '★★ 正：且 gradeSource 具名 no-grade-source（不是猜的）')
+  const gLean = gradeOf(putLean && putLean.id)
+  eq(gLean && gLean.grade, 'lean-verified', '★★ 正：body.leanConformance:true 的卡 = lean-verified')
+  eq(gLean && gLean.source, 'body.leanConformance:true', '★ 正：lean 等级点名它读的字段')
+  const gMech = gradeOf(putMech && putMech.id)
+  eq(gMech && gMech.grade, 'mechanically-checked', '★★ 正：body.mechanicalCheck:true 的卡 = mechanically-checked')
+  eq(gMech && gMech.source, 'body.mechanicalCheck:true', '★ 正：mech 等级点名它读的字段')
+  eq(partB && partB.grade, 'draft', '★★ 正：没有证据指针的 part = draft')
+  eq(partB && partB.gradeSource, 'no-evidence-pointer', '★ 正：且 reason 是 no-evidence-pointer（具名缺席）')
+  ok(partA && partA.grade === 'lean-verified', '★★ 正：part 的等级取它证据里的最强等级（lean-verified）', partA && partA.grade)
+  const propLean = (eg && eg.propositions || []).filter((g) => g.cardId === (putLean && putLean.id))[0] || null
+  ok(propLean && propLean.grade === 'lean-verified', '★ 正：propositions 也逐卡投影等级（同一事实另一视图）', propLean)
+  // ★ LAMP(RED-worthy): a card carrying p:1 + proofState:"complete" but NO machine verdict stays DRAFT. A projector that
+  // promoted from p/proofState prose ("looks verified") would answer verified-by-citation here — the assertion is the
+  // difference between reading the ledger and inventing a grade.
+  const putProse = k12.records.put({ track: 'propositions', kind: 'proposition', title: 'prose-only', body: JSON.stringify({ statement: 'p=1 + complete but no warrant', p: 1, proofState: 'complete', proofRef: 'somewhere' }) })
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  const stG2 = (await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: R1, part: 'B 节', solution: '重写，带 prose-only 证据', evidence: ['Members/' + R1 + '/Propos/' + String(putProse.id) + '.md'] })).parsed
+  ok(stG2 && stG2.ok === true, '前置：R1 重写 part 并带上 prose-only 证据', stG2 && (stG2.code || stG2.message))
+  // the paper-part row write is queued; let the fold catch up before reading the grade of the just-filed evidence
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  const stG3 = (await receipt(A12, 'vibe_v5_paper', { action: 'status', target: 'p-grades' })).parsed
+  const eg3 = stG3 && stG3.evidenceGrades
+  const gProse = ((eg3 && eg3.propositions) || []).filter((g) => g.cardId === (putProse && putProse.id))[0] || null
+  eq(gProse && gProse.grade, 'draft', '★★★ LAMP(RED-worthy)：p:1+proofState:"complete" 但无 verified/mech/lean 来源 ⇒ 仍是 draft（不伪造等级）')
+  eq(gProse && gProse.source, 'no-grade-source', '★★ 正：并点名 no-grade-source（prose 不是等级来源）')
+  ok(gProse && gProse.facts && gProse.facts.p === 1 && gProse.facts.proofState === 'complete',
+    '★ 正：facts 里带着 p/proofState 原文，读者能看见「哪些事实不足以升级」', gProse && gProse.facts)
 }
 
 // A Windows kernel keeps a handle on the member tree for a moment after a claim, so cleanup is

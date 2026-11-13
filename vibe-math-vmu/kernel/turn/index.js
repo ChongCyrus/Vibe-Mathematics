@@ -177,7 +177,7 @@ export const FIELD_OWNERS = Object.freeze({
  * @param permission the permission that grants a closure vote. Defaults to the framework's own README word only as
  *                   a last resort; a deployment should set `vmu.turn.closureVotePermission`.
  */
-export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null, rows = [], solvedThisRound = new Map() } = {}) {
+export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null, rows = [], solvedThisRound = new Map(), finalizedAt = null, finalizedAtSource = null } = {}) {
   const enfranchised = roster
     .map((m) => String(m && m.id !== undefined ? m.id : m))
     .filter((id) => {
@@ -326,6 +326,41 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       return forIt.concat(against).map((id) => String(id) + '@' + String((from.get(String(id)) || {}).where || '?')).sort()
     })(),
     votersMeans: 'who voted, one row per member, the LATEST judgement wins',
+    // ★★★ TB-2782 (RUN 83 attempt-1, audit6): THE VOTE WINDOW VS THE FINALISATION ORDER WAS UNREADABLE. On the 83rd run
+    // r-acad voted at 13:06 and the paper was finalised at 13:42; the receipt carried `cast:false` (3:1) with no way to
+    // see that the tally was decided by a vote cast BEFORE the finalisation it was about. This projects the two instants
+    // and the comparison, from the SAME durable rows `votersAsOf` already reads plus the caller's finalizedAt. When the
+    // paper is not finalised (or no row dates the votes) the comparison is `null` and the sentence says WHICH fact is
+    // missing — "not judgeable" is never "fresh". A vote cast AFTER finalisation is the one that must be re-run (see
+    // TB-2782 §A / the next brief); this reading only makes the ordering visible.
+    voteStaleness: (() => {
+      const instants = (Array.isArray(rows) ? rows : [])
+        .map((row) => Number(row && row.at)).filter((n) => Number.isFinite(n) && n > 0)
+      const castAt = instants.length > 0 ? Math.max.apply(null, instants) : null
+      const fin = finalizedAt === null || finalizedAt === undefined ? null : Number(finalizedAt)
+      const finalisedAt = Number.isFinite(fin) && fin > 0 ? fin : null
+      const after = finalisedAt === null || castAt === null ? null : castAt > finalisedAt
+      const iso = (ms) => (ms === null ? null : new Date(ms).toISOString())
+      return {
+        finalizedAt: iso(finalisedAt),
+        votesCastAt: iso(castAt),
+        afterFinalization: after,
+        // the source name is only meaningful when there IS an instant: no null filler (saves the size pin and names
+        // nothing it does not have)
+        ...(finalisedAt === null ? {} : { finalizedAtSource: finalizedAtSource === null || finalizedAtSource === undefined ? 'unknown' : String(finalizedAtSource) }),
+        // SIZE: this block rides the docs/17 size pin for detail:"closure" (<1500 chars); the sentences are short on
+        // purpose and still answer the reader's question (missing fact / order), while the ISO instants carry the detail.
+        means: finalisedAt === null
+          ? (castAt === null
+            ? 'staleness NOT JUDGEABLE: no finalized paper and no dated vote on file (not "fresh")'
+            : 'staleness NOT JUDGEABLE: votes dated (' + iso(castAt) + ') but no finalized paper on file (not "fresh")')
+          : (castAt === null
+            ? 'staleness NOT JUDGEABLE: finalized (' + iso(finalisedAt) + ') but no dated vote on file'
+            : (after
+              ? 'AFTER FINALIZATION: newest vote ' + iso(castAt) + ' came LATER than finalisation ' + iso(finalisedAt) + ' — cast against an already-finalized question'
+              : 'BEFORE FINALIZATION: newest vote ' + iso(castAt) + ' came EARLIER than finalisation ' + iso(finalisedAt) + ' — finalisation rests on those votes')),
+      }
+    })(),
     // ★★ RUN 178: the instant the above reading is a reading OF (the newest durable row it used). A tally that cannot
     // date itself invites the reader to treat a fold walk as "now".
     votersAsOf: (() => {

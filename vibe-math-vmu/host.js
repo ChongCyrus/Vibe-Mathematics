@@ -2237,6 +2237,8 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     // install → uninstall → install cycle used to restore every tool and none of the hooks: the effective-tools block
     // and the mailbox notice would be silently missing for the rest of the process while the receipt said installed.
     // Re-attaching only when nothing is attached keeps this idempotent (no duplicate listeners on a second install).
+    // ★★★ TB-2780: register the wire-capture provider (idempotent; its disposer rides with the other install disposers).
+    registerWireCapture()
     if (!listenersAttached) attachPromptListeners()
     publishToolFaceCatalogue()
     // ★ The receipt's presentation object is the SAME object the hook mutates (presentAs / unapplied after an agent
@@ -2295,6 +2297,60 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   // invocation would read the table AFTER the first one narrowed it and overwrite the block with a shorter list than
   // the request's own wire. The FIRST reading is the one the request's wire was built from, so it is the one kept.
   const requestWireReads = new WeakMap()
+  // ★★★ TB-2780 (RUN 83 / HIGH, MEASURED: a new turn's FIRST request carried 79 wire tools while the block said 58, and
+  // the `developer/message` that followed it announced 21 `tool-addition`s carrying THIS request's `headerSeq` — i.e. the
+  // face changed around that request). The block used to read the LIVE tool table from inside the assemble WATERFALL,
+  // which runs AFTER the wire's tool collection (`dsh-system-prompt/lib/index.js:367-381` collects, `:401` runs the
+  // waterfall). Any table change in that window — a seat face being (re)applied, a per-turn override, a `restrict()`
+  // landing — made the block describe an older face than the request's wire. THE FIX: capture the SAME expression the
+  // wire provider evaluates, at PROVIDER time inside the same synchronous provider loop, and let the block read that
+  // capture. "Block names == request/header.tools names" then holds BY CONSTRUCTION rather than by timing.
+  const wireSnapshotByContext = new WeakMap()
+  const nameOfToolValue = (t) => (t && typeof t === 'object' ? (t.name || t.id) : t)
+  const wireNamesForContext = (context) => {
+    try {
+      const scope = context && (context.scope !== undefined ? context.scope : context.agent)
+      const toolSet = (context && context.toolSet) || null
+      const tools = scope && scope.ctx && scope.ctx.tools
+      if (!tools || typeof tools.schemas !== 'function') return null
+      const list = toolSet === null ? tools.schemas(scope) : tools.schemas(scope, toolSet)
+      if (!Array.isArray(list)) return null
+      const names = list.map(nameOfToolValue).filter((n) => typeof n === 'string')
+      if (names.length === 0 && toolSet !== null) {
+        // An empty ADMISSION is only the wire when the registered view is empty too. Otherwise the set is unreadable
+        // (closed/foreign toolSet — `dsh-tools/lib/index.js:564-570`), and an unreadable set must never become a zero.
+        const registered = tools.schemas(scope)
+        if (Array.isArray(registered) && registered.length > 0) return null
+      }
+      return { names, source: toolSet === null ? 'agent.ctx.tools.schemas(scope)' : 'agent.ctx.tools.schemas(scope,toolSet)', capturedAt: 'wire-provider' }
+    } catch { return null }
+  }
+  let wireCaptureRegistered = false
+  const registerWireCapture = () => {
+    if (wireCaptureRegistered) return
+    let sp = null
+    try { sp = ctx && typeof ctx.get === 'function' ? ctx.get('systemPrompt') : null } catch { sp = null }
+    if (!sp || typeof sp.tools !== 'function') return
+    try {
+      const dispose = sp.tools((context) => {
+        if (context && typeof context === 'object') {
+          const captured = wireNamesForContext(context)
+          if (captured) {
+            wireSnapshotByContext.set(context, captured)
+            try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ wireCaptured: 1 + ((kernel.toolFacePull && kernel.toolFacePull().wireCaptured) || 0), lastWireCapturedCount: captured.names.length, lastWireCapturedSource: captured.source }) } catch { /* diagnostics */ }
+          }
+        }
+        // This provider OBSERVES the same `{scope, toolSet}` the tools service is given; it contributes no tool itself.
+        return { schemas: [] }
+      })
+      if (typeof dispose === 'function') disposers.push(dispose)
+      wireCaptureRegistered = true
+    } catch (e) {
+      // Named, never silent: a host that refuses the provider leaves the block on the live-table fallback (TB-2775), and
+      // this line is what tells an audit which path was taken.
+      log('vmu: the wire-capture provider was refused: ' + String((e && e.message) || e))
+    }
+  }
   const resolveMemberAgent = (member) => {
     let agents = null
     try { agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null } catch { agents = null }
@@ -2509,6 +2565,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const wireScope = (context && (context.scope !== undefined ? context.scope : context.agent)) || agentForWire || null
       const requestToolSet = (context && context.toolSet) || null
       const namesFromAgentWire = () => {
+        // ★★★ TB-2780: prefer the capture taken during the wire's OWN provider loop — that reading cannot be raced by a
+        // face apply between collection and this waterfall listener. The live read below remains the fallback (no
+        // systemPrompt service, or an assemble() that does not invoke providers).
+        const captured = context && typeof context === 'object' ? wireSnapshotByContext.get(context) : null
+        if (captured) return captured
         if (!wireScope || !wireScope.ctx || !wireScope.ctx.tools) return null
         const tools = wireScope.ctx.tools
         if (typeof tools.schemas !== 'function') return null
@@ -2805,6 +2866,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         for (const k of Object.keys(reasonFor)) delete reasonFor[k]
         installed = false
         listenersAttached = false
+        wireCaptureRegistered = false
         // ★ AND IT IS NAMED WHEN THERE WAS NOTHING TO DISPOSE. A host whose `on()` returns no handle leaves us with
         // no way to detach, and that fact must be visible in the receipt rather than being an empty array nobody
         // interprets: `onDisposed: 0` with `onDisposeMode: 'host-managed'` says the host is responsible.
