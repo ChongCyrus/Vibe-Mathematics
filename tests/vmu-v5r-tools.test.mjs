@@ -554,12 +554,12 @@ try {
   try { paper.start({ target: TARGET, participants: ['r-1'] }) } catch (e) { startDup = e }
   ok(startDup && startDup.code === 'VMU_PACK_V5R_CORE_PAPER_STATE', '★ paper start: 反 — a second paper for the same target is REFUSED by name (never a silent overwrite)', startDup && startDup.code)
 
-  const part = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的证明骨架', solution: '把 A 拆成两个引理', evidence: ['r-1 的命题卡'] })
+  const part = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的证明骨架', solution: '把 A 拆成两个引理' + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡'] })
   ok(part && part.ok === true && !!part.recordId && typeof part.fingerprint === 'string' && part.fingerprint.length > 0,
     '★ recordPart: 正 — the part is archived as its own record AND carries the KERNEL-computed fingerprint', part && { id: part.recordId, fp: String(part.fingerprint).slice(0, 12) })
   // ★ G7 finding: a second part by the same member used to overwrite the first state slot silently. The minimal fix
   // names what was replaced instead of pretending both are represented.
-  const part2 = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的第二种写法', solution: '改写成反证法', evidence: ['r-1 的命题卡（反证法版）'] })
+  const part2 = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的第二种写法', solution: '改写成反证法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡（反证法版）'] })
   ok(part2 && part2.ok === true && part2.replaced && part2.replaced.recordId === part.recordId,
     '★ recordPart: 正 — a second part NAMES the replaced record (replaced.recordId === the first part id)', part2 && part2.replaced)
   ok(part2.replaced && part2.replaced.title === '引理 A 的证明骨架',
@@ -575,7 +575,7 @@ try {
   // who WROTE a part — a member with no part cannot be somebody's review target, and a member with nothing to review
   // is no longer counted as a refuser. So the fixture now has BOTH participants writing a part: that is what makes the
   // two reviews below mutual (`reviewOf` is r-1↔r-2 again, but for the honest reason).
-  const partR2 = paper.recordPart({ target: TARGET, member: 'r-2', title: '引理 A 的第二种证法', solution: '用归纳法', evidence: ['r-2 的命题卡'] })
+  const partR2 = paper.recordPart({ target: TARGET, member: 'r-2', title: '引理 A 的第二种证法', solution: '用归纳法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的命题卡'] })
   ok(partR2 && partR2.ok === true && !!partR2.recordId,
     'recordPart: 正 — the second participant records a part (F6: only members who WROTE a part are review targets)', partR2 && { id: partR2.recordId })
 
@@ -594,8 +594,8 @@ try {
   // if round 2 had produced them; the gate now names that as the defect it is (「缺陷在轮次而不是字节：这一轮从未产出
   // 被它评审的正文」) and refuses to count the stale votes. So round 2 must really produce its text: both participants
   // re-record BEFORE the paper moves to reviewing again.
-  paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的证明骨架（第 2 轮：补 n=5）', solution: '把 A 拆成两个引理，并补 n=5 的情形', evidence: ['r-1 的命题卡', 'r-2 的反例 n=5'] })
-  paper.recordPart({ target: TARGET, member: 'r-2', title: '引理 A 的第二种证法（第 2 轮）', solution: '用归纳法（已按 r-1 的评审补 n=5 归纳基）', evidence: ['r-2 的命题卡'] })
+  paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的证明骨架（第 2 轮：补 n=5）', solution: '把 A 拆成两个引理，并补 n=5 的情形' + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡', 'r-2 的反例 n=5'] })
+  paper.recordPart({ target: TARGET, member: 'r-2', title: '引理 A 的第二种证法（第 2 轮）', solution: '用归纳法（已按 r-1 的评审补 n=5 归纳基）' + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的命题卡'] })
   paper.advance({ target: TARGET })
   paper.recordReview({ target: TARGET, member: 'r-1', deliverable: true, comments: '已补 n=5' })
   paper.recordReview({ target: TARGET, member: 'r-2', deliverable: true, comments: '可交付' })
@@ -652,7 +652,7 @@ try {
   // ★★ RULE ①: the fingerprint guard. Tamper with the part record BY ID (a new body under the same record id) — the
   // state still remembers the old fingerprint, so rendering must BLOCK by name instead of reusing stale prose.
   const stateNow = paper.state(TARGET).state
-  kernel.records.put({ id: stateNow.parts['r-1'].recordId, track: 'paper', kind: 'paper-part', title: 'v5r-paper|' + TARGET + '|part|r-1', body: JSON.stringify({ member: 'r-1', title: '被背后改过的正文', solution: '改了' }), by: 'tamper' })
+  kernel.records.put({ id: stateNow.parts['r-1'].recordId, track: 'paper', kind: 'paper-part', title: 'v5r-paper|' + TARGET + '|part|r-1', body: JSON.stringify({ member: 'r-1', title: '被背后改过的正文', solution: '改了' + String.fromCharCode(10) + '证据等级：draft' }), by: 'tamper' })
   let fpErr = null
   try { paper.PaperMd({ target: TARGET }) } catch (e) { fpErr = e }
   ok(fpErr && fpErr.code === 'VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH',
@@ -725,7 +725,7 @@ try {
     '★ ④ the last refusal is VISIBLE through paperDispatchStatus() (what status() reports)', dispatchMod.paperDispatchStatus().last)
   // ③ a REAL write reply: dispatched to paper.recordPart. ★ F3b: the reply carries evidence, because this paper is
   // walked to a real finalisation and the delivered gate now refuses BY NAME a part whose evidence list is empty.
-  const goodAnswer = { paper_part: { target: T2, title: '回执标题', solution: '回执正文', evidence: ['r-1 的命题卡'] } }
+  const goodAnswer = { paper_part: { target: T2, title: '回执标题', solution: '回执正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡'] } }
   const dispatched = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-good', member: 'r-1', flat: { kernel }, reply: goodAnswer })
   ok(dispatched.ok === true && dispatched.field === 'paper_part' && partsOf() === 1 && dispatched.result && dispatched.result.recorded === 'r-1',
     '★ 正: a paper-write reply is really recorded through paper.recordPart (the prompt contract now has a consumer)', { parts: partsOf() })
@@ -751,7 +751,7 @@ try {
     reply: { paper_final: { target: T2, decision: 'deliverable', note: '一致', conclusion: '结论' } } })
   ok(fin.ok === true && fin.result && fin.result.finalized === true,
     '★ final reply is dispatched to paper.recordFinal and the paper really finalises', { finalized: fin.result && fin.result.finalized })
-  const noTarget = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-notarget', member: 'r-1', flat: { kernel }, reply: { paper_part: { title: 'x', solution: 'y' } } })
+  const noTarget = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-notarget', member: 'r-1', flat: { kernel }, reply: { paper_part: { title: 'x', solution: 'y' + String.fromCharCode(10) + '证据等级：draft' } } })
   ok(noTarget.ok === false && noTarget.code === 'VMU_INVALID_ARGUMENT' && /target/.test(String(noTarget.reason)),
     '★ a reply that does not name its paper target is refused by name (the dispatcher never guesses which paper)', noTarget.reason)
 
@@ -759,7 +759,7 @@ try {
   console.log('=== 3i. paperCompilePdf (kernel latex face) ===')
   const T3 = '论文-编译'
   paper.start({ target: T3, participants: ['r-1'] })
-  paper.recordPart({ target: T3, member: 'r-1', title: '编译用正文', solution: '正文' })
+  paper.recordPart({ target: T3, member: 'r-1', title: '编译用正文', solution: '正文' + String.fromCharCode(10) + '证据等级：draft' })
   let noFaceErr = null
   try { await paper.compilePdf({ target: T3 }) } catch (e) { noFaceErr = e }
   ok(noFaceErr && noFaceErr.code === 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING' && /spawn/.test(String(noFaceErr.hint)),

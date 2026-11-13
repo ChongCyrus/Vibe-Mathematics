@@ -725,12 +725,16 @@ export async function scenario(h, context = {}) {
   if (!bridgeHasEvidence) problems.push({ step: bridge.step.n, kind: 'bridge-missing-evidence-id', id: propositionId })
   bridge.step.detail = trim(bridge.step.detail + ' · carries ' + propositionId + '=' + String(bridgeHasEvidence), 200)
 
+  // TB-2786 (RUN 84 attempt-1, V22 false PASS): the `final` gate now reads a NAMED evidence-grade line out of every
+  // part BODY; a card-level grade cannot stand in for it. The line is part of the prose the section carries, so it is
+  // written here with the rest of the body: 证据等级：draft（四值：draft｜verified-by-citation｜mechanically-checked｜lean-verified）.
   const bodyTheorem = [
     '## 定理',
     '一次所内生命周期可以被零 token 完整复现：会议裁决固定方法，论文带回证据指针（依据记录 ' + propositionId + '）。',
     '',
     '## 证明',
     '由会议裁决记录与蓝图采纳记录可直接读出该结论，两者都在台账里可解析。',
+    '证据等级：draft',
   ].join(NL)
   const bodyProof = [
     '## 证明',
@@ -738,6 +742,7 @@ export async function scenario(h, context = {}) {
     '',
     '## 讨论',
     '没有 LaTeX 引擎属于环境缺省，按名记录，不阻断结题。',
+    '证据等级：draft',
   ].join(NL)
   await doCall({
     phase: 'paper-draft',

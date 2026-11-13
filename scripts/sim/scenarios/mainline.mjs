@@ -162,7 +162,7 @@ export async function mainline(h, { log = () => {} } = {}) {
     target: 'sim-paper-mainline',
     part: 'theorem',
     member: 'r-1',
-    body: '命题：对任意正整数 n，前 n 个奇数之和等于 $n^2$。',
+    body: '命题：对任意正整数 n，前 n 个奇数之和等于 $n^2$。\n证据等级：draft',
   }, { as: { agent: { id: 'r-1' } } }))
   const advanced = await step('paper/advance', () => h.call('vibe_v5_paper', { action: 'advance', target: 'sim-paper-mainline', member: 'r-acad' }))
   const reviewed = await step('paper/review', () => h.call('vibe_v5_paper', {

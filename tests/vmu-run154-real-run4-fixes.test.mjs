@@ -123,7 +123,7 @@ function oneRefusingRound(flow, T) {
 }
 /** From writing: part → reviewing → both deliverable → advance (the paper is back at awaiting-editor). */
 function backToAwaiting(flow, T) {
-  flow.recordPart({ target: T, member: 'r-1', title: '修订后的标题', solution: '修订后的解法' })
+  flow.recordPart({ target: T, member: 'r-1', title: '修订后的标题', solution: '修订后的解法' + String.fromCharCode(10) + '证据等级：draft' })
   flow.advance({ target: T })
   flow.recordReview({ target: T, member: 'r-1', deliverable: true, comments: '可交付' })
   flow.recordReview({ target: T, member: 'r-2', deliverable: true, comments: '可交付' })
@@ -266,7 +266,7 @@ console.log('§3 H2：到了互审轮数上限，定稿代表仍要求修订 ⇒
   ok(st2 && st2.status === 'writing', 'H2：论文真的回到 writing（part 又能写了）', st2 && st2.status)
   ok(st2 && Number(st2.repairs || 0) === 1, 'H2：修复轮被记账（repairs=1），不会被当成新的互审轮', st2 && st2.repairs)
   let partOk = null
-  try { partOk = flow.recordPart({ target: T, member: 'r-1', title: '修复后的标题', solution: '补上正文' }) } catch (e) { partOk = e }
+  try { partOk = flow.recordPart({ target: T, member: 'r-1', title: '修复后的标题', solution: '补上正文' + String.fromCharCode(10) + '证据等级：draft' }) } catch (e) { partOk = e }
   ok(partOk && partOk.ok === true, 'H2：修复轮里 part 真的能写进正文', partOk && (partOk.code || partOk.recorded))
 
   // 第二次修复轮
@@ -299,7 +299,7 @@ console.log('§3 H2：到了互审轮数上限，定稿代表仍要求修订 ⇒
   ok(rr === null, '前提：修复轮被允许（回到 writing）', rr && rr.code)
   // 证据卡（quality gate 要能解析到的真实卡片）
   k2.records.put({ id: 'rec-h2ev', track: 'propositions', kind: 'proposition', title: '定稿证据', body: '- statement：x\n- value：0.9' })
-  for (const m of ['r-1', 'r-2']) f2.recordPart({ target: T2, member: m, title: m + ' 修复后', solution: m + ' 补齐后的解法', evidence: ['Members/' + m + '/Propos/rec-h2ev.md'] })
+  for (const m of ['r-1', 'r-2']) f2.recordPart({ target: T2, member: m, title: m + ' 修复后', solution: m + ' 补齐后的解法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + m + '/Propos/rec-h2ev.md'] })
   f2.advance({ target: T2 })
   f2.recordReview({ target: T2, member: 'r-1', deliverable: true, comments: '可交付' })
   f2.recordReview({ target: T2, member: 'r-2', deliverable: true, comments: '可交付' })
@@ -352,7 +352,7 @@ console.log('§5 G9：`VMU_OFFICE_CONSULT_REQUIRED` 的回执带 `target`（答�
   // parts have to carry evidence the records face can resolve — otherwise the test measures the quality gate, not G9.
   kernel.records.put({ id: 'rec-ev1', track: 'propositions', kind: 'proposition', title: '证据卡', body: '- statement：x\n- value：0.9' })
   flow.start({ target: T, participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: m + ' 的解法', evidence: ['Members/' + m + '/Propos/rec-ev1.md'] })
+  for (const m of ['r-1', 'r-2']) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: m + ' 的解法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + m + '/Propos/rec-ev1.md'] })
   flow.advance({ target: T })
   flow.recordReview({ target: T, member: 'r-1', deliverable: true, comments: '可交付' })
   flow.recordReview({ target: T, member: 'r-2', deliverable: true, comments: '可交付' })
@@ -387,7 +387,7 @@ console.log('§6 G10：编译成功的回执带 argv/produced，final 的 missin
   const T = 'p10'
   kernel.records.put({ id: 'rec-ev10', track: 'propositions', kind: 'proposition', title: '证据卡', body: '- statement：x' })
   flow.start({ target: T, participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: m + ' 的解法', evidence: ['Members/' + m + '/Propos/rec-ev10.md'] })
+  for (const m of ['r-1', 'r-2']) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: m + ' 的解法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + m + '/Propos/rec-ev10.md'] })
   flow.advance({ target: T })
   flow.recordReview({ target: T, member: 'r-1', deliverable: true, comments: '可交付' })
   flow.recordReview({ target: T, member: 'r-2', deliverable: true, comments: '可交付' })
@@ -406,7 +406,7 @@ console.log('§6 G10：编译成功的回执带 argv/produced，final 的 missin
   const TB = 'p11'
   kb.records.put({ id: 'rec-ev11', track: 'propositions', kind: 'proposition', title: '证据卡', body: '- statement：x' })
   fb.start({ target: TB, participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) fb.recordPart({ target: TB, member: m, title: m + ' 的标题', solution: m + ' 的解法', evidence: ['Members/' + m + '/Propos/rec-ev11.md'] })
+  for (const m of ['r-1', 'r-2']) fb.recordPart({ target: TB, member: m, title: m + ' 的标题', solution: m + ' 的解法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + m + '/Propos/rec-ev11.md'] })
   fb.advance({ target: TB })
   fb.recordReview({ target: TB, member: 'r-1', deliverable: true, comments: '可交付' })
   fb.recordReview({ target: TB, member: 'r-2', deliverable: true, comments: '可交付' })

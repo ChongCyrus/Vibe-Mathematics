@@ -138,10 +138,10 @@ async function paperUpToEditor (b) {
   const recId = String((prop && prop.recordId) || '')
   ok(recId !== '', 'paper flow: a proposition row exists to cite as evidence', prop && prop.recordId)
   const part = await b.call('vibe_v5_paper', {
-    action: 'part', target: PAPER, member: 'r-1', part: '结论', solution: 'RUN257 结论正文', evidence: [recId]
+    action: 'part', target: PAPER, member: 'r-1', part: '结论', solution: ('RUN257 结论正文') + String.fromCharCode(10) + '证据等级：draft', evidence: [recId]
   })
   ok(part.ok === true, 'paper flow: part accepted', part.code || '')
-  await b.call('vibe_v5_paper', { action: 'part', target: PAPER, member: 'r-2', part: '附录', solution: 'RUN257 附录正文', evidence: [recId] })
+  await b.call('vibe_v5_paper', { action: 'part', target: PAPER, member: 'r-2', part: '附录', solution: ('RUN257 附录正文') + String.fromCharCode(10) + '证据等级：draft', evidence: [recId] })
   const adv1 = await b.call('vibe_v5_paper', { action: 'advance', target: PAPER, member: 'r-acad' })
   ok(adv1.advance && adv1.advance.to === 'reviewing', 'paper flow: first advance opens cross-review', adv1.advance && adv1.advance.to)
   await b.call('vibe_v5_paper', { action: 'review', target: PAPER, member: 'r-1', of: 'r-2', deliverable: true })

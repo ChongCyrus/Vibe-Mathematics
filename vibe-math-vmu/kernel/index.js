@@ -3674,7 +3674,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   /** ★ PHASE 8: named failures from the pull hook, visible in status() instead of silently skipped. */
   const toolFaceFailures = []
   /** ★ PHASE 8: diagnostics for the pull hook (registered/seen/matched/applied) — visible in status(). */
-  const toolFacePullState = { registered: false, seen: 0, matched: 0, applied: 0, lastAgent: null, lastMember: null, lastSections: null, lastContexts: null, agentsSeen: [] }
+  // ★★★ TB-2784: THE CAPTURE/STALENESS FIELDS EXIST FROM THE START, with values that say "nothing has been rendered yet
+  // / no capture seam". Audit7's finding was that `wireCaptured` was unreadable — a field that only appears AFTER the
+  // mechanism ran makes "absent" indistinguishable from "did not run", which is the defect family this frame keeps
+  // fixing. `wireCaptured:0` is a COUNT (nothing captured yet), `lastWireCapturedCount:null` is "never captured",
+  // `wireCaptureState:null` is "install has not reported", and `wireStaleRisk:false` is "no block rendered yet".
+  const toolFacePullState = { registered: false, seen: 0, matched: 0, applied: 0, lastAgent: null, lastMember: null, lastSections: null, lastContexts: null, agentsSeen: [],
+    wireCaptured: 0, lastWireCapturedCount: null, lastWireCapturedSource: null, wireCaptureState: null,
+    wireStaleRisk: false, blockAssembledAtMs: null, blockAssembledForAgent: null, blockAssembledForMember: null }
   // ★ PHASE 7: the HOST owns the tool table; the kernel only holds pack DECLARATIONS. A retraction therefore has
   // to be observable to the adapter, or a pack unload leaves the names visible to the model. One observer, set by
   // the host adapter; the kernel never calls a host API itself.
@@ -3741,6 +3748,25 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // Idempotent: the host may dispose more than once, and a second dispose must not re-run a flush.
   let exitFlushRecord = null
   let exitFlushInFlight = null
+  // ★★★ TB-2784 (RUN 84 / P0, audit7): THE SEATS COULD NOT READ WHETHER THE WIRE SNAPSHOT RAN. `toolFacePull` lived on
+  // `kernel.status()` only, while the face a member/office actually asks — `vibe_vmu_turn {op:"status"}` — is built by
+  // the turn orchestrator and carried none of it, so `wireCaptured` was "NO-EVIDENCE" on the real machine and could not
+  // be told from "did not run". The projection belongs HERE (the composition root owns the pull receipt), and the
+  // bounded `detail:"board"` slice is left untouched: the three fields ride the FULL reading, which is where a reader
+  // asking "did the project-time wire snapshot happen?" is looking.
+  if (turn && typeof turn.status === 'function') {
+    const turnStatusOf = turn.status.bind(turn)
+    turn.status = (opts = {}) => {
+      const reading = turnStatusOf(opts)
+      if (!reading || typeof reading !== 'object') return reading
+      if (String((opts && opts.detail) || '') === 'board') return reading
+      const pull = Object.assign({}, toolFacePullState)
+      return Object.assign({}, reading, {
+        toolFacePull: pull,
+        toolFacePullMeans: 'the host tool-face pull receipt. `wireCaptured > 0` proves the PROVIDER-TIME wire snapshot ran (the TB-2780 mechanism); `lastWireCapturedCount` is the name count captured there and `lastWireCapturedSource` names the reading. `effectiveCount`/`effectiveWireSource` describe the last block the host rendered, and `wireStaleRisk:true` means that block can be carried by a later `resume` request whose wire is wider (measured: 14 of 70 requests on run 84 carried a block rendered by an earlier assemble). `wireCaptureState` names whether the capture seam was available at install (unavailable ⇒ the block fell back to the live table).',
+      })
+    }
+  }
   const kernel = {
     enabled: true,
     bus,
@@ -5584,6 +5610,19 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           view[k] = headline(view[k])
         }
         view.diagnosticsBounded = 'headlined (present+field count only): registry / guards / seams / reporting / approvalGate / projections / activity — detail:"full" returns each whole; nothing else here is trimmed'
+        // ★★★ TB-2784: THE SUMMARY KEEPS THE PULL RECEIPT'S ANSWERING PART. Audit7 could not tell whether the
+        // provider-time wire snapshot ran ( was unreadable on every face), so the three capture fields stay
+        // in the bounded summary; the per-agent history arrays (agentsSeen) and sample strings remain detail:"full" — the
+        // summary is under a byte bound and an array of session ids is exactly what it must not spend it on.
+        if (view.toolFacePull && typeof view.toolFacePull === 'object') {
+          const p = view.toolFacePull
+          view.toolFacePull = {
+            registered: p.registered === true, seen: p.seen || 0, matched: p.matched || 0, applied: p.applied || 0,
+            wireCaptured: p.wireCaptured || 0,
+            lastWireCapturedCount: p.lastWireCapturedCount === undefined ? null : p.lastWireCapturedCount,
+            lastWireCapturedSource: p.lastWireCapturedSource || null,
+          }
+        }
       }
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING, AND THE REASON THIS PHASE TOOK SO LONG TO CLOSE. Sixty-one
       // meetings ran with no way to see that the single field which closes the institute had never been emitted. The

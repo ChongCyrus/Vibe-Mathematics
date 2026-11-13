@@ -1727,6 +1727,50 @@ export function createPaperFlow({
   }
 
   /** ⑥ the final decision: academician only, decision deliverable|revise (the original's two values). */
+  // ── TB-2786: the evidence-grade LINE lives in the part BODY, not in the cards. One reader here, used by the final
+  // gate and exposed to the status projection, so the receipt and the gate cannot disagree about "does the body say it".
+  const PAPER_GRADE_VALUES = Object.freeze(['draft', 'verified-by-citation', 'mechanically-checked', 'lean-verified'])
+  const gradeLineOfText = (text) => {
+    const raw = String(text === undefined || text === null ? '' : text)
+    if (raw === '') return null
+    const m = raw.match(/证据等级\s*[：:]\s*(draft|verified-by-citation|mechanically-checked|lean-verified)/i)
+    if (!m) return null
+    const at = m.index === undefined ? raw.indexOf(m[0]) : m.index
+    const tail = raw.slice(at)
+    const line = tail.split('\n')[0]
+    return { grade: String(m[1]).toLowerCase(), line, at, means: 'the part BODY carries a named grade line (this is what the final gate reads; cards are a separate reading)' }
+  }
+  const gradeAuditOfState = (state) => {
+    const parts = state && state.parts && typeof state.parts === 'object' ? state.parts : {}
+    const target = state && state.target !== undefined && state.target !== null ? String(state.target) : ''
+    const out = []
+    for (const member of Object.keys(parts)) {
+      const slot = parts[member]
+      // the row is the body: read the NEWEST paper-part row for this member (same-instant writes tie on updatedAt, so the
+      // id number breaks the tie — ids are minted strictly increasing).
+      let bodyText = ''
+      let recordId = slot && slot.recordId !== undefined ? slot.recordId : null
+      try {
+        const got = records.list({ track: TRACK, limit: 0 })
+        const heads = Array.isArray(got && got.items) ? got.items : []
+        const suffix = '|part|' + String(member)
+        const rows = heads.filter((h) => h && String(h.kind || '') === 'paper-part' && String(h.title || '').endsWith(suffix))
+        const idNum = (v) => Number(String(v || '').split('-').pop() || 0)
+        const newest = rows.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0]
+        if (newest) {
+          recordId = newest.id
+          const full = records.get({ id: newest.id })
+          const row = full && full.record ? full.record : full
+          const body = JSON.parse(String((row && row.body) || '{}'))
+          bodyText = [body.title, body.solution, body.methods, body.rules, body.limits].map((x) => String(x === undefined || x === null ? '' : x)).join('\n')
+        }
+      } catch (e) { bodyText = '' }
+      out.push({ member: String(member), title: slot && slot.title !== undefined ? slot.title : null, recordId,
+        bodyGradeLine: gradeLineOfText(bodyText), bodyChars: bodyText.length,
+        means: 'bodyGradeLine:null means the PART BODY carries no named grade line — the cards may still have grades, but a card grade is NOT a body line' })
+    }
+    return out
+  }
   async function recordFinal({ target, member, decision, note = '', conclusion = '' } = {}) {
     const { state } = requireState(target)
     // ★ F-123a: the hint has to name the action that can actually change the answer. `advance()` only moves the flow
@@ -1782,28 +1826,138 @@ export function createPaperFlow({
         : (conclusionText !== ''
           ? 'no conclusion was passed, so the note is recorded as the conclusion too (conclusionSource:"note") — note and conclusion are not synonyms: note is the editor short remark, conclusion is what the paper stands on'
           : 'neither a conclusion nor a note was passed: the paper is finalised with no stated conclusion (a reading, not a hidden default)') }
+    // TB-2785: the gate pass compiles once; the finalisation below reuses this result (no second compile).
+    let preCompiledPdf = null
     if (decision === 'deliverable') {
-      // ★ F3a: a finalisation must rest on two DISTINCT cross-reviews by non-authors. `advance` already refuses to go
-      // unanimous on a self-review, but the round-cap path can still reach awaiting-editor (a lone participant forced
-      // there after MAX_ROUNDS), so the editor's gate re-applies the same rule instead of trusting the state label.
-      requireCrossReview(state, 'final')
-      // ★ E4: 定稿前必须问所办. The gate runs BEFORE any mutation, so a refusal leaves the paper exactly where it was
-      // (except the durable request it just opened — the question has to survive a crash, that is the point of asking).
-      const gate = consultGate({ state, member: fin.by })
-      if (!gate.allowed) {
-        // ★★ RUN 201 (run 40 / FEEDBACK39 1.5): the refusal receipt said WHAT blocked the finalisation and nothing about
-        // the finalisation itself, so a reader comparing the two attempts saw "no final block" versus "a final block" and
-        // could not tell a refused final from a missing one. The refusal now carries the final it refused, with the ONE
-        // field that matters: it is not finalized, and here is the question that must be answered first.
-        gate.error.final = {
+      // ★★★ TB-2785 (RUN 84 attempt-1, audit7 N2): ONE PASS OVER ALL GATES. The old sequence returned at the FIRST failing
+      // gate, and the cross-review gate came BEFORE the compile — so on a 3-author paper where an author honestly voted
+      // not-deliverable, the character gate (VMU_PAPER_GLYPH_UNCOVERED) was STRUCTURALLY UNREACHABLE: run 84's four finals
+      // carried no glyph refusal at all although a table-external glyph (⨀) sat in the text. Every gate is evaluated now,
+      // the compiled evidence is KEPT for the finalisation below (no second compile), and a refusal lists ALL blockers in
+      // `gates[]` with the top-level code taken from the highest-priority failed gate.
+      const gates = []
+      let crossError = null
+      try { requireCrossReview(state, 'final') } catch (e) { crossError = e }
+      gates.push({ name: 'cross-review', ok: crossError === null,
+        code: crossError === null ? null : (crossError.code || 'VMU_INVALID_ARGUMENT'),
+        detail: crossError === null ? null : {
+          // where/required are the old thrown refusal's own facts; TB-2785 must not drop them when it turns the gate
+          // into one row of gates[] (an info-losing refactor is the defect this round keeps removing).
+          where: 'final', required: 2,
+          message: String(crossError.message || ''),
+          crossReviewers: Array.isArray(crossError.crossReviewers) ? crossError.crossReviewers.slice() : null,
+          reviewsOnDisk: Array.isArray(crossError.reviewsOnDisk) ? crossError.reviewsOnDisk.slice() : null,
+          staleReviews: crossError.staleReviews === undefined ? null : crossError.staleReviews,
+        },
+        means: 'a deliverable finalisation rests on two DISTINCT cross-reviews by non-authors (unchanged rule)' })
+      const consultResult = (() => { try { return consultGate({ state, member: fin.by }) } catch (e) { return { allowed: false, error: e, reason: 'threw' } } })()
+      const consultError = consultResult && consultResult.allowed !== true ? (consultResult.error || null) : null
+      gates.push({ name: 'office-consult', ok: consultError === null,
+        code: consultError === null ? null : (consultError.code || null),
+        detail: consultError === null ? null : {
+          reason: consultResult.reason === undefined ? null : consultResult.reason,
+          requestId: consultResult.requestId === undefined ? null : consultResult.requestId,
+        },
+        means: 'the office must answer before the editor finalises (unchanged rule)' })
+      // a consult-only refusal keeps its historical receipt (the `final.consult` block readers/tests rely on)
+      if (consultError !== null && crossError === null) {
+        consultError.final = {
           ok: false, finalized: false, blockedBy: 'office-consult',
           by: fin.by, decision: fin.decision,
-          consult: { requestId: gate.error.requestId === undefined ? null : gate.error.requestId,
-            definition: gate.error.requestId === undefined || gate.error.requestId === null ? null : String(gate.reason || '') },
+          consult: { requestId: consultError.requestId === undefined ? null : consultError.requestId,
+            definition: consultError.requestId === undefined || consultError.requestId === null ? null : String(consultResult.reason || '') },
           means: 'the final was REFUSED before anything was written: this paper is NOT finalized, and the question in `consult.requestId` must be answered before the same call can succeed — answer it with vibe_v5_paper { action: "consult", target, member, answer } (the kit method is recordConsult); a refused final leaves the paper exactly where it was',
         }
-        throw gate.error
+        throw consultError
       }
+      // ★★★ TB-2786 (RUN 84 attempt-1, audit7 N3): THE GRADE LINE GATE. The 84th run's consult answered "every section
+      // carries a named grade line" while r-1's section body contained no such line — the evidenceGrades projection was
+      // read as if it were a reading of the prose, and NO GATE could catch the false premise. The body line is now its own
+      // gate: every part must carry one named line, and the refusal names the section(s), the four-value vocabulary and the
+      // format. Cards are a SEPARATE reading and can never stand in for the body line.
+      const gradeAudit = gradeAuditOfState(state)
+      const gradeMissing = gradeAudit.filter((g) => g.bodyGradeLine === null)
+      gates.push({ name: 'evidence-grade-line', ok: gradeMissing.length === 0,
+        code: gradeMissing.length === 0 ? null : 'VMU_PAPER_GRADE_LINE_MISSING',
+        detail: gradeMissing.length === 0 ? null : {
+          missingSections: gradeMissing.map((g) => ({ member: g.member, title: g.title, recordId: g.recordId })),
+          acceptedGrades: PAPER_GRADE_VALUES.slice(),
+          format: 'add ONE line to each part BODY: 证据等级：draft（or verified-by-citation / mechanically-checked / lean-verified）',
+        },
+        means: 'every part body must name its own evidence grade; a card-level grade is NOT a body line' })
+      // the character gate: compile ONCE here, and keep the result for the finalisation below
+      let gateCompiled = null
+      try { gateCompiled = { ok: true, produced: true, ...(await compilePdf({ target })) } } catch (e) {
+        // the SAME failure structure the compile door and the old final path carry (one shape, both doors)
+        gateCompiled = { ok: false, produced: false, code: (e && e.code) || null, faceCode: (e && e.faceCode) || null,
+          message: String((e && e.message) || ''), argv: Array.isArray(e && e.argv) ? e.argv.slice(0, 16) : [],
+          stderrTail: e && e.stderrTail ? String(e.stderrTail).slice(-1500) : '',
+          stdoutTail: e && e.stdoutTail ? String(e.stdoutTail).slice(-1500) : '',
+          tailSource: (e && e.tailSource) || null,
+          outDir: (e && e.outDir) || null, sourceName: (e && e.sourceName) || null,
+          tailsIdentical: e && e.tailsIdentical === true, signal: (e && e.signal) || null,
+          triedEngines: Array.isArray(e && e.triedEngines) ? e.triedEngines.slice(0, 12) : [],
+          triedEnginesTotal: e && Number.isFinite(Number(e.triedEnginesTotal)) ? Number(e.triedEnginesTotal) : (Array.isArray(e && e.triedEngines) ? e.triedEngines.length : 0),
+          triedEnginesTruncated: e && e.triedEnginesTruncated === true }
+      }
+      const glyphUncovered = !!(gateCompiled && gateCompiled.ok === true && gateCompiled.glyphLossDetected === true)
+      const glyphRows = glyphUncovered && Array.isArray(gateCompiled.glyphsUnrepaired) ? gateCompiled.glyphsUnrepaired : []
+      const glyphCount = glyphUncovered && Number.isFinite(Number(gateCompiled.missingCharacterCount)) ? Number(gateCompiled.missingCharacterCount) : glyphRows.reduce((n, r) => n + (Number(r && r.count) || 0), 0)
+      gates.push({ name: 'glyph-coverage', ok: !glyphUncovered,
+        code: glyphUncovered ? 'VMU_PAPER_GLYPH_UNCOVERED' : null,
+        detail: glyphUncovered ? { glyphsUnrepaired: glyphRows, missingCharacterCount: glyphCount,
+          logPath: gateCompiled.logPath === undefined ? null : gateCompiled.logPath,
+          hint: 'rewrite these characters in your parts as LaTeX commands, then call final again: ' + glyphAdviceOf(glyphRows) } : null,
+        means: 'a PDF that dropped glyphs is not a deliverable (unchanged rule; now evaluated in the SAME pass as the other gates)' })
+      const failedGates = gates.filter((g) => g.ok !== true)
+      if (failedGates.length > 0) {
+        // priority: an undeliverable artefact first, then the review/grade obligations, then the office question
+        const PRIORITY = ['glyph-coverage', 'cross-review', 'evidence-grade-line', 'office-consult']
+        const primary = failedGates.slice().sort((a, b) => PRIORITY.indexOf(a.name) - PRIORITY.indexOf(b.name))[0]
+        const glyphGate = gates.filter((g) => g.name === 'glyph-coverage')[0]
+        const crossGate = gates.filter((g) => g.name === 'cross-review')[0]
+        const gradeGate = gates.filter((g) => g.name === 'evidence-grade-line')[0]
+        const consultGateRead = gates.filter((g) => g.name === 'office-consult')[0]
+        return {
+          ok: false,
+          code: primary.code,
+          gates,
+          primaryGate: primary.name,
+          gatePriority: PRIORITY.slice(),
+          finalized: false,
+          target: state.target,
+          final: fin,
+          stage: state.status,
+          returned: state.status,
+          rolledBack: { from: 'awaiting-editor', to: state.status, keptEarlierFinal: false },
+          reviseAvailable: true,
+          ...(primary.name === 'glyph-coverage' ? {
+            glyphLossDetected: true,
+            missingCharacterCount: glyphCount,
+            glyphsUnrepaired: glyphRows,
+            glyphLossCode: 'VMU_PAPER_GLYPH_UNCOVERED',
+            logPath: glyphGate.detail.logPath,
+            hint: glyphGate.detail.hint,
+            message: 'this PDF is NOT deliverable: the compile wrote a file but xelatex dropped ' + String(glyphCount) + ' glyph(s) the font does not have, so the PDF text is missing those characters (the file existing is not the same as the mathematics printing)',
+          } : {}),
+          ...(primary.name === 'cross-review' ? {
+            message: String(crossGate.detail.message || 'the cross-review gate refused this finalisation'),
+            hint: Array.isArray(crossGate.detail.crossReviewers) ? 'the paper needs two DISTINCT cross-reviews by non-authors; current crossReviewers: ' + JSON.stringify(crossGate.detail.crossReviewers) + ' — see gates[] for every blocker (the glyph gate is evaluated in the same pass, so a dropped glyph is visible here too)' : null,
+          } : {}),
+          ...(primary.name === 'evidence-grade-line' ? {
+            message: 'this paper is NOT deliverable: a part BODY carries no named evidence-grade line',
+            hint: 'add ONE line to each named part: 证据等级：draft（values: ' + PAPER_GRADE_VALUES.join(' / ') + '）— missing: ' + JSON.stringify(gradeGate.detail.missingSections),
+          } : {}),
+          ...(primary.name === 'office-consult' ? {
+            message: String(consultGateRead.detail && consultGateRead.detail.message ? consultGateRead.detail.message : 'the office consult gate refused this finalisation'),
+            hint: 'answer the office consult, then re-issue the same final; gates[] lists every blocker',
+          } : {}),
+          means: 'the paper was NOT finalised: final evaluates EVERY gate in ONE pass and lists all of them in `gates[]`; the top-level code is the highest-priority failure (' + PRIORITY.join(' > ') + '). Nothing was written and the state is unchanged — read the gate details for the whole list, never only the top-level code',
+        }
+      }
+      // every gate passed: reuse the compiled evidence below instead of compiling a second time
+      preCompiledPdf = gateCompiled
+
       const before = { hadFinal: Object.prototype.hasOwnProperty.call(state, 'final'), final: state.final, status: state.status, stage: state.stage }
       state.final = fin; state.status = 'finalized'; state.stage = 'finalized'
       writeState(state)
@@ -1823,7 +1977,8 @@ export function createPaperFlow({
       }
       // The PDF is the one artefact the KERNEL must make. Its absence is reported, never hidden: a receipt that says
       // "finalized" while the fourth artefact is missing is the paper-world version of crying wolf.
-      let pdf = null
+      let pdf = preCompiledPdf
+      if (pdf === null) {
       try {
         pdf = { ok: true, produced: true, ...(await compilePdf({ target })) }
       } catch (e) {
@@ -1844,6 +1999,7 @@ export function createPaperFlow({
           sourceName: (e && e.sourceName) || null,
           tailsIdentical: e && e.tailsIdentical === true,
           signal: (e && e.signal) || null }
+      }
       }
       // ★★ RUN 154 (G10): run 4's final receipt said `"missing":["pdf"]` AND `"pdf":{"ok":true,...}` in the SAME answer —
       // `missing` was the pre-compile artefact list and the compile had just succeeded. The list is recomputed around the
@@ -1951,7 +2107,12 @@ export function createPaperFlow({
         ...(engineAbsent ? { pdfEnvironmentMissing: true, pdfEnvironmentMeans: 'this assembly has no LaTeX face (`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`): the paper is finalised and the PDF artefact stays named in `missing` — an environment gap, not a body that failed to compile. A compile that really ran and failed does NOT finalise (RUN 176).' } : {}),
         // ★ E4: the receipt says WHICH way the consult rule was satisfied ("off" / "answered" / "exempt"): a finalisation
         // that claims the office was consulted when the gate was simply off is the sort of quiet lie this pack refuses.
-        consult: { armed: gate.armed === true, satisfiedBy: gate.reason, answeredBy: gate.answeredBy || null, requestId: gate.requestId || null, note: gate.note || null },
+        consult: { armed: consultResult.armed === true, satisfiedBy: consultResult.reason, answeredBy: consultResult.answeredBy || null, requestId: consultResult.requestId || null, note: consultResult.note || null },
+        // ★ TB-2785 follow-up: a SUCCESSFUL final also reports the gates it passed, so "which gates were evaluated" does
+        // not depend on whether the call failed; `consult` stays beside them (the office question is one of those gates).
+        gates: gates.map((g) => ({ name: g.name, ok: g.ok === true, code: g.code === undefined ? null : g.code,
+          detail: g.detail === undefined ? null : g.detail, means: g.means === undefined ? null : g.means })),
+        gatePriority: ['glyph-coverage', 'cross-review', 'evidence-grade-line', 'office-consult'],
         // ★★★ RUN 212 (run 49 / FEEDBACK48 1.3/2.4, MEASURED): the same fact had three names across three faces
         // (`advance` → officeConsultPending, `final` → consult.armed/satisfiedBy, `consult_state` → armed/policy). A reader
         // that learned the advance name could not find it here. `officeConsultPending` is false BY CONSTRUCTION once the
@@ -2417,6 +2578,8 @@ export function createPaperFlow({
     // this paper compiled?" always answered no. The ledger read opens each candidate row, and it is exported here so the
     // tool face can ask this ONE reader instead of repeating an answer that has already been wrong once.
     compiledPdfRow: (state) => compiledPdfRow(state),
+    // ★ TB-2786: ONE grade-line reader for the final gate AND the status projection.
+    gradeLinesOfState: (state) => gradeAuditOfState(state),
     // ★★ RUN 172 (FEEDBACK17 P3-16): the status face must be able to say "this name is not gone, it is in the TRASH" — the
     // same lookup `start` uses to refuse a reused name, so the two doors cannot disagree about one fact.
     // ★★★ TB-2713: the status door must print the SAME object the advance door prints. It asks this reader (which owns

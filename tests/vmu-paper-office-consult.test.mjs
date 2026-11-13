@@ -90,7 +90,7 @@ function toEditor(flow, target = 'P-1', participants = ['r-1', 'r-2']) {
   // 蒙混过关，新门会具名拒「只有 0 位审了别人」）。真实流程：每位参与者写一节，再逐对互审（of 指向别人）。
   for (const m of participants) {
     const card = flow.__testRecords ? flow.__testRecords.put({ track: 'propositions', kind: 'proposition', title: 'evidence for ' + m, body: '二值：1' }) : null
-    flow.recordPart({ target, member: m, title: m + ' 的一节', solution: m + ' 的正文', evidence: card ? [card.id] : [] })
+    flow.recordPart({ target, member: m, title: m + ' 的一节', solution: m + ' 的正文' + String.fromCharCode(10) + '证据等级：draft', evidence: card ? [card.id] : [] })
   }
   flow.advance({ target })
   for (let i = 0; i < participants.length; i += 1) {
@@ -141,7 +141,14 @@ console.log('=== ② 答了 ⇒ 放行，且回执说清是怎么满足的 ===')
   ok(r.ok === true && r.receipt.finalized === true, '★ 正：问过并答了 ⇒ 定稿放行', r.error && r.error.code)
   eq(r.receipt.consult && { armed: r.receipt.consult.armed, satisfiedBy: r.receipt.consult.satisfiedBy, answeredBy: r.receipt.consult.answeredBy },
     { armed: true, satisfiedBy: 'answered', answeredBy: 'office' }, '★★ 回执写明"闸是开着的、由答案满足、答复人 office"（不是只说 finalized）')
-  ok(r.receipt.consult.requestId === refused.error.requestId, '★ 回执指回同一条提问 id', { got: r.receipt.consult.requestId, want: refused.error.requestId })
+  // TB-2785 (final11): final now evaluates ALL gates in one pass and reports them on success too. The office question
+  // is one of those gates, so the receipt must say it was PASSED, not merely that the paper is finalized.
+  const officeGate = (Array.isArray(r.receipt.gates) ? r.receipt.gates : []).filter((g) => g && g.name === 'office-consult')[0] || null
+  ok(officeGate && officeGate.ok === true,
+    '★★ TB-2785：成功回执的 gates[] 里 office-consult 门 ok:true（同一次全门评估，不是只说 finalized）', officeGate || r.receipt.gates)
+  // the request id must still be readable: top-level consult is the historical field, and the gate detail is the new one.
+  const consultId = (r.receipt.consult && r.receipt.consult.requestId) || (officeGate && officeGate.detail && officeGate.detail.requestId) || null
+  ok(consultId === refused.error.requestId, '★ 回执指回同一条提问 id（顶层 consult 或 gates[].detail，二者其一必须给到）', { got: consultId, want: refused.error.requestId, gateDetail: officeGate && officeGate.detail })
 }
 
 console.log('=== ③ off / 未设 ⇒ 行为保持不变（默认语义没有被这道闸改写） ===')

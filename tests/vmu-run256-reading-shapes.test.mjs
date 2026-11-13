@@ -144,7 +144,7 @@ Object.defineProperty(kernel, 'latex', { configurable: true, enumerable: true, w
 const T = '端到端占位论文'
 await receipt(b, 'vibe_v5_paper', { action: 'start', target: T, participants: [ACAD, R1], format: 'both' })
 await receipt(b, 'vibe_v5_record_proposition', { id: 'pe-1', statement: '环境缺引擎不是论文为假', value: 0.5, motive: '读数形状的证据', p: 0.5 })
-await receipt(b, 'vibe_v5_paper', { action: 'part', target: T, member: ACAD, part: '第一部分', solution: '正文', evidence: ['Members/' + ACAD + '/Propos/pe-1.md'] })
+await receipt(b, 'vibe_v5_paper', { action: 'part', target: T, member: ACAD, part: '第一部分', solution: ('正文') + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/pe-1.md'] })
 await receipt(b, 'vibe_v5_paper', { action: 'advance', target: T })
 await receipt(b, 'vibe_v5_paper', { action: 'review', target: T, member: ACAD, deliverable: true, notes: '可交付' })
 await receipt(b, 'vibe_v5_paper', { action: 'review', target: T, member: R1, deliverable: true, notes: '可交付' })
@@ -283,8 +283,8 @@ ok(JSON.stringify(stPaper && stPaper.paper && stPaper.paper.title).includes(T),
 const T2 = '旧标题论文'
 // ★ TB-2761：互审必须真的有「别人」的部分与绑定指纹的票；单席自审在旧 round 规则下能过，新门会具名拒。
 await receipt(b, 'vibe_v5_paper', { action: 'start', target: T2, participants: [ACAD, R1], format: 'md' })
-await receipt(b, 'vibe_v5_paper', { action: 'part', target: T2, member: ACAD, part: '第一部分', solution: '正文', evidence: ['Members/' + ACAD + '/Propos/pe-1.md'] })
-await receipt(b, 'vibe_v5_paper', { action: 'part', target: T2, member: R1, part: '第二部分', solution: '正文二', evidence: ['Members/' + R1 + '/Propos/pe-2.md'] })
+await receipt(b, 'vibe_v5_paper', { action: 'part', target: T2, member: ACAD, part: '第一部分', solution: ('正文') + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/pe-1.md'] })
+await receipt(b, 'vibe_v5_paper', { action: 'part', target: T2, member: R1, part: '第二部分', solution: ('正文二') + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + R1 + '/Propos/pe-2.md'] })
 await receipt(b, 'vibe_v5_paper', { action: 'advance', target: T2 })
 await receipt(b, 'vibe_v5_paper', { action: 'review', target: T2, member: ACAD, of: R1, deliverable: true, notes: '可交付' })
 await receipt(b, 'vibe_v5_paper', { action: 'review', target: T2, member: R1, of: ACAD, deliverable: true, notes: '可交付' })

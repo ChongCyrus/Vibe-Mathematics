@@ -119,7 +119,7 @@ export async function paperGates(h, { log = () => {} } = {}) {
 
   const partA = await step('paper/part/theorem/r-1', () => call('vibe_v5_paper', {
     action: 'part', target: A, part: 'theorem', member: 'r-1',
-    body: '命题：对任意正整数 $n$，前 $n$ 个奇数之和等于 $n^2$。用归纳法：记 $S_n$ 为前 $n$ 个奇数之和。',
+    body: '命题：对任意正整数 $n$，前 $n$ 个奇数之和等于 $n^2$。用归纳法：记 $S_n$ 为前 $n$ 个奇数之和。\n证据等级：draft',
     evidence: [evA],
   }, member('r-1')))
   check('part 1 filed its evidence pointer', !!(partA && partA.evidence && partA.evidence.provided >= 1), partA && partA.evidence)
@@ -149,7 +149,7 @@ export async function paperGates(h, { log = () => {} } = {}) {
 
   const partB = await step('paper/part/proof/r-2', () => call('vibe_v5_paper', {
     action: 'part', target: A, part: 'proof', member: 'r-2',
-    body: '证明补全：归纳步里 $S_{n+1}-S_n = 2n+1$，故 $S_{n+1} = (n+1)^2$；基例 $S_1 = 1$ 给出起点。',
+    body: '证明补全：归纳步里 $S_{n+1}-S_n = 2n+1$，故 $S_{n+1} = (n+1)^2$；基例 $S_1 = 1$ 给出起点。\n证据等级：draft',
     evidence: [evB],
   }, member('r-2')))
   check('part 2 filed its evidence pointer after the two refusals', !!(partB && partB.evidence && partB.evidence.provided >= 1), partB && partB.evidence)
@@ -312,7 +312,7 @@ export async function paperGates(h, { log = () => {} } = {}) {
 
   await step('paper/part/solo', () => call('vibe_v5_paper', {
     action: 'part', target: S, part: 'theorem', member: 'r-1',
-    body: '单人论文的定理节：$S_n = n^2$。', evidence: [evA],
+    body: '单人论文的定理节：$S_n = n^2$。\n证据等级：draft', evidence: [evA],
   }, member('r-1')))
 
   const soloAdvance = await step('paper/advance/solo/writing→reviewing', () => call('vibe_v5_paper', { action: 'advance', target: S }))
@@ -337,10 +337,10 @@ export async function paperGates(h, { log = () => {} } = {}) {
     action: 'start', target: E, title: '空证据论文（交付闸的最小例）', participants: ['r-1', 'r-2'],
   }))
   await step('paper/part/empty/r-1', () => call('vibe_v5_paper', {
-    action: 'part', target: E, part: 'theorem', member: 'r-1', body: '空证据论文的定理节：$1+3+…+(2n-1)=n^2$。', evidence: [],
+    action: 'part', target: E, part: 'theorem', member: 'r-1', body: '空证据论文的定理节：$1+3+…+(2n-1)=n^2$。\n证据等级：draft', evidence: [],
   }, member('r-1')))
   await step('paper/part/empty/r-2', () => call('vibe_v5_paper', {
-    action: 'part', target: E, part: 'proof', member: 'r-2', body: '空证据论文的证明节：归纳步直接成立。', evidence: [],
+    action: 'part', target: E, part: 'proof', member: 'r-2', body: '空证据论文的证明节：归纳步直接成立。\n证据等级：draft', evidence: [],
   }, member('r-2')))
   const emptyAdvance = await step('paper/advance/empty/writing→reviewing', () => call('vibe_v5_paper', { action: 'advance', target: E }))
   const emptyReviewOf = (emptyAdvance && emptyAdvance.advance && emptyAdvance.advance.reviewOf) || {}

@@ -103,7 +103,7 @@ const refusalOf = async (fn) => { try { await fn(); return null } catch (e) { re
 /** Write one part per participant, cross-review both deliverable, and ADVANCE to awaiting-editor. */
 function toAwaitingEditor(flow, T, mids = ['r-1', 'r-2']) {
   if (stateOf(flow, T) === null) flow.start({ target: T, participants: mids })
-  for (const m of mids) flow.recordPart({ target: T, member: m, title: m + ' 的部分', solution: m + ' 的解', evidence: ['rec-1'] })
+  for (const m of mids) flow.recordPart({ target: T, member: m, title: m + ' 的部分', solution: (m + ' 的解') + String.fromCharCode(10) + '证据等级：draft', evidence: ['rec-1'] })
   flow.advance({ target: T })              // writing → reviewing
   for (const m of mids) flow.recordReview({ target: T, member: m, deliverable: true, comments: '可交付' })
   return flow.advance({ target: T })       // evaluating → awaiting-editor
@@ -181,8 +181,8 @@ function fakeLatex(mode) {
   ok(failed && failed.finalized === false, '§2 setup: the first finalisation rolled back', failed && failed.finalized)
   flow.recordFinal({ target: T, member: 'acad', decision: 'revise', note: '修掉坏命令' })
   latex.mode = 'ok'
-  flow.recordPart({ target: T, member: 'r-1', title: 'r-1 的部分（修订）', solution: 'r-1 的解（无坏命令）', evidence: ['rec-1'] })
-  flow.recordPart({ target: T, member: 'r-2', title: 'r-2 的部分（修订）', solution: 'r-2 的解', evidence: ['rec-1'] })
+  flow.recordPart({ target: T, member: 'r-1', title: 'r-1 的部分（修订）', solution: ('r-1 的解（无坏命令）') + String.fromCharCode(10) + '证据等级：draft', evidence: ['rec-1'] })
+  flow.recordPart({ target: T, member: 'r-2', title: 'r-2 的部分（修订）', solution: ('r-2 的解') + String.fromCharCode(10) + '证据等级：draft', evidence: ['rec-1'] })
   flow.advance({ target: T })
   flow.recordReview({ target: T, member: 'r-1', deliverable: true, comments: '可交付' })
   flow.recordReview({ target: T, member: 'r-2', deliverable: true, comments: '可交付' })
@@ -243,7 +243,7 @@ function fakeLatex(mode) {
   const cardId = String((card && (card.recordId || card.id)) || '')
   ok(cardId !== '', '§4 setup: a proposition card exists to cite', card && (card.code || Object.keys(card || {})))
   await A.call('vibe_v5_paper', { action: 'start', target: T, participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) await A.call('vibe_v5_paper', { action: 'part', target: T, member: m, part: m + ' 的部分', solution: m + ' 的解法', evidence: [cardId] })
+  for (const m of ['r-1', 'r-2']) await A.call('vibe_v5_paper', { action: 'part', target: T, member: m, part: m + ' 的部分', solution: (m + ' 的解法') + String.fromCharCode(10) + '证据等级：draft', evidence: [cardId] })
   await A.call('vibe_v5_paper', { action: 'advance', target: T })
   for (const m of ['r-1', 'r-2']) await A.call('vibe_v5_paper', { action: 'review', target: T, member: m, deliverable: true, of: m === 'r-1' ? 'r-2' : 'r-1' })
   const adv = await A.call('vibe_v5_paper', { action: 'advance', target: T })
@@ -260,7 +260,7 @@ function fakeLatex(mode) {
   // D4: `review` must name its own parameter.
   const T2 = 'paper-r177-tool-2'
   await A.call('vibe_v5_paper', { action: 'start', target: T2, participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) await A.call('vibe_v5_paper', { action: 'part', target: T2, member: m, part: m + ' 的部分', solution: m + ' 的解法', evidence: [cardId] })
+  for (const m of ['r-1', 'r-2']) await A.call('vibe_v5_paper', { action: 'part', target: T2, member: m, part: m + ' 的部分', solution: (m + ' 的解法') + String.fromCharCode(10) + '证据等级：draft', evidence: [cardId] })
   await A.call('vibe_v5_paper', { action: 'advance', target: T2 })
   const bad = await A.call('vibe_v5_paper', { action: 'review', target: T2, member: 'r-1', decision: 'deliverable', of: 'r-2' })
   ok(bad && bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT',
@@ -310,7 +310,7 @@ function fakeLatex(mode) {
   await call('vibe_v5_paper', { action: 'start', target: T, participants: ['r-1', 'r-2'] })
 
   const bad = await call('vibe_v5_paper', { action: 'part', target: T, member: 'r-1', part: 'r-1 的部分',
-    solution: '依据可寻址的一处：Members/r-1/Propos/run177-not-a-record.md#二 的说法。', evidence: [cardId] })
+    solution: ('依据可寻址的一处：Members/r-1/Propos/run177-not-a-record.md#二 的说法。') + String.fromCharCode(10) + '证据等级：draft', evidence: [cardId] })
   ok(bad && bad.ok === false && bad.code === 'VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
     '§5 ★★ a prose pointer naming no record is refused AT THE WRITING STEP (run 22 failed only at render)', bad && { code: bad.code })
   ok(bad && /run177-not-a-record/.test(String(bad.message || '')) && /no-such-record/.test(String(bad.message || '')),
@@ -319,7 +319,7 @@ function fakeLatex(mode) {
     '§5 …and the hint says the path is resolved by RECORD ID, not by file name', bad && bad.hint)
 
   const good = await call('vibe_v5_paper', { action: 'part', target: T, member: 'r-1', part: 'r-1 的部分（改正）',
-    solution: '依据可寻址的一处：Members/r-1/Propos/' + cardId + '.md#二 的说法。', evidence: [cardId] })
+    solution: ('依据可寻址的一处：Members/r-1/Propos/' + cardId + '.md#二 的说法。') + String.fromCharCode(10) + '证据等级：draft', evidence: [cardId] })
   ok(good && good.ok === true && good.part && good.part.recorded === 'r-1',
     '§5 ★★ the same body written with the RECORD id is accepted (the refusal taught a reachable repair)', good && (good.code ? [good.code, good.message, good.hint] : good.recorded))
 }

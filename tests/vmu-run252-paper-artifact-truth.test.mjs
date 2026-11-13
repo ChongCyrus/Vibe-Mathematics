@@ -262,7 +262,7 @@ console.log('=== 3. 真定稿：finalized:true 与 complete:false 同时成立�
 const card = await receipt(v5r, 'vibe_v5_record_proposition', { id: 'p-md-1', statement: '论文只整理已有证据', value: 0.5, motive: '定稿前的证据核对', p: 0.5 })
 ok(card.parsed && card.parsed.ok === true && card.parsed.recordId === 'p-md-1',
   '前置：证据卡片真的在记录面上（下面的 part 指针能解析）', card.parsed && card.parsed.code)
-const part = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: T, member: ACAD, part: '第一部分', solution: '测试用的解法正文', evidence: ['Members/' + ACAD + '/Propos/p-md-1.md'] })
+const part = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: T, member: ACAD, part: '第一部分', solution: '测试用的解法正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/p-md-1.md'] })
 ok(part.parsed && part.parsed.ok === true && part.parsed.part && part.parsed.part.ok === true,
   '★ 正：part 记下一份写作（证据指针当场解析）', part.parsed && part.parsed.part && part.parsed.part.code)
 const adv1 = await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: T })
@@ -318,7 +318,7 @@ const T2 = 'p-env'
 await receipt(v5r, 'vibe_v5_paper', { action: 'start', target: T2, participants: [ACAD, R1], format: 'both' })
 const card2 = await receipt(v5r, 'vibe_v5_record_proposition', { id: 'p-env-1', statement: '环境缺引擎不是论文为假', value: 0.5, motive: '引擎缺失分支的证据', p: 0.5 })
 ok(card2.parsed && card2.parsed.ok === true, '前置：第二篇论文的证据卡片也在记录面上')
-await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: T2, member: ACAD, part: '第一部分', solution: '引擎缺失分支的正文', evidence: ['Members/' + ACAD + '/Propos/p-env-1.md'] })
+await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: T2, member: ACAD, part: '第一部分', solution: '引擎缺失分支的正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/p-env-1.md'] })
 await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: T2 })
 await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: T2, member: ACAD, deliverable: true, notes: '可交付' })
 await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: T2, member: R1, deliverable: true, notes: '可交付' })
@@ -430,9 +430,9 @@ console.log('=== 6. TB-2772：final 检测到缺字 ⇒ ok:false + VMU_PAPER_GLY
     await new Promise((resolve) => setTimeout(resolve, 200))
     const st = await receipt(v5r, 'vibe_v5_paper', { action: 'start', target, participants: [ACAD, R1], format: 'both' })
     ok(st.parsed && st.parsed.ok === true, '前置(' + target + ')：论文开题', st.parsed && st.parsed.code)
-    const partA = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target, member: ACAD, part: 'A 的第一部分', solution: bodyText, evidence: ['Members/' + ACAD + '/Propos/' + cardId + '.md'] })
+    const partA = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target, member: ACAD, part: 'A 的第一部分', solution: bodyText + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/' + cardId + '.md'] })
     ok(partA.parsed && partA.parsed.ok === true, '前置(' + target + ')：ACAD 的 part 写入成功', partA.parsed && { code: partA.parsed.code, message: String(partA.parsed.message || '').slice(0, 200), hint: String(partA.parsed.hint || '').slice(0, 200) })
-    const partB = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target, member: R1, part: 'R1 的第二部分', solution: '补充说明：' + bodyText, evidence: ['Members/' + ACAD + '/Propos/' + cardId + '.md'] })
+    const partB = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target, member: R1, part: 'R1 的第二部分', solution: '补充说明：' + String.fromCharCode(10) + '证据等级：draft' + bodyText, evidence: ['Members/' + ACAD + '/Propos/' + cardId + '.md'] })
     ok(partB.parsed && partB.parsed.ok === true, '前置(' + target + ')：R1 的 part 写入成功', partB.parsed && { code: partB.parsed.code, message: String(partB.parsed.message || '').slice(0, 200), hint: String(partB.parsed.hint || '').slice(0, 200) })
     await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target })
     await receipt(v5r, 'vibe_v5_paper', { action: 'review', target, member: ACAD, of: R1, deliverable: true, notes: '可交付' })
@@ -527,9 +527,11 @@ console.log('=== 6. TB-2772：final 检测到缺字 ⇒ ok:false + VMU_PAPER_GLY
   cpSync(join(REPO, 'vibe-math-vmu'), join(copyRoot, 'vibe-math-vmu'), { recursive: true })
   const kitCopy = join(copyRoot, 'vibe-math-vmu', 'kit', 'paper.js')
   const kitSrc = await readFile(kitCopy, 'utf8')
-  const guard = 'if (pdf && pdf.ok === true && pdf.glyphLossDetected === true) {'
-  ok(kitSrc.includes(guard), 'lamp-setup：拒字闸在 kit/paper.js 里按名字可定位')
-  await writeFile(kitCopy, kitSrc.split(guard).join('if (false) {'), 'utf8')
+  const guard = 'const glyphUncovered = !!(gateCompiled && gateCompiled.ok === true && gateCompiled.glyphLossDetected === true)'
+  ok(kitSrc.includes(guard), 'lamp-setup：字符门的谓词在 kit/paper.js 里按名字可定位')
+  let mutatedKit = kitSrc.split(guard).join('const glyphUncovered = false')
+  mutatedKit = mutatedKit.split('if (pdf && pdf.ok === true && pdf.glyphLossDetected === true) {').join('if (false) {')
+  await writeFile(kitCopy, mutatedKit, 'utf8')
   const lampV5r = await bootOf(pathToFileURL(join(copyRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(copyRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
   try {
     const lampKernel = lampV5r.handle.kernel
@@ -540,8 +542,8 @@ console.log('=== 6. TB-2772：final 检测到缺字 ⇒ ok:false + VMU_PAPER_GLY
     const lampCard = await receipt(lampV5r, 'vibe_v5_record_proposition', { id: 'tb2772-lamp', statement: '灯', value: 0.5, motive: '灯', p: 0.5 })
     ok(lampCard.parsed && lampCard.parsed.ok === true, 'lamp：副本里证据卡可写', lampCard.parsed && lampCard.parsed.code)
     await receipt(lampV5r, 'vibe_v5_paper', { action: 'start', target: lampTarget, participants: [ACAD, R1], format: 'both' })
-    await receipt(lampV5r, 'vibe_v5_paper', { action: 'part', target: lampTarget, member: ACAD, part: 'A 的第一部分', solution: '设 ⌊x⌋ ∉ A', evidence: ['Members/' + ACAD + '/Propos/tb2772-lamp.md'] })
-    await receipt(lampV5r, 'vibe_v5_paper', { action: 'part', target: lampTarget, member: R1, part: 'R1 的第二部分', solution: '补充：⌊x⌋', evidence: ['Members/' + ACAD + '/Propos/tb2772-lamp.md'] })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'part', target: lampTarget, member: ACAD, part: 'A 的第一部分', solution: '设 ⌊x⌋ ∉ A' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/tb2772-lamp.md'] })
+    await receipt(lampV5r, 'vibe_v5_paper', { action: 'part', target: lampTarget, member: R1, part: 'R1 的第二部分', solution: '补充：⌊x⌋' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/tb2772-lamp.md'] })
     await receipt(lampV5r, 'vibe_v5_paper', { action: 'advance', target: lampTarget })
     await receipt(lampV5r, 'vibe_v5_paper', { action: 'review', target: lampTarget, member: ACAD, of: R1, deliverable: true, notes: '可交付' })
     await receipt(lampV5r, 'vibe_v5_paper', { action: 'review', target: lampTarget, member: R1, of: ACAD, deliverable: true, notes: '可交付' })
@@ -572,8 +574,8 @@ console.log('=== 7. TB-2774：readReview / coverage / voidReviews 同一行不�
     await new Promise((resolve) => setTimeout(resolve, 200))
     const ev = ['Members/' + ACAD + '/Propos/' + cardId + '.md']
     await receipt(b, 'vibe_v5_paper', { action: 'start', target, participants: [ACAD, R1], format: 'both' })
-    await receipt(b, 'vibe_v5_paper', { action: 'part', target, member: ACAD, part: 'A 节', solution: 'A 的正文', evidence: ev })
-    await receipt(b, 'vibe_v5_paper', { action: 'part', target, member: R1, part: 'B 节', solution: 'B 的正文', evidence: ev })
+    await receipt(b, 'vibe_v5_paper', { action: 'part', target, member: ACAD, part: 'A 节', solution: 'A 的正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ev })
+    await receipt(b, 'vibe_v5_paper', { action: 'part', target, member: R1, part: 'B 节', solution: 'B 的正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ev })
     await receipt(b, 'vibe_v5_paper', { action: 'advance', target })
     await receipt(b, 'vibe_v5_paper', { action: 'review', target, member: ACAD, of: R1, deliverable: true, notes: 'ok' })
     await receipt(b, 'vibe_v5_paper', { action: 'review', target, member: R1, of: ACAD, deliverable: true, notes: 'ok' })
@@ -673,7 +675,7 @@ console.log('=== 7. TB-2774：readReview / coverage / voidReviews 同一行不�
     const TB2 = 'p2774b'
     await twoPartsAndReviews(B2, TB2, 'c2774b')
     // round 2, writing: replace ACAD's part text (its judged fingerprint WILL change)
-    const rew = await receipt(B2, 'vibe_v5_paper', { action: 'part', target: TB2, member: ACAD, part: 'A 节', solution: 'A 的新正文（已替换）', evidence: ['Members/' + ACAD + '/Propos/c2774b.md'] })
+    const rew = await receipt(B2, 'vibe_v5_paper', { action: 'part', target: TB2, member: ACAD, part: 'A 节', solution: 'A 的新正文（已替换）' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/c2774b.md'] })
     ok(rew.parsed && rew.parsed.ok === true, '前置：round 2 里替换 A 的正文', rew.parsed && (rew.parsed.code || rew.parsed.message))
     await receipt(B2, 'vibe_v5_paper', { action: 'advance', target: TB2 }) // writing → reviewing
     const advB = await receipt(B2, 'vibe_v5_paper', { action: 'advance', target: TB2 }) // reviewing → awaiting-editor? (r-1 must re-review)
@@ -711,8 +713,8 @@ console.log('=== 8. TB-2777 D-7：编译跑了但文档失败 ≠ 引擎缺席�
   ok(cardD.parsed && cardD.parsed.ok === true, '前置(D-7)：证据卡落库', cardD.parsed && cardD.parsed.code)
   await new Promise((resolve) => setTimeout(resolve, 200))
   await receipt(v5r, 'vibe_v5_paper', { action: 'start', target: TD, participants: [ACAD, R1], format: 'both' })
-  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD, member: ACAD, part: 'A 节', solution: 'D-7 的正文', evidence: ['Members/' + ACAD + '/Propos/tb2777-d7.md'] })
-  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD, member: R1, part: 'B 节', solution: 'D-7 的另一段', evidence: ['Members/' + ACAD + '/Propos/tb2777-d7.md'] })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD, member: ACAD, part: 'A 节', solution: 'D-7 的正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/tb2777-d7.md'] })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD, member: R1, part: 'B 节', solution: 'D-7 的另一段' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/tb2777-d7.md'] })
   await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: TD })
   await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD, member: ACAD, of: R1, deliverable: true, notes: 'ok' })
   await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD, member: R1, of: ACAD, deliverable: true, notes: 'ok' })
@@ -773,8 +775,8 @@ console.log('=== 10. TB-2781 D3：final{revise} 不编译 ⇒ 沿用本 run 最�
   await new Promise((resolve) => setTimeout(resolve, 200))
   const evD3 = ['Members/' + ACAD + '/Propos/tb2781-d3.md']
   await receipt(v5r, 'vibe_v5_paper', { action: 'start', target: TD3, participants: [ACAD, R1], format: 'both' })
-  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD3, member: ACAD, part: 'A 节', solution: 'D3 正文', evidence: evD3 })
-  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD3, member: R1, part: 'B 节', solution: 'D3 另一段', evidence: evD3 })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD3, member: ACAD, part: 'A 节', solution: 'D3 正文' + String.fromCharCode(10) + '证据等级：draft', evidence: evD3 })
+  await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: TD3, member: R1, part: 'B 节', solution: 'D3 另一段' + String.fromCharCode(10) + '证据等级：draft', evidence: evD3 })
   await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: TD3 })
   await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD3, member: ACAD, of: R1, deliverable: true, notes: 'ok' })
   await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: TD3, member: R1, of: ACAD, deliverable: true, notes: 'ok' })
@@ -818,8 +820,8 @@ console.log('=== 11. TB-2782 voteStaleness：票与定稿的先后可读（befor
   await new Promise((resolve) => setTimeout(resolve, 200))
   const evS = ['Members/' + ACAD + '/Propos/tb2782-stale.md']
   await receipt(A11, 'vibe_v5_paper', { action: 'start', target: 'p-stale', participants: [ACAD, R1], format: 'md' })
-  await receipt(A11, 'vibe_v5_paper', { action: 'part', target: 'p-stale', member: ACAD, part: 'A 节', solution: 'S 正文', evidence: evS })
-  await receipt(A11, 'vibe_v5_paper', { action: 'part', target: 'p-stale', member: R1, part: 'B 节', solution: 'S 另一段', evidence: evS })
+  await receipt(A11, 'vibe_v5_paper', { action: 'part', target: 'p-stale', member: ACAD, part: 'A 节', solution: 'S 正文' + String.fromCharCode(10) + '证据等级：draft', evidence: evS })
+  await receipt(A11, 'vibe_v5_paper', { action: 'part', target: 'p-stale', member: R1, part: 'B 节', solution: 'S 另一段' + String.fromCharCode(10) + '证据等级：draft', evidence: evS })
   await receipt(A11, 'vibe_v5_paper', { action: 'advance', target: 'p-stale' })
   await receipt(A11, 'vibe_v5_paper', { action: 'review', target: 'p-stale', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
   await receipt(A11, 'vibe_v5_paper', { action: 'review', target: 'p-stale', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
@@ -875,8 +877,9 @@ console.log('=== 12. TB-2782 evidenceGrades：draft/verified-by-citation/mechani
   ok(!!putLean && !!putLean.id && !!putMech && !!putMech.id, '前置：两张带机器裁决的卡写入记录面', { lean: putLean && putLean.id, mech: putMech && putMech.id })
   await new Promise((resolve) => setTimeout(resolve, 200))
   const evAll = ['Members/' + ACAD + '/Propos/grad-plain.md', 'Members/' + ACAD + '/Propos/' + String(putLean.id) + '.md', 'Members/' + ACAD + '/Propos/' + String(putMech.id) + '.md']
+  const bodyWithGrade = 'A 的正文。' + String.fromCharCode(10) + '证据等级：draft'
   await receipt(A12, 'vibe_v5_paper', { action: 'start', target: 'p-grades', participants: [ACAD, R1], format: 'md' })
-  await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: ACAD, part: 'A 节', solution: '带三种证据的正文', evidence: evAll })
+  await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: ACAD, part: 'A 节', solution: bodyWithGrade, evidence: evAll })
   await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: R1, part: 'B 节', solution: '没有证据指针的正文' })
   const stG = (await receipt(A12, 'vibe_v5_paper', { action: 'status', target: 'p-grades' })).parsed
   const eg = stG && stG.evidenceGrades
@@ -898,8 +901,13 @@ console.log('=== 12. TB-2782 evidenceGrades：draft/verified-by-citation/mechani
   eq(gMech && gMech.grade, 'mechanically-checked', '★★ 正：body.mechanicalCheck:true 的卡 = mechanically-checked')
   eq(gMech && gMech.source, 'body.mechanicalCheck:true', '★ 正：mech 等级点名它读的字段')
   eq(partB && partB.grade, 'draft', '★★ 正：没有证据指针的 part = draft')
-  eq(partB && partB.gradeSource, 'no-evidence-pointer', '★ 正：且 reason 是 no-evidence-pointer（具名缺席）')
-  ok(partA && partA.grade === 'lean-verified', '★★ 正：part 的等级取它证据里的最强等级（lean-verified）', partA && partA.grade)
+  eq(partB && partB.gradeSource, 'no-body-line', '★★ 正(TB-2786)：B 正文无等级行 ⇒ gradeSource:"no-body-line"')
+ok(partB && partB.bodyGradeLine === null, '★★ 正：bodyGradeLine 为 null（具名缺席，不拿卡片冒充）')
+  ok(partB && partB.fromCards && partB.fromCards.grade === 'draft', '★ 正：fromCards 同时给出卡片读数（无证据 ⇒ draft）')
+  eq(partA && partA.fromBody, 'draft', '★★ 正(TB-2786)：part 的正文等级行读作 fromBody:draft')
+eq(partA && partA.grade, 'draft', '★★ 正：part.grade 来自正文行（不是卡片）')
+eq(partA && partA.gradeSource, 'body-line', '★ 正：gradeSource 指名来源 body-line')
+eq(partA && partA.fromCards && partA.fromCards.grade, 'lean-verified', '★★ 正：卡片等级并列在 fromCards（与正文分开呈现）')
   const propLean = (eg && eg.propositions || []).filter((g) => g.cardId === (putLean && putLean.id))[0] || null
   ok(propLean && propLean.grade === 'lean-verified', '★ 正：propositions 也逐卡投影等级（同一事实另一视图）', propLean)
   // ★ LAMP(RED-worthy): a card carrying p:1 + proofState:"complete" but NO machine verdict stays DRAFT. A projector that
@@ -907,7 +915,7 @@ console.log('=== 12. TB-2782 evidenceGrades：draft/verified-by-citation/mechani
   // difference between reading the ledger and inventing a grade.
   const putProse = k12.records.put({ track: 'propositions', kind: 'proposition', title: 'prose-only', body: JSON.stringify({ statement: 'p=1 + complete but no warrant', p: 1, proofState: 'complete', proofRef: 'somewhere' }) })
   await new Promise((resolve) => setTimeout(resolve, 150))
-  const stG2 = (await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: R1, part: 'B 节', solution: '重写，带 prose-only 证据', evidence: ['Members/' + R1 + '/Propos/' + String(putProse.id) + '.md'] })).parsed
+  const stG2 = (await receipt(A12, 'vibe_v5_paper', { action: 'part', target: 'p-grades', member: R1, part: 'B 节', solution: '重写，带 prose-only 证据' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + R1 + '/Propos/' + String(putProse.id) + '.md'] })).parsed
   ok(stG2 && stG2.ok === true, '前置：R1 重写 part 并带上 prose-only 证据', stG2 && (stG2.code || stG2.message))
   // the paper-part row write is queued; let the fold catch up before reading the grade of the just-filed evidence
   await new Promise((resolve) => setTimeout(resolve, 300))
@@ -918,6 +926,217 @@ console.log('=== 12. TB-2782 evidenceGrades：draft/verified-by-citation/mechani
   eq(gProse && gProse.source, 'no-grade-source', '★★ 正：并点名 no-grade-source（prose 不是等级来源）')
   ok(gProse && gProse.facts && gProse.facts.p === 1 && gProse.facts.proofState === 'complete',
     '★ 正：facts 里带着 p/proofState 原文，读者能看见「哪些事实不足以升级」', gProse && gProse.facts)
+}
+
+// ── §13. TB-2785: final evaluates EVERY gate in one pass — the glyph gate is visible beside the others ────────────
+console.log('=== 13. TB-2785：final 一次评估全部门（gates[]），字符门与互审门同屏 ===')
+{
+  const NL = String.fromCharCode(10)
+  const gradeBody = '正文含表外字符 ⨀。' + NL + '证据等级：draft'
+  const glyphStub = async (request) => ({
+    ok: true, produced: true, engine: 'xelatex', pdfPath: join(request.outDir || '.', 'paper.pdf'), pdfBytes: 100,
+    pdfSha256: 'a'.repeat(64), argv: ['xelatex', String(request.sourceName || 'x.tex')],
+    triedEngines: [{ engine: 'xelatex', phase: 'compile' }], triedEnginesTotal: 1, triedEnginesTruncated: false,
+    logRead: true, logPath: 'fake.log', glyphLossDetected: true, missingCharacterCount: 1,
+    glyphsUnrepaired: [{ char: '⨀', u: 'U+2A00', count: 1, font: 'lmroman10-regular', where: '1' }],
+  })
+  const sabotageCrossReview = async (b, target) => {
+    // the paper reached awaiting-editor through a LEGIT flow; this re-files \"who was reviewed\" onto a non-participant and
+    // drops the state's review cache, so the FINAL's stricter cross-review gate must fail on durable rows (run 84's shape:
+    // the final gate refuses on the durable record while the paper is genuinely at awaiting-editor).
+    const kk = b.handle.kernel
+    const heads = kk.records.list({ track: 'paper', limit: 0 }).items || []
+    const stateRow = heads.filter((h) => h && String(h.title || '').endsWith('|' + target + '|state'))[0]
+    ok(!!stateRow, '前置(' + target + ')：paper-state 行在账上', !!stateRow)
+    const got = kk.records.get({ id: stateRow.id }); const full = got && got.record ? got.record : got
+    const body = JSON.parse(String((full && full.body) || '{}'))
+    body.reviews = {}
+    kk.records.put({ track: 'paper', kind: 'paper-state', title: stateRow.title, body: JSON.stringify(body) })
+    for (const member of [ACAD, R1, 'r-2']) {
+      const rows = heads.filter((h) => h && String(h.kind || '') === 'paper-review' && String(h.title || '').endsWith('|review|' + member))
+      if (rows.length === 0) continue
+      const nn = (v) => Number(String(v || '').split('-').pop() || 0)
+      const newest = rows.slice().sort((a, c) => (Number(c.updatedAt || 0) - Number(a.updatedAt || 0)) || (nn(c.id) - nn(a.id)))[0]
+      const g2 = kk.records.get({ id: newest.id }); const r2 = g2 && g2.record ? g2.record : g2
+      const rb = JSON.parse(String((r2 && r2.body) || '{}'))
+      rb.of = 'ghost'
+      kk.records.put({ track: 'paper', kind: 'paper-review', title: newest.title, body: JSON.stringify(rb) })
+    }
+    await new Promise((resolve) => setTimeout(resolve, 350))
+  }
+  const A13 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2785-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k13 = A13.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], ['r-2', 'member'], [OFFICE, 'member']]) await k13.members.hire({ id, slot })
+  const card13 = await receipt(A13, 'vibe_v5_record_proposition', { id: 'tb2785-c', statement: 'TB-2785 证据（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  ok(card13.parsed && card13.parsed.ok === true, '前置(TB-2785)：证据卡落库', card13.parsed && card13.parsed.code)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const ev13 = ['Members/' + ACAD + '/Propos/tb2785-c.md']
+  await receipt(A13, 'vibe_v5_paper', { action: 'start', target: 'p-gates', participants: [ACAD, R1], format: 'md' })
+  for (const m of [ACAD, R1]) await receipt(A13, 'vibe_v5_paper', { action: 'part', target: 'p-gates', member: m, part: m + ' 节', solution: gradeBody, evidence: ev13 })
+  await receipt(A13, 'vibe_v5_paper', { action: 'advance', target: 'p-gates' })
+  // only TWO cross-reviews (the third author did not review): the final's cross-review gate will fail
+  await receipt(A13, 'vibe_v5_paper', { action: 'review', target: 'p-gates', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(A13, 'vibe_v5_paper', { action: 'review', target: 'p-gates', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  await receipt(A13, 'vibe_v5_paper', { action: 'advance', target: 'p-gates' })
+  await sabotageCrossReview(A13, 'p-gates')
+  stubLatex(k13, { check: glyphStub })
+  const f13 = (await receipt(A13, 'vibe_v5_paper', { action: 'final', target: 'p-gates', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  eq(f13 && f13.ok, false, '★★ 正：多门失败 ⇒ final 仍拒绝（ok:false）')
+  ok(Array.isArray(f13 && f13.gates) && f13.gates.length >= 3, '★★ 正(TB-2785)：回执带 gates[]（逐门读数，不是只给第一个错）', f13 && f13.gates && f13.gates.map((g) => ({ name: g.name, ok: g.ok, code: g.code })))
+  const gateByName = (n) => (f13 && Array.isArray(f13.gates) ? f13.gates.filter((g) => g.name === n)[0] : null) || null
+  const crossG = gateByName('cross-review')
+  const glyphG = gateByName('glyph-coverage')
+  eq(crossG && crossG.ok, false, '★★ 正：互审门 ok:false（3 人只有 2 人审了别人的部分）')
+  eq(glyphG && glyphG.ok, false, '★★★ 正(TB-2785)：字符门与互审门【同屏】—— 不再是结构性不可达')
+  eq(glyphG && glyphG.code, 'VMU_PAPER_GLYPH_UNCOVERED', '★★ 正：字符门的 code 具名')
+  ok(glyphG && glyphG.detail && Array.isArray(glyphG.detail.glyphsUnrepaired) && glyphG.detail.glyphsUnrepaired.some((r) => r && r.char === '⨀'),
+    '★★ 正：字符门 detail 带 glyphsUnrepaired（含 ⨀ 与码位/次数/字体）', glyphG && glyphG.detail)
+  ok(Array.isArray(f13 && f13.glyphsUnrepaired) && f13.glyphsUnrepaired.some((r) => r && r.char === '⨀'),
+    '★★ 正：顶层也带 glyph 读数（读者不必只信 top code）')
+  ok(typeof (f13 && f13.primaryGate) === 'string' && f13.primaryGate === 'glyph-coverage', '★ 正：顶层 code 取优先级最高的失败门（glyph > cross-review）')
+  eq(f13 && f13.code, 'VMU_PAPER_GLYPH_UNCOVERED', '★★ 正：顶层 code 与该优先级一致')
+
+  // only-glyph scenario: every other gate passes, so the top-level code is the glyph code (TB-2772 behaviour kept)
+  const A13b = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2785b-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k13b = A13b.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k13b.members.hire({ id, slot })
+  const card13b = await receipt(A13b, 'vibe_v5_record_proposition', { id: 'tb2785-b', statement: 'TB-2785 只有字符问题（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const ev13b = ['Members/' + ACAD + '/Propos/tb2785-b.md']
+  await receipt(A13b, 'vibe_v5_paper', { action: 'start', target: 'p-onlyglyph', participants: [ACAD, R1], format: 'md' })
+  for (const m of [ACAD, R1]) await receipt(A13b, 'vibe_v5_paper', { action: 'part', target: 'p-onlyglyph', member: m, part: m + ' 节', solution: gradeBody, evidence: ev13b })
+  await receipt(A13b, 'vibe_v5_paper', { action: 'advance', target: 'p-onlyglyph' })
+  await receipt(A13b, 'vibe_v5_paper', { action: 'review', target: 'p-onlyglyph', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(A13b, 'vibe_v5_paper', { action: 'review', target: 'p-onlyglyph', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  await receipt(A13b, 'vibe_v5_paper', { action: 'advance', target: 'p-onlyglyph' })
+  stubLatex(k13b, { check: glyphStub })
+  const f13b = (await receipt(A13b, 'vibe_v5_paper', { action: 'final', target: 'p-onlyglyph', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  eq(f13b && f13b.code, 'VMU_PAPER_GLYPH_UNCOVERED', '★★ 正：只有字符问题 ⇒ 顶层 code 仍是 VMU_PAPER_GLYPH_UNCOVERED')
+  const gb = (f13b.gates || []).filter((g) => g.name === 'glyph-coverage')[0]
+  eq(gb && gb.ok, false, '★ 正：gates[] 里字符门失败')
+  ok((f13b.gates || []).filter((g) => g.name === 'cross-review' && g.ok === true).length === 1, '★ 正：互审门在同一次评估里 ok:true（同屏，不是短路）')
+
+  // ★ LAMP(RED-worthy): revert the gate pass to the OLD first-error shape (throw the cross-review error before the other
+  // gates are evaluated) on a COPY. The same scenario then answers with a receipt that carries NO gates[] and NO glyph
+  // readings — which is exactly the 84th-run shape, so the same-screen assertions above are load-bearing.
+  const lampRoot = await mkdtemp(join(__tmpRoot(), 'tb2785-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+  const kitP = join(lampRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kitS = await readFile(kitP, 'utf8')
+  const nark = "      try { requireCrossReview(state, 'final') } catch (e) { crossError = e }"
+  ok(kitS.includes(nark), 'lamp-setup：门评估块可定位')
+  await writeFile(kitP, kitS.split(nark).join("      try { requireCrossReview(state, 'final') } catch (e) { throw e }"), 'utf8')
+  const L13 = await bootOf(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lampRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const lk = L13.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], ['r-2', 'member'], [OFFICE, 'member']]) await lk.members.hire({ id, slot })
+  const cardL = await receipt(L13, 'vibe_v5_record_proposition', { id: 'tb2785-l', statement: 'TB-2785 lamp（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const evL = ['Members/' + ACAD + '/Propos/tb2785-l.md']
+  await receipt(L13, 'vibe_v5_paper', { action: 'start', target: 'p-lamp-gates', participants: [ACAD, R1], format: 'md' })
+  for (const m of [ACAD, R1]) await receipt(L13, 'vibe_v5_paper', { action: 'part', target: 'p-lamp-gates', member: m, part: m + ' 节', solution: gradeBody, evidence: evL })
+  await receipt(L13, 'vibe_v5_paper', { action: 'advance', target: 'p-lamp-gates' })
+  await receipt(L13, 'vibe_v5_paper', { action: 'review', target: 'p-lamp-gates', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(L13, 'vibe_v5_paper', { action: 'review', target: 'p-lamp-gates', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  await receipt(L13, 'vibe_v5_paper', { action: 'advance', target: 'p-lamp-gates' })
+  await sabotageCrossReview(L13, 'p-lamp-gates')
+  const fL = (await receipt(L13, 'vibe_v5_paper', { action: 'final', target: 'p-lamp-gates', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  ok(fL && typeof fL.code === 'string' && fL.code !== '' && !Array.isArray(fL.gates) && fL.glyphsUnrepaired === undefined,
+    '★★★ LAMP(RED-worthy)：退回「遇错即返」后同一场景的回执没有 gates[]、没有 glyph 读数（84 次原状）', fL && { code: fL.code, gates: Array.isArray(fL.gates), glyphs: fL.glyphsUnrepaired })
+  await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+}
+
+// ── §14. TB-2786: the BODY grade line is a final gate (cards never stand in for it) ──────────────────────────────
+console.log('=== 14. TB-2786：part 正文缺「证据等级」行 ⇒ final 具名拒 VMU_PAPER_GRADE_LINE_MISSING ===')
+{
+  const NL = String.fromCharCode(10)
+  const noGrade = '只写了正文，没有等级行。'
+  const withGrade = '正文。' + NL + '证据等级：draft'
+  const A14 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2786-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k14 = A14.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k14.members.hire({ id, slot })
+  const card14 = await receipt(A14, 'vibe_v5_record_proposition', { id: 'tb2786-c', statement: 'TB-2786 证据（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const ev14 = ['Members/' + ACAD + '/Propos/tb2786-c.md']
+  await receipt(A14, 'vibe_v5_paper', { action: 'start', target: 'p-gradeline', participants: [ACAD, R1], format: 'md' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'part', target: 'p-gradeline', member: ACAD, part: 'A 节', solution: withGrade, evidence: ev14 })
+  await receipt(A14, 'vibe_v5_paper', { action: 'part', target: 'p-gradeline', member: R1, part: 'B 节', solution: noGrade, evidence: ev14 })
+  await receipt(A14, 'vibe_v5_paper', { action: 'advance', target: 'p-gradeline' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'review', target: 'p-gradeline', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'review', target: 'p-gradeline', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'advance', target: 'p-gradeline' })
+  const st14 = (await receipt(A14, 'vibe_v5_paper', { action: 'status', target: 'p-gradeline' })).parsed
+  const parts14 = st14 && st14.evidenceGrades && st14.evidenceGrades.parts
+  const r1Part = (parts14 || []).filter((p) => p.member === R1)[0] || null
+  ok(r1Part && r1Part.bodyGradeLine === null && r1Part.gradeSource === 'no-body-line',
+    '★★ 正(TB-2786)：B 节正文无等级行 ⇒ bodyGradeLine:null + gradeSource:"no-body-line"', r1Part && { body: r1Part.bodyGradeLine, src: r1Part.gradeSource })
+  eq(r1Part && r1Part.grade, 'draft', '★★ 正：grade 也如实是 draft（不拿卡片等级冒充正文等级）')
+  const acadPart = (parts14 || []).filter((p) => p.member === ACAD)[0] || null
+  eq(acadPart && acadPart.fromBody, 'draft', '★ 正：A 节正文行读作 fromBody:draft')
+  const f14 = (await receipt(A14, 'vibe_v5_paper', { action: 'final', target: 'p-gradeline', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  eq(f14 && f14.code, 'VMU_PAPER_GRADE_LINE_MISSING', '★★★ 正(TB-2786)：任一部分缺正文等级行 ⇒ final 具名拒')
+  const gradeG = (f14.gates || []).filter((g) => g.name === 'evidence-grade-line')[0] || null
+  eq(gradeG && gradeG.ok, false, '★★ 正：gates[] 里 grade-line 门失败')
+  ok(gradeG && gradeG.detail && Array.isArray(gradeG.detail.missingSections) && gradeG.detail.missingSections.some((s) => s && String(s.member) === R1),
+    '★★ 正：拒收回执点名缺失的 section（member/title/recordId）', gradeG && gradeG.detail)
+  ok(String(f14 && f14.hint).includes('证据等级') && String(f14.hint).includes('draft') && String(f14.hint).includes('lean-verified'),
+    '★★ 正：hint 指出哪一节 + 四值词表 + 格式', f14 && f14.hint)
+  // fix R1's body (add the grade line) ⇒ final succeeds with a clean stub
+  await receipt(A14, 'vibe_v5_paper', { action: 'final', target: 'p-gradeline', member: ACAD, decision: 'revise', note: '补等级行' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'part', target: 'p-gradeline', member: R1, part: 'B 节', solution: withGrade.replace('正文。', '补上等级行。'), evidence: ev14 })
+  await receipt(A14, 'vibe_v5_paper', { action: 'advance', target: 'p-gradeline' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'review', target: 'p-gradeline', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'review', target: 'p-gradeline', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  await receipt(A14, 'vibe_v5_paper', { action: 'advance', target: 'p-gradeline' })
+  stubLatex(k14, { check: writeFakePdf })
+  const f14b = (await receipt(A14, 'vibe_v5_paper', { action: 'final', target: 'p-gradeline', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  ok(f14b && f14b.ok === true && f14b.final && f14b.final.finalized === true, '★★ 正：补上正文等级行后同一篇 final 成功（门不是不可满足的）', f14b && { code: f14b.code, final: f14b.final && f14b.final.finalized })
+
+  // ★ LAMP 1 (RED-worthy): neutralise the grade gate in a copy (`gradeMissing = []`) ⇒ the same missing-body-line paper
+  // finalises, i.e. the gate is what catches the 84th run's false premise.
+  const lamp2Root = await mkdtemp(join(__tmpRoot(), 'tb2786-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(lamp2Root, 'vibe-math-vmu'), { recursive: true })
+  const kit2 = join(lamp2Root, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kit2s = await readFile(kit2, 'utf8')
+  const mut = "const gradeMissing = gradeAudit.filter((g) => g.bodyGradeLine === null)"
+  ok(kit2s.includes(mut), 'lamp1-setup：grade 门可定位')
+  await writeFile(kit2, kit2s.split(mut).join('const gradeMissing = []'), 'utf8')
+  const L14 = await bootOf(pathToFileURL(join(lamp2Root, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lamp2Root, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const lk14 = L14.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await lk14.members.hire({ id, slot })
+  const cardL2 = await receipt(L14, 'vibe_v5_record_proposition', { id: 'tb2786-l', statement: 'TB-2786 lamp（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const evL2 = ['Members/' + ACAD + '/Propos/tb2786-l.md']
+  await receipt(L14, 'vibe_v5_paper', { action: 'start', target: 'p-lamp-grade', participants: [ACAD, R1], format: 'md' })
+  await receipt(L14, 'vibe_v5_paper', { action: 'part', target: 'p-lamp-grade', member: ACAD, part: 'A 节', solution: withGrade, evidence: evL2 })
+  await receipt(L14, 'vibe_v5_paper', { action: 'part', target: 'p-lamp-grade', member: R1, part: 'B 节', solution: noGrade, evidence: evL2 })
+  await receipt(L14, 'vibe_v5_paper', { action: 'advance', target: 'p-lamp-grade' })
+  await receipt(L14, 'vibe_v5_paper', { action: 'review', target: 'p-lamp-grade', member: ACAD, of: R1, deliverable: true, notes: 'ok' })
+  await receipt(L14, 'vibe_v5_paper', { action: 'review', target: 'p-lamp-grade', member: R1, of: ACAD, deliverable: true, notes: 'ok' })
+  await receipt(L14, 'vibe_v5_paper', { action: 'advance', target: 'p-lamp-grade' })
+  stubLatex(lk14, { check: writeFakePdf })
+  const fL2 = (await receipt(L14, 'vibe_v5_paper', { action: 'final', target: 'p-lamp-grade', member: ACAD, decision: 'deliverable', note: '定稿', body: '结论' })).parsed
+  ok(fL2 && fL2.ok === true && fL2.final && fL2.final.finalized === true,
+    '★★★ LAMP1(RED-worthy)：去掉正文等级门后，缺「证据等级」行的论文照样定稿（84 次假 PASS 的形状）—— 上面的具名拒有牙', fL2 && { code: fL2.code, finalized: fL2.final && fL2.final.finalized })
+  await rm(lamp2Root, { recursive: true, force: true }).catch(() => {})
+
+  // ★ LAMP 2 (RED-worthy): cards cannot stand in for the body line. A part with a lean-verified CARD but NO body line
+  // reports fromCards non-draft while fromBody/bodyGradeLine stay null — a projector that merged the two would call this
+  // part verified. This is the separation TB-2786 requires.
+  const A14c = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'tb2786c-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k14c = A14c.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k14c.members.hire({ id, slot })
+  const leanCard = k14c.records.put({ track: 'propositions', kind: 'proposition', title: 'lean-bodyless', body: JSON.stringify({ statement: 'lean pass, no body line', p: 1, leanConformance: true }) })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  await receipt(A14c, 'vibe_v5_paper', { action: 'start', target: 'p-bodyless', participants: [ACAD, R1], format: 'md' })
+  await receipt(A14c, 'vibe_v5_paper', { action: 'part', target: 'p-bodyless', member: ACAD, part: 'A 节', solution: noGrade, evidence: ['Members/' + ACAD + '/Propos/' + String(leanCard.id) + '.md'] })
+  const stC = (await receipt(A14c, 'vibe_v5_paper', { action: 'status', target: 'p-bodyless' })).parsed
+  const pc = (stC && stC.evidenceGrades && stC.evidenceGrades.parts || [])[0] || null
+  ok(pc && pc.fromBody === null && pc.bodyGradeLine === null && pc.gradeSource === 'no-body-line',
+    '★★ 正：无正文等级行 ⇒ fromBody/bodyGradeLine 都是 null（具名缺席）', pc && { fromBody: pc.fromBody, body: pc.bodyGradeLine })
+  ok(pc && pc.fromCards && pc.fromCards.grade === 'lean-verified',
+    '★★ 正：卡片读数并列在 fromCards（lean-verified）—— 但绝不冒充正文等级', pc && pc.fromCards)
+  ok(pc && pc.grade === 'draft' && pc.grade !== pc.fromCards.grade,
+    '★★★ LAMP2(RED-worthy)：正文等级仍是 draft（卡片 lean-verified 不合并进 grade）—— 合并两者的实现会被这条抓住', pc && { grade: pc.grade, fromCards: pc.fromCards.grade })
 }
 
 // A Windows kernel keeps a handle on the member tree for a moment after a claim, so cleanup is

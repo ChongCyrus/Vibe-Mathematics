@@ -186,8 +186,8 @@ test('RUN 212 §4 — the consult prediction is readable on a paper that is NOT 
     ok(card.ok === true, 'premise: evidence card', card)
     const ev = [String(card.recordId)]
     ok((await call('vibe_v5_paper', { action: 'start', participants: ['r-1', 'r-2'], target: 'paper-212' })).ok === true, 'premise: paper')
-    ok((await call('vibe_v5_paper', { action: 'part', target: 'paper-212', member: 'r-1', part: '第一节', body: '归纳法：前 n 个偶数之和等于 n(n+1)。', evidence: ev })).ok === true, 'premise: r-1 part')
-    ok((await call('vibe_v5_paper', { action: 'part', target: 'paper-212', member: 'r-2', part: '第二节', body: '逐项核验：n=1..5 成立。', evidence: ev })).ok === true, 'premise: r-2 part')
+    ok((await call('vibe_v5_paper', { action: 'part', target: 'paper-212', member: 'r-1', part: '第一节', body: ('归纳法：前 n 个偶数之和等于 n(n+1)。') + String.fromCharCode(10) + '证据等级：draft', evidence: ev })).ok === true, 'premise: r-1 part')
+    ok((await call('vibe_v5_paper', { action: 'part', target: 'paper-212', member: 'r-2', part: '第二节', body: ('逐项核验：n=1..5 成立。') + String.fromCharCode(10) + '证据等级：draft', evidence: ev })).ok === true, 'premise: r-2 part')
     ok(blockOf(await call('vibe_v5_paper', { action: 'advance', target: 'paper-212' }), 'advance').moved === true, 'premise: writing → reviewing')
     ok((await call('vibe_v5_paper', { action: 'review', target: 'paper-212', member: 'r-1', of: 'r-2', deliverable: true })).ok === true, 'premise: r-1 review')
     ok((await call('vibe_v5_paper', { action: 'review', target: 'paper-212', member: 'r-2', of: 'r-1', deliverable: true })).ok === true, 'premise: r-2 review')

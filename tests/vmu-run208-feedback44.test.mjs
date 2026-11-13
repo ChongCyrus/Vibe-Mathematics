@@ -68,7 +68,7 @@ test('RUN 208 — a word the caller gave must be refused or used, never dropped'
     ok(card.ok === true, '§1 premise: an evidence card exists', card)
     const started = await call('vibe_v5_paper', { action: 'start', target: 'paper-208', participants: ['r-1', 'r-2'] })
     ok(started.ok === true, '§1 premise: the paper starts with two participants', started)
-    const part = await call('vibe_v5_paper', { action: 'part', target: 'paper-208', member: 'r-1', part: 'r-1 的节', body: 'r-1 的解法', evidence: [card.recordId] })
+    const part = await call('vibe_v5_paper', { action: 'part', target: 'paper-208', member: 'r-1', part: 'r-1 的节', body: ('r-1 的解法') + String.fromCharCode(10) + '证据等级：draft', evidence: [card.recordId] })
     ok(part.ok === true, '§1 premise: r-1 writes a part', part)
     const adv = await call('vibe_v5_paper', { action: 'advance', target: 'paper-208' })
     ok(adv.ok === true && adv.advance && adv.advance.to === 'reviewing', '§1 premise: the paper is in reviewing', adv)
@@ -133,7 +133,7 @@ test('RUN 208 — a word the caller gave must be refused or used, never dropped'
     const card = await call('vibe_v5_record_proposition', { statement: 'run208 §4 命题：n + n = 2n', value: 1, motive: '算术', p: 0.9, member: 'r-acad' })
     await call('vibe_v5_paper', { action: 'start', target: 'paper-208b', participants: ['r-1', 'r-2'] })
     for (const m of ['r-1', 'r-2']) {
-      const p = await call('vibe_v5_paper', { action: 'part', target: 'paper-208b', member: m, part: m + ' 的节', body: m + ' 的解法', evidence: [card.recordId] })
+      const p = await call('vibe_v5_paper', { action: 'part', target: 'paper-208b', member: m, part: m + ' 的节', body: (m + ' 的解法') + String.fromCharCode(10) + '证据等级：draft', evidence: [card.recordId] })
       ok(p.ok === true, '§4 premise: ' + m + ' writes a part', p)
     }
     const a1 = await call('vibe_v5_paper', { action: 'advance', target: 'paper-208b' })

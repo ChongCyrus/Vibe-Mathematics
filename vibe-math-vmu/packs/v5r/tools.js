@@ -6822,7 +6822,7 @@ function projectPdfBlock(pdf, target) {
 const PAPER_OK_MEANS = 'ok:true means the REQUEST was accepted and executed; it does NOT mean the paper is done. ★ `complete` is NOT ONE QUESTION across these doors: on `status` and `render` it asks whether the four ARCHIVE ROWS (md/tex/meta/pdf) are NAMED (on render it is the same value as `renderOk`); on `final` it asks whether the finalisation RAN and the pdf FILE exists. Read `completeMeans` on the receipt you hold instead of carrying the word between doors, and read `renderOk` (render), `missing` (what this request needed and did not get), `archiveArtifacts` (the row set under its own name) and `toolchainAbsent` (what the MACHINE lacks). `ok:true` with `complete:false` is a normal reading — e.g. a finalisation on a machine with no LaTeX.'
 
 const EVIDENCE_GRADE_RANK = Object.freeze({ draft: 0, 'verified-by-citation': 1, 'mechanically-checked': 2, 'lean-verified': 3 })
-const EVIDENCE_GRADES_MEANS = 'evidenceGrades projects the evidence grade the mechanism can ACTUALLY support for each part and each proposition: "draft" (no grade source on file), "verified-by-citation" (a verified-track row names this card as its source, written by the single writer promoteVerified), "mechanically-checked" (the card body carries an explicit machine-check verdict), "lean-verified" (the card body carries a PASSED Lean verdict). Every row names the field/source it read; a grade is never inferred from p or from prose, and a card with no grade source stays "draft" — an honest absent grade, not a fabricated promotion. This is a READ of the existing ledger, never a new judgement: to raise a grade, use the mechanism that writes it (debate/promoteVerified, a Lean pass, the machine-check writer), then read this face again.'
+const EVIDENCE_GRADES_MEANS = 'evidenceGrades keeps TWO readings apart, one per source: `fromBody`/`bodyGradeLine` is the NAMED grade line in the part BODY (the ONLY reading a finalisation may rely on — TB-2786), while `fromCards` is what the evidence cards can support (a separate reading, never a substitute for the body line). `grade`/`gradeSource` answer "what does the BODY say": present ⇒ "body-line", absent ⇒ "no-body-line" (and `bodyGradeLine:null`). The card grades are "draft" until a verified row, a machine-check verdict or a passed Lean run writes one; a card grade is never promoted from p/proofState prose, and a card grade never stands in for a missing body line.'
 /** TB-2782: one evidence pointer -> the grade the ledger can support, with the source that says so. */
 function evidenceGradeOfPointer (kernel, pointer) {
   const raw = String(pointer === undefined || pointer === null ? '' : pointer)
@@ -6852,20 +6852,21 @@ function evidenceGradeOfPointer (kernel, pointer) {
   return { evidence: raw, cardId: id, track: facts.track, grade: 'draft', source: 'no-grade-source', facts,
     why: 'no verified row, no machine-check verdict and no Lean pass on file: this card is DRAFT until one of those mechanisms writes a grade (an unverified p/proofState is not a grade)' }
 }
-function evidenceGradesOf (kernel, state) {
+function evidenceGradesOf (kernel, state, paper) {
   const st = state && typeof state === 'object' ? state : null
   const target = st && st.target !== undefined && st.target !== null ? String(st.target) : null
   const rawParts = st && st.parts && typeof st.parts === 'object' ? st.parts : {}
-  // the EVIDENCE lives in the durable paper-part ROW body (kit's recordPart), not in the state slot — read the row, not a
-  // copy, so the grade is of what was actually filed.
+  // the BODY grade line comes from the ONE kit reader (the same one the final gate uses): no second implementation.
+  const audit = (() => {
+    try { return paper && typeof paper.gradeLinesOfState === 'function' ? paper.gradeLinesOfState(st) : [] } catch (e) { return [] }
+  })()
+  const auditOf = (member) => (Array.isArray(audit) ? audit.filter((a) => a && String(a.member) === String(member))[0] : null) || null
   let heads = []
   try { const got = kernel && kernel.records && typeof kernel.records.list === 'function' ? kernel.records.list({ track: 'paper', limit: 0 }) : null; heads = Array.isArray(got && got.items) ? got.items : [] } catch (e) { heads = [] }
   const partEvidenceOf = (member) => {
     const suffix = '|part|' + String(member)
     const rows = heads.filter((h) => h && String(h.kind || '') === 'paper-part' && String(h.title || '').endsWith(suffix))
     if (rows.length === 0) return []
-    // same-instant writes tie on updatedAt (a fixed test clock / a fast turn), so the id number breaks the tie: ids are
-    // minted strictly increasing, and the newest row is the one that carries the evidence just filed.
     const idNum = (v) => Number(String(v || '').split('-').pop() || 0)
     const newest = rows.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0]
     try {
@@ -6887,14 +6888,27 @@ function evidenceGradesOf (kernel, state) {
       if (!prev || EVIDENCE_GRADE_RANK[g.grade] > EVIDENCE_GRADE_RANK[prev.grade]) props.set(g.cardId, g)
     }
     const strongest = graded.reduce((best, g) => (best === null || EVIDENCE_GRADE_RANK[g.grade] > EVIDENCE_GRADE_RANK[best.grade] ? g : best), null)
+    const auditEntry = auditOf(member)
+    const bodyGradeLine = auditEntry && auditEntry.bodyGradeLine ? auditEntry.bodyGradeLine : null
+    const fromCards = strongest === null
+      ? { grade: 'draft', source: 'no-evidence-pointer', evidenceCount: evidence.length }
+      : { grade: strongest.grade, source: strongest.source, cardId: strongest.cardId, evidenceCount: evidence.length }
     parts.push({ member: String(member), part: slot && slot.title !== undefined ? slot.title : null,
       evidenceCount: evidence.length,
-      grade: strongest === null ? 'draft' : strongest.grade,
-      gradeSource: strongest === null ? 'no-evidence-pointer' : strongest.source,
+      bodyGradeLine,
+      fromBody: bodyGradeLine === null ? null : bodyGradeLine.grade,
+      fromCards,
+      grade: bodyGradeLine === null ? 'draft' : bodyGradeLine.grade,
+      gradeSource: bodyGradeLine === null ? 'no-body-line' : 'body-line',
       evidence: graded,
-      why: strongest === null ? 'this part files no evidence pointer, so the only honest grade is draft' : null })
+      why: bodyGradeLine === null
+        ? 'the part BODY carries no named grade line (bodyGradeLine:null) — the cards may carry grades (see fromCards), but a card grade is NOT a body line and cannot stand in for one'
+        : null })
   }
-  return { grades: ['draft', 'verified-by-citation', 'mechanically-checked', 'lean-verified'], target, parts, propositions: Array.from(props.values()), means: EVIDENCE_GRADES_MEANS }
+  return { grades: ['draft', 'verified-by-citation', 'mechanically-checked', 'lean-verified'], target,
+    parts, propositions: Array.from(props.values()),
+    bodyLineFormat: 'one line in each part body: 证据等级：draft（or verified-by-citation / mechanically-checked / lean-verified）',
+    means: EVIDENCE_GRADES_MEANS }
 }
 
 async function toolPaper(args = {}, { kernel } = {}) {
@@ -7064,7 +7078,7 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
         // ★★★ TB-2782 (RUN 83 attempt-1): the evidence grades a reader like r-acad asked for, projected from the existing ledger
-        evidenceGrades: evidenceGradesOf(kernel, got && got.state),
+        evidenceGrades: evidenceGradesOf(kernel, got && got.state, paper),
         // ★★★ TB-2713 (RUN 76 / A5, MEASURED): round 2's `deliverable:true` votes were read as stale on round 3, and no
         // receipt said which members a round boundary had invalidated. The reading now travels on the READ face too — and
         // it is the SAME object the advance door prints: `paper.perRoundReviewCoverage` owns the only arithmetic, this line
@@ -7496,6 +7510,47 @@ async function toolPaper(args = {}, { kernel } = {}) {
         note: str(args.note || ''),
         conclusion: str(args.conclusion || args.body || ''),
       })
+      // ★★★ TB-2785 / TB-2786 (RUN 84 attempt-1, audit7 N2/N3): FINAL EVALUATES EVERY GATE AND REPORTS THEM TOGETHER.
+      // The kit now returns { ok:false, gates:[{name,ok,code,detail}], primaryGate, code } instead of stopping at the first
+      // failing gate — so the character gate is visible on the same receipt as the cross-review/grade/consult gates. This
+      // projection keeps the receipt's top-level glyph readings when the glyph gate failed even if another gate holds the
+      // top code: a reader must not have to dig into gates[] to learn that the PDF lost characters.
+      if (finalized && finalized.ok === false && Array.isArray(finalized.gates)) {
+        const gates = finalized.gates
+        const glyphGate = gates.filter((g) => g && g.name === 'glyph-coverage')[0] || null
+        const glyphFailed = !!(glyphGate && glyphGate.ok === false)
+        const gradeGate = gates.filter((g) => g && g.name === 'evidence-grade-line')[0] || null
+        const crossGate = gates.filter((g) => g && g.name === 'cross-review')[0] || null
+        const consultGateRead = gates.filter((g) => g && g.name === 'office-consult')[0] || null
+        return { ok: false, tool, action,
+          code: finalized.code === undefined ? null : finalized.code,
+          primaryGate: finalized.primaryGate === undefined ? null : finalized.primaryGate,
+          gatePriority: Array.isArray(finalized.gatePriority) ? finalized.gatePriority.slice() : null,
+          gates: gates.map((g) => ({ name: g.name, ok: g.ok === true, code: g.code === undefined ? null : g.code, detail: g.detail === undefined ? null : g.detail, means: g.means === undefined ? null : g.means })),
+          message: finalized.message === undefined ? null : finalized.message,
+          hint: finalized.hint === undefined ? null : finalized.hint,
+          target: finalized.target === undefined ? target : finalized.target,
+          stage: finalized.stage === undefined ? null : finalized.stage,
+          returned: finalized.returned === undefined ? null : finalized.returned,
+          finalized: false,
+          rolledBack: finalized.rolledBack === undefined ? null : finalized.rolledBack,
+          reviseAvailable: finalized.reviseAvailable !== false,
+          // the glyph readings travel at TOP level whenever the glyph gate failed (TB-2772 behaviour preserved)
+          ...(glyphFailed ? { glyphLossDetected: true,
+            missingCharacterCount: glyphGate.detail && glyphGate.detail.missingCharacterCount !== undefined ? glyphGate.detail.missingCharacterCount : null,
+            glyphsUnrepaired: glyphGate.detail && Array.isArray(glyphGate.detail.glyphsUnrepaired) ? glyphGate.detail.glyphsUnrepaired : [],
+            glyphLossCode: 'VMU_PAPER_GLYPH_UNCOVERED',
+            logPath: glyphGate.detail && glyphGate.detail.logPath !== undefined ? glyphGate.detail.logPath : null } : {}),
+          // grade-line specifics named on the face (the refusal that catches the 84th run's false premise)
+          ...(gradeGate && gradeGate.ok === false ? { gradeLineMissing: gradeGate.detail && Array.isArray(gradeGate.detail.missingSections) ? gradeGate.detail.missingSections : [] } : {}),
+          ...(crossGate && crossGate.ok === false ? { crossReviewBlocked: true } : {}),
+          ...(consultGateRead && consultGateRead.ok === false ? { officeConsultBlocked: true } : {}),
+          final: { ok: false, finalized: false, code: finalized.code === undefined ? null : finalized.code,
+            primaryGate: finalized.primaryGate === undefined ? null : finalized.primaryGate,
+            gates: gates.map((g) => ({ name: g.name, ok: g.ok === true, code: g.code === undefined ? null : g.code })),
+            means: finalized.means === undefined ? null : finalized.means },
+          means: finalized.means === undefined ? null : finalized.means }
+      }
       // ★★★ TB-2772 (RUN 82 attempt-1): A PDF THAT DROPPED GLYPHS IS NOT A DELIVERABLE. The kit rolled the
       // finalisation back to awaiting-editor and returned a NAMED refusal; this face hands the caller `ok:false` + the
       // code + the glyph rows + the literal rewrite advice, so the loss is never delivered silently. No override.
@@ -7561,6 +7616,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
       ]
       return { ok: true, tool, action,
         okMeans: PAPER_OK_MEANS,
+        // ★ TB-2785 follow-up (final11): the successful final keeps the ONE consult reading at TOP level (the field the
+        // office-consult suite has always read) and prints the gates it passed, so "question answered" is auditable from
+        // the same receipt without digging into final.consult.
+        consult: finalized.consult ? { armed: finalized.consult.armed === true, satisfiedBy: finalized.consult.satisfiedBy || null,
+          answeredBy: finalized.consult.answeredBy || null, requestId: finalized.consult.requestId || null,
+          note: finalized.consult.note || null } : null,
+        gates: Array.isArray(finalized.gates) ? finalized.gates.map((g) => ({ name: g.name, ok: g.ok === true, code: g.code === undefined ? null : g.code, detail: g.detail === undefined ? null : g.detail })) : null,
+        gatePriority: Array.isArray(finalized.gatePriority) ? finalized.gatePriority.slice() : null,
         complete: finComplete,
         completeMeans: finCompleteMeans,
         unfinished: finUnfinished,

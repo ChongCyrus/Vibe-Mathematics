@@ -299,7 +299,7 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   ok(mk && mk.ok === true, '前提：证据卡 rec-s155 写好', mk && (mk.code || mk.ok))
   await call(s2.specs, 'vibe_v5_paper', { action: 'start', target: 'p6', participants: ['r-1', 'r-2'] })
   for (const m of ['r-1', 'r-2']) {
-    const p = await call(s2.specs, 'vibe_v5_paper', { action: 'part', target: 'p6', member: m, part: m + ' 的标题', body: String(m) + ' 的解法', evidence: ['rec-s155'] })
+    const p = await call(s2.specs, 'vibe_v5_paper', { action: 'part', target: 'p6', member: m, part: m + ' 的标题', body: String(m) + ' 的解法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['rec-s155'] })
     ok(p && p.ok === true, '前提：' + m + ' 的 part 写好（裸记录 id 作证据）', p && (p.code || p.ok))
   }
   await call(s2.specs, 'vibe_v5_paper', { action: 'advance', target: 'p6' })
@@ -333,7 +333,7 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   const mk3 = await call(s3.specs, 'vibe_v5_record_proposition', { id: 'rec-s156', title: '证据卡', statement: 'n + n = 2n', value: 0.9, motive: '算术', p: 0.9, member: 'r-chair' })
   ok(mk3 && mk3.ok === true, '前提：证据卡 rec-s156 写好')
   await call(s3.specs, 'vibe_v5_paper', { action: 'start', target: 'p7', participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) await call(s3.specs, 'vibe_v5_paper', { action: 'part', target: 'p7', member: m, part: m + ' 的标题', body: String(m) + ' 的解法', evidence: ['rec-s156'] })
+  for (const m of ['r-1', 'r-2']) await call(s3.specs, 'vibe_v5_paper', { action: 'part', target: 'p7', member: m, part: m + ' 的标题', body: String(m) + ' 的解法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['rec-s156'] })
   await call(s3.specs, 'vibe_v5_paper', { action: 'advance', target: 'p7' })
   for (const m of ['r-1', 'r-2']) await call(s3.specs, 'vibe_v5_paper', { action: 'review', target: 'p7', member: m, deliverable: true, comments: '可交付' })
   await call(s3.specs, 'vibe_v5_paper', { action: 'advance', target: 'p7' })
@@ -444,7 +444,7 @@ console.log('§6 审计小账：G9 的拒绝在工具回执上就带着 target�
   const mk = await call(specs, 'vibe_v5_record_proposition', { id: 'rec-s157', title: '证据卡', statement: 'n + n = 2n', value: 0.9, motive: '算术', p: 0.9, member: 'r-chair' })
   ok(mk && mk.ok === true, '前提：证据卡 rec-s157 写好')
   await call(specs, 'vibe_v5_paper', { action: 'start', target: 'p8', participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) await call(specs, 'vibe_v5_paper', { action: 'part', target: 'p8', member: m, part: m + ' 的标题', body: String(m) + ' 的解法', evidence: ['rec-s157'] })
+  for (const m of ['r-1', 'r-2']) await call(specs, 'vibe_v5_paper', { action: 'part', target: 'p8', member: m, part: m + ' 的标题', body: String(m) + ' 的解法' + String.fromCharCode(10) + '证据等级：draft', evidence: ['rec-s157'] })
   await call(specs, 'vibe_v5_paper', { action: 'advance', target: 'p8' })
   for (const m of ['r-1', 'r-2']) await call(specs, 'vibe_v5_paper', { action: 'review', target: 'p8', member: m, deliverable: true, comments: '可交付' })
   await call(specs, 'vibe_v5_paper', { action: 'advance', target: 'p8' })

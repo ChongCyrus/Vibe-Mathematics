@@ -64,7 +64,7 @@ const toAwaitingEditor = async (target, { onReviewing = null, refile = null } = 
     if (st.status === 'awaiting-editor') return st
     if (st.status === 'writing' && refile !== null) {
       for (const [member, item] of Object.entries(refile)) {
-        await paper.recordPart({ target, member, title: item.title, solution: item.solution, evidence: item.evidence })
+        await paper.recordPart({ target, member, title: item.title, solution: (item.solution) + String.fromCharCode(10) + '证据等级：draft', evidence: item.evidence })
       }
     }
     if (st.status === 'reviewing' && typeof onReviewing === 'function') await onReviewing(st)
@@ -78,8 +78,8 @@ console.log('§1 F3 — self-review is refused BY NAME (the author is not a seco
 {
   const T = 'self-review'
   await paper.start({ target: T, participants: ['r-1', 'r-2'] })
-  await paper.recordPart({ target: T, member: 'r-1', title: '上界', solution: '归纳法证明上界。', evidence: ['r-1 的命题卡'] })
-  await paper.recordPart({ target: T, member: 'r-2', title: '下界', solution: '构造反例。', evidence: ['r-2 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-1', title: '上界', solution: ('归纳法证明上界。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-2', title: '下界', solution: ('构造反例。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的命题卡'] })
   await paper.advance({ target: T })
   const self = await thrown(() => paper.recordReview({ target: T, member: 'r-1', of: 'r-1', deliverable: true }))
   ok(self.code === 'VMU_INVALID_ARGUMENT', 'the code is VMU_INVALID_ARGUMENT', self)
@@ -96,7 +96,7 @@ console.log('§2 F3 — a single participant is refused at the cross-review gate
 {
   const T = 'single-member'
   await paper.start({ target: T, participants: ['r-1'] })
-  await paper.recordPart({ target: T, member: 'r-1', title: '唯一的正文', solution: '一个人写的。', evidence: ['r-1 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-1', title: '唯一的正文', solution: ('一个人写的。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡'] })
   await paper.advance({ target: T })
   // ★★ RUN 167 (FEEDBACK14 F6): 旧写法是「靠轮次上限走到 awaiting-editor，再在 final 拒」。那不是一条合法的路：
   // 它把「没有人互审」变成「编辑器环节的债权」。现在推进到互审闸就具名拒，状态留在 reviewing。
@@ -120,8 +120,8 @@ console.log('§3 F3 — a paper with only ONE distinct cross-reviewer is refused
 {
   const T = 'one-reviewer'
   await paper.start({ target: T, participants: ['r-1', 'r-2'] })
-  await paper.recordPart({ target: T, member: 'r-1', title: 'p1', solution: '正文一。', evidence: ['r-1 的命题卡'] })
-  await paper.recordPart({ target: T, member: 'r-2', title: 'p2', solution: '正文二。', evidence: ['r-2 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-1', title: 'p1', solution: ('正文一。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-2', title: 'p2', solution: ('正文二。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的命题卡'] })
   await paper.advance({ target: T })
   await paper.recordReview({ target: T, member: 'r-1', of: 'r-2', deliverable: true })
   await paper.recordReview({ target: T, member: 'r-2', of: 'r-1', deliverable: false, comments: '还缺一步' })
@@ -140,13 +140,19 @@ console.log('§3 F3 — a paper with only ONE distinct cross-reviewer is refused
   const recorded = Object.keys(st.reviews || {})
   ok(recorded.length === 1 && recorded[0] === 'r-1', 'exactly ONE reviewer is on record (the fixture is the defect)', recorded)
   const fin = await thrown(() => paper.recordFinal({ target: T, member: 'r-chair', decision: 'deliverable' }))
-  ok(fin.code === 'VMU_INVALID_ARGUMENT', 'finalise is refused with VMU_INVALID_ARGUMENT', fin)
-  ok(/互审必须由两位不同的/.test(fin.message) && /只有 1 位审了别人的部分/.test(fin.message),
-    'the message says how many distinct reviewers reviewed somebody else, and that two are required', fin.message)
-  ok(fin.error && fin.error.required === 2 && String(fin.error.where) === 'final',
-    'the refusal carries {where:"final", required:2}', fin.error && { where: fin.error.where, required: fin.error.required })
-  ok(fin.error && JSON.stringify(fin.error.crossReviewers) === '["r-1"]',
-    'the refusal names the reviewer it counted', fin.error && fin.error.crossReviewers)
+  // TB-2785 (final11b): a gate-blocked final now ANSWERS with a receipt (it does not throw), so `thrown()` wraps it as
+  // {code:null, out:receipt}. Read the receipt, never the (absent) thrown error.
+  const refusal = fin.out || fin
+  ok(refusal.code === 'VMU_INVALID_ARGUMENT', 'finalise is refused with VMU_INVALID_ARGUMENT', refusal)
+  ok(/互审必须由两位不同的/.test(refusal.message) && /只有 1 位审了别人的部分/.test(refusal.message),
+    'the message says how many distinct reviewers reviewed somebody else, and that two are required', refusal.message)
+  // ★ TB-2785 (final11b): a gate-blocked final answers with gates[] (not a thrown error). The SAME facts live in the
+  // cross-review gate's detail — where:'final', required:2, crossReviewers — so the assertions keep their semantics.
+  const crossGate = (Array.isArray(refusal.gates) ? refusal.gates : []).filter((g) => g && g.name === 'cross-review')[0] || null
+  ok(crossGate && crossGate.ok === false && crossGate.detail && crossGate.detail.required === 2 && String(crossGate.detail.where) === 'final',
+    'the refusal carries {where:"final", required:2} (in gates[] cross-review detail)', crossGate && crossGate.detail)
+  ok(crossGate && crossGate.detail && JSON.stringify(crossGate.detail.crossReviewers) === '["r-1"]',
+    'the refusal names the reviewer it counted (in gates[] cross-review detail)', crossGate && crossGate.detail && crossGate.detail.crossReviewers)
 }
 
 // ── §4 F3 — the happy path: two DISTINCT reviewers, then the chair finalises ──────────────────────────────────────
@@ -154,8 +160,8 @@ console.log('§4 F3 — two distinct cross-reviewers: the paper advances and the
 {
   const T = 'two-reviewers'
   await paper.start({ target: T, participants: ['r-1', 'r-2'] })
-  await paper.recordPart({ target: T, member: 'r-1', title: '上界', solution: '归纳法。', evidence: ['r-1 的命题卡'] })
-  await paper.recordPart({ target: T, member: 'r-2', title: '下界', solution: '反例。', evidence: ['r-2 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-1', title: '上界', solution: ('归纳法。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-2', title: '下界', solution: ('反例。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的命题卡'] })
   await paper.advance({ target: T })
   await paper.recordReview({ target: T, member: 'r-1', of: 'r-2', deliverable: true })
   await paper.recordReview({ target: T, member: 'r-2', of: 'r-1', deliverable: true })
@@ -174,7 +180,7 @@ console.log('§5 F4 — finalise refuses with the SAME code the render gate uses
   const T = 'no-evidence'
   await paper.start({ target: T, participants: ['r-1', 'r-2'] })
   await paper.recordPart({ target: T, member: 'r-1', title: '有正文没有证据的一节', solution: '这一节只有正文。' })
-  await paper.recordPart({ target: T, member: 'r-2', title: '有证据的一节', solution: '这一节有证据。', evidence: ['r-2 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-2', title: '有证据的一节', solution: ('这一节有证据。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的命题卡'] })
   const st = await toAwaitingEditor(T, {
     onReviewing: async () => {
       const cur = paper.state(T).state
@@ -218,8 +224,8 @@ console.log('§6 F4 — with evidence on every part the same flow finalises')
 {
   const T = 'with-evidence'
   await paper.start({ target: T, participants: ['r-1', 'r-2'] })
-  await paper.recordPart({ target: T, member: 'r-1', title: '上界', solution: '归纳法。', evidence: ['r-1 的命题卡'] })
-  await paper.recordPart({ target: T, member: 'r-2', title: '下界', solution: '反例。', evidence: ['r-2 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-1', title: '上界', solution: ('归纳法。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的命题卡'] })
+  await paper.recordPart({ target: T, member: 'r-2', title: '下界', solution: ('反例。') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的命题卡'] })
   await paper.advance({ target: T })
   await paper.recordReview({ target: T, member: 'r-1', of: 'r-2', deliverable: true })
   await paper.recordReview({ target: T, member: 'r-2', of: 'r-1', deliverable: true })

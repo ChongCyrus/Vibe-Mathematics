@@ -134,7 +134,7 @@ try {
     // to carry evidence — and the part face resolves each evidence pointer against the records face the moment the part is
     // written (ROUND 95). So the fixture writes a real proposition card first and cites the pointer it produced, instead of
     // a decorative string that no record backs.
-    action: 'part', target: T, member: ACAD, part: '第一部分', solution: '测试用的解法正文', evidence: ['Members/' + ACAD + '/Propos/p-pc1.md'],
+    action: 'part', target: T, member: ACAD, part: '第一部分', solution: ('测试用的解法正文') + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/p-pc1.md'],
   })
   ok(part.parsed && part.parsed.ok === true && part.parsed.part && part.parsed.part.ok === true,
     '★ 正：part 记下一份写作（参与者在写）', part.parsed && part.parsed.part && part.parsed.part.code)

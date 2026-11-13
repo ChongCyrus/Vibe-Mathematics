@@ -118,8 +118,8 @@ function parseCalls (hint) {
   const ev2 = b.evidenceRow('a1-2')
   const start = await b.paper('start', { target: 'a1', title: 'run 79 binding', participants: ['r-1', 'r-2'] })
   ok(start.receipt && start.receipt.started && start.receipt.started.ok === true, '§A1 fixture: paper a1 starts', CODE(start))
-  const p1 = await b.paper('part', { target: 'a1', member: 'r-1', part: 'r-1 part', body: 'A1 first text of r-1', evidence: [ev1.id] })
-  const p2 = await b.paper('part', { target: 'a1', member: 'r-2', part: 'r-2 part', body: 'A1 first text of r-2', evidence: [ev2.id] })
+  const p1 = await b.paper('part', { target: 'a1', member: 'r-1', part: 'r-1 part', body: 'A1 first text of r-1' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev1.id] })
+  const p2 = await b.paper('part', { target: 'a1', member: 'r-2', part: 'r-2 part', body: 'A1 first text of r-2' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev2.id] })
   ok(p1.refused === false && p2.refused === false, '§A1 fixture: both parts are filed', CODE(p1) || CODE(p2))
   const adv1 = await b.paper('advance', { target: 'a1' })
   ok(adv1.refused === false && adv1.receipt.advance.to === 'reviewing', '§A1 fixture: the paper enters reviewing', adv1.receipt && adv1.receipt.advance)
@@ -145,8 +145,8 @@ function parseCalls (hint) {
   const ev1 = b.evidenceRow('a2-1')
   const ev2 = b.evidenceRow('a2-2')
   await b.paper('start', { target: 'a2', title: 'run 79 round boundary', participants: ['r-1', 'r-2'] })
-  await b.paper('part', { target: 'a2', member: 'r-1', part: 'r-1 part', body: 'A2 round-1 text of r-1', evidence: [ev1.id] })
-  await b.paper('part', { target: 'a2', member: 'r-2', part: 'r-2 part', body: 'A2 round-1 text of r-2', evidence: [ev2.id] })
+  await b.paper('part', { target: 'a2', member: 'r-1', part: 'r-1 part', body: 'A2 round-1 text of r-1' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev1.id] })
+  await b.paper('part', { target: 'a2', member: 'r-2', part: 'r-2 part', body: 'A2 round-1 text of r-2' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev2.id] })
   const fp1 = (await b.paper('status', { target: 'a2' })).receipt.paper.parts['r-1'].fingerprint
   const fp2 = (await b.paper('status', { target: 'a2' })).receipt.paper.parts['r-2'].fingerprint
   const adv1 = await b.paper('advance', { target: 'a2' })
@@ -198,8 +198,8 @@ function parseCalls (hint) {
   const ev1 = b.evidenceRow('a2b-1')
   const ev2 = b.evidenceRow('a2b-2')
   await b.paper('start', { target: 'a2b', title: 'run 81 void reviews', participants: ['r-1', 'r-2'] })
-  await b.paper('part', { target: 'a2b', member: 'r-1', part: 'r-1 part', body: 'A2b text of r-1', evidence: [ev1.id] })
-  await b.paper('part', { target: 'a2b', member: 'r-2', part: 'r-2 part', body: 'A2b text of r-2', evidence: [ev2.id] })
+  await b.paper('part', { target: 'a2b', member: 'r-1', part: 'r-1 part', body: 'A2b text of r-1' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev1.id] })
+  await b.paper('part', { target: 'a2b', member: 'r-2', part: 'r-2 part', body: 'A2b text of r-2' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev2.id] })
   await b.paper('advance', { target: 'a2b' })
   const fp2b = (await b.paper('status', { target: 'a2b' })).receipt.paper.parts['r-2'].fingerprint
   // the measured rec-34 shape: a deliverable vote BOUND to a text the part no longer carries (forged fingerprint)
@@ -238,8 +238,8 @@ function parseCalls (hint) {
   const ev1 = b.evidenceRow('a4-1')
   const ev2 = b.evidenceRow('a4-2')
   await b.paper('start', { target: 'a4', title: 'run 79 fingerprint arm', participants: ['r-1', 'r-2'] })
-  await b.paper('part', { target: 'a4', member: 'r-1', part: 'r-1 part', body: 'A4 text of r-1', evidence: [ev1.id] })
-  await b.paper('part', { target: 'a4', member: 'r-2', part: 'r-2 part', body: 'A4 text of r-2', evidence: [ev2.id] })
+  await b.paper('part', { target: 'a4', member: 'r-1', part: 'r-1 part', body: 'A4 text of r-1' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev1.id] })
+  await b.paper('part', { target: 'a4', member: 'r-2', part: 'r-2 part', body: 'A4 text of r-2' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev2.id] })
   await b.paper('advance', { target: 'a4' })
   const fp2 = (await b.paper('status', { target: 'a4' })).receipt.paper.parts['r-2'].fingerprint
   // a durable row that agrees about the ROUND and disagrees about the TEXT: exactly the measured rec-34 shape, with the
@@ -281,8 +281,8 @@ function parseCalls (hint) {
   const ev1 = b.evidenceRow('a5-1')
   const ev2 = b.evidenceRow('a5-2')
   await b.paper('start', { target: 'a5', title: 'run 79 final gate', participants: ['r-1', 'r-2'] })
-  await b.paper('part', { target: 'a5', member: 'r-1', part: 'r-1 part', body: 'A5 text of r-1', evidence: [ev1.id] })
-  await b.paper('part', { target: 'a5', member: 'r-2', part: 'r-2 part', body: 'A5 text of r-2', evidence: [ev2.id] })
+  await b.paper('part', { target: 'a5', member: 'r-1', part: 'r-1 part', body: 'A5 text of r-1' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev1.id] })
+  await b.paper('part', { target: 'a5', member: 'r-2', part: 'r-2 part', body: 'A5 text of r-2' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev2.id] })
   await b.paper('advance', { target: 'a5' })
   await b.paper('review', { target: 'a5', member: 'r-1', of: 'r-2', deliverable: true })
   await b.paper('review', { target: 'a5', member: 'r-2', of: 'r-1', deliverable: true })
@@ -303,8 +303,8 @@ function parseCalls (hint) {
   const revise = await b.paper('final', { target: 'a5', member: 'r-0', decision: 'revise', note: 'run 79 A5: re-review on the new text' })
   const reviseTo = revise.receipt && revise.receipt.final ? revise.receipt.final.to : null
   ok(revise.refused === false && reviseTo === 'writing', '§A5 fixture: revise reopens writing', { code: revise.code, message: revise.message, to: reviseTo })
-  await b.paper('part', { target: 'a5', member: 'r-1', part: 'r-1 part', body: 'A5 revised text of r-1', evidence: [ev1.id] })
-  await b.paper('part', { target: 'a5', member: 'r-2', part: 'r-2 part', body: 'A5 revised text of r-2', evidence: [ev2.id] })
+  await b.paper('part', { target: 'a5', member: 'r-1', part: 'r-1 part', body: 'A5 revised text of r-1' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev1.id] })
+  await b.paper('part', { target: 'a5', member: 'r-2', part: 'r-2 part', body: 'A5 revised text of r-2' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev2.id] })
   const adv2 = await b.paper('advance', { target: 'a5' })
   ok(adv2.refused === false && adv2.receipt.advance.to === 'reviewing', '§A5 fixture: the revised paper re-enters reviewing', adv2.receipt && adv2.receipt.advance)
   const v1 = await b.paper('review', { target: 'a5', member: 'r-1', of: 'r-2', deliverable: true })
@@ -349,8 +349,8 @@ function parseCalls (hint) {
   // drive the paper to final: on this machine the compile question IS asked and answered, which must change the reading
   const ev1 = b.evidenceRow('b1-1')
   const ev2 = b.evidenceRow('b1-2')
-  await b.paper('part', { target: 'b1', member: 'r-1', part: 'r-1 part', body: 'B1 text of r-1', evidence: [ev1.id] })
-  await b.paper('part', { target: 'b1', member: 'r-2', part: 'r-2 part', body: 'B1 text of r-2', evidence: [ev2.id] })
+  await b.paper('part', { target: 'b1', member: 'r-1', part: 'r-1 part', body: 'B1 text of r-1' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev1.id] })
+  await b.paper('part', { target: 'b1', member: 'r-2', part: 'r-2 part', body: 'B1 text of r-2' + String.fromCharCode(10) + '证据等级：draft', evidence: [ev2.id] })
   await b.paper('advance', { target: 'b1' })
   await b.paper('review', { target: 'b1', member: 'r-1', of: 'r-2', deliverable: true })
   await b.paper('review', { target: 'b1', member: 'r-2', of: 'r-1', deliverable: true })
@@ -399,8 +399,8 @@ function parseCalls (hint) {
     const e1 = b.evidenceRow('lamp-1')
     const e2 = b.evidenceRow('lamp-2')
     await b.paper('start', { target, title: 'tb2761 lamp', participants: ['r-1', 'r-2'] })
-    await b.paper('part', { target, member: 'r-1', part: 'p1', body: 'lamp text 1', evidence: [e1.id] })
-    await b.paper('part', { target, member: 'r-2', part: 'p2', body: 'lamp text 2', evidence: [e2.id] })
+    await b.paper('part', { target, member: 'r-1', part: 'p1', body: 'lamp text 1' + String.fromCharCode(10) + '证据等级：draft', evidence: [e1.id] })
+    await b.paper('part', { target, member: 'r-2', part: 'p2', body: 'lamp text 2' + String.fromCharCode(10) + '证据等级：draft', evidence: [e2.id] })
     await b.paper('advance', { target })
   }
 

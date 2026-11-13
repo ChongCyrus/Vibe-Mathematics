@@ -184,7 +184,7 @@ const pdfRow = (kernel, title, body) => kernel.records.put({
   const started = await A.call('vibe_v5_paper', { action: 'start', target: 'r176 identifier paper', participants: ['r-acad', 'r-1'] })
   ok(started && started.ok === true, '§3 setup: the paper starts', started && (started.code || started.id))
   const part = await A.call('vibe_v5_paper', { action: 'part', target: 'r176 identifier paper', member: 'r-acad',
-    part: 'the identifier line', solution: '正文按 §3 讨论这一结论。', evidence: [String(card.recordId)] })
+    part: 'the identifier line', solution: ('正文按 §3 讨论这一结论。') + String.fromCharCode(10) + '证据等级：draft', evidence: [String(card.recordId)] })
   ok(part && part.ok === true, '§3 setup: a part with real evidence is accepted', part && (part.code || part.ok))
   const st = await A.call('vibe_v5_paper', { action: 'status', target: 'r176 identifier paper' })
   const state = Object.assign({}, st.paper, { status: 'awaiting-editor' })
@@ -228,7 +228,7 @@ const pdfRow = (kernel, title, body) => kernel.records.put({
   const started = await A.call('vibe_v5_paper', { action: 'start', target: 'r176 truncated paper', participants: ['r-acad', 'r-1'] })
   ok(started && started.ok === true, '§4 setup: the paper starts', started && (started.code || started.id))
   const part = await A.call('vibe_v5_paper', { action: 'part', target: 'r176 truncated paper', member: 'r-acad',
-    part: 'the truncated line', solution: '正文按 §4 讨论这一结论。', evidence: [String(card.recordId)] })
+    part: 'the truncated line', solution: ('正文按 §4 讨论这一结论。') + String.fromCharCode(10) + '证据等级：draft', evidence: [String(card.recordId)] })
   ok(part && part.ok === true, '§4 setup: a part with real evidence is accepted', part && (part.code || part.ok))
   const st = await A.call('vibe_v5_paper', { action: 'status', target: 'r176 truncated paper' })
   const state = Object.assign({}, st.paper, { status: 'awaiting-editor' })
@@ -280,7 +280,7 @@ const pdfRow = (kernel, title, body) => kernel.records.put({
   const T = 'r176 dead end'
   kernel.records.put({ id: 'rec-ev176', track: 'propositions', kind: 'proposition', title: '证据卡', body: '- statement：x' })
   flow.start({ target: T, participants: ['r-1', 'r-2'] })
-  for (const m of ['r-1', 'r-2']) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: m + ' 的解法', evidence: ['Members/' + m + '/Propos/rec-ev176.md'] })
+  for (const m of ['r-1', 'r-2']) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: (m + ' 的解法') + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + m + '/Propos/rec-ev176.md'] })
   flow.advance({ target: T })
   flow.recordReview({ target: T, member: 'r-1', deliverable: true, comments: '可交付' })
   flow.recordReview({ target: T, member: 'r-2', deliverable: true, comments: '可交付' })

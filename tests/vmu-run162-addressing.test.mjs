@@ -90,7 +90,7 @@ const toAwaitingEditor = async (specs) => {
   const id = String((started.started && started.started.id) || (started.paper && started.paper.id) || started.id || '')
   for (const m of ['r-1', 'r-2']) {
     await call(specs, 'vibe_v5_record_proposition', { id: 'rec-162-' + m, statement: 's[' + m + ']: 2+2=4', value: 'claim', member: m, motive: 'evidence for the addressing probe', p: 0.6 })
-    await call(specs, 'vibe_v5_paper', { action: 'part', target: id, member: m, part: 'sec-' + m, body: 'section by ' + m, evidence: ['Members/' + m + '/Propos/rec-162-' + m + '.md'] })
+    await call(specs, 'vibe_v5_paper', { action: 'part', target: id, member: m, part: 'sec-' + m, body: ('section by ' + m) + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + m + '/Propos/rec-162-' + m + '.md'] })
   }
   await call(specs, 'vibe_v5_paper', { action: 'advance', target: id, member: 'r-chair' })
   for (const m of ['r-1', 'r-2']) {

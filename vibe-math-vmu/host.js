@@ -1988,6 +1988,32 @@ export function toHostSpec(spec, kernel = null) {
 }
 
 /**
+ * ★★★ CLOCK PURITY (TB-2784 follow-up / final11): THE HOST NEVER READS THE WALL CLOCK. A stamp in a receipt must come
+ * from the deployment's INJECTED clock — `kernel.clockguard.now()`, the guarded accessor the kernel exposes and the same
+ * seam `packs/v5r/tools.js#kernelClockMsOf` uses (`tests/audit-clock-purity.mjs` treats a product `Date.now()` as a
+ * FINDING, and it is right to: a receipt that mixes an injected instant with a wall-clock one contradicts itself by the
+ * offset between them). `null` means this deployment injected no usable clock; the caller NAMES that (`…Means`) instead
+ * of fabricating a timestamp.
+ */
+function kernelClockMsOf(kernel) {
+  try {
+    const guard = kernel && kernel.clockguard
+    if (guard && typeof guard.now === 'function') {
+      const v = Number(guard.now())
+      if (Number.isFinite(v)) return v
+    }
+  } catch { /* no clock: report null; the caller names the source, it does not borrow the wall clock here */ }
+  return null
+}
+/** The source sentence that travels with `blockAssembledAtMs`, so "null" is a NAMED absence, never a guessed stamp. */
+function blockAssembledAtMsOfMeans(kernel) {
+  const ms = kernelClockMsOf(kernel)
+  return ms === null
+    ? 'null: this deployment exposes no usable injected clock (`kernel.clockguard.now()` answered no finite number), so the block-assembly instant is NAMED absent instead of being filled from the wall clock'
+    : 'epoch ms from the INJECTED clock (`kernel.clockguard.now()`), the same seam the pack faces use; it says when the host rendered the block in force, not which request carries it'
+}
+
+/**
  * Install the tools into a host context. Registrations go through `ctx.effect(..., label)` when the host
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
@@ -2326,11 +2352,28 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     } catch { return null }
   }
   let wireCaptureRegistered = false
+  let wireCaptureState = null
   const registerWireCapture = () => {
     if (wireCaptureRegistered) return
+    // ★★★ TB-2784 (RUN 84 — WHY THE RUN-83 CAPTURE COULD NOT BE PROVEN IN EFFECT): `sp.tools(provider)` registers the
+    // provider in the layer of the ctx it is called THROUGH (`systemPrompt.tools` → `layers.effect(this.ctx, …)`, and
+    // cordis rebinds `this.ctx` to the ACCESSING ctx). Called via the plugin's own ctx, that layer is a branch the member
+    // child agent's assemble chain does not contain — the provider would never be invoked for the very requests the block
+    // is about. The ROOT ctx is the one whose layer is global, so prefer it when the host exposes it (the host file
+    // already uses `ctx.root` for the assemble listeners for the same reason). Whichever accessor answers is recorded in
+    // `wireCaptureState`, so an audit reads the path instead of inferring it.
+    const accessors = []
+    try { if (ctx && ctx.root && typeof ctx.root.get === 'function') accessors.push(['root', ctx.root]) } catch { /* keep the local one */ }
+    try { if (ctx && typeof ctx.get === 'function') accessors.push(['local', ctx]) } catch { /* no accessor */ }
     let sp = null
-    try { sp = ctx && typeof ctx.get === 'function' ? ctx.get('systemPrompt') : null } catch { sp = null }
-    if (!sp || typeof sp.tools !== 'function') return
+    let via = null
+    for (const [name, site] of accessors) {
+      try {
+        const candidate = site.get('systemPrompt')
+        if (candidate && typeof candidate.tools === 'function') { sp = candidate; via = name; break }
+      } catch { /* try the next accessor */ }
+    }
+    if (!sp) { wireCaptureState = 'unavailable:no-systemPrompt-tools-seam'; return }
     try {
       const dispose = sp.tools((context) => {
         if (context && typeof context === 'object') {
@@ -2345,9 +2388,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       })
       if (typeof dispose === 'function') disposers.push(dispose)
       wireCaptureRegistered = true
+      wireCaptureState = 'registered:' + String(via)
     } catch (e) {
       // Named, never silent: a host that refuses the provider leaves the block on the live-table fallback (TB-2775), and
       // this line is what tells an audit which path was taken.
+      wireCaptureState = 'refused:' + String((e && e.message) || e)
       log('vmu: the wire-capture provider was refused: ' + String((e && e.message) || e))
     }
   }
@@ -2642,14 +2687,18 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       } else if (agentId && observable) cacheWrite = 'skipped-empty'
       const slot = resolved.slot || 'member'
       const namesText = observable ? effectiveNames.join('、') : ''
-      // ★★★ TB-2773: the old caption called this list 「本段生成那一刻的 wire 快照」. RUN 82 measured that it was NOT a
-      // wire snapshot at all (1 name vs 79 in the same request), so the caption was itself a false fact — the exact class
-      // of defect this block exists to prevent. It now states what the producer actually knows: the name set is read
-      // through the per-turn tool table of THIS request (the same read the request's wire is built from); if it still
-      // disagrees, the wire wins and that is a defect to report. It makes no "identical" promise.
+      // ★★★ TB-2784 (RUN 84 / P0, MEASURED): the caption used to promise 「与 request/header.tools 同一来源」. Run 84
+      // proved that promise false for 14 of 70 requests: a NEW TURN's first request is a `resume` request, and DSH does
+      // NOT re-assemble the system prompt for it (journal m649 t2s1: `146 turn/start` → `148 step/start` → `149
+      // user/message` → `150 request/header reason:"resume"` (79/69) → `151 developer/message headerSeq:150` announcing
+      // the 21 `tool-addition`s; no `system/message` in between). The model therefore carries the block RENDERED BY THE
+      // PREVIOUS ASSEMBLE (58/48) while the request's wire is wider, and the host patches the difference with the
+      // tool-registry additions. A caption cannot know whether the request that will carry it is the one being assembled,
+      // so it must NOT claim same-request identity. What it CAN say is the mechanism and the tie-break — and
+      // `wireStaleRisk:true` travels in the receipt so an audit reads the risk instead of inferring it.
       const wireCaption = (wireSource === 'out.tools' || String(wireSource).indexOf('toolSet') !== -1)
-        ? '（名集取自本请求的 per-turn 工具表——与 request/header.tools 同一来源；若仍与本回合的 wire 不一致，以 wire 为准，并把差异当作本轮的缺陷上报——角色段里的静态清单只作职责说明）'
-        : '（名集取自本 Agent 的注册可见面，本回合没拿到 per-turn 工具表，因此它不是 wire 快照；以 request/header.tools 为准——角色段里的静态清单只作职责说明）'
+        ? '（名集取自本段装配时的 per-turn 工具表；本块可能被后续 resume 请求沿用而那个请求未重新装配提示词——此时本请求的 wire 可能更宽，以 request/header.tools 与紧随的 tool-registry tool-addition 为准；角色段里的静态清单只作职责说明）'
+        : '（名集取自本 Agent 的注册可见面（本段装配时没有拿到 per-turn 工具表）；本块可能被后续 resume 请求沿用——此时本请求的 wire 可能更宽，以 request/header.tools 与紧随的 tool-registry tool-addition 为准——角色段里的静态清单只作职责说明）'
       const nativeBlockText = !observable
         ? '【本轮你实际能调用的工具｜' + slot + '】wire-unknown：本段没有观测到本回合的 wire（工具可用性以实际 wire 为准，绝不据此推断为零；角色段里的静态清单只作职责说明）'
         : (effectiveNames.length
@@ -2683,7 +2732,32 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         if (!next.name) next.name = 'v5r-effective-tools'
         if (idx >= 0) sections[idx] = next
       }
-      try { if (kernel.noteToolFacePull) kernel.noteToolFacePull({ effectiveBlock: placement, effectiveCount: observable ? effectiveNames.length : null, effectiveWireSource: wireSource, effectiveCacheWrite: cacheWrite }) } catch { /* diagnostics */ }
+      // ★★★ TB-2784: THE RISK TRAVELS AS A FIELD, not as an inference. Any block this hook renders can be the one a LATER
+      // `resume` request carries without a fresh assemble (measured, run 84: 14 of 70 requests), so `wireStaleRisk` is
+      // always true for the block just rendered; the reader pairs it with `wireCaptured`/`lastWireCapturedCount` (did the
+      // provider-time snapshot run?) and with `effectiveWireSource`. `blockAssembledAtMs`/`blockAssembledForAgent` say
+      // WHEN and FOR WHOM the block in force was produced — the two facts needed to tell "assembled for this request"
+      // from "inherited by a resume". No session seq is available at this seam, so the time is reported as a clock
+      // reading, never invented as a request number.
+      try {
+        if (kernel.noteToolFacePull) kernel.noteToolFacePull({
+          effectiveBlock: placement,
+          effectiveCount: observable ? effectiveNames.length : null,
+          effectiveWireSource: wireSource,
+          effectiveCacheWrite: cacheWrite,
+          wireStaleRisk: true,
+          // ★ CLOCK PURITY (TB-2784 follow-up, final11): the stamp comes from the INJECTED clock
+          // (`kernel.clockguard.now()`, the guarded accessor the kernel exposes — the same seam `packs/v5r/tools.js`
+          // `kernelClockMsOf` uses), never from `Date.now()`: a product module that reads the wall clock is a finding in
+          // `tests/audit-clock-purity.mjs`. When this deployment injected no usable clock the value is `null` and the
+          // source is NAMED — no stamp is fabricated to make a receipt look complete.
+          blockAssembledAtMs: kernelClockMsOf(kernel),
+          blockAssembledAtMeans: blockAssembledAtMsOfMeans(kernel),
+          blockAssembledForAgent: agentId || null,
+          blockAssembledForMember: member || null,
+          wireCaptureState: wireCaptureState,
+        })
+      } catch { /* diagnostics */ }
       // ★ PHASE 9 / round 5: THE MISSING THIRD SEAM. Mail was sent, but nothing ever put its notice into the member's
       // prompt. Inject it HERE, in the same assembly hook that already knows the member: non-urgent mail contributes
       // ONLY its notice (N entries, senders, subjects); urgent mail additionally carries its body. `flush` with a local

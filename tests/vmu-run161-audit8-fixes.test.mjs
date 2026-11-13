@@ -353,7 +353,7 @@ console.log('§6 (6) 真定稿的同一份回执：`pdf.produced` 与 `missing` 
   for (const m of ['r-1', 'r-2']) {
     const card = await call(specs, 'vibe_v5_record_proposition', { id: 'rec-161c-' + m, statement: 's[' + m + ']: 1+1=2', value: 'claim', member: m, motive: 'evidence for the probe', p: 0.6 })
     ok(card.ok === true, '(6) ' + m + ' 的证据卡写成了', card.ok === false ? card : undefined)
-    const part = await call(specs, 'vibe_v5_paper', { action: 'part', target: id, member: m, part: 'sec-' + m, body: 'section by ' + m, evidence: ['Members/' + m + '/Propos/rec-161c-' + m + '.md'] })
+    const part = await call(specs, 'vibe_v5_paper', { action: 'part', target: id, member: m, part: 'sec-' + m, body: ('section by ' + m) + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + m + '/Propos/rec-161c-' + m + '.md'] })
     ok(part.ok === true, '(6) ' + m + ' 的段落写成了', part.ok === false ? part : undefined)
   }
   const adv1 = await call(specs, 'vibe_v5_paper', { action: 'advance', target: id, member: 'r-chair' })

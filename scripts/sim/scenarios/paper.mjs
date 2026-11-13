@@ -127,14 +127,17 @@ export async function paper(h, { log = () => {} } = {}) {
   const bodyA = '命题：对任意正整数 $n$，前 $n$ 个奇数之和等于 $n^2$。用归纳法：记 $S_n$ 为前 $n$ 个奇数之和，则\n'
     + '$$ S_{n+1} = S_n + (2n+1) = n^2 + 2n + 1 = (n+1)^2 $$\n'
     + '基例 $S_1 = 1$ 成立；归纳步如上，结论对全部 $n \\ge 1$ 成立（正文里的 ≥ 号会被排版层改写，量测 glyphsRepaired）；'
-    + '正文里另外保留一个裸 caret 写法 n^2，量测 proseCarets。'
+    + '正文里另外保留一个裸 caret 写法 n^2，量测 proseCarets。\n'
+    // TB-2786 (RUN 84 attempt-1 V22): `final` reads a NAMED grade line out of each part BODY (a card grade is not a
+    // body line). The line travels with the prose; 证据等级：draft 是四值里最保守的那个。
+    + '证据等级：draft'
   const partA = await step('paper/part/theorem/r-1', () => call('vibe_v5_paper', {
     action: 'part', target: T, part: 'theorem', member: 'r-1', body: bodyA, evidence: [evA],
   }, member('r-1')))
   check('part 1 filed its evidence pointer', !!(partA && partA.evidence && partA.evidence.provided === 1), partA && partA.evidence)
   const partB = await step('paper/part/proof/r-2', () => call('vibe_v5_paper', {
     action: 'part', target: T, part: 'proof', member: 'r-2',
-    body: '证明补全：归纳步里 $S_{n+1}-S_n = 2n+1$，故 $S_{n+1} = (n+1)^2$；基例 $S_1 = 1$ 给出起点。',
+    body: '证明补全：归纳步里 $S_{n+1}-S_n = 2n+1$，故 $S_{n+1} = (n+1)^2$；基例 $S_1 = 1$ 给出起点。\n证据等级：draft',
     evidence: [evB],
   }, member('r-2')))
   check('part 2 filed its evidence pointer', !!(partB && partB.evidence && partB.evidence.provided === 1), partB && partB.evidence)

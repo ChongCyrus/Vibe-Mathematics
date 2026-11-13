@@ -912,14 +912,14 @@ if (SELF_PROBE) {
   // ★ LIVE RUN 2026-10-25: the caption used to be asserted verbatim as 「这份列表与你这回合的 wire 完全一致」 — a promise
   // the producer cannot keep in every session (a subagent child's snapshot was 70 names against a wire that also held the
   // framework's tools). The assertion pinned what the caption must DO: name the source and the tie-break.
-  // ★★★ TB-2773 (RUN 82): the '本段生成那一刻的 wire 快照' caption was MEASURED false (block said 1 name, the same
-  // request's wire carried 79), so it is gone. The caption must now name the per-turn tool table as the source (the same
-  // read the wire is built from) and keep the tie-break; it must never claim to BE the wire.
+  // ★★★ TB-2784 (RUN 84): the caption may no longer promise 「与 request/header.tools 同一来源」 either — a `resume`
+  // request can carry this very block WITHOUT re-assembling the prompt (measured: 14/70 requests), so the caption names
+  // the mechanism (per-turn table at assembly time) and the tie-break, and says the wire may be wider.
   ok(native.presentCalls.length === 0 && native.block && /【本轮你实际能调用的工具｜member】2 个：vibe_v5_say、vibe_vmu_status/.test(native.block.text) &&
-    /per-turn 工具表/.test(native.block.text) && /request\/header\.tools 同一来源/.test(native.block.text) &&
-    /以 wire 为准/.test(native.block.text) && !/快照/.test(native.block.text) &&
+    /per-turn 工具表/.test(native.block.text) && /wire 可能更宽/.test(native.block.text) && /tool-addition/.test(native.block.text) &&
+    /为准/.test(native.block.text) && !/快照/.test(native.block.text) && !/同一来源/.test(native.block.text) &&
     !/与你这回合的 wire 完全一致/.test(native.block.text) && !/run_code|呈现/.test(native.block.text),
-    '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状，且块称"per-turn 工具表同源"（TB-2773 删掉已被证伪的 wire 快照句）而不是"与 wire 完全一致"', native.block && native.block.text)
+    '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状，且块称 per-turn 工具表 + resume 可能更宽（TB-2784 删掉"同一来源"绝对句），不写"与 wire 完全一致"', native.block && native.block.text)
   const hostSrc = await readFile(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
   // TB-2770: the single declaration now has TWO input branches (the waterfall's `out.tools` when observed, the agent's
   // own `ctx.tools.schemas()` when it is not) — they are still ONE variable/one computation, and the block and the wire
@@ -1015,8 +1015,9 @@ if (SELF_PROBE) {
   ok(matchesWire(first.block, RUN82_WIRE) && vibeSet(blockNames(first.block)).length === 69,
     '★★★ 判据：块声明的 vibe_* 名集 == 同一请求 header.tools 的 vibe_* 名集（集合相等 69/69）',
     { block: vibeSet(blockNames(first.block)).length, wire: vibeSet(RUN82_WIRE).length })
-  ok(/per-turn 工具表/.test(first.block.text) && /request\/header\.tools 同一来源/.test(first.block.text) && !/快照/.test(first.block.text),
-    '★★ 块不再自称「wire 快照」（第 82 次实测它是假事实），改称 per-turn 工具表同源', first.block && first.block.text)
+  ok(/per-turn 工具表/.test(first.block.text) && /wire 可能更宽/.test(first.block.text) && /tool-addition/.test(first.block.text) &&
+    !/同一来源/.test(first.block.text) && !/快照/.test(first.block.text),
+    '★★ 块不写「wire 快照」也不写「同一来源」绝对句（TB-2784：resume 可沿用旧块），改称 per-turn 工具表 + 可能更宽', first.block && first.block.text)
   ok(good.kernel.toolFacePull().effectiveWireSource === 'agent.ctx.tools.schemas(scope,toolSet)' && good.kernel.toolFacePull().effectiveCount === 79,
     '★★ 回执自报读数来源 = request 期投影（schemas(scope,toolSet)）与数量 79', good.kernel.toolFacePull())
   // ★ THE SAME ROOT CAUSE HAD A SECOND FACE (a RECEIPT, not the prompt): `visibleToolsOf`/the kernel's visible-tools
@@ -1376,6 +1377,164 @@ if (SELF_PROBE) {
       const l1 = await lamp.request()
       ok(l1.block && /78 个：/.test(l1.block.text) && !matchesWire(l1.block, l1.wire) && vibeSet(blockNames(l1.block)).length === 68,
         '★★ 反灯 2（名集截断一个）⇒ 78 个/68 个 vibe，集合相等判据红', l1.block && l1.block.text.slice(0, 34))
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+}
+
+// ── ★★★ TB-2784 (RUN 84 / P0): a `resume` first request is NOT re-assembled — the block in force is stale, and the
+// caption/receipt must say so instead of promising same-request identity ─────────────────────────────────────────────
+// MEASURED (audit7, run 84 attempt-1): 14 of 70 requests FAIL with one shape — the block (58/48, rendered by an EARLIER
+// assemble) faces a `request/header.reason:"resume"` wire of 79/69, and the host patches the difference with a following
+// `developer/message` (source.kind "tool-registry", 21 `tool-addition`s, `headerSeq` = that request). Journal order (m649
+// t2s1): `146 turn/start` → `148 step/start` → `149 user/message` → `150 request/header reason:"resume"` (79/69) →
+// `151 developer/message headerSeq:150`; NO `system/message` in between. DSH only records a system message when the
+// rendered text changes (`dsh-agent-loop/lib/index.js:850-862`), so a request that carries the SAME prompt text as the
+// previous assemble leaves no trace — and a `resume` can carry a block rendered a whole turn earlier.
+// What this file now guarantees: (1) the caption never claims 「同一来源」; (2) the receipt carries `wireStaleRisk:true`;
+// (3) `vibe_vmu_turn{op:"status"}` (full) and `vibe_vmu_status` (summary) expose the pull receipt, so audit7's question
+// "did the provider-time capture run?" is answerable instead of NO-EVIDENCE.
+{
+  const WIRE79 = [
+    'edit', 'glob', 'grep', 'math_computation', 'read', 'read_image', 'skill', 'todo_write',
+    'vibe_v5_assign', 'vibe_v5_blueprint', 'vibe_v5_configure', 'vibe_v5_feedback', 'vibe_v5_fidelity_conclude', 'vibe_v5_fire',
+    'vibe_v5_hire', 'vibe_v5_inbox', 'vibe_v5_lean_archive', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read',
+    'vibe_v5_lean_run', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message', 'vibe_v5_motion', 'vibe_v5_nudge',
+    'vibe_v5_overview', 'vibe_v5_paper', 'vibe_v5_pause', 'vibe_v5_poll_close', 'vibe_v5_poll_open', 'vibe_v5_poll_vote',
+    'vibe_v5_prioritize', 'vibe_v5_read_library', 'vibe_v5_record_method', 'vibe_v5_record_progress', 'vibe_v5_record_proposition',
+    'vibe_v5_record_subproblem', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_say', 'vibe_v5_script', 'vibe_v5_second',
+    'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_task_create', 'vibe_v5_task_get', 'vibe_v5_task_list',
+    'vibe_v5_task_update', 'vibe_v5_tool_help', 'vibe_v5_verdict', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final',
+    'vibe_v5_verified_promote', 'vibe_v5_wait', 'vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_direction', 'vibe_vmu_env',
+    'vibe_vmu_human', 'vibe_vmu_mailbox', 'vibe_vmu_mathjobs', 'vibe_vmu_mathtools', 'vibe_vmu_meeting', 'vibe_vmu_middleware',
+    'vibe_vmu_pack', 'vibe_vmu_panel', 'vibe_vmu_records', 'vibe_vmu_report', 'vibe_vmu_reviewers', 'vibe_vmu_set',
+    'vibe_vmu_status', 'vibe_vmu_task', 'vibe_vmu_tools', 'vibe_vmu_turn', 'vibe_vmu_vote', 'working_directory', 'write',
+  ]
+  const DENY21 = ['vibe_v5_assign', 'vibe_v5_configure', 'vibe_v5_fidelity_conclude', 'vibe_v5_meeting', 'vibe_v5_meeting_round', 'vibe_v5_message', 'vibe_v5_nudge', 'vibe_v5_overview', 'vibe_v5_pause', 'vibe_v5_poll_close', 'vibe_v5_poll_open', 'vibe_v5_prioritize', 'vibe_v5_report', 'vibe_v5_resume', 'vibe_v5_script', 'vibe_v5_set', 'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_verdict_ask', 'vibe_v5_verdict_final', 'vibe_v5_verified_promote']
+  const vibeSet = (names) => [...new Set((names || []).filter((n) => String(n).startsWith('vibe_')))].sort()
+  const blockNames = (block) => (String(block && block.text).match(/vibe_[A-Za-z0-9_]+/g) || [])
+  const matchesWire = (block, wire) => !!block && !/wire-unknown|wire-not-rendered/.test(block.text) &&
+    JSON.stringify(vibeSet(blockNames(block))) === JSON.stringify(vibeSet(wire))
+  // THE CRITERIA THIS ROUND OWES. Both are predicates so the two lamps can prove they can go red.
+  const captionHonest = (block) => !!block &&
+    /per-turn 工具表/.test(block.text) && /wire 可能更宽/.test(block.text) && /tool-addition/.test(block.text) &&
+    !/同一来源/.test(block.text) && !/快照/.test(block.text)
+  const hasPullOn = (reading) => !!(reading && reading.toolFacePull &&
+    typeof reading.toolFacePull.wireCaptured === 'number' &&
+    Object.prototype.hasOwnProperty.call(reading.toolFacePull, 'lastWireCapturedCount') &&
+    Object.prototype.hasOwnProperty.call(reading.toolFacePull, 'lastWireCapturedSource'))
+
+  const mk2784 = async (hostModule, kernelModule) => {
+    const listeners = {}
+    let current = WIRE79.slice()
+    const agent = { id: 'member-tb2784', ctx: { tools: {
+      schemas: (scope, set) => {
+        if (scope === undefined) return ['working_directory'].map((name) => ({ name }))
+        const names = set && typeof set.view === 'function' ? [...set.view(scope).keys()] : current
+        return names.map((name) => ({ name }))
+      },
+      restrict: (filter) => {
+        const denySet = new Set((filter && filter.deny) || [])
+        const allowSet = Array.isArray(filter && filter.allow) ? new Set(filter.allow) : null
+        current = current.filter((n) => (allowSet === null || allowSet.has(n)) && !denySet.has(n))
+        return () => {}
+      },
+    } } }
+    const toolSetOf = () => {
+      const admitted = current.slice()
+      return { view: (scope) => new Map(admitted.filter((n) => current.includes(n)).map((name) => [name, { name }])) }
+    }
+    const kernel = kernelModule.createKernel({ clock })
+    kernel.declareSlots([{ id: 'member', label: '成员', capacity: 0, permissions: [] }])
+    kernel.setMemberToolOverride({ member: 'member-tb2784', deny: DENY21.slice() })
+    await kernel.members.hire({ id: 'member-tb2784', slot: 'member', institution: 'sim' })
+    const ctx = {
+      tools: { register: async () => () => {} },
+      effect: (fn) => fn(),
+      on: (event, fn) => { (listeners[event] = listeners[event] || []).push(fn) },
+      get: () => null, // no systemPrompt capture seam: exercise the TB-2775 live-table fallback + the honest caption
+    }
+    await hostModule.createHostAdapter({ ctx, kernel, settings: {} }).install()
+    const hook = (listeners['system-prompt/assemble'] || [])[0]
+    // assemble a request and return the block it renders; `narrow` mimics the seat face landing after collection.
+    const assemble = async () => {
+      const wire = [...current]
+      const toolSet = toolSetOf()
+      const context = { agent, scope: agent, toolSet }
+      const out = await hook({ sections: [] }, context, () => Promise.resolve({ sections: [] }))
+      const block = (out.sections || []).find((s) => s.name === 'v5r-effective-tools') || null
+      return { wire, block, receipt: kernel.toolFacePull() }
+    }
+    return { kernel, assemble, agent, currentOf: () => current.slice() }
+  }
+
+  const env = await mk2784(hm, km)
+  const first = await env.assemble() // first request of a turn: wire 79
+  ok(captionHonest(first.block),
+    '★★★ TB-2784 判据 1：块 caption 写「per-turn 工具表 + 本请求 wire 可能更宽 + 见 tool-addition」，且不含「同一来源」绝对句',
+    first.block && first.block.text.slice(-160))
+  ok(first.receipt.wireStaleRisk === true && typeof first.receipt.blockAssembledAtMs === 'number' &&
+    first.receipt.blockAssembledForAgent === 'member-tb2784',
+    '★★★ 判据 1（回执）：wireStaleRisk:true + blockAssembledAtMs + blockAssembledForAgent（读得到，不用推断）',
+    { wireStaleRisk: first.receipt.wireStaleRisk, at: first.receipt.blockAssembledAtMs, forAgent: first.receipt.blockAssembledForAgent })
+  // ★ THE RESUMED REQUEST: the next turn's first request reuses the LAST rendered block WITHOUT calling this hook. The
+  // block in force is the narrow one (58/48) while the resume wire is 79/69 — exactly the 14 run-84 samples. The point of
+  // this assertion is that the product tells the truth about that state, not that it pretends equality.
+  const stale = await env.assemble() // narrow request: wire 58, block 58
+  ok(stale.block && stale.wire.length === 58 && matchesWire(stale.block, stale.wire),
+    '★★ 收窄请求：块与自身请求 wire 一致（58/48）', { wire: stale.wire.length })
+  const resumeWire = WIRE79.slice() // `request/header reason:"resume"` after the face is (re)applied: fresh agent ⇒ 79
+  const staleReused = !matchesWire(stale.block, resumeWire)
+  ok(staleReused && stale.receipt.wireStaleRisk === true,
+    '★★★ 判据 1（resume 残留）：上一装配的块被 resume 请求沿用时确实不等（58 vs 79），而回执标了 wireStaleRisk:true —— 如实说可能不一致，而不是伪造相等',
+    { blockVibe: vibeSet(blockNames(stale.block)).length, resumeVibe: vibeSet(resumeWire).length })
+  // ★ 判据 2：the turn status the seats actually read now carries the pull receipt (audit7: it was unreadable there).
+  const turnStatus = env.kernel.turn.status({})
+  ok(hasPullOn(turnStatus),
+    '★★★ 判据 2：vibe_vmu_turn{op:"status"}(full) 回执含 toolFacePull 的 wireCaptured / lastWireCapturedCount / lastWireCapturedSource',
+    turnStatus && turnStatus.toolFacePull)
+  const boardStatus = env.kernel.turn.status({ detail: 'board' })
+  ok(!hasPullOn(boardStatus) && typeof boardStatus === 'object',
+    '★★ 反：bounded detail:"board" 切片保持原样（不塞诊断字段，尺寸契约不破）', boardStatus && Object.keys(boardStatus))
+  ok(hasPullOn(env.kernel.status({ detail: 'summary' })),
+    '★★★ 判据 2b：vibe_vmu_status 的 summary 面同样含三个捕获字段（审计据此判断 provider 期捕获跑没跑）',
+    env.kernel.status({ detail: 'summary' }).toolFacePull)
+  ok(hasPullOn(env.kernel.status({ detail: 'full' })),
+    '★★ detail:"full" 也含（两处都要）', env.kernel.status({ detail: 'full' }).toolFacePull)
+
+  // ★ 反灯 1: drop the projection from the turn status (the run-84 state) ⇒ 判据 2 red.
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2784a-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyKernel = join(dir, 'vibe-math-vmu', 'kernel', 'index.js')
+      const src = await readFile(copyKernel, 'utf8')
+      const anchor = '        toolFacePull: pull,'
+      ok(src.indexOf(anchor) !== -1, 'TB-2784 反灯 1：变异点存在')
+      await writeFile(copyKernel, src.replace(anchor, ''))
+      const lampKernel = await import(pathToFileURL(copyKernel).href + '?tb2784=lamp1')
+      const lampHost = await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'host.js')).href + '?tb2784=lamp1')
+      const lamp = await mk2784(lampHost, lampKernel)
+      ok(!hasPullOn(lamp.kernel.turn.status({})),
+        '★★ 反灯 1（turn status 不投影 toolFacePull）⇒ 判据 2 红（正是 audit7 的 NO-EVIDENCE 状态）',
+        lamp.kernel.turn.status({}) && Object.keys(lamp.kernel.turn.status({})).length)
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+  // ★ 反灯 2: put the absolute 「同一来源」 sentence back into the caption ⇒ 判据 1 red.
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-host-tb2784b-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const copyHost = join(dir, 'vibe-math-vmu', 'host.js')
+      const src = await readFile(copyHost, 'utf8')
+      const anchor = '（名集取自本段装配时的 per-turn 工具表；'
+      ok(src.indexOf(anchor) !== -1, 'TB-2784 反灯 2：变异点存在')
+      await writeFile(copyHost, src.replace(anchor, '（名集取自本请求的 per-turn 工具表——与 request/header.tools 同一来源；'))
+      const lampHost = await import(pathToFileURL(copyHost).href + '?tb2784=lamp2')
+      const lampKernel = km
+      const lamp = await mk2784(lampHost, lampKernel)
+      const l1 = await lamp.assemble()
+      ok(!captionHonest(l1.block) && /同一来源/.test(l1.block.text),
+        '★★ 反灯 2（caption 改回「同一来源」绝对句）⇒ 判据 1 红（resume 情况下这就是假话）', l1.block && l1.block.text.slice(-120))
     } finally { await rm(dir, { recursive: true, force: true }) }
   }
 }

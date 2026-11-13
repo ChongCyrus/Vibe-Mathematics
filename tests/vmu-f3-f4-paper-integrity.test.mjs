@@ -83,7 +83,7 @@ console.log('§1 单人论文：不能自审，也不能以"全体一致"定稿 
   const T = '单人论文'
   const begun = flow.start({ target: T, participants: ['r-1'] })
   ok(begun && begun.ok === true && begun.status === 'writing', '前提：单人论文建起来了（writing）', begun)
-  flow.recordPart({ target: T, member: 'r-1', title: '唯一的部分', solution: '解法正文', evidence: ['r-1 的证据'] })
+  flow.recordPart({ target: T, member: 'r-1', title: '唯一的部分', solution: ('解法正文') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的证据'] })
 
   const adv1 = flow.advance({ target: T })
   ok(adv1.to === 'reviewing' && Object.keys(adv1.reviewOf || {}).length === 0 && (adv1.notRequired || []).includes('r-1'),
@@ -135,8 +135,8 @@ console.log('§2 双人论文：交叉互审被接受、自审被拒、定稿成
   const { flow, rows } = boot()
   const T = '双人论文'
   flow.start({ target: T, participants: ['r-1', 'r-2'] })
-  flow.recordPart({ target: T, member: 'r-1', title: 'r-1 的部分', solution: '解法', evidence: ['r-1 的证据'] })
-  flow.recordPart({ target: T, member: 'r-2', title: 'r-2 的部分', methods: '方法', evidence: ['r-2 的证据'] })
+  flow.recordPart({ target: T, member: 'r-1', title: 'r-1 的部分', solution: ('解法') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的证据'] })
+  flow.recordPart({ target: T, member: 'r-2', title: 'r-2 的部分', methods: ('方法') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的证据'] })
 
   const adv1 = flow.advance({ target: T })
   ok(adv1.to === 'reviewing' && adv1.reviewOf['r-1'] === 'r-2' && adv1.reviewOf['r-2'] === 'r-1',
@@ -175,7 +175,7 @@ console.log('§3 一个部分空证据、另一个部分有证据：定稿被拒
   const { flow, rows } = boot()
   const T = '空证据部分'
   flow.start({ target: T, participants: ['r-1', 'r-2'] })
-  flow.recordPart({ target: T, member: 'r-1', title: '有证据的部分', solution: '带证据的解法', evidence: ['r-1 的证据'] })
+  flow.recordPart({ target: T, member: 'r-1', title: '有证据的部分', solution: ('带证据的解法') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的证据'] })
   flow.recordPart({ target: T, member: 'r-2', title: '空证据的部分', solution: '没有任何证据的正文' })
   flow.advance({ target: T })
   const members = ['r-1', 'r-2']
@@ -218,8 +218,8 @@ console.log('§4 recordFinal 恰好和 render 同时拒绝：同一个门、一�
   const { flow, rows } = boot()
   const T = '编造引用的论文'
   flow.start({ target: T, participants: ['r-1', 'r-2'] })
-  flow.recordPart({ target: T, member: 'r-1', title: '引用不存在的记录', solution: '见 p-404', evidence: ['Members/r-1/Propos/p-404.md'] })
-  flow.recordPart({ target: T, member: 'r-2', title: 'r-2 的部分', methods: '方法', evidence: ['r-2 的证据'] })
+  flow.recordPart({ target: T, member: 'r-1', title: '引用不存在的记录', solution: ('见 p-404') + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/r-1/Propos/p-404.md'] })
+  flow.recordPart({ target: T, member: 'r-2', title: 'r-2 的部分', methods: ('方法') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的证据'] })
   flow.advance({ target: T })
   const members = ['r-1', 'r-2']
   ok(members.length === 2, '前提（RULE E）：两位评审者都在场')
@@ -253,8 +253,8 @@ console.log('§4 recordFinal 恰好和 render 同时拒绝：同一个门、一�
   const clean = boot()
   const T2 = '合格论文'
   clean.flow.start({ target: T2, participants: ['r-1', 'r-2'] })
-  clean.flow.recordPart({ target: T2, member: 'r-1', title: 'r-1 的部分', solution: '带证据的解法', evidence: ['r-1 的证据'] })
-  clean.flow.recordPart({ target: T2, member: 'r-2', title: 'r-2 的部分', methods: '带证据的方法', evidence: ['r-2 的证据'] })
+  clean.flow.recordPart({ target: T2, member: 'r-1', title: 'r-1 的部分', solution: ('带证据的解法') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-1 的证据'] })
+  clean.flow.recordPart({ target: T2, member: 'r-2', title: 'r-2 的部分', methods: ('带证据的方法') + String.fromCharCode(10) + '证据等级：draft', evidence: ['r-2 的证据'] })
   clean.flow.advance({ target: T2 })
   ok(members.length === 2, '前提（RULE E）：合格论文的两位评审者都在场')
   for (const m of members) clean.flow.recordReview({ target: T2, member: m, deliverable: true })
