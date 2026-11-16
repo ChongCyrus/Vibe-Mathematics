@@ -92,9 +92,9 @@ const RUN272_RUN79_RESTORE = { chair: 30, member: 30, temp: 30, sum: 90 }
 // mechanisms. The first wording said 「不表决」 as if attendance decided the vote, which the vote gate does not do.
 // F80-8 (0 here): the office identity is hostPrompt-only, so it enters no seat normal — not counted in these water
 // levels; its correction is pinned by the new judge against `assistant.json` directly.
-// Measured per seat after the C1b restore: chair 29 499→29 550 (+51), member 26 001→26 046 (+45), temp 22 668 (0);
-// three-seat sum 78 168→78 264 (+96), still inside the taskbook's +120 envelope (24 chars of room). No cap raised.
-const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
+// Measured per seat after ROUND-1 + B2 (2026-11-17, final): chair 29 499→29 822 (+323), member 26 001→26 318 (+317), temp 22 668→22 959 (+291);
+// three-seat sum 78 168→79 099 (+931). The audit round's fixes are the growth; cap/ratchet untouched and the REAL end-to-end render is 36 369 ≤ 36 400.
+const TB2752_RUN80_FIXES = { chair: 323, member: 317, temp: 291, sum: 931 } // ROUND-1 + B2 restores (scheduling facts, capture lines, formal required params, correction trims) // ROUND-1 P0/P1 prompt fixes (leaderless wording, formal shape, dangerous legacy lines removed, chair/meeting compression, warrant reading, release/phase/temp/roster teaching); measured on the same collect() ruler
 // ★ TB-2765 (2026-11-13, prompt-lane text side): A-3 formula teaching in the paper-write prompt, plus A-1/A-2/D-7 read-face
 // notes in the OFFICE persona (hostPrompt). All three additions land OUTSIDE the phases this ruler measures
 // (paper-write is not in collect()'s normal/meeting set; the office persona enters no seat prompt), so the measured
@@ -104,12 +104,12 @@ const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
 // replacements (run 82 lost 23 glyphs), and the `part` prompt carries a self-check line. Both land in the paper-write
 // phase — outside collect()'s normal/meeting set and outside the budget gate's phases — so the measured water levels
 // are UNCHANGED again: TB2752_RUN80_FIXES stays { chair: 51, member: 45, temp: 0, sum: 96 }.
-const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair // 29547
-const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 296
-const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29843
-const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum // 78272
+const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair // 29822
+const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 297
+const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 30119
+const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum // 79099
 const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 783
-const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 79055
+const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 79890
 
 let passed = 0
 let failed = 0

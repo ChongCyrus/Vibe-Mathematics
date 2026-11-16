@@ -64,8 +64,11 @@ const openStore = async (opts = {}) => {
   const copy = store.read('members')
   copy.push('not-in-the-fold')
   ok(store.read('members').length === 0, 'read returns a clone: a caller cannot mutate the fold')
-  await expectThrow(() => store.write('phase', 'x', { expect: 999 }), 'VMU_STORE_FAILED',
-    'a stale compare-and-set expectation is refused by name')
+  // ★ P0-d C#10（ROUND-1 audit）：并发/过期 compare-and-set 现在有专属具名码 `VMU_STORE_CONFLICT`（旧期望钉的是
+  // 通用 `VMU_STORE_FAILED`——那读起来像「store 坏了」，而事实是「另一个写者先落地了」）。行为判据：该写不落盘、
+  // 回执带 expected/current、hint 指路重读重试（vmu-turn P0d-6/P0d-7 用指纹 CAS 覆盖同一契约）。
+  const staleCas = await expectThrow(() => store.write('phase', 'x', { expect: 999 }), 'VMU_STORE_CONFLICT',
+    'a stale compare-and-set expectation is refused by its own name (VMU_STORE_CONFLICT, C#10)')
 
   // ---- 3. concurrent patches in one tick must both survive ------------------------------------
   await Promise.all([

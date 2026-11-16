@@ -50,6 +50,17 @@ export { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS, decideSections, v5rPromptSwitch
  */
 export const V5R_PHASES = Object.freeze(['heartbeat', 'paper-write', 'paper-review', 'paper-final'])
 
+/**
+ * ★★★ P0-b (ROUND-1 audit C#2) — THE PACK DECLARES ONE REPLY FIELD OF ITS OWN. This is the sample that proves the
+ * receipt protocol is extensible from a MANIFEST: the entry folds `replyFields` into the kernel and the turn loop merges
+ * them with its core table, so a pack adds a reply field WITHOUT editing kernel source. `paper_claim` is v5r vocabulary
+ * (a member claiming a paper section through its own turn); `shape`/`textCoercion` are DECLARED here so a reader (and a
+ * future shape adapter) knows what the field carries instead of guessing from prose.
+ */
+export const V5R_REPLY_FIELDS = Object.freeze([
+  Object.freeze({ field: 'paper_claim', face: 'vmu.meetings', op: 'speak', shape: 'string', textCoercion: 'string', text: 'a member claiming which paper section it is taking this turn (v5r vocabulary, dispatched through the meeting speak face)' }),
+])
+
 // THE FOLDER-LEVEL CONTRIBUTION RECORD, and the distinction is load-bearing: the manifest the LOADER consumes is `PACK`
 // from `prompts/v5r-core.js` (star-re-exported above), which carries the slots, tracks, rules, codes and prompt text.
 // This object is the folder's own statement of what it contributes. An explicit export beats a star re-export, so once
@@ -75,6 +86,8 @@ export const V5R_PACK = Object.freeze({
   promptPolicies: Object.freeze([v5rPromptSwitchMiddleware]),
   defaults: V5R_SETTING_DEFAULTS,
   // Declarative, for a reader and for a deployment that wants to diff: what this pack contributes.
+  // P0-b: reply fields this pack ADDS to the turn loop's core reply table (folded from this manifest by the entry).
+  replyFields: V5R_REPLY_FIELDS,
   contributes: Object.freeze({
     settings: V5R_SETTING_KEYS,
     promptPolicies: Object.freeze([v5rPromptSwitchMiddleware.id]),
@@ -104,6 +117,7 @@ export function describeV5rPack() {
     promptPolicies: V5R_PACK.promptPolicies.map((m) => m.id),
     // WHAT THIS FOLDER CARRIES AND WHERE, which is the question a deployment asks before activating it. The loaded
     // manifest cannot see these, so this is their consumer rather than a place for them to sit unnoticed.
+    replyFields: V5R_PACK.replyFields.map((d) => d.field),
     loadedManifestId: PACK.id,
     sectionModule: V5R_PACK.sectionModule,
     policyModule: V5R_PACK.policyModule,

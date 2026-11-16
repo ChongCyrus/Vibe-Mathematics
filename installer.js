@@ -591,6 +591,7 @@ export async function apply(ctx) {
     }
 
     const nextFiles = {}
+    const seededReceipts = []
     let installed = 0, updated = 0, kept = 0
     let userEditedKept = 0
     const replacedEdits = []
@@ -659,8 +660,44 @@ export async function apply(ctx) {
         updated += 1
         nextFiles[key] = { hash: curHash, provenance: 'package' }
       }
+      // ★★★ ROUND-1 AUDIT / P0-e (C#24 — COLD START IS INVISIBLE): SEED THE INSTALLED COPY. The shipped preset row
+      // declares no config (by rule: the deployment owns that key), so a fresh profile publishes exactly ONE tool and
+      // nothing said why. After the bytes are in place, write the minimal runnable config into the INSTALLED preset and
+      // record that it was seeded — configSource "seeded" in status/doctor, and a marker names what was written.
+      // A row the deployment already configured is left byte-identical and reported as "preset".
+      try {
+        // LAZY, on purpose: the installer is copied/imported by policy fixtures that carry only the files they need
+        // (tests/audit-preset-mechanism.test.mjs builds a minimal pkg/). A static import would make installer.js
+        // un-importable there and fail four unrelated gates; the seed is an OPTIONAL first-install step, so a preset
+        // fixture without the seeder degrades to the documented zero-mechanism default AND says so on the log.
+        let seedInstalledPreset = null
+        try { ({ seedInstalledPreset } = await import('./scripts/lib/install-seed.mjs')) } catch (e) {
+          try { logger?.warn?.('[dsh-vibe-math] 冷启动 seed 模块在此安装中不可用（不影响预设文件本身，upload 后按零机制默认运行一个工具）：' + String((e && e.message) || e)) } catch { /* logging never breaks an install */ }
+        }
+        const seeded = seedInstalledPreset ? seedInstalledPreset({ presetRoot, presetDir: p.dst, at: new Date().toISOString(),
+          logger: (m) => { try { logger?.info?.(m) } catch { /* logging never breaks an install */ } } }) : null
+        if (seeded && seeded.seeded) {
+          seededReceipts.push({ preset: p.dst, faces: seeded.faces, marker: seeded.paths.marker })
+          // The seeded bytes ARE what this installer wrote, so record their hash: the next run must not mistake our
+          // own seed for a user edit (that would back it up as "user bytes" and re-report a drift that is ours).
+          try {
+            const seededBuf = readFileSync(seeded.paths.preset)
+            nextFiles[p.src + '/agent.cordis.yml'] = { hash: sha256(seededBuf), provenance: 'package' }
+          } catch { /* the hash is bookkeeping; the seed itself already landed */ }
+        } else if (seeded && seeded.ok === false) {
+          try { logger?.warn?.('[dsh-vibe-math] 冷启动 seed（' + p.dst + '）：' + (seeded.code || '') + ' ' + String(seeded.message || seeded.means || '')) } catch { /* logging never breaks an install */ }
+        }
+      } catch (e) {
+        try { logger?.warn?.('[dsh-vibe-math] 冷启动 seed 失败：' + String((e && e.message) || e)) } catch { /* logging never breaks an install */ }
+      }
     }
 
+    // COLD-START SEED, REPORTED (round-1 audit P0-e / C#24): a fresh profile used to publish ONE tool in silence.
+    if (seededReceipts.length > 0) {
+      logger?.info?.('[dsh-vibe-math] 冷启动 seed：已向 ' + seededReceipts.map((r) => r.preset).join(', ') +
+        ' 的已安装副本写入最小可运行 config（面：' + (seededReceipts[0].faces || []).join('、') +
+        '）。全新 profile 不再只发布一个工具，status/doctor 会报 configSource:"seeded"。')
+    }
     // Clean up preset dirs that this bundle NO LONGER manages (e.g. vibe-math-v1 after it was
     // removed at v2.0.0). The copy loop only adds/updates PRESETS; it never deletes a preset that
     // was dropped, so an old removed preset would linger in the picker forever. Here we remove the

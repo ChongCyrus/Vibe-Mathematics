@@ -1115,7 +1115,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::开始前的治理动作都被具名拒"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::开始前的治理动作被具名拒"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`at` ⇒ `state:\"scheduled\"`、`scheduledFor`、到点前动作被具名拒",
@@ -1136,7 +1136,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::到点不会自己开会",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::不会自己开会",
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::相对偏移"
       ],
       "live": [

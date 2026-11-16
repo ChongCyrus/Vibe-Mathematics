@@ -59,7 +59,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // Old wording: `vibe_v5_tool_help({"tool":"工具名称"})` (v5r-blocks-b.js:235 and 46 generated fixtures).
     // Real mechanism: packs/v5r/tools.js:243-265 — only `member`; the answer is kernel.toolsView for that seat.
     text: [
-      '【更正·工具查询】vibe_v5_tool_help 只收 {member}（必填）；只传 {"tool":"…"} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。两种读数与用法见工具 description。',
+'【更正·工具查询】vibe_v5_tool_help 只收 {member}（必填）；只传 {"tool":"…"} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -71,7 +71,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // persona capture. Real mechanism: kernel/turn/index.js:60 FIELD_OWNERS.formal -> vmu.formal op 'check'
     // (kernel/formal.js:109-176, requires statement + proof); meetings open with kind 'verify-request'.
     text: [
-      '【更正·形式化】旧说法 end_verify 与 formal_proof 在框架里不存在。正式结论写进回合字段 formal:{decision,file,note}（vmu.formal 的 check，需 statement 与 proof）；要集体裁决就开 `vibe_v5_meeting`：`type` 定流程（如 debate 要 `subject`），`kind` 只是台账标签；落盘唯一入口是 vibe_v5_verified_promote（需 warrant）。见到旧名按 formal 处理，不要调用 end_verify。',
+      '【更正·形式化】end_verify 与 formal_proof 不存在。回执 `formal` **只收 {statement, proof}**（其它键＝formal-shape 跳过）；阻塞用 `vibe_v5_lean_archive { kind:"blocked", name }`、保真缺陷用 `vibe_v5_fidelity_conclude { card, fidelity:"defect", lean_job }`；`release` 不是 `vibe_v5_task_update` 动作（放回用 transition,to:open）。落盘唯一入口是 vibe_v5_verified_promote（warrant）。旧名不要调用 end_verify。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -83,7 +83,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // settings/schema.js:145 quorumRule (m-unanimous|all-unanimous) + :146 quorumCap doc (m = min(cap, voters));
     // kernel/ballot.js defaultTally — not-every-voter => undecided, all-for => true, all-against => false, split => undecided.
     text: [
-      '【更正·m 票】旧说法「按 m 票布尔一致决定」读错了 m：m 是法定票数（quorumCap 派生：m = min(所办设的上限, 有表决权人数)），由框架 quorumOf 计算并具名拒。定论条件由 vmu.meetings.quorumRule 控制，默认 m-unanimous：kernel/ballot.js 的 defaultTally 要求全体都投出布尔值且一致——未投满或票分裂 ⇒ undecided。代理只需诚实投票，不必自己数票。',
+      '【更正·m 票】旧说法「按 m 票布尔一致决定」读错了 m：m 是法定票数（quorumCap 派生，由框架 quorumOf 计算并具名拒）。定论条件由 vmu.meetings.quorumRule 控制，默认 m-unanimous：kernel/ballot.js 的 defaultTally 要求全体都投出布尔值且一致——未投满或票分裂 ⇒ undecided。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -98,7 +98,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // (capture layer frozen by T71 parity), so the missing half is the OFFICE'S DUTY — stated here, read back by
     // vibe_v5_overview.leadership (packs/v5r/leadership.js) so it cannot fail silently.
     text: [
-      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。`vibe_v5_start` 坐好院士席会**自动**写入；手动 `hire` 到 chair 席位**不会**——那就自己用 `vibe_v5_set` 写 `vmu.turn.leaderId`（值=同一代号，`why`=安置院士）（等价：`vibe_v5_configure{params:{"vmu.turn.leaderId":…}}`），院士离开时清空；`vibe_v5_overview.leadership.code` 会具名说出情形（`chair-seated-but-leaderId-empty` 即席位有人但没写）。读到旧句「本所当前没有在册院士」就去补数据，别改章程措辞。',
+'【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。`vibe_v5_start` 坐好院士席会**自动**写入；手动 `hire` 到 chair 席位**不会**——那就自己用 `vibe_v5_set` 写 `vmu.turn.leaderId`（等价：`vibe_v5_configure{params:{"vmu.turn.leaderId":…}}`），院士离开时清空；`vibe_v5_overview.leadership.code` 会具名说出情形（`chair-seated-but-leaderId-empty` 即席位有人但没写；旧句「本所当前没有在册院士」正是缺数据）。',
     ].join('\n'),
   }),
 ])

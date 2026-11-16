@@ -766,6 +766,9 @@ export function createKernel({
   clock = () => Date.now(),
   sections = [],
   bindings = [],
+  // ★★★ P0-b: reply fields declared by pack manifests (folded by the entry from config.packManifests), handed to the
+  // turn loop which merges them with the core table. Absent ⇒ the frozen core table, byte-for-byte the old behaviour.
+  replyFields = null,
   overrides = null,
   whoMayOverride = ['office'],
   readFile = null,
@@ -3031,6 +3034,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   }
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
+    // ★★★ P0-b: the pack's own reply fields (empty ⇒ core table only).
+    replyFields: Array.isArray(replyFields) && replyFields.length > 0 ? replyFields : null,
     // ★★★ RUN 249 (task-69 / F-11): the PACK still wins, but the framework now has a default of its own. Before this,
     // a deployment with no pack noticeBlock folded the queue into the status block and the `[新到的消息]` header never
     // appeared (the 69th live run: 7 unread mails, 0 hits in the capture). `kernelNoticeBlock` is the same shape as the
@@ -3684,6 +3689,31 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   const toolFacePullState = { registered: false, seen: 0, matched: 0, applied: 0, lastAgent: null, lastMember: null, lastSections: null, lastContexts: null, agentsSeen: [],
     wireCaptured: 0, lastWireCapturedCount: null, lastWireCapturedSource: null, wireCaptureState: null,
     wireStaleRisk: false, blockAssembledAtMs: null, blockAssembledForAgent: null, blockAssembledForMember: null }
+
+  // ★★★ ROUND-1 AUDIT / P0-e (C#24 — COLD START IS INVISIBLE): a fresh profile publishes ONE tool and NOTHING on any
+  // read face says why. This is the kernel-side half of the answer: the adapter install receipt is the ONLY place a
+  // registration failure exists, so the host hands the facts here with ONE call and status/doctor render them.
+  // Three-valued on purpose: "not reported yet" is its OWN state, never a comfortable zero.
+  const coldStartFacts = {
+    reported: false, atMs: null, source: null,
+    installed: null, registered: null, failed: null, failures: [],
+    configSource: null, configSourceEvidence: null, installError: null,
+  }
+  const coldStartRepairHintFor = (code) => {
+    const c = String(code || '')
+    if (c === 'VMU_ENGINE_UNAVAILABLE') return 'the host lacks a service the face needs (tools.register / agents / store): pass a real DSH context to createHostAdapter, or remove that face from vmu.tools.faces'
+    if (c === 'VMU_NO_SUCH_OBJECT') return 'a declared name does not exist in this host build: compare vmu.tools.faces with status().faces.enabled and remove/repair the unknown name'
+    if (c === 'VMU_INVALID_ARGUMENT') return 'the declaration is malformed: fix the settings key named in the message, then reload the profile'
+    if (c === 'VMU_TOOL_REGISTRATION_FAILED') return 'the host refused one registration (see message); a duplicate name from a second vmu row is the common cause — keep ONE vmu row per profile'
+    return 'a registration failed with no dedicated repair: read code+message, then run node scripts/doctor.mjs for this profile'
+  }
+  const coldStartFailuresOf = (list) => (Array.isArray(list) ? list : []).slice(0, 40).map((f) => ({
+    name: f && typeof f.name === 'string' ? f.name : null,
+    code: (f && typeof f.code === 'string' && f.code) || 'VMU_TOOL_REGISTRATION_FAILED',
+    message: String((f && f.message) || ''),
+    hint: (f && typeof f.hint === 'string' && f.hint) || coldStartRepairHintFor((f && f.code) || 'VMU_TOOL_REGISTRATION_FAILED'),
+  }))
+
   // ★ PHASE 7: the HOST owns the tool table; the kernel only holds pack DECLARATIONS. A retraction therefore has
   // to be observable to the adapter, or a pack unload leaves the names visible to the model. One observer, set by
   // the host adapter; the kernel never calls a host API itself.
@@ -3767,6 +3797,39 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         toolFacePull: pull,
         toolFacePullMeans: 'the host tool-face pull receipt. `wireCaptured > 0` proves the PROVIDER-TIME wire snapshot ran (the TB-2780 mechanism); `lastWireCapturedCount` is the name count captured there and `lastWireCapturedSource` names the reading. `effectiveCount`/`effectiveWireSource` describe the last block the host rendered, and `wireStaleRisk:true` means that block can be carried by a later `resume` request whose wire is wider (measured: 14 of 70 requests on run 84 carried a block rendered by an earlier assemble). `wireCaptureState` names whether the capture seam was available at install (unavailable ⇒ the block fell back to the live table).',
       })
+    }
+  }
+  const coldStartView = () => {
+    const declaredCount = Object.keys(settings || {}).length
+    const configValue = coldStartFacts.configSource || (declaredCount > 0 ? 'preset' : 'none')
+    const installedValue = coldStartFacts.installed !== null ? coldStartFacts.installed : (memberToolFaceCatalogue !== null ? true : null)
+    const installedHow = coldStartFacts.installed !== null ? 'reported-by-host' : (memberToolFaceCatalogue !== null ? 'inferred-from-published-tool-catalogue' : 'unreported')
+    const failures = Array.isArray(coldStartFacts.failures) ? coldStartFacts.failures.slice() : []
+    const failed = coldStartFacts.failed !== null ? coldStartFacts.failed : (failures.length > 0 ? failures.length : null)
+    const repair = []
+    if (!coldStartFacts.reported) repair.push('run `node scripts/doctor.mjs` against this profile: it simulates the cold start and names what would register and what would fail')
+    else {
+      if (installedValue === false) repair.push('the vmu adapter did not install: check that the preset row mounts ./vibe-math-vmu.js and that the host exposes ctx.tools.register')
+      if (failures.length > 0) repair.push('read unavailable.items[]: each failure carries code+message+hint; fix the named cause and reload the profile')
+      if (configValue === 'none') repair.push('the preset row declares no config, so the documented zero-mechanism default is exactly ONE tool: seed a minimal runnable config with `node scripts/doctor.mjs --seed` (the installer does this on a fresh install)')
+    }
+    const coldStartMeans = 'COLD START, IN THREE STEPS: installed (did the host adapter install?) / registeredTools (how many registered, how many failed) / unavailable (each failure by name, code, repair hint) + configSource. reported:false is its own state: the kernel cannot see the adapter install receipt until the host calls noteColdStartFacts({installed, registered, failures, configSource}) after install — an unreported face is NOT evidence that nothing failed'
+    return {
+      installed: { value: installedValue, how: installedHow,
+        means: installedHow === 'unreported' ? 'NOT REPORTED: neither the host facts nor the published tool catalogue answer whether the adapter installed' : 'true means the vmu adapter installed into this host; the evidence is named in how' },
+      registeredTools: { reported: coldStartFacts.reported === true, registered: coldStartFacts.registered, failed,
+        means: coldStartFacts.reported ? 'registered/failed are the adapter install receipt counts (the ONLY place they exist)' : 'NOT REPORTED by the host: run scripts/doctor.mjs, or wire kernel.noteColdStartFacts(...) after adapter.install() (the receipt carries registered/failures)' },
+      unavailable: { reported: coldStartFacts.reported === true, count: failures.length, items: failures,
+        means: 'every registration failure, named: name + code + message + hint (hint is the repair, derived from the code when the host supplied none). Empty with reported:true means every declared tool registered; empty with reported:false means UNKNOWN' },
+      configSource: { value: configValue,
+        evidence: coldStartFacts.configSourceEvidence || (configValue === 'none'
+          ? 'no settings reached this kernel: the entry declared nothing, which is the documented zero-mechanism default'
+          : 'settings reached this kernel through the entry config layer (preset row or a seeded profile config; the kernel cannot tell the two files apart — the seed marker does)'),
+        means: 'none ⇒ the adapter publishes exactly ONE tool by design; preset ⇒ the preset row carries config; seeded ⇒ an installer/doctor seed wrote it. preset and seeded are distinguished by the marker the seeder writes, never guessed' },
+      repair,
+      source: coldStartFacts.source || null,
+      reportedAtMs: coldStartFacts.atMs,
+      coldStartMeans,
     }
   }
   const kernel = {
@@ -4291,6 +4354,30 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     setToolFacePullRegistered(v) { toolFacePullState.registered = v === true; return { ok: true } },
     noteToolFacePull(partial = {}) { Object.assign(toolFacePullState, partial); return { ok: true } },
     toolFacePull() { return Object.assign({}, toolFacePullState) },
+    /**
+     * ★★★ ROUND-1 AUDIT / P0-e (C#24): THE INSTALL OUTCOME NEEDS A DOOR INTO STATUS. The adapter's install receipt is
+     * the only place registration failures exist; without this call a fresh profile publishes one tool and every read
+     * face shrugs. One call, one report; the fields are three-valued so "not reported" stays distinguishable.
+     */
+    noteColdStartFacts(partial = {}) {
+      const p = partial && typeof partial === 'object' ? partial : {}
+      const has = (k) => Object.prototype.hasOwnProperty.call(p, k)
+      if (has('installed')) coldStartFacts.installed = p.installed === true ? true : (p.installed === false ? false : null)
+      if (has('registered')) coldStartFacts.registered = Number.isFinite(Number(p.registered)) ? Number(p.registered) : null
+      if (has('failed')) coldStartFacts.failed = Number.isFinite(Number(p.failed)) ? Number(p.failed) : null
+      if (has('failures')) {
+        coldStartFacts.failures = coldStartFailuresOf(p.failures)
+        if (!has('failed')) coldStartFacts.failed = coldStartFacts.failures.length
+      }
+      if (has('configSource')) coldStartFacts.configSource = typeof p.configSource === 'string' ? p.configSource : null
+      if (has('configSourceEvidence')) coldStartFacts.configSourceEvidence = typeof p.configSourceEvidence === 'string' ? p.configSourceEvidence : null
+      if (has('source')) coldStartFacts.source = typeof p.source === 'string' ? p.source : null
+      if (has('installError')) coldStartFacts.installError = p.installError && typeof p.installError === 'object' ? Object.assign({}, p.installError) : null
+      coldStartFacts.reported = true
+      try { const v = Number(clockguard && typeof clockguard.now === 'function' ? clockguard.now() : NaN); coldStartFacts.atMs = Number.isFinite(v) ? v : null } catch { coldStartFacts.atMs = null }
+      return { ok: true, reported: true, failures: coldStartFacts.failures.length }
+    },
+    coldStartFacts() { return JSON.parse(JSON.stringify(coldStartFacts)) },
     noteToolFaceFailure({ member, code = 'VMU_ENGINE_UNAVAILABLE', message = null } = {}) { toolFaceFailures.push({ member: String(member), code, message: message === null ? null : String(message), at: clock() }); if (toolFaceFailures.length > 20) toolFaceFailures.shift(); return { ok: true, count: toolFaceFailures.length } },
     clearMemberToolOverride(member) { return { ok: true, member: String(member), removed: memberToolOverrides.delete(String(member)) } },
     memberToolOverride(member) { return memberToolOverrides.get(String(member)) || null },
@@ -5398,6 +5485,18 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       const view = {
         enabled: true,
         active: started,
+        // ★★ P0-f: the verified-track warrant policy is a READING (which kinds may settle a conclusion), so a reader
+        // never has to infer it from the settings dump; default false = social warrants remain accepted.
+        verifiedWarrantPolicy: (() => {
+          const req = settings['vmu.verified.requireMachineWarrant'] === true
+          return { requireMachineWarrant: req, machineOnly: req,
+            acceptedKinds: req ? ['lean-conformance', 'literature'] : ['debate-unanimous', 'lean-conformance', 'literature'],
+            setting: 'vmu.verified.requireMachineWarrant',
+            source: req
+              ? 'vmu.verified.requireMachineWarrant=true: only machine-checked (lean-conformance) or literature warrants settle a conclusion'
+              : 'the default (vmu.verified.requireMachineWarrant=false): a SOCIAL warrant (debate-unanimous) is accepted as a judge — agreement is not proof of correctness, so set the setting to true to require machine/literature evidence',
+          }
+        })(),
         // ROUND 1 / K5: the ONE pack path, stated rather than implied. `loader` means `kernel/pack.js` via the injected
         // `packApplier` (the entry's path); `none` means `usePack()` refuses by name. There is no third value, because a
         // legacy in-kernel loader no longer exists (D-02).
@@ -5488,6 +5587,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         packTools: [...packToolDeclarations.values()].map((t) => ({ name: t.name, packId: t.packId })),
         // ★ PHASE 7: only when a pack registered sections; a throwing reader is NAMED, never hidden.
         toolFacePull: Object.assign({}, toolFacePullState),
+        // ★★★ ROUND-1 AUDIT / P0-e (C#24): cold start, three steps + configSource (FULL detail only — the bounded
+        // summary must stay inside its byte contract, and an operator asking this question reads the full receipt).
+        coldStart: coldStartView(),
         ...(toolFaceFailures.length > 0 ? { toolFaceFailures: toolFaceFailures.slice() } : {}),
         ...(statusSections.size > 0 ? { sections: Object.fromEntries([...statusSections.entries()].map(([name, fn]) => {
           try { return [name, { ok: true, value: fn() }] } catch (e) {
@@ -5612,10 +5714,18 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           view[k] = headline(view[k])
         }
         view.diagnosticsBounded = 'headlined (present+field count only): registry / guards / seams / reporting / approvalGate / projections / activity — detail:"full" returns each whole; nothing else here is trimmed'
+        // ★★★ ROUND-1 AUDIT / P0-e (C#24) + final16b B5/D4: coldStart STAYS in the summary as a HEADLINE (present +
+        // field count), never removed — the summary's contract is a SUPERSET of the full key list with bounded bodies. A
+        // deleted section made an absent-looking reading indistinguishable from an unsupported one (measured D4).
+        if (view.coldStart !== undefined) view.coldStart = headline(view.coldStart)
+
         // ★★★ TB-2784: THE SUMMARY KEEPS THE PULL RECEIPT'S ANSWERING PART. Audit7 could not tell whether the
         // provider-time wire snapshot ran ( was unreadable on every face), so the three capture fields stay
         // in the bounded summary; the per-agent history arrays (agentsSeen) and sample strings remain detail:"full" — the
         // summary is under a byte bound and an array of session ids is exactly what it must not spend it on.
+        // ★★★ ROUND-1 AUDIT / P0-e (C#24): the bounded summary is at its 8 000-byte contract, so it does NOT carry
+        // coldStart — an operator asking "why one tool?" reads detail:"full" (the diagnostic face), where the three
+        // steps, the named failures and configSource are. Absence here means "bounded", never "nothing to see".
         if (view.toolFacePull && typeof view.toolFacePull === 'object') {
           const p = view.toolFacePull
           view.toolFacePull = {

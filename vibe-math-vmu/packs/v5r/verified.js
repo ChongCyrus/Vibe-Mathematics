@@ -89,9 +89,12 @@ const probText = (n) => (Number.isFinite(n) ? String(n) : '—')
  * a hard-coded `真 (p=1)` next to `- p：0` made the row contradict itself — and a reader who quoted the sentence
  * promoted a REFUTATION as a theorem. A p=0 row is a disproof, and it names the warrant that settled it at 0.
  */
+// ★★ P0-f (ROUND-1 audit C#26): A p=1 ROW USED TO SAY ONLY "真 (p=1)" AND NEVER NAMED THE WARRANT — so a reader could
+// not tell a machine-checked conclusion from a social one (a unanimous debate), and the track's promise "why settled"
+// was answered only for refutations. Both directions now name the judge AND its kind.
 const conclusionText = (p, warrantId, warrantKind) => (p === 0
   ? '假 (p=0) — disproved: warrant ' + warrantId + ' (' + warrantKind + ') settled it at 0'
-  : '真 (p=1)')
+  : '真 (p=1) — established: warrant ' + warrantId + ' (' + warrantKind + ') settled it at 1')
 const timeText = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : '')
 
 // ── parse：bad cards are NAMED, never silently defaulted ────────────────────────────────────────────────────

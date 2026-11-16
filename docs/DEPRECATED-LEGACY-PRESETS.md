@@ -1,7 +1,6 @@
 # 旧 preset 弃用说明（v2 / v3 / v4 / v5 / v5r）
 
-> 状态：**已弃用（deprecated）**，仍在仓内作为历史参考，**尚未从发货面移除**；原因见文末
-> “为什么还没有删 package/installer 条目”。
+> 状态：**已弃用（deprecated）且已从发货面移除**（2026-11-17 真值批核对）：`installer.js#PRESETS` 只含 `vibe-math-vmu`、`package.json#files` 里没有旧 preset 目录、仓库 HEAD 的目录树里也没有 `vibe-math-v2/`…`vibe-math-v5/`。本文档只作历史参考；发货面与自定义 preset 的现状见 `README.md`「发货面：唯一发货 preset 与如何加更多」。
 
 ## 1. 五个旧 preset 各是什么
 
@@ -33,16 +32,10 @@
 
 `docs/acceptance/` 里的旧验收记录描述的是**当时的仓库状态**，本次弃用**不改写**它们；需要理解旧行为时，以本说明与历史记录为准。
 
-## 5. 为什么还没有删 package/installer 条目
+## 5. 发货面现状（2026-11-17 真值批核对）
 
-实质弃用（不再发货、不再安装）需要同时改 `package.json#exports`、`package.json#files`、
-`installer.js#PRESETS`，并改写依赖“六个 preset 目录”的安装器/打包断言。实测这些断言中有
-**installer 语义与旧五目录形态耦合**的部分（同一版本备份、清理“被丢弃的 preset”、清理日志），
-需要先把这组断言按“只剩 vmu”重写并通过全量 T1，才能安全删除发货条目。
-
-在完成那一步之前：
-
-- **五个目录仍在仓内**，测试仍可按旧路径读取；
-- **它们仍出现在 package/installer 声明中**（即仍会被发货/安装）——这是已知的**未完成项**，
-  不是“已经弃用”；
-- 本文件的“已弃用”指**方向已定**，不指“发货面已移除”。
+- `installer.js#PRESETS` 只有 **1** 项：`{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }`。
+- `package.json#files` 里没有任何 `vibe-math-v2/`…`vibe-math-v5/` 条目（只有 `vibe-math-vmu/**`）。
+- 仓库 HEAD 的目录树里没有旧 preset 目录（`git ls-tree HEAD --name-only | grep '^vibe-math-v[0-9]'` 为空）。
+- ⇒ **旧 preset 不再随包发货、不再被安装器安装**；它们只保留在 git 历史里（需要旧行为时按历史 tag 检出）。
+- 本文件早期版本写着「仍在仓内 / 尚未从发货面移除 / 仍出现在 package/installer 声明中」——那描述的是移除之前的状态，现已更正。

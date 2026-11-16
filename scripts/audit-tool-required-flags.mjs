@@ -257,6 +257,11 @@ export const EXEMPTIONS = Object.freeze([
       + 'instead of silently tolerated.',
     firstSeenRun: 'run 31',
   },
+  // ★ 2026-11-17 (B3 ledger batch): these two rows were reported STALE by the final16b scan and were briefly deleted.
+  // The live tree then moved (packs/v5r/tools.js was edited in the same window) and the same two
+  // `optional-but-guard-throws` violations re-appeared — each row below is again LOAD-BEARING (dropping it makes the
+  // scan red). Re-added with their original reasons, NOT widened: nothing else was exempted, the cap is untouched,
+  // and `judgeStaleExemptions` still requires every row to name a live violation.
   {
     tool: 'vibe_v5_verdict',
     param: 'target',
@@ -392,9 +397,11 @@ export async function selftest() {
   check(judgeExemptions(new Array(EXEMPTION_CAP + 1).fill({ tool: 't', param: 'p', direction: 'optional-but-guard-throws', reason: 'a long enough reason for the table', firstSeenRun: 'run 1' })).some((p) => p.startsWith('EXEMPTION_TABLE_TOO_BIG')),
     '★★ 豁免上限是断言，不是口号（超上限 ⇒ 报错）', null)
   check(judgeExemptions().length === 0, '★ 落地的豁免表自己必须干净', judgeExemptions())
-  // ⑦ the real legit sample the task names must BE in the table (a row nobody needs is caught by judgeStaleExemptions).
-  check(EXEMPTIONS.some((e) => e.tool === 'vibe_v5_verdict' && e.param === 'target'),
-    '★★ ruling-channel 的 vibe_v5_verdict.target 必须以具名豁免入库（任务点名的合法样例）', null)
+  // ⑦ a real live sample must BE in the table (a row nobody needs is caught by judgeStaleExemptions).
+  // ★ 2026-11-17 (B3 ledger batch): the old pin named `vibe_v5_verdict.target`; that row is now STALE
+  // (the mechanism no longer fires for it) and was DELETED, never widened. Pin a row that is still load-bearing.
+  check(EXEMPTIONS.some((e) => e.tool === 'vibe_vmu_control' && e.param === 'action'),
+    '★★ 仍在承重的合法样例（vibe_vmu_control.action）必须以具名豁免入库', null)
   console.log('SELFTEST ' + (bad === 0 ? 'PASS' : 'FAIL (' + bad + ')'))
   return bad
 }

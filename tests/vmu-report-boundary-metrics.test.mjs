@@ -66,11 +66,14 @@ await (async () => {
   })
   await handle.ready()
   const k = handle.kernel
-  const boundary = (listeners['agent/turn-stopping'] || [])[0]
+  // ★ 入口现在可能武装不止一个 `agent/turn-stopping` 监听器（周期 report 时钟 + 另一层宿主管线）；本套件测的是
+  // 「边界把真实 metrics 交给 report.tick」这一座桥，所以不能假设 index 0 就是它——在 T1 里逐个尝试、只认真的
+  // 触发了 artifacts-met 的那个（每个候选只调用一次，所以仍然证明「恰好一次」）。
+  const boundaryCandidates = listeners['agent/turn-stopping'] || []
   const inSink = (n) => sink.filter((x) => x.name === n)
 
   // ── 0. the preconditions (each assertion below needs a non-empty one) ────────────────────────────────────
-  ok(typeof boundary === 'function', 'P1. the entry really registered an `agent/turn-stopping` listener (the boundary is armed)', Object.keys(listeners))
+  ok(boundaryCandidates.length >= 1, 'P1. the entry really registered an `agent/turn-stopping` listener (the boundary is armed)', Object.keys(listeners))
   ok(k && typeof k.metricValues === 'function', 'P2. the kernel exposes `metricValues()` — the reading the boundary hands over', typeof (k && k.metricValues))
   ok(k && k.metrics && typeof k.metrics.observe === 'function', 'P3. the metrics face is live, so a policy can really count', typeof (k && k.metrics))
 
@@ -93,10 +96,16 @@ await (async () => {
   ok(values.artifacts === 5, 'S3. `metricValues()` reads the REAL sum (5 observations of value 1 ⇒ 5)', values)
 
   // ── 4. ★ THE BOUNDARY FIRES BY ITSELF — the host event is emitted, nobody calls `report/tick` ─────────────
-  await boundary()
-  await new Promise((r) => setTimeout(r, 20))
+  // Emit to each armed listener ONCE until the bridge that carries metrics answers; a listener that is not this
+  // bridge is skipped without being counted, so "exactly one delivery" stays a real observation.
+  const boundaryFired = []
+  for (const fn of boundaryCandidates) {
+    try { await fn() } catch { /* a foreign listener must not red this suite */ }
+    await new Promise((r) => setTimeout(r, 20))
+    if (inSink('artifacts-met').length > 0) { boundaryFired.push(fn); break }
+  }
   const names = sink.map((s) => s.name)
-  ok(inSink('artifacts-met').length === 1, 'T1. the ABOVE-line threshold report FIRED AUTONOMOUSLY at the turn boundary and was delivered exactly once', names)
+  ok(boundaryFired.length === 1 && inSink('artifacts-met').length === 1, 'T1. the ABOVE-line threshold report FIRED AUTONOMOUSLY at the turn boundary and was delivered exactly once', names)
   ok(inSink('artifacts-unmet').length === 0, 'T2. ★ THE ADVERSARIAL HALF: the BELOW-line threshold report stayed SILENT in the SAME deployment', names)
   ok(/5/.test(String(inSink('artifacts-met')[0] && inSink('artifacts-met')[0].text)), 'T3. and the delivered text carries the REAL value, not a placeholder', inSink('artifacts-met')[0])
   ok(inSink('artifacts-unmet').length === 0, 'T4. across the WHOLE run the unmet report fired ZERO times (its silence is measured, not assumed)', names)

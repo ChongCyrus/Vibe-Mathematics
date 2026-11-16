@@ -122,6 +122,9 @@ const byteLength = (s) => new TextEncoder().encode(String(s)).length
 //     it must be declared instead. It NEVER accepts it and drops it.
 export const PACK_DECLARATION_KEYS = Object.freeze([
   'phases', 'noticeBlock', 'recordTracks', 'meetingTypeCatalog', 'slots', 'office', 'agendaStateMachine',
+  // ★★★ P0-b (ROUND-1 audit C#2): a pack may ADD reply fields; the manifest declares them and the entry folds them into
+  // the turn loop BEFORE construction (the loop's field table is fixed at build time, like every other snapshot).
+  'replyFields',
 ])
 // ★ WHICH KEYS ARE ACTUALLY TOO LATE. Not every declaration above needs the fold: `slots` is honoured by
 // declareSlots() and `recordTracks` by declareTracks() (both real post-construction mechanisms, and the FIRST-PARTY
@@ -145,6 +148,7 @@ const DECLARATION_TEXT = Object.freeze({
   slots: 'the role slots / roster (kernel option `slots`)',
   office: 'the office seat vocabulary',
   agendaStateMachine: 'the agenda state machine',
+  replyFields: 'additional reply fields (kernel option `replyFields` → the turn loop FIELD_OWNERS)',
 })
 
 /** The one sentence a reader needs when a declaration cannot be folded (reused by the loader refusal). */
@@ -182,7 +186,7 @@ export function declarationUnconsumedError(manifest, keys) {
 export function foldPackDeclarations(manifests = [], settings = {}) {
   const list = Array.isArray(manifests) ? manifests.filter((m) => m && typeof m === 'object') : []
   const merged = Object.assign({}, settings)
-  const options = { slots: [], tracks: [], stages: [], noticeBlock: null }
+  const options = { slots: [], tracks: [], stages: [], noticeBlock: null, replyFields: [] }
   const folded = []
   const unsupported = []
   const declaredKeysByManifest = new Map()
@@ -237,6 +241,21 @@ export function foldPackDeclarations(manifests = [], settings = {}) {
         for (const sl of value) if (sl && typeof sl === 'object' && !options.slots.some((x) => x && x.id === sl.id)) options.slots.push(sl)
         folded.push({ id, key, how: 'kernel option slots (construction-time roster)', added: options.slots.map((x) => x && x.id).filter(Boolean) })
         foldedKeys.push(key)
+      } else if (key === 'replyFields') {
+        // P0-b: each entry is {field, face, op, shape?, textCoercion?}; the KERNEL validates collisions with core fields
+        // (resolveOwners merge) and duplicates across packs. Here we only carry them with their pack id, so the refusal
+        // can name the pack. Wrong shapes are named, never dropped.
+        if (!Array.isArray(value)) { noteUnsupported(id, key, 'replyFields must be an array of {field,face,op,...} objects'); continue }
+        let added = 0
+        for (const decl of value) {
+          if (!decl || typeof decl !== 'object' || typeof decl.field !== 'string' || decl.field.trim() === '' || typeof decl.face !== 'string' || typeof decl.op !== 'string') {
+            noteUnsupported(id, key, 'a replyFields entry must be {field:"<name>", face:"<service>", op:"<method>"}'); continue
+          }
+          options.replyFields.push(Object.assign({}, decl, { pack: id }))
+          added += 1
+        }
+        folded.push({ id, key, how: 'kernel option replyFields → turn FIELD_OWNERS (pack-added fields)', added })
+        if (added > 0) foldedKeys.push(key)
       } else if (key === 'noticeBlock') {
         if (typeof value !== 'function') { noteUnsupported(id, key, 'noticeBlock must be a function'); continue }
         if (options.noticeBlock !== null) {

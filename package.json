@@ -944,7 +944,9 @@
     "scripts/sim/redteam/corpus-copy.mjs",
     "tests/sim-redteam-copy-mtime.test.mjs",
     "tests/vmu-run80-mechanism.test.mjs",
-    "tests/vmu-run80-prompt-corrections.test.mjs"
+    "tests/vmu-run80-prompt-corrections.test.mjs",
+    "scripts/doctor.mjs",
+    "scripts/lib/install-seed.mjs"
   ],
   "license": "MIT",
   "keywords": [

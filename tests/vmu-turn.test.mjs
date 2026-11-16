@@ -10,11 +10,13 @@ import { RECORDED_FIELDS } from '../vibe-math-vmu/kernel/turn/index.js'
 //
 // Run: node tests/vmu-turn.test.mjs   (last line: === VMU TURN: N passed, M failed ===)
 
-import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners, deliverViaSubagents, deliverByReturning, selectionReadingsOf } from '../vibe-math-vmu/kernel/turn/index.js'
+import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners, deliverViaSubagents, deliverByReturning, selectionReadingsOf, mergeReplyFieldOwners } from '../vibe-math-vmu/kernel/turn/index.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 import { v5rPromptSections, v5rTurnSections } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
-import { collectPackSections } from '../vibe-math-vmu/kernel/pack.js'
+import { createStore } from '../vibe-math-vmu/kernel/store.js'
+import { collectPackSections, foldPackDeclarations } from '../vibe-math-vmu/kernel/pack.js'
+import { V5R_PACK_TOOLS as PACK_TOOL_SPECS } from '../vibe-math-vmu/packs/v5r/tools.js'
 import { PACK } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 import { toolSpecs } from '../vibe-math-vmu/host.js'
 import { makeTurnSpec } from '../vibe-math-vmu/tools/turn.js'
@@ -708,6 +710,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     //   office's relay role and moves the work back to the seat that took it: 「所办可转达建议或直接分派，谈完的活仍
     //   由承办席位自己写」. The capture is frozen; this is a declared divergence, not a silent drift.
     'v5r-charter-taskboard-leader': 'RUN 255 / task-96: leaderless 变体的「所办可以协助调整」被读成所办可代改/代做（真机实测所办以成员名义代写、memberActed:false）；改成「所办可转达建议或直接分派，谈完的活仍由承办席位自己写」——代转不是写作',
+    // ★ ROUND-1 audit (2026-11-17), B-矛盾#leaderless-vs-chair / C#26 / B-不清晰#roster-placeholder: the leaderless
+    // texts no longer deny a seated leader (they state the setting and the two worlds), the Verified line names the
+    // warrant kind instead of calling it absolutely trustworthy, and the roster snapshot points at the state block
+    // instead of rendering the template placeholder.
+    'v5r-charter-rules': 'ROUND-1 C#26: Verified 的「绝对可信」改成具名 warrant 读法（辩论/文献/机器，机器可核看 warrant.kind）',
+    'v5r-charter-rule-7': 'ROUND-1 B-矛盾#leaderless-vs-chair: leaderless 变体不再声称「本所没有院士」，改成「无论所内由院士还是全体统筹」',
+    'v5r-charter-roster-snapshot': 'ROUND-1 B-不清晰#roster-placeholder: 「〔未提供：roster〕」模板占位改成「以本轮提示的 [状态板]／名册为准」',
+    'v5r-charter-taskboard': 'ROUND-1 B-不合理#taskboard-release: 认领/完成任务的教学改成真实动作（complete / transition → open / reopen；release 不是 task_update 的动作）',
   })
   const divergedByBlock = Object.create(null)
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
@@ -931,8 +941,8 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(asmFm.text.includes('发现任何偏差，不要投 0') && asmFm.text.includes('偏差只说明**形式化不合格**，不代表命题为假') && asmFm.text.includes('严格介于 0 与 1 之间'),
     'T90. **** and a DEFECT IS NOT A REFUTATION: abstaining plus recording the defect, because deviation-to-zero would make the mechanism that exists for rigour fabricate a false negative',
     { rule: 'deviation != false' })
-  ok(asmFm.text.includes('只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0') && asmFm.text.includes("decision:'defect'"),
-    'T91. **** a zero verdict requires an INDEPENDENT argument, and the defect goes into the receipt so the framework withdraws the passed status',
+  ok(asmFm.text.includes('只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0') && asmFm.text.includes('vibe_v5_fidelity_conclude') && asmFm.text.includes('"defect"'),
+    'T91. **** a zero verdict requires an INDEPENDENT argument, and the defect goes into the RECEIPT (fidelity_conclude) so the framework withdraws the passed status',
     { independent: true })
   ok(asmFm.text.includes('没把握的先别入库') && asmFm.text.includes('在作业落地为“通过”之前，不得把该对象当成已通过'),
     'T92. **** and the as-you-go line keeps two honesty rules: do not archive what you are unsure of, and never call a queued compile passed',
@@ -1975,6 +1985,148 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     ok(rec2.keptNow === false && rec2.keptWhy === 'tool-visibility-unprovable',
       '§D8 lamp RED-worthy: 抹掉声明的传递 ⇒ 回执退回「结构性不可达」（run 81 D-8 的原状）', rec2 && { keptNow: rec2.keptNow, keptWhy: rec2.keptWhy })
   } finally { rmSync(dir, { recursive: true, force: true }) }
+}
+
+// ★★★ P0-b (ROUND-1 audit C#2): THE RECEIPT PROTOCOL IS EXTENSIBLE FROM A PACK MANIFEST — a new reply field needs
+// NO kernel edit; a pack may ADD a field, never redefine a CORE one; the merged table is what parse/dispatch/status read.
+{
+  const owners = resolveOwners(null, [{ field: 'demo_note', face: 'demo.face', op: 'note', shape: 'string', textCoercion: 'string', pack: 'demo-pack' }])
+  ok(owners.demo_note && owners.demo_note.face === 'demo.face' && owners.demo_note.op === 'note' && owners.demo_note.packDeclared === true,
+    'P0b-1 a pack replyFields entry is merged into the ownership table (add)', owners.demo_note)
+  ok(!Object.prototype.hasOwnProperty.call(FIELD_OWNERS, 'demo_note') && owners.say && owners.say.face === FIELD_OWNERS.say.face,
+    'P0b-2 …without touching the frozen CORE table (zero mechanism preserved when no pack declares fields)', { coreHas: 'demo_note' in FIELD_OWNERS, say: owners.say })
+  let coreHit = null
+  try { mergeReplyFieldOwners([{ field: 'say', face: 'x', op: 'y', pack: 'bad-pack' }]) } catch (e) { coreHit = e }
+  ok(!!coreHit && coreHit.code === 'VMU_INVALID_ARGUMENT' && /CORE/.test(String(coreHit.message)) && /say/.test(String(coreHit.message)),
+    'P0b-3 a pack may NOT redefine a CORE field: refused by name with the field and the reason', coreHit && { code: coreHit.code, message: coreHit.message })
+  let dupHit = null
+  try { mergeReplyFieldOwners([{ field: 'z', face: 'a', op: 'b', pack: 'p1' }, { field: 'z', face: 'a', op: 'b', pack: 'p2' }]) } catch (e) { dupHit = e }
+  ok(!!dupHit && dupHit.code === 'VMU_INVALID_ARGUMENT' && /p1/.test(String(dupHit.message)) && /p2/.test(String(dupHit.message)),
+    'P0b-4 two packs may not take the same field name: refused and BOTH pack ids named', dupHit && { code: dupHit.code, message: dupHit.message })
+  const rt = mk({ replyFields: [{ field: 'demo_note', face: 'demo.face', op: 'note', pack: 'demo-pack' }], faces: { 'demo.face': { note: async (payload) => ({ ok: true, got: payload }) } } })
+  const out = await rt.apply({ demo_note: 'hello from a pack field' }, null, 'r-1')
+  const executed = Array.isArray(out && out.executed) ? out.executed : []
+  ok(out && out.ok !== false && executed.some((x) => x && x.field === 'demo_note' && x.face === 'demo.face' && x.op === 'note'),
+    'P0b-5 ★ the pack-declared field is DISPATCHED by the loop and named in the receipt executed[]', executed)
+  const rtOwners = (rt.status() || {}).owners || {}
+  ok(Object.prototype.hasOwnProperty.call(rtOwners, 'demo_note'),
+    'P0b-6 …and the loop own status read (owners) carries the merged table', Object.keys(rtOwners).filter((k) => k === 'demo_note'))
+  const folded = foldPackDeclarations([{ id: 'demo-pack', replyFields: [{ field: 'pack_note', face: 'demo.face', op: 'note', shape: 'string' }] }])
+  ok(Array.isArray(folded.options.replyFields) && folded.options.replyFields.length === 1 && folded.options.replyFields[0].pack === 'demo-pack',
+    'P0b-7 the manifest fold carries replyFields with the declaring pack id (construction-time snapshot)', folded.options.replyFields)
+  const kb = createKernel({ clock: () => 1000, replyFields: folded.options.replyFields })
+  const kbOwners = (kb.turn.status() || {}).owners || {}
+  ok(kbOwners.pack_note && kbOwners.pack_note.packDeclared === true && kbOwners.pack_note.face === 'demo.face',
+    'P0b-8 ★ end-to-end: a pack manifest reply field reaches the kernel loop table (no kernel edit for a NEW field)', kbOwners.pack_note)
+  // ★ LAMP 1: copy tree, revert the merge at the call site -> the pack field becomes unknown (old frozen-table shape)
+  const dir1 = mkdtempSync(join(tmpdir(), 'vmu-p0b-lamp1-'))
+  try {
+    cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(dir1, 'vibe-math-vmu'), { recursive: true })
+    const turnPath = join(dir1, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
+    const src = readFileSync(turnPath, 'utf8')
+    const from = 'const owners = resolveOwners(bindings, replyFields)'
+    ok(src.indexOf(from) !== -1, 'P0b lamp1-setup: the merge call site exists')
+    writeFileSync(turnPath, src.replace(from, 'const owners = resolveOwners(bindings)'))
+    const mod2 = await import(pathToFileURL(turnPath).href + '?p0blamp1=1')
+    const rt2 = mod2.createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), replyFields: [{ field: 'demo_note', face: 'demo.face', op: 'note' }], faces: { 'demo.face': { note: async () => ({ ok: true }) } } })
+    let lampErr = null
+    let lampOut = null
+    try { lampOut = await rt2.apply({ demo_note: 'x' }, null, 'r-1') } catch (e) { lampErr = e }
+    const lampExec = Array.isArray(lampOut && lampOut.executed) ? lampOut.executed : []
+    ok(!!lampErr && (lampErr.code === 'VMU_TURN_UNKNOWN_FIELD' || /unknown reply field/.test(String(lampErr.message)))
+      || (!lampErr && !lampExec.some((x) => x && x.field === 'demo_note')),
+      'P0b lamp1 RED-worthy: with the merge reverted the pack field is UNKNOWN again (not dispatched; the frozen table this fix removes)',
+      lampErr ? { code: lampErr.code } : { executed: lampExec.map((x) => x && x.field), fields: lampOut && lampOut.fields })
+  } finally { rmSync(dir1, { recursive: true, force: true }) }
+  // ★ LAMP 2: copy tree, drop the CORE-collision guard -> a pack silently redefines a core field (the refused shape returns)
+  const dir2 = mkdtempSync(join(tmpdir(), 'vmu-p0b-lamp2-'))
+  try {
+    cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(dir2, 'vibe-math-vmu'), { recursive: true })
+    const turnPath = join(dir2, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
+    const src = readFileSync(turnPath, 'utf8')
+    const from = 'if (Object.prototype.hasOwnProperty.call(core, field)) {'
+    ok(src.indexOf(from) !== -1, 'P0b lamp2-setup: the core-collision guard exists')
+    writeFileSync(turnPath, src.replace(from, 'if (false) {'))
+    const mod3 = await import(pathToFileURL(turnPath).href + '?p0blamp2=1')
+    let lamp2 = null
+    try { const merged = mod3.mergeReplyFieldOwners([{ field: 'say', face: 'evil', op: 'takeover', pack: 'evil-pack' }]); lamp2 = merged && merged.say } catch (e) { lamp2 = { threw: e.code } }
+    ok(!!lamp2 && lamp2.face === 'evil' && lamp2.packDeclared === true,
+      'P0b lamp2 RED-worthy: without the core guard a pack takes over a core field silently (the shape the refusal forbids)', lamp2)
+  } finally { rmSync(dir2, { recursive: true, force: true }) }
+}
+
+// ★★★ P0-d (ROUND-1 audit C#17/C#10/C#16): the unified acting-seat facade, the named store conflict, and replay
+// idempotency — driven through the REAL v5r entry/tools (no fixture face short-circuits the gate).
+{
+  const entry = await import(pathToFileURL(join(REPO_DIR, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
+  const root = mkdtempSync(join(tmpdir(), 'vmu-p0d-'))
+  const specs = []
+  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (s) => { specs.push(s); return () => {} } } }
+  const handle = entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root })
+  await handle.ready()
+  await handle.kernel.store.open()
+  for (const [id, slot] of [['acad', 'chair'], ['r-1', 'member'], ['r-2', 'member']]) await handle.kernel.members.hire({ id, slot })
+  // Drive the REAL host specs (the same objects the model calls): the host owns the attribution keys
+  // (discloseActOnSeat) and resolves the caller from the turn context, so the test does what a member/office call does.
+  const exec = async (name, args, execCtx = {}) => {
+    const spec = specs.filter((s) => s && s.name === name)[0]
+    if (!spec) throw new Error('no host spec ' + name)
+    try { const raw = await spec.execute(args, execCtx); return typeof raw === 'string' ? JSON.parse(raw) : raw } catch (e) { return e }
+  }
+  const codeOf = (r) => (r && (r.code || (r.parsed && r.parsed.code))) || null
+  const messageOf = (r) => String((r && (r.message || (r.parsed && r.parsed.message))) || '')
+  const hintOf = (r) => String((r && (r.hint || (r.parsed && r.parsed.hint))) || '')
+  // (a) a member turn may not act under another seat
+  const deny = await exec('vibe_v5_record_progress', { member: 'r-2', content: 'x' }, { agent: { id: 'r-1' } })
+  ok(codeOf(deny) === 'VMU_NOT_PERMITTED' && /another seat/.test(messageOf(deny)) && /actedFor/.test(hintOf(deny)),
+    'P0d-1 ★ r-1 提名 r-2 写库 ⇒ 具名拒 VMU_NOT_PERMITTED（点名越席 + hint 给出合法出路）', { code: codeOf(deny), message: messageOf(deny), hint: hintOf(deny) })
+  // the SAME refusal raised at the facade itself carries the machine-readable detail the host receipt may strip
+  let facadeDeny = null
+  try { await PACK_TOOL_SPECS.filter((t) => t.name === 'vibe_v5_record_progress')[0].handler({ member: 'r-2', content: 'x' }, { kernel: handle.kernel, callerMember: 'r-1' }) } catch (e) { facadeDeny = e }
+  ok(!!facadeDeny && facadeDeny.code === 'VMU_NOT_PERMITTED' && facadeDeny.detail && facadeDeny.detail.caller === 'r-1' && facadeDeny.detail.claimed === 'r-2' && facadeDeny.detail.required === 'r-2',
+    'P0d-2 ★ facade 拒里带 detail{caller,claimed,required}', facadeDeny && facadeDeny.detail)
+  // (b) the same member acting as itself is allowed and disclosed by the ONE attribution owner as a member act
+  const own = await exec('vibe_v5_record_progress', { member: 'r-1', content: 'x', track: 'progress' }, { agent: { id: 'r-1' } })
+  ok(own && own.ok !== false && own.memberActed === true && own.callerMember === 'r-1',
+    'P0d-3 ★ 以本人席位调用 ⇒ 通过且回执披露 memberActed:true/callerMember', own && { memberActed: own.memberActed, callerMember: own.callerMember })
+  // (c) the office/root exception: an explicit actedFor is allowed and DISCLOSED as an acting call
+  const office = await exec('vibe_v5_record_progress', { member: 'r-2', content: 'y', track: 'progress', actedFor: 'r-2' }, {})
+  ok(office && office.ok !== false && office.memberActed === false && office.actedForMember === 'r-2' && office.actedFor === 'r-2' && /IN THAT SEAT'S NAME/.test(String(office.memberActedMeans || '')),
+    'P0d-4 ★ office 显式 actedFor ⇒ 通过且回执披露 memberActed:false/actedForMember/actedFor', office && { memberActed: office.memberActed, actedForMember: office.actedForMember, actedFor: office.actedFor })
+  // (d) a mismatching actedFor is a claim that contradicts the named author: refused by name
+  const badFor = await exec('vibe_v5_record_progress', { member: 'r-2', content: 'z', track: 'progress', actedFor: 'r-1' }, {})
+  ok(codeOf(badFor) === 'VMU_INVALID_ARGUMENT' && /actedFor/.test(messageOf(badFor)),
+    'P0d-5 ★ actedFor 与 member 不一致 ⇒ 具名拒（申报不是提示）', { code: codeOf(badFor), message: messageOf(badFor) })
+
+  rmSync(root, { recursive: true, force: true })
+  // (e) C#10: two writers with the SAME optimistic version => one wins, the loser is refused BY NAME
+  const croot = mkdtempSync(join(tmpdir(), 'vmu-p0d-conflict-'))
+  const store = createStore({ root: croot, clock: () => 1000 })
+  await store.open()
+  await store.write('tasks', { n: 0 })
+  const fp = store.fingerprintOf('tasks')
+  const pair = await Promise.allSettled([
+    store.write('tasks', { n: 1 }, { expectFingerprint: fp }),
+    store.write('tasks', { n: 2 }, { expectFingerprint: fp }),
+  ])
+  const okCount = pair.filter((p) => p.status === 'fulfilled').length
+  const conflict = pair.filter((p) => p.status === 'rejected').map((p) => p.reason)[0] || null
+  ok(okCount === 1 && !!conflict && conflict.code === 'VMU_STORE_CONFLICT' && conflict.expectedFingerprint === fp && typeof conflict.currentFingerprint === 'string',
+    'P0d-6 ★ C#10 并发写同一行：一成一拒，拒的是具名 VMU_STORE_CONFLICT（带 expected/current 指纹）', { okCount, code: conflict && conflict.code, expected: conflict && conflict.expectedFingerprint })
+  ok(conflict && /did NOT land/.test(String(conflict.hint)), 'P0d-7 …hint 明说这次写没有落盘，并指路重读后重试', conflict && conflict.hint)
+  rmSync(croot, { recursive: true, force: true })
+  // (f) C#16: replaying the SAME (turn, member, reply) does not double-write
+  const calls = []
+  const rt = mk({ faces: { 'vmu.records': { put: async (payload) => { calls.push(payload); return { ok: true, id: 'rec-p0d' } } } } })
+  const reply = { progress: { track: 'progress', text: 'one line, sent twice' } }
+  const first = await rt.apply(reply, null, 'r-1', { turnId: 't-p0d' })
+  const replay = await rt.apply(reply, null, 'r-1', { turnId: 't-p0d' })
+  ok(first && first.ok === true && calls.length === 1,
+    'P0d-8 (precondition) the first apply dispatched the field exactly once', { calls: calls.length })
+  ok(replay && replay.ok === true && replay.idempotent === true && replay.replayed === true && calls.length === 1,
+    'P0d-9 ★ C#16 重放同一 (turn,member,reply) ⇒ 回执带 idempotent:true/replayed:true 且没有第二次写', { idempotent: replay && replay.idempotent, replayed: replay && replay.replayed, calls: calls.length })
+  ok(replay && JSON.stringify(replay.executed) === JSON.stringify(first.executed) && typeof replay.idempotentMeans === 'string',
+    'P0d-10 …返回的是 FIRST receipt（同一 effects），idempotentMeans 说明重放不是新动作', replay && replay.idempotentMeans)
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

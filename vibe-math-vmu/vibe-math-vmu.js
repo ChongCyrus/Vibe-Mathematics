@@ -19,7 +19,7 @@
 
 import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/prompt-switches.js'
 import { inboxBlock as V5R_INBOX_BLOCK } from './packs/v5r/notices.js'
-import { V5R_PHASES } from './packs/v5r/index.js'
+import { V5R_PHASES, V5R_REPLY_FIELDS } from './packs/v5r/index.js'
 import { createChildrenPort } from './host-children.js'
 import { createKernel } from './kernel/index.js'
 // ★ A1 step 1 · Part B: the report-feedback DELIVERY call. It lives in a module of its own (this file is at its
@@ -523,7 +523,7 @@ export function apply(ctx, config = {}) {
   // THE FIX: ONE stable dispatcher, handed to the kernel for its whole lifetime, that re-reads the LIVE list on every
   // assembly. No second construction path, no mutable kernel hook, and the turn loop needed no change.
   const PACK_RUNTIME = Object.freeze({
-    v5r: { id: 'v5r', sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, phases: V5R_PHASES },
+    v5r: { id: 'v5r', sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, phases: V5R_PHASES, replyFields: V5R_REPLY_FIELDS },
   })
   const wantedPackIds = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
   const packRuntime = wantedPackIds.map((id) => PACK_RUNTIME[id]).filter(Boolean)
@@ -581,8 +581,12 @@ export function apply(ctx, config = {}) {
   const declaredPackManifests = Array.isArray(config.packManifests)
     ? config.packManifests.filter((m) => m && typeof m === 'object')
     : []
+  // ★★★ P0-b: a runtime pack's `replyFields` is a CONSTRUCTION-TIME declaration exactly like the manifest's — fold it
+  // here so the turn loop's field table is built once, with the pack's fields in it (no post-construction mutation).
+  const runtimeReplyManifests = packRuntime.filter((r) => Array.isArray(r.replyFields) && r.replyFields.length > 0).map((r) => ({ id: r.id, replyFields: r.replyFields }))
+  const foldInputManifests = declaredPackManifests.concat(runtimeReplyManifests)
   const foldedDeclarations = typeof packModule.foldPackDeclarations === 'function'
-    ? packModule.foldPackDeclarations(declaredPackManifests, settingsWithPackDefaults)
+    ? packModule.foldPackDeclarations(foldInputManifests, settingsWithPackDefaults)
     : null
   // ★ TB-2649: the fold names what it could NOT carry (office / agendaStateMachine, wrong shapes, a second
   // noticeBlock). That view used to be write-only; the loader now hands it to apply(), which refuses by name and
@@ -629,6 +633,10 @@ export function apply(ctx, config = {}) {
     ...(foldedDeclarations && foldedDeclarations.options.slots.length > 0 ? { slots: foldedDeclarations.options.slots } : {}),
     ...(foldedDeclarations && foldedDeclarations.options.tracks.length > 0 ? { tracks: foldedDeclarations.options.tracks } : {}),
     ...(foldedDeclarations && foldedDeclarations.options.stages.length > 0 ? { stages: foldedDeclarations.options.stages } : {}),
+    // ★★★ P0-b: pack-declared reply fields reach the turn loop through the SAME fold (one construction-time snapshot).
+    ...(foldedDeclarations && Array.isArray(foldedDeclarations.options.replyFields) && foldedDeclarations.options.replyFields.length > 0
+      ? { replyFields: foldedDeclarations.options.replyFields }
+      : {}),
     // ★★ ROUND 52: the DSH session this kernel serves. Settings resolve per kernel, and the status board names WHOSE
     // resolution it prints; without this id a member cannot tell "the board and my own status read disagree" from "two
     // kernels, two honest resolutions" (run 52's measured confusion).
@@ -911,6 +919,13 @@ export function apply(ctx, config = {}) {
           const metricsOf = kernel && typeof kernel.metricValues === 'function' ? kernel.metricValues() : null
           kernel.report.tick({ at: Date.now(), event: 'turn-end', metrics: metricsOf })
         } catch { /* never break the turn */ }
+        // ★ P0-c FIX (final16b B5): the MODEL-USAGE settlement rides THIS listener (the one `agent/turn-stopping`
+        // registration). A second listener in host.js made the host see two clocks and the first one was a no-op
+        // (measured: ticks=0). The host attaches `kernel.refreshModelUsage` when the adapter is created; a kernel without
+        // it (a bare unit-test assembly) simply skips the charge.
+        try {
+          if (kernel && typeof kernel.refreshModelUsage === 'function') await kernel.refreshModelUsage()
+        } catch { /* a usage read must never break the turn */ }
       }
       const dispose = typeof ctx.effect === 'function' ? ctx.effect(() => ctx.on('agent/turn-stopping', listener), 'vmu:report-tick') : ctx.on('agent/turn-stopping', listener)
       return typeof dispose === 'function' ? dispose : () => {}

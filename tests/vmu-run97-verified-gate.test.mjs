@@ -18,6 +18,7 @@
 //   ⑤ a real unanimous debate ruling admits a debate-kind promotion;
 //   ⑥ docs/03 and the teaching carry the same sentence (so a reader is not told the old shape).
 import { mkdtemp, rm } from 'node:fs/promises'
+import { cpSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -38,13 +39,16 @@ const ok = (cond, label, detail) => {
 
 const entry = await import(pathToFileURL(ENTRY).href)
 let NOW = 1000
-const boot = async (config = {}) => {
+const boot = async (config = {}, entryMod = entry) => {
   const state = { specs: [] }
   const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
-  const handle = entry.apply(ctx, Object.assign({ clock: () => NOW + (NOW += 1000), packs: ['v5r'] }, config))
+  const handle = entryMod.apply(ctx, Object.assign({ clock: () => NOW + (NOW += 1000), packs: ['v5r'] }, config))
   await handle.ready()
   return { handle, specOf: (n) => state.specs.find((s) => s.name === n) }
 }
+
+const bootWith = async (entryUrl, config = {}) => boot(config, await import(entryUrl + '?t=' + Date.now()))
+
 const callJSON = async (b, name, args = {}, ctx = {}) => {
   const spec = b.specOf(name)
   if (!spec) return { missing: true }
@@ -150,6 +154,85 @@ try {
   const promoteBlock = toolsSrc.slice(toolsSrc.indexOf('function toolVerifiedPromote'), toolsSrc.indexOf('★ D15'))
   ok(promoteBlock.includes('p1Intent('), '⑥ the promotion path calls the same p=1 gate')
   ok(promoteBlock.includes('FORM_OF_KIND'), '⑥ the kind must match the evidence form')
+
+  // ⑦ P0-f (ROUND-1 audit C#26): VERIFICATION NAMES ITS WARRANT; the policy is readable; machine-only refuses a social judge.
+  const verifiedBodyOf = (k, card) => {
+    try {
+      const heads = k.records.list({ track: 'verified', limit: 0 })
+      const items = Array.isArray(heads && heads.items) ? heads.items : []
+      for (const h of items) {
+        const got = k.records.get({ id: h.id }); const row = got && got.record ? got.record : got
+        const body = String((row && row.body) || '')
+        if (body.includes('cardId：' + card) || body.includes('cardId:' + card)) return body
+      }
+      return ''
+    } catch (e) { return '' }
+  }
+  const litBody = verifiedBodyOf(kernel, cardId)
+  ok(litBody.includes('warrant ' + CITE + ' (literature) settled it at 1'),
+    '⑦ P0-f: a p=1 conclusion NAMES its warrant kind (literature), not just "真 (p=1)"', litBody.slice(0, 220))
+  ok(lit && lit.warrantPolicy && lit.warrantPolicy.machineOnly === false && lit.warrantPolicy.requireMachineWarrant === false,
+    '⑦ P0-f: the promotion receipt carries warrantPolicy.machineOnly:false (the default accepts a social/debate warrant)', lit && lit.warrantPolicy)
+  const statusFull = json(await callJSON(b, 'vibe_vmu_status', { detail: 'full' }))
+  ok(statusFull && statusFull.verifiedWarrantPolicy && statusFull.verifiedWarrantPolicy.machineOnly === false,
+    '⑦ P0-f: kernel status exposes verifiedWarrantPolicy (machineOnly:false by default)', statusFull && statusFull.verifiedWarrantPolicy)
+  // machine-only deployment: a social (debate-unanimous) warrant is refused BY NAME; literature still admitted
+  const moRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-machine-'))
+  const b2 = await boot({ root: moRoot, 'vmu.verified.requireMachineWarrant': true })
+  const k2 = b2.handle.kernel
+  await k2.members.hire({ id: 'r-acad', slot: 'chair' }); await k2.members.hire({ id: 'r-1', slot: 'member' })
+  const litCard = json(await callJSON(b2, 'vibe_v5_record_proposition', { statement: STMT, value: VALUE, motive: 'P0-f machine-only', p: 1, literature_ref: CITE, member: 'r-1' }))
+  const litId = litCard && typeof litCard.recordId === 'string' ? litCard.recordId : null
+  const social = await callJSON(b2, 'vibe_v5_verified_promote', { card: litId, warrant_kind: 'debate-unanimous', warrant: 'ballot-p0f', member: 'r-acad', debate_ruling: { mode: 'unanimous', value: 1, ballotId: 'ballot-p0f', subject: litId } })
+  const socialCode = String((social && (social.code || (social.parsed && social.parsed.code))) || '').trim()
+  ok(socialCode === 'VMU_PACK_V5R_SOCIAL_WARRANT_REFUSED',
+    '⑦ P0-f: requireMachineWarrant=true ⇒ a social debate warrant is refused by name', socialCode)
+  const socialHint = String((social && social.hint) || (social && social.parsed && social.parsed.hint) || '')
+  ok(/warrantPolicy/.test(socialHint) && /lean-conformance/.test(socialHint),
+    '⑦ the refusal hint names the machine/literature alternatives and the policy', socialHint)
+  const st2 = json(await callJSON(b2, 'vibe_vmu_status', { detail: 'full' }))
+  ok(st2 && st2.verifiedWarrantPolicy && st2.verifiedWarrantPolicy.machineOnly === true && JSON.stringify(st2.verifiedWarrantPolicy.acceptedKinds) === JSON.stringify(['lean-conformance', 'literature']),
+    '⑦ P0-f: status on the machine-only deployment says machineOnly:true and lists machine/literature kinds', st2 && st2.verifiedWarrantPolicy)
+  {
+    const lampRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-p0f-lamp1-'))
+    cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+    const vp = join(lampRoot, 'vibe-math-vmu', 'packs', 'v5r', 'verified.js')
+    const vs = (await import('node:fs/promises')).readFile
+    const vsrc = await vs(vp, 'utf8')
+    const mut = "  : '真 (p=1) — established: warrant ' + warrantId + ' (' + warrantKind + ') settled it at 1')"
+    ok(vsrc.includes(mut), 'lamp1-setup: p=1 conclusion sentence locatable')
+    const patched = vsrc.split(mut).join("  : '真 (p=1)')")
+    await (await import('node:fs/promises')).writeFile(vp, patched, 'utf8')
+    const Lb = await bootWith(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: await mkdtemp(join(__tmpRoot(), 'vmu-run97-lamp1-root-')) })
+    const lk = Lb.handle.kernel
+    await lk.members.hire({ id: 'r-acad', slot: 'chair' }); await lk.members.hire({ id: 'r-1', slot: 'member' })
+    const c = json(await callJSON(Lb, 'vibe_v5_record_proposition', { statement: STMT + '（lamp）', value: VALUE, motive: 'P0-f lamp', p: 1, literature_ref: CITE, member: 'r-1' }))
+    const cid = c && typeof c.recordId === 'string' ? c.recordId : null
+    await callJSON(Lb, 'vibe_v5_verified_promote', { card: cid, warrant_kind: 'literature', literature_ref: CITE, member: 'r-acad' })
+    const body = verifiedBodyOf(lk, cid)
+    ok(body.includes('conclusion 真 (p=1)') && !body.includes('established: warrant'),
+      '★★ LAMP1(RED-worthy): reverting the sentence makes a p=1 conclusion name NO warrant (the audit shape) — the naming assertion above is load-bearing', body.slice(0, 200))
+    await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+  }
+  {
+    const lampRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-p0f-lamp2-'))
+    cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+    const tp = join(lampRoot, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
+    const fsp = await import('node:fs/promises')
+    const tsrc = await fsp.readFile(tp, 'utf8')
+    const mut = "if (requireMachineWarrant && warrantKind === 'debate-unanimous') {"
+    ok(tsrc.includes(mut), 'lamp2-setup: machine-only guard locatable')
+    await fsp.writeFile(tp, tsrc.split(mut).join('if (false) {'), 'utf8')
+    const Lb = await bootWith(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: await mkdtemp(join(__tmpRoot(), 'vmu-run97-lamp2-root-')), 'vmu.verified.requireMachineWarrant': true })
+    const lk = Lb.handle.kernel
+    await lk.members.hire({ id: 'r-acad', slot: 'chair' }); await lk.members.hire({ id: 'r-1', slot: 'member' })
+    const c = json(await callJSON(Lb, 'vibe_v5_record_proposition', { statement: STMT + '（lamp2）', value: VALUE, motive: 'P0-f lamp2', p: 1, literature_ref: CITE, member: 'r-1' }))
+    const cid = c && typeof c.recordId === 'string' ? c.recordId : null
+    const social2 = await callJSON(Lb, 'vibe_v5_verified_promote', { card: cid, warrant_kind: 'debate-unanimous', warrant: 'ballot-lamp2', member: 'r-acad', debate_ruling: { mode: 'unanimous', value: 1, ballotId: 'ballot-lamp2', subject: cid } })
+    ok(!(String((social2 && (social2.code || (social2.parsed && social2.parsed.code))) || '').trim() === 'VMU_PACK_V5R_SOCIAL_WARRANT_REFUSED'),
+      '★★ LAMP2(RED-worthy): without the machine-only guard the same social promotion is no longer refused by that code — the refusal assertion above is load-bearing', social2 && ((social2.parsed && social2.parsed.code) || social2.code || 'ok'))
+    await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+  }
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 10 })
 }

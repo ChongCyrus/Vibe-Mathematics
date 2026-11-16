@@ -3174,6 +3174,20 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
     debate: 'debate-unanimous', ballot: 'debate-unanimous', 'debate-unanimity': 'debate-unanimous',
     lean: 'lean-conformance', literature_reference: 'literature',
   }
+  // ★★ P0-f (ROUND-1 audit C#26): verification is not the same as PROOF OF CORRECTNESS. The default stays compatible
+  // (requireMachineWarrant:false — a social/unanimous-debate warrant is accepted), but the reading NAMES which policy
+  // is in force and, when the deployment asks for machine/literature evidence only, a social warrant is refused BY NAME.
+  const verifiedSettings = settingsOf(kernel) || {}
+  const requireMachineWarrant = verifiedSettings['vmu.verified.requireMachineWarrant'] === true
+  const warrantPolicy = {
+    requireMachineWarrant,
+    machineOnly: requireMachineWarrant,
+    acceptedKinds: requireMachineWarrant ? ['lean-conformance', 'literature'] : ['debate-unanimous', 'lean-conformance', 'literature'],
+    setting: 'vmu.verified.requireMachineWarrant',
+    source: requireMachineWarrant
+      ? 'the deployment set vmu.verified.requireMachineWarrant=true: only machine-checked (lean-conformance) or literature citations may settle a conclusion'
+      : 'the default policy (vmu.verified.requireMachineWarrant=false): a SOCIAL warrant (debate-unanimous) is accepted as a judge; set the setting to true to require machine/literature evidence',
+  }
   const warrantKind = KIND_ALIAS[warrantKindGiven] || warrantKindGiven
   // ★ B2: a literature promotion names its SOURCE as the warrant. The caller still passes warrant_kind:"literature"
   //   and `literature_ref`; the row's warrant id becomes the citation, so "why settled" = "it is theorem X of Y".
@@ -3198,6 +3212,13 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
   const promoteCard = stored
     ? { id: sourceId, p: stored.p, bodyTruncated: !!stored.bodyTruncated }
     : { id: sourceId }
+  // ★★ P0-f: the machine-only policy refuses a social judge by name (the caller can see the policy on the receipt).
+  if (requireMachineWarrant && warrantKind === 'debate-unanimous') {
+    throw Object.assign(refuse('VMU_PACK_V5R_SOCIAL_WARRANT_REFUSED',
+      'this deployment requires a MACHINE or LITERATURE warrant (vmu.verified.requireMachineWarrant=true), and warrant_kind "debate-unanimous" is a SOCIAL warrant: a unanimous vote is agreement, not proof of correctness',
+      'pass warrant_kind:"lean-conformance" with a passed Lean job + its conformance decision, or warrant_kind:"literature" with literature_ref; the setting vmu.verified.requireMachineWarrant is read from the resolved settings and the receipt carries warrantPolicy'),
+      { warrantPolicy, warrantKind, card: sourceId })
+  }
   const promoteEvidence = {
     verified: null,
     debate: debateEvidenceOf(args),
@@ -3237,6 +3258,7 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
     warrant: { id: warrantId, kind: warrantKind, subject: sourceId },
     by: member, fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
   return Object.assign({ ok: true, tool: 'vibe_v5_verified_promote', card: sourceId,
+    warrantPolicy,
     warrant: { id: warrantId, kind: warrantKind },
     // ★★ RUN 186 (D4): the receipt answers the question the caller actually asked — "did the word I typed count, and
     // does the row say the same thing?" A short address that is silently rewritten is indistinguishable from a typo
@@ -8116,7 +8138,7 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
   return next
 }
 
-export const V5R_PACK_TOOLS = Object.freeze([
+const RAW_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_record_progress',
     description: 'Append to YOUR research log. ★ Pass `member:"<your id>"` — without it the author of the row is UNKNOWN (`by:null`, `bySource:"unknown"`) and the status board cannot tell whose log it is. track picks the TRACK in the LEDGER (vmu.records), NOT a Progress/ file: progress (default) / routes / obstacles / rejected / state; the Files under Members/<you>/Progress/<track>.md are written by the reply `record` field — use rejected for disproved routes and obstacles for blockers, so negative knowledge is archived in its own track. '
@@ -8456,6 +8478,100 @@ export const V5R_PACK_TOOLS = Object.freeze([
     handler: toolPaper,
   },
 ])
+
+/**
+ * ★★★ P0-d (ROUND-1 audit C#17/C#10/C#16) — THE UNIFIED ACTING-SEAT FACADE.
+ * `requireSeat` only checked "the id is on the roster"; it never compared the id against the CALLER of this turn, and
+ * `discloseActOnSeat` disclosed `memberActed:false` without refusing. Measured effect: a member turn could name another
+ * member and write into THAT member's library. The fix is one wrapper on every v5r tool handler:
+ *   · the caller comes from the turn (`ctx.callerMember`, resolved by the host's one caller reader — no second map);
+ *   · caller present + claimed `member` present + they differ ⇒ NAMED refusal VMU_NOT_PERMITTED with
+ *     `detail:{caller, claimed, required}`; the office/root exception is an ACTING CALL (no seat identity) and must
+ *     say `actedFor` explicitly — the receipt then discloses `memberActed:false` + `actedFor`;
+ *   · a mismatching explicit `actedFor` is refused by name (it is a claim, not a hint);
+ *   · the disclosure is ADDED by this one wrapper, so no handler has to remember it.
+ * Tools whose `member` names a TARGET/read subject rather than the acting seat stay out of the gate by name.
+ */
+const ACTING_SEAT_EXEMPT = Object.freeze(new Set([
+  'vibe_v5_tool_help',          // member names the SEAT WHOSE TOOL FACE IS READ (a read, not an act)
+  'vibe_v5_inbox',              // reads a mailbox; the office reads members' boxes by design
+]))
+function withActingSeatGate(toolName, handler) {
+  // ★ SYNC TOOLS STAY SYNC, and ASYNC TOOLS STAY ASYNC (final16b B5): wrapping every handler in a plain `function` made
+  // `vibe_v5_meeting_round`'s async handler a sync Function that could not await `kernel.turn.step` (measured R31a/R31b).
+  // The gate is split from the shape: it refuses BEFORE the handler, and the wrapper keeps the handler's own kind.
+  const exempt = ACTING_SEAT_EXEMPT.has(toolName)
+  const attributionOf = (args, ctx) => ({
+    caller: ctx && typeof ctx.callerMember === 'string' && ctx.callerMember.trim() !== '' ? ctx.callerMember.trim() : null,
+    claimed: args && typeof args.member === 'string' && args.member.trim() !== '' ? args.member.trim() : null,
+  })
+  const gate = (args, ctx) => {
+    const { caller, claimed } = attributionOf(args, ctx)
+    if (!exempt && claimed !== null) {
+      if (caller !== null && caller !== claimed) {
+        throw refuse('VMU_NOT_PERMITTED',
+          'a member turn may not act under another seat: this call was called by member "' + caller + '" (the caller), but its arguments name "' + claimed + '" — the seat is read from the CALL, and only that member may act in its own name; the request text may not name another seat',
+          'call this face as YOURSELF (member:"' + caller + '", or omit member so the caller is used); an office/root session records FOR a seat by calling without a seat identity and passing actedFor:"' + claimed + '" explicitly — the receipt then discloses memberActed:false/actedFor',
+          { caller, claimed, required: claimed, tool: toolName, detail: { caller, claimed, required: claimed } })
+      }
+      if (caller === null && Object.prototype.hasOwnProperty.call(args, 'actedFor')
+        && String(args.actedFor).trim() !== claimed) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'actedFor "' + String(args.actedFor) + '" does not match the claimed member "' + claimed + '": an acting declaration may not disagree with the author it names',
+          'pass actedFor:"' + claimed + '" (the same id as member), or omit actedFor entirely', { caller, claimed, actedFor: String(args.actedFor), tool: toolName })
+      }
+    }
+  }
+  // ★★★ THE ATTRIBUTION KEYS HAVE ONE OWNER: `host-pack-tools.discloseActOnSeat` (it answers memberActed /
+  // actedForMember / callerMember / viewedBy / readForMember / wroteAnything, and it early-returns when `memberActed`
+  // is already present). Writing those keys HERE would silently suppress that owner and strip the read-face wording
+  // (measured: vmu-run2691 D1/D2 lost viewedBy/readForMember/wroteAnything and the write sentence). This facade adds
+  // ONLY the declaration echo `actedFor` (the explicit office acting declaration the host does not produce), leaving
+  // every attribution key to the one reader that owns them.
+  const disclose = (out, args) => {
+    if (out && typeof out === 'object' && !Array.isArray(out) && !exempt) {
+      const { claimed } = attributionOf(args, null)
+      if (claimed !== null && Object.prototype.hasOwnProperty.call(args, 'actedFor')) out.actedFor = claimed
+    }
+    return out
+  }
+  const asyncHandler = !!(handler && handler.constructor && handler.constructor.name === 'AsyncFunction')
+  if (asyncHandler) {
+    const wrapped = async function gatedHandler(args = {}, ctx = {}) {
+      gate(args, ctx)
+      return disclose(await handler(args, ctx), args)
+    }
+    // ★ SOURCE-READING GATES STILL SEE THE DELEGATED HANDLER: `String(entry.handler)` is how R31b proves the step is
+    // awaited; the async wrapper awaits the ORIGINAL handler, so reporting that handler's source is the truthful
+    // answer (the wrapper adds only the gate + disclosure).
+    wrapped.toString = () => String(handler)
+    return wrapped
+  }
+  const wrappedSync = function gatedHandler(args = {}, ctx = {}) {
+    gate(args, ctx)
+    const out = handler(args, ctx)
+    return out && typeof out.then === 'function' ? out.then((v) => disclose(v, args)) : disclose(out, args)
+  }
+  wrappedSync.toString = () => String(handler)
+  return wrappedSync
+}
+const ACTED_FOR_PARAM = Object.freeze({ type: 'string',
+  description: 'OFFICE/ROOT ONLY: declare explicitly that this call records FOR the member named by `member` (an acting call from a session with no seat identity). The receipt then discloses memberActed:false + actedForMember/actedFor; a mismatch with `member` is refused by name. A member turn never needs it: its own seat is the caller.' })
+export const V5R_PACK_TOOLS = Object.freeze(RAW_PACK_TOOLS.map((toolSpec) => Object.freeze(
+  Object.assign({}, toolSpec, {
+    handler: withActingSeatGate(toolSpec.name, toolSpec.handler),
+    // ★ P0-d: the acting declaration must survive the host's parameter filter, so it is part of the published schema
+    // (an undeclared argument is dropped before the handler and the declaration could never be read).
+    // ★★★ R1 (final16c): ONLY THE ACTING-SEAT FACES PUBLISH IT. `vibe_v5_tool_help` / `vibe_v5_inbox` are exempt
+    // reads (their `member` names the seat being READ, not an author being acted for), so they must NOT advertise an
+    // argument their own contract does not take — the tool-help declaration stays exactly {member}.
+    parameters: toolSpec.parameters && typeof toolSpec.parameters === 'object'
+      ? (ACTING_SEAT_EXEMPT.has(toolSpec.name)
+        ? toolSpec.parameters
+        : Object.assign({}, toolSpec.parameters, { actedFor: ACTED_FOR_PARAM }))
+      : toolSpec.parameters,
+  })
+)))
 
 export default V5R_PACK_TOOLS
 

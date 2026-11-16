@@ -96,7 +96,11 @@ const STATE4 = { progress: '读了两篇', obstacles: '无', next: '继续', hel
   const stealCode = stealWrite.code || (stealWrite.parsed && stealWrite.parsed.code)
   const stealMsg = stealWrite.message || (stealWrite.parsed && stealWrite.parsed.message)
   ok(stealCode === 'VMU_NOT_PERMITTED', 'refused BY NAME (VMU_NOT_PERMITTED)', stealCode)
-  ok(/only that member may rewrite it/.test(String(stealMsg)), 'the message says whose panel it is and why', String(stealMsg).slice(0, 120))
+  // ★ P0-d（ROUND-1 C#17）：越席写现在由 UNIFIED acting-seat facade 先拒（`packs/v5r/tools.js` withActingSeatGate），
+  // 它给出同一组事实的规范句（caller/claimed + 席位从 CALL 读），而不是 record_progress 自己的 panel 专属句。
+  // 产品的正确判据：拒绝必须点名「按键的人」「参数里的名字」「席位来自调用而非请求文本」——泛化拒句仍逐条说清。
+  ok(/called by member "r-1"/.test(String(stealMsg)) && /arguments name "r-2"/.test(String(stealMsg)) && /seat is read from the CALL/.test(String(stealMsg)),
+    'the message names the caller, the claimed id and says the seat comes from the CALL (unified acting-seat gate, P0-d)', String(stealMsg).slice(0, 160))
 
   // the OFFICE registers on behalf: allowed, and the receipt says whose panel it wrote
   const asOffice = { kernel, agent: { id: 'session-root-office' } }

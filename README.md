@@ -1,4 +1,4 @@
-# Vibe Mathematics — 多代理数学问题求解与验证框架（四架构）
+# Vibe Mathematics — 多代理数学问题求解与验证框架（`vibe-math-vmu` 研究所体系）
 
 [English](README.en.md) | 中文
 
@@ -6,31 +6,31 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/ChongCyrus/Vibe-Mathematics)](https://github.com/ChongCyrus/Vibe-Mathematics)
 
-> 运行在 **DeepSeek Harness** 内的一组 **agent preset**（`vibe-math-v2` / `vibe-math-v3` / `vibe-math-v4` / `vibe-math-v5`），
-> 用多代理协作自动求解数学问题并对结论做多代理交叉验证。四个预设共享「**断点续跑**、
-> **中途人工干预**、**进度汇报**、**自然语言驱动**」底座能力，但采用四代不同的求解架构：
-> **💡 v4/v5 优先**——`vibe-math-v4`（「常驻自组织合作研究」架构）与 `vibe-math-v5`（最新的「研究所体系」）是**当前主要维护方向**；`vibe-math-v2` 与 `vibe-math-v3` 是**经典/早期架构**，已**成熟定型**，今后只做**适配兼容**维护（新能力只进 v4/v5）。四套都随包安装、可正常使用；详见 [`docs/maintenance-policy.md`](docs/maintenance-policy.md)。根据你的实际需求自行选择（详见下方「怎么选」）。
+> 运行在 **DeepSeek Harness** 内的**唯一发货 preset：`vibe-math-vmu`**（研究所体系）——
+> 用多代理协作自动求解数学问题并对结论做多代理交叉验证；院士 + 常驻研究员 + 临时工，公共规章、群聊与会议、
+> compare-and-set 任务板、`Verified/` 门槛；状态存于研究所目录下的加固 JSON，**不写入宿主会话日志**（零 token 存储成本）。
+> **断点续跑 / 中途人工干预 / 进度汇报 / 自然语言驱动**是这个 preset 的底座能力；机构差异通过 `vibe-math-vmu/packs/<id>`（换 pack）表达。
 >
-> - **`vibe-math-v2`（概率驱动 · JSON 数据层）· 经典**：`qs.json` 问题清单 + `Propos/` 命题库 + 概率驱动调度 + 代码启发式调度；
-> - **`vibe-math-v3`（第三代 · 论文式 md + 规划代理 + 方法库）· 经典**：全部知识以 **Markdown 论文/研究报告式** 存储与续写（`Problems/` 问题清单+依赖+来源动机、`Progress/` 研究日志、`Propos/` 命题库、`Methods/` 通用理论发明库、`Verified/` 绝对可信）；调度前由**规划代理**自主制定接下来 N 步计划；解决过程中发明的理论/框架/工具/方法/思想由 **Method Keeper** 沉淀为可复用方法体系（如发明群论、泛函分析那样）。
-> - **`vibe-math-v4`（第四代 · 常驻自组织合作研究）🧪 实验性**：一组**持久化常驻子代理**互相**留言 + 开会**，自主决定一切任务安排（无中央调度）；各自沉淀进度/命题/方法/子问题库并互相查阅；验证**仅当全体常驻一致（真 或 假）**才写入 `Verified/`，否则留库附概率；上下文达阈值自动 `/compact`；仅当全体一致认为原问题已解决才停止。
-> - **`vibe-math-v5`（第五代 · 研究所体系）🧪 实验性 · 最新**：把常驻升级为一座**研究所**——**院士**（领头人 / 组织与协调中心，负责拆解与**分派**、定优先级、主持会议、督导进度）+ **常驻研究员**（有表决权，可自主雇佣/解雇自己的临时工）+ **临时工**（无表决权）；有**公共规章**、**群聊与会议**、**compare-and-set 任务板**、**真实解雇**；**≥ m 票布尔一致**才写入 `Verified/`（反向票阻塞、弃权不计票、未达门槛留库附平均概率）；状态存于研究所目录下的**加固 JSON** `State/<研究所>.v5state.json`（串行写、读前必 load），**不写入宿主会话日志**，零 token 成本。
+> **发货面只有一个 preset**：安装本包后，DSH 预设选择器里出现的是 **`vibe-math-vmu`**。
+> `v2`/`v3`/`v4`/`v5` 等旧 preset **已弃用、不再随包发货**（`installer.js` 的 `PRESETS` 只有 `vibe-math-vmu`，`cordis.patch.yml` 也只声明这一行；`package.json#files` 里没有旧 preset 目录）。
+> 旧 preset 只作历史参考，见 [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md)；本 README 后续章节保留它们的架构描述（**已下线**），当前可用能力以 `vibe-math-vmu` 与 `vibe-math-vmu/docs/` 为准。
+>
+> **想增加更多 preset**：复制/新建一个 bundle，用自己的 id 在 `cordis.patch.yml` 里加一条 `preset-declaration` 行（DSH ≥ 0.1.7），或把目录放进 `~/.dsh/.agent-presets/<id>/`（DSH ≤ 0.1.6）；见「[发货面：唯一发货 preset 与如何加更多](#-发货面唯一发货-preset-与如何加更多)」。
 
-安装本插件包（或手动复制预设）后，DSH 的预设选择器里会出现**四个** agent preset。
+安装本插件包后，DSH 的预设选择器里会出现**一个** agent preset：`vibe-math-vmu`（显示名 **Vibe Math VMU**）。
 
-> **⚠️ 旧 preset 弃用（v2 / v3 / v4 / v5 / v5r）**：它们仍在仓内作历史参考，但方向已改为
-> `vibe-math-vmu` ＋ pack；对应关系与“为何尚未从发货面移除”见
-> `docs/DEPRECATED-LEGACY-PRESETS.md`。
+> **⚠️ 旧 preset 已下线（v2 / v3 / v4 / v5 / v5r）**：它们**不随包发货**，只保留在本仓库历史与
+> [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md) 中作参考；新机构请用 `vibe-math-vmu` ＋ pack。
 
 ---
 
 ## 🧭 导航：我想要……→ 从这里开始
 
 - **马上开始用（第一次跑）** → [5 分钟上手](#-5-分钟上手)
-- **四个预设选哪个** → [四个预设怎么选](#-四个预设怎么选)
-- **四套架构的定位、流程与分工** → [架构图](#-架构图v2--v3--v4--v5) · [架构与分工（四套并列）](#-架构与分工四套并列)
+- **发货面（唯一 preset / 旧 preset 去哪了 / 怎么加更多）** → [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md)
+- **历史架构（v2–v5，已下线）的定位、流程与分工** → [架构图](#-架构图v2--v3--v4--v5) · [历史架构与分工](#-历史架构与分工v2v5已下线)
 - **新功能：最终论文（收口时自动产出）** → [功能特色](#-功能特色) · [完整契约](docs/final-paper.md)
-- **Lean 形式化验证** → [Lean 形式化验证](#-lean-形式化验证四个架构共用可调开关) · [完整契约](docs/formal-verification.md)
+- **Lean 形式化验证** → [Lean 形式化验证](#-lean-形式化验证历史架构共用可调开关) · [完整契约](docs/formal-verification.md)
 - **可观测面（`status()` / `report()` 字段与作用域）** → [完整字段表](docs/status-report-fields.md)
 - **目录里都有什么** → [目录结构](#-目录结构)
 - **调参数** → [参数速查表](#-参数速查表)
@@ -40,6 +40,8 @@
 ---
 
 ## 🧩 架构图（v2 + v3 + v4 + v5）
+
+> ⚠️ **历史架构图（v2–v5，已下线）**：当前发货的 `vibe-math-vmu` 的架构见该 preset 的 `02-architecture.md`。
 
 > 静态架构图；完整流程说明见 [docs/架构图.md](docs/架构图.md)（v1 历史架构图；v2 起目录布局已变更）与
 > [vibe-math-v5/架构图.md](docs/DEPRECATED-LEGACY-PRESETS.md)（v5 全套细节图）；
@@ -120,7 +122,9 @@ flowchart TB
 
 ## ✨ 功能特色
 
-- **最终论文（四个预设默认开启）**：收口时自动撰写一篇**只整理已有证据**的完整论文，且论文阶段发生在 run 被标记完成**之前**；产物在 `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`（v2/v3 另有 `paper.lock.json`）。参数 `finalPaper`（默认 `true`）/`paperFormat`（默认 `both`）/`paperLanguage`（默认 `zh`）/`paperCompilePdf`（默认 `true`）（v4/v5 另有 `paperEditor`），手动 `/vN paper [lang=] [format=] [editor=] [force]`；PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`），否则仍交付 tex+md。完整契约与用法见 [`docs/final-paper.md`](docs/final-paper.md)。
+> ⚠️ 本节原文描述**历史 preset（v2–v5，已不随包发货）**；当前发货的 `vibe-math-vmu` 的对应能力与用法见 `vibe-math-vmu/docs/`。
+
+- **最终论文（历史预设 v2–v5 默认开启；`vibe-math-vmu` 的论文链见 `vibe-math-vmu/docs/`）**
 - **多代理自动求解**：主代理把问题交给调度器，调度器派发 explorer / solver / verifier（v2/v3）与 **planner（规划代理，v3）**、**method-keeper（方法整理代理，v3）** 等子代理协同求解，**你无需逐节点手操**。
 - **多代理交叉验证**：每个结论交给 ≥3 个「严苛审稿人」**独立审查 → 辩论（交流群）→ 裁决**（v3 默认**近共识裁决**：同侧且均值 ≥0.85/≤0.15 取均值，避免"0.9 vs 1"被误判成 0.5）。
 - **论文式 Markdown 知识库（v3）**：问题清单（含问题间依赖、后生问题产生原因与计划）、研究日志、命题、方法库全部以 md 论文/研究报告式书写与续写（方向重派生时旧方向的日志自动归档保留）；**只有 `Verified/` 与验证器判真/假的对象绝对可信**，其余 md（含方法库未验证断言）仅作经验参考。
@@ -146,13 +150,15 @@ flowchart TB
 
 ---
 
-## 🧮 Lean 形式化验证（四个架构共用，可调开关）
+## 🧮 Lean 形式化验证（历史架构共用，可调开关）
+
+> 本节是历史架构（v2–v5）的说明；当前 `vibe-math-vmu` 的形式化面向见 [`docs/formal-verification.md`](docs/formal-verification.md)。
 
 **它改变的不是"更严格一点"，而是审查对象本身。** m 个代理一致认为"这是对的"仍然是**共识**——
 排除不了共同误解；Lean 通过是**机器核对**。于是剩下的唯一不确定项缩小为一个人能有效审查的问题：
 **Lean 代码里的定义 / 对象 / 条件 / 假设 / 结论，是否与命题原文完全一致（忠实性）？**
 
-- **开关 `formalVerify`（四个架构同名，默认 `'off'`）**：`'off'` 是**真正的无操作**（提示词里不出现任何 Lean 内容、不写入任何形式化状态、验证流程与门禁完全不变；五个工具仍注册可用，persona 始终列出它们，否则这个开关不可发现、也无从打开）；`'encourage'` **鼓励但不强制**（验证时按实现难度自行决定是否形式化，一旦 Lean 通过，审查重心转为忠实性，**不设门禁**）；`'require'` **强制**——真/假结论必须满足「**Lean 已通过**」或「**显式记录了阻塞原因**」，否则本次裁定不生效（记为未定论、原因 `formal-required`、写入「形式化待办」）。相关参数：`leanCommand`（默认 `lean`）、`leanArgs`（配合 `lake env lean`）、`leanTimeoutMs`（默认 120s）。
+- **开关 `formalVerify`（历史架构同名，默认 `'off'`）**
 
 - **⚠️ 忠实性缺陷 ≠ 命题为假（重要）**：Lean 通过只保证"这段代码过了内核"，**不保证它说的就是命题想说的**。表决者逐条核对后发现 Lean 代码与命题原文不一致（写窄 / 写宽 / 换了对象 / 漏了条件）时：**不得投 0**（投 0 的含义是"该命题为假"——那会把"形式化不合格"记成"命题被证伪"，v5 的全 0 一致规则下甚至写进 `Verified/` 标注**假**，用来求真的机制反而伪造出一个错误的否定结论）；正确做法是投一个严格介于 0 与 1 之间的值（记为弃权）+ 用回执 `formal:{decision:'defect', note:'<具体偏差>'}` 记录偏差，框架随即**撤回这条证明的「已通过」状态**（降级为 `attempted`、删除 `Verified/Lean/<id>.lean`、宿主删不掉时改写为"已撤回"说明、写入「形式化待办」），`require` 档下本次裁定不定论（`encourage` 档没有门禁，不得声称框架会强制搁置）；只有表决者**独立于这份 Lean 代码**也能确定命题为假（并能给出独立理由）时才投 0。
 - **回执通道与三条硬要求**（不调用 Lean 工具的成员也能留下判断，`require` 档下必须留）：回执字段 `"formal": {"target":"<对象id>", "decision":"used|blocked|defect", "file":"Formal/<对象id>.lean", "note":"难度判断/阻塞原因/具体偏差"}`；`decision='blocked'`/`'defect'` 时 **`note` 必填**（缺则整条拒绝），`used` 只把对象记为 `attempted`，`off` 档下该通道**失效**（否则 `off` 就不是真正的无操作）。另外三条：注入文本里的工具名一律**全称**（`<prefix>_lean_archive` 不是 `lean_archive`——缩写不是注册名）；归档可复用定义/引理**前先跑通**，跑不通不许进库；**工具链缺失**（`LEAN_NOT_FOUND` 解析不到可执行文件 / `NO_SUBPROCESS` 宿主没有 subprocess 服务）时把代码写下来归档并在 `note` 写明"宿主无 Lean 工具链"——这算显式阻塞原因，门禁据此放行，不会因为装不了 Lean 而卡死。
@@ -162,7 +168,7 @@ flowchart TB
 - **五个工具（每个架构一套，前缀跟随各自命名）**：`<prefix>_lean_run` 在宿主 `subprocess` 服务上执行 Lean（`leanAsync=true` 时入队即返回 `{async:{jobId,state}}`，否则同步返回 `{ok, exitCode, ms, stdout, stderr}`），**绝不抛异常**（缺工具链 → `LEAN_NOT_FOUND`、超时 → `LEAN_TIMEOUT`、越界路径 → 拒绝）；`<prefix>_lean_archive`：`kind='def'/'lemma'` 归档到**跨项目** `Formal/Lib|Proved`（同内容去重），`kind='proof'` 写 `Formal/<target>.lean` 并**只在作业 `settled(ok)` 时**写 `Verified/Lean/<target>.lean` 标记该对象为 Lean 通过，`kind='blocked'` 记录显式难度判断/阻塞原因（**原因必填**）；`<prefix>_lean_lib` 重建并返回三处索引、逐对象状态与后台作业，**写新定义前先查重复用**；`<prefix>_lean_read` 取回归档原文（逐字复用，限 `Formal/Lib|Proved`、64KB）；`<prefix>_lean_job` 查看/等待后台编译作业（只读）。例如 v5 是 `vibe_v5_lean_*`，v2/v3 是 `vibe_math_lean_*`，v4 是 `vibe_v4_lean_*`（各有 run / archive / lib / read / job 五个）。
 - **边界（有意为之）**：框架**不内置 Lean**（不装工具链、不下载依赖；工具链缺失时优雅降级并如实记录）；框架**不判断忠实性**（那是代理/人审查并投票的对象，框架只负责把审查焦点**换成**忠实性）；**Lean 通过 ≠ 命题为真**——它只表示"这段形式化代码通过了内核检查"。
 
-完整契约（参数、路径、状态迁移、提示词语义、门禁位置、索引格式、测试要求）见 [`docs/formal-verification.md`](docs/formal-verification.md)。四个预设的 persona（主代理收到的提示词）都完整列出了这五个工具与八个参数，并且 `prefix` 与 `text` 两个块逐行一致（只允许第 0 行不同）；这一层由 [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) 与 [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) 守护——加入本特性时正是在四个预设里发现了"工具已注册、persona 从未列出"的缺陷（详见随包发布说明）。
+历史预设的 persona
 
 ---
 
@@ -170,7 +176,7 @@ flowchart TB
 
 两种安装方式，任选其一（也可并存）：
 
-### 方式 A：作为插件包一键安装（推荐，同时装出四个预设）
+### 方式 A：作为插件包一键安装（推荐，装出唯一发货 preset）
 
 桌面版在「设置 → 插件」里安装 `dsh-vibe-math`；命令行 profile 用（**务必带版本号**）：
 
@@ -188,21 +194,21 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 >
 > **为什么示例都带 `@<版本>`**：pnpm 优先按 profile 的 `package.json` 与 `pnpm-lock.yaml` 解析裸包名，**不带版本可能装到旧版**；本机实测 `@latest`、`@^2`、`pnpm update --latest`、`pnpm add …@latest` **四种写法都拿不到新版**，**只有显式版本**（如 `@2.8.5`）会真的升级。安装与升级都用 `add dsh-vibe-math@<版本>`（用 `add` 而非 `update`）。
 
-之后新建会话，预设选择器里选择 **Vibe Math V2**（v2，经典）、**Vibe Math V3**（v3，经典）、**Vibe Math V4**（v4，常驻自组织）或 **Vibe Math V5**（v5，研究所体系）即可——四个架构同级，按实际需求自选（见「怎么选」）。
+之后新建会话，在预设选择器里选择 **Vibe Math VMU**（唯一发货 preset）即可使用；`vibe-math-vmu` 的工具前缀是 `vibe_vmu_*`，输入框键入 `/vmu` 有自动补全。
 **两个 DSH 世代的落点不同，本包自动适配**：
 
-- **DSH ≥ 0.1.7（当前）**：agent preset 由组合行声明。本包在 `cordis.patch.yml` 里声明四个 preset（每行把该 preset 的完整插件清单交给宿主的 `agentPresets` 服务注册），**不往 `~/.dsh/.agent-presets/` 写任何东西**——该目录自 0.1.7 起不再被读取。
-- **DSH ≤ 0.1.6**：preset 仍是目录形式，安装器把四个 preset 写入 `~/.dsh/.agent-presets/`（`vibe-math-v2/` … `vibe-math-v5/`）；同一份 `cordis.patch.yml` 里的声明行在这些版本上什么都不注册，因此旧版启动**不会报错**。
+- **DSH ≥ 0.1.7（当前）**：agent preset 由组合行声明。本包在 `cordis.patch.yml` 里声明**唯一发货 preset** `vibe-math-vmu`
+- **DSH ≤ 0.1.6**：preset 仍是目录形式，安装器把**唯一发货 preset** 写入
 
 **升级包版本后重启 DSH，受管内容会被整体替换成新版本的字节——包括你手动改过的文件。** 这是有意的：一个"一半旧版、一半新版"的 preset 会挂不上或行为诡异，而你在外面看不出来。**被替换掉的手改内容不会丢**：目录形式下原文会先备份到 `~/.dsh/.agent-presets/.vibe-math-backup/<旧版本>/<preset>/`，文件名会在日志里列出。
 **要自定义 preset 就别改受管内容**——复制一份（预设选择器里的复制动作，或在自己的 bundle 里用新的 id 声明）。注意：在当前 DSH 里你若为**同名 id** 保存了自己的声明，本包会放弃注册并打印一行说明，以你的声明为准。
 
 ### 方式 B：手动声明（自定义 / 二次开发）
 
-- **DSH ≥ 0.1.7**：把 `vibe-math-vN/agent.cordis.yml` 整段作为 `plugins` 放进一个声明行——既可以照抄本包 `cordis.patch.yml` 里的 `dsh-vibe-math/preset-declaration` 行，也可以用宿主自带的 `@deepseek-ai/dsh-agent-preset` 行；把这个 bundle 装进你的 profile 即可。完整规则见 DSH 自带技能 `editing-cordis-compositions`。
-- **DSH ≤ 0.1.6**：把 `vibe-math-vN/` 下的 `agent.cordis.yml` / `preset.yml` / `vibe-math-vN.js` 复制到 `~/.dsh/.agent-presets/vibe-math-vN/`。
+- **DSH ≥ 0.1.7**：把你要发布的 bundle（如 `vibe-math-vmu/agent.cordis.yml`）整段
+- **DSH ≤ 0.1.6**：把该 bundle 目录下的
 
-新建会话后在 preset 选择器里选 **「Vibe Math V2」** / **「Vibe Math V3」** / **「Vibe Math V4」** / **「Vibe Math V5」**；会话启动后即可使用：v2/v3 的工具是 `vibe_math_*`、v4 是 `vibe_v4_*`、v5 是 `vibe_v5_*`；输入框键入 `/vibe`、`/v4`、`/v5` 有自动补全。
+新建会话后在 preset 选择器里选 **「Vibe Math VMU」**
 
 > 改过 preset 定义后需**重启 DSH 进程**再开新会话（preset 的 standing mount 会缓存到进程退出）。
 
@@ -222,50 +228,17 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ---
 
-## 🧭 四个预设怎么选
+## 🧭 发货面：唯一发货 preset 与如何加更多
 
-> **💡 四个架构同级，按你的实际需求自行选择：**
->
-> - **选 `vibe-math-v2`（概率驱动 · JSON 数据层）**，如果你：
->   - 偏好**结构化 JSON 数据**（`qs.json` / `Propos/<分类>_Propos.json` / `Verified/` 卡），方便程序化检索与二次加工；
->   - 想要**成熟稳定的代码启发式调度**（优先级 + 概率，行为可预期、不依赖规划代理的"临场发挥"）；
->   - 不需要方法库沉淀 / 论文式叙述，数据以字段为主即可。
-> - **选 `vibe-math-v3`（论文式 md + 规划代理 + 方法库）**，如果你：
->   - 偏好**论文/研究报告式的自然语言知识库**（问题清单含依赖与后生问题来源动机、研究日志按方向按轮续写，人类可读、可自由续写）；
->   - 希望调度由**规划代理**根据实际情况自主制定 N 步计划（更灵活，失败自动回退启发式）；
->   - 希望**通用理论发明库**——求解中发明的理论/框架/工具/方法/思想经 Method Keeper 沉淀为可复用、可体系化、跨项目扩充的方法论（像"解决方程时发明群论"）；
->   - 接受"只有 `Verified/` 绝对可信，其余 md 为经验参考"的可信分层。
->
-> 两者都成熟可用、持续维护，且都支持断点续跑、人工/自动干预、进度汇报、多会话隔离、命题晋升、近共识/加权裁决等核心能力；切换成本低（同一套 `vibe_math_*` 工具与 `/vibe` 命令、同一套参数体系）。
->
-> - **选 `vibe-math-v4`（常驻自组织）**，如果你想要一组**持久化常驻子代理**互相留言开会、**完全自组织**（无领头人、无中央调度），并且能接受"全体一致才定论"这种严格门槛。
-> - **选 `vibe-math-v5`（研究所体系）**，如果你想要：
->   - **有组织的自组织**——现实研究所那样有**领头人（院士）**负责拆解、分派、定优先级、主持会议、督导进度，但**判断仍归每个人自己**；
->   - **可增减的编制**——常驻研究员 + 可**自主雇佣/解雇**的临时工（临时工无表决权，适合处理核对、试算、资料整理等杂活）；
->   - **可调的一致性门槛**——`m = min(quorumCap, 有表决权人数)` 票布尔一致即定论（因为反向票阻塞，实际门槛仍是"全部布尔票同向"；只有投出布尔票的人少于 `m` 时才不同）；
->   - **零 token 成本的状态持久化**——研究所状态写在研究所目录下的加固 JSON 里，不占成员上下文预算。
->
-> **⚠️ `vibe-math-v2` 与 `vibe-math-v3` 是经典架构；`vibe-math-v4`、`vibe-math-v5` 是实验性架构，** 四者同级、均可选择；老 `vibe-math-v1` 已被移除（本包仅含 v2/v3/v4/v5）。
+> **发货面（shipped surface）= 1 个 preset：`vibe-math-vmu`。** `installer.js` 的 `PRESETS` 只有 `{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }`；`cordis.patch.yml` 只声明 `preset-vibe-math-vmu` 一行；`package.json#files` 里没有 `vibe-math-v2/`…`vibe-math-v5/` 目录。DSH 预设选择器里应只看到 **Vibe Math VMU**。
 
-| | **v2（概率驱动 · 经典）** | **v3（论文式 md · 经典）** | **v4（常驻自组织 · 实验）** | **v5（研究所体系 · 实验）** |
-|---|---|---|---|---|
-| 定位 | **经典**（JSON 数据层） | **经典**（第三代） | **实验性**（第四代） | **实验性**（第五代） |
-| 核心思想 | 概率驱动：`qs.json` 问题 + `Propos/` 命题库，按「正确概率 / 价值」调度 | **论文式 md 知识库 + 规划代理调度 + 通用理论发明库** | **持久化常驻子代理自组织**：互相留言 + 开会决定一切任务，无中央调度 | **研究所**：院士做组织与分派，成员各自研究；**≥ m 票布尔一致**才定论；临时工可按需雇入 |
-| 数据 | `qs/qs.json` + `Propos/<分类>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/`（全部 md，软规范锚点 + 自由叙述）+ `Verified/` | `Problems/` + **按常驻 id 归属**的 `Progress|Propos|Methods|Subproblems/<id>/` + `Shared/`（会议/任务板/辩论）+ `Verified/` | 同 v4 的按成员归属布局，另加 `Institutes.md`（编制镜像）；**权威状态在 `State/<研究所>.v5state.json`**，其余文件只是镜像与工作区 |
-| 角色 | explorer → 逐方向 solver → verifier | **planner（规划代理）** → explorer → 逐方向 solver → verifier → **method-keeper（方法整理代理）** | **N 个常驻研究者**（continuable），无固定角色 | **院士 acad**（领头人）+ **常驻研究员 r-n**（有表决权）+ **临时工 t-n**（无表决权，可雇可解雇）+ 所办（不研究不投票） |
-| 调度方式 | 代码启发式（优先级 + 概率） | **规划代理产出 N 步计划**（校验后执行，失败回退启发式） | **无中央调度**：任务由常驻互相留言/开会（框架只做媒介，不指派） | **框架仍不指派**；由**院士**拆解/分派/定优先级/督导，成员可据理反对；框架只做中继、任务板、会议与计数 |
-| 收口规则 | 解法/证明达概率 `1` 即收口，`never` 永不调度 | 同 v2（近共识裁决修复 flat 误判） | **仅当全体常驻一致（真 或 假）**才写入 `Verified/`，否则留库附概率 | **布尔票 ≥ m = min(`quorumCap`, 有表决权人数) 且全为 1 或全为 0** 才写入 `Verified/`；反向票阻塞；弃权不计票但计入平均；（可切回 v4 口径） |
-| 停止 | 全解或卡死 | 全解/无候选 | **仅当全体常驻一致认为原问题已解决**才停止 | 同 v4：**全体有表决权者一致认为原问题已解决**才结题 |
-| 上下文 | 无 | 无 | **常驻上下文达阈值自动 `/compact`**（可调） | 同 v4（阈值/轮数可调，压缩后规章仍在 persona 里生效） |
-| 特设能力 | 命题「价值/关键性」自动晋升问题清单；`reportMode file/push/both`；`priorityAdjust` | **方法库沉淀循环**（`methods_used`/`new_inventions` → Method Keeper）；**计划审批门/方法晋升门**；**项目锁**；后生问题「来源与动机」一等公民 | **常驻各自沉淀 + 互相阅读**；**全体一致验证**；**随时增开/关闭常驻、留言干预**；**断点续跑** | v4 的全部能力，另加：**真实雇佣/解雇**（释放子会话、收回任务）；**compare-and-set 任务板 + 依赖 DAG**；**会议与验证严格互斥**；**编制镜像与结题记录**；**状态零 token 成本** |
+- **机构差异用 pack 表达**：`vibe-math-vmu` 是能力面，机构/政策在 `vibe-math-vmu/packs/<id>`；换 pack，而不是复制整个 preset。
+- **要加更多 preset（自定义 / 二次开发）**：① 复制 `vibe-math-vmu/` 为新 id 的 bundle（`agent.cordis.yml` / `preset.yml` / `<id>.js` / `host-*.js` / `kernel/**` / `settings/**`）；② DSH ≥ 0.1.7：在 `cordis.patch.yml` 加一条 `preset-declaration`（照抄 `preset-vibe-math-vmu` 行，改 `id` 与插件清单）；③ DSH ≤ 0.1.6：把目录放进 `~/.dsh/.agent-presets/<id>/`；④ 重启 DSH，选择器里出现新 preset。同名 id 已被本包声明时，本包会放弃注册并打印说明（以你的声明为准）。
+- **旧 preset（v2–v5 / v5r）已下线、不随包发货**：仅作历史参考，见 [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md)；下面「历史架构与分工」一节保留它们的架构说明。
 
-四者都支持：断点续跑（`vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume`）、人工干预与暂停恢复、
-按项目隔离、子代理权限调控、自然语言驱动。**四个架构同级**——偏好结构化 JSON 数据与确定性调度选 v2，
-偏好论文式 md、规划代理与理论发明库选 v3；v4 是完全自组织的常驻合作研究，v5 是"有领头人 + 可增减编制 + 可调门槛"的研究所体系。
+## 🧠 历史架构与分工（v2–v5，已下线）
 
----
-
-## 🧠 架构与分工（四套并列）
+> ⚠️ **本节是历史架构说明（v2–v5，已不随包发货）**；当前发货 preset 的架构见 `vibe-math-vmu/docs/`。
 
 ### V2（概率驱动 · 经典）
 
@@ -338,7 +311,9 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 
 ## ⚡ 5 分钟上手
 
-> 一条主线：**说人话启动 → 随时问进度 →（可选）调参 / 干预 → 收尾**。收口时四个预设会**默认自动产出一篇最终论文**（`Paper/<id>/`，见上「功能特色」与 [`docs/final-paper.md`](docs/final-paper.md)）。下面三种用法任选，不必都读。
+> ⚠️ 本节原文描述**历史 preset（v2–v5，已不随包发货）**；当前发货的 `vibe-math-vmu` 的对应能力与用法见 `vibe-math-vmu/docs/`。
+
+收口时历史预设会
 
 ### 方式 A：直接对话（推荐，最省事）
 
@@ -471,7 +446,7 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 
 **Step 6 — 收口时自动产出最终论文（默认开启）**
 
-四个预设默认 `finalPaper=true`：论文阶段在各个收口信号命中后、**run 被标记完成之前**启动（v2/v3 由专职「论文撰写」子代理整理已有证据，v4/v5 由团队合写 → 交叉互审 → 定稿代表定稿并取得一致认同）。产物在 `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}`（v2/v3 另有 `paper.lock.json`）：`paper.tex` / `paper.pdf` 只在 `paperFormat` 含 tex 且宿主检测到 LaTeX 引擎时产出（中文优先 `xelatex`；没有引擎就只交 md/tex，不阻塞收尾）。手动触发用 `/vibe paper`（v2/v3）、`/v4 paper`、`/v5 paper`，可带 `lang=` / `format=` / `editor=` / `force`；完整契约见 [`docs/final-paper.md`](docs/final-paper.md)。
+历史预设（v2–v5）默认 `finalPaper=true`
 
 ### 🖼️ 实际使用示例（长截图）
 
@@ -487,6 +462,8 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 ---
 
 ## ⚙️ 参数速查表
+
+> ⚠️ 本节原文描述**历史 preset（v2–v5，已不随包发货）**；当前发货的 `vibe-math-vmu` 的对应能力与用法见 `vibe-math-vmu/docs/`。
 
 ### 共用参数（被 ≥2 个预设接受）
 
@@ -560,7 +537,7 @@ v2 **没有专属参数**：它的完整参数集就是上表「适用」列含 
 
 #### 最终论文（final paper）
 
-四个预设都**默认开启**：收口判定命中后、**在 run 被标记完成之前**进入 paper 阶段。v2 由一名专职「论文撰写」子代理把已定论证据整理成 `Paper/<id>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`）；没有引擎或编译失败时 tex+md 照常交付，只记日志告警——不阻塞定稿、不覆盖已有 pdf。完整契约见 `docs/final-paper.md`。
+历史预设（v2–v5）都**默认开启**：收口判定命中后、**在 run 被标记完成之前**进入 paper 阶段。v2 由一名专职「论文撰写」子代理把已定论证据整理成 `Paper/<id>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}`（检测到引擎时才有 `paper.pdf`）。手动：`/vibe paper [lang=zh|en] [format=both|md|tex] [force]`。PDF 需要宿主上有 LaTeX 引擎（中文优先 `xelatex`）；没有引擎或编译失败时 tex+md 照常交付，只记日志告警——不阻塞定稿、不覆盖已有 pdf。完整契约见 `docs/final-paper.md`。
 
 ### v3（论文式 md + 规划代理 + 方法库）专属参数
 
@@ -630,6 +607,8 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 
 ## 📝 断点续跑 & 人工干预（两大硬性需求）
 
+> ⚠️ 本节原文描述**历史 preset（v2–v5，已不随包发货）**；当前发货的 `vibe-math-vmu` 的对应能力与用法见 `vibe-math-vmu/docs/`。
+
 - **断点续跑**：所有状态落盘（v2：`VibeMath_State/*.json`；v3：`State/*.json`；**v5：研究所目录下的加固 JSON `State/<研究所>.v5state.json`**），每个子代理都是 DSH 的 **continuable 持久会话**（对话由 DSH 自动保存）。重启后新开会话 → `vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume` 即可续跑。v2/v3 额外用**进程纪元**区分"同进程暂停→恢复"（保留存活子代理继续）与"跨进程重启"（清理陈旧任务）。**v3 的 md 知识库本身就是叙事断点**——代理 resume 时从研究日志/问题卡/命题卡尾部续写；**v5 由状态文件承担**——恢复就是"读之前先 load"，跨进程与同进程走同一条代码路径，成员会话重建时会以"读回你自己的 Progress/"重新种化（而不是让它们从头再来）。
 - **中途人工干预**：`manual` 模式在关键节点挂起决策（v2：explorer/solver 派发、验证裁决；v3：**计划审批门**（规划代理产出计划后等你 approve/reject）、验证裁决门、**方法晋升门**（项目方法 → 全局库））；可随时 `set_mode auto` 切回自动（自动放行所有挂起决策）；可对任意子代理 `message_agent` / `interrupt_agent`。**v4/v5 天然可干预**：随时给成员留言（`vibe_v5_message`）、召集会议、暂停全所、增删编制——成员下一轮就会看到。
 - **进度汇报**：默认**事件驱动** —— 只有代理状态更新等事件发生时才会写报告（v2：`Progress_Logs/report.json`；v3：`Progress_Logs/report.json` + `Logs/报告.md` 论文式人读摘要；`reportMode` 可 `file`/`push`/`both`，`push` 通过 `subagents.sendMessage(根代理, 常驻子代理, …)` 唤醒常驻主动汇报——`followup` **不是** `subagents` 服务的方法，它只是 `Agent` 对象方法）；只有把 `reportIntervalMs` 设为 >0 才启动定时自动汇报（间隔毫秒）。**v4/v5 的工作汇报是"所内自述"**：成员把进展写进自己的 `Progress/`、把关键结论说进群聊（v5 另有人读镜像 `Institutes.md` / `Shared/TaskBoard.md` / 会议纪要 / 辩论录 / `Problems/conclusion.md`）。
@@ -644,10 +623,11 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 - **v5（研究所体系）**：[`vibe-math-v5/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)（文字规格）· [`vibe-math-v5/架构图.md`](docs/DEPRECATED-LEGACY-PRESETS.md)（全套架构图）
 - **v5 提示词与交互语料**：[`prompt-corpus-v5/prompt-corpus-v5.md`](prompt-corpus-v5/prompt-corpus-v5.md)（框架真正发出的每一条提示词原文，可直接人工复核身份/编制/交互署名是否正确）
 - **四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
-- **四个预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
+- **历史预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
 - **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
 - **最终论文（四架构共用契约）**：[`docs/final-paper.md`](docs/final-paper.md)（五个参数与 v4/v5 的 `paperEditor`、收口顺序"先论文后完成"、`Paper/<id>/` 产物与 9 节骨架、LaTeX 检测顺序与"先修复后降级"、v4/v5 团队合写流程与 v5 所办咨询规则）
-- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 889`（803 套件 + 86 探针/变体，**作业计数**（job count），不是文件计数）；**这些数字必须派生**：`node tests/run-tests.mjs --counts` 是权威来源（**作业计数**，不是文件计数），并由 [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs) 校验本页与另两份文档；随包发布的是 `files[]` 里的 484 个 `tests/*.mjs`（371 个套件 + 113 个探针/脚本）（文件计数），其余仅开发检出可见，清单见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
+- **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 890`（804 套件 + 86 探针/变体，**作业计数**（job count），不是文件计数）；**这些数字必须派生**：`node tests/run-tests.mjs --counts` 是权威来源（**作业计数**，不是文件计数），并由 [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs) 校验本页与另两份文档；随包发布的是 `files[]` 里的 484 个 `tests/*.mjs`（371 个套件 + 113 个探针/脚本）（文件计数），其余仅开发检出可见，清单见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
+- **CI 绿 ≠ 可发布**：GitHub `gate` 只证明另一台干净机器上 `static` 门禁 + 分片套件能绿（本地 `--counts` 当前是 890 作业 = 804 套件 + 86 探针（数字由 runner 派生，会随测试增减）；CI 分片口径 **gated 877** = 890 − 13 条排除）；可发布仍由本地 `release-ready.mjs` + 真机前置决定，见 [`docs/acceptance/ci-gate.md`](docs/acceptance/ci-gate.md)。
 - **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（260 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（16 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
 - **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）

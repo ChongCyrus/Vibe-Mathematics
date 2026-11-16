@@ -268,6 +268,10 @@ vmu.packs.active: [v5r]
 > ★★ **当前实现状态（写清，不当承诺）**：本表**由生成器派生**（`scripts/generate-vmu-settings-table.mjs`），该列判据＝"该键**字面量**是否出现在运行时源码（`kernel/**`、`packs/**`、入口、宿主适配器）里"，**目前只有两档** ⇒ **第三档 `❓` 是本卷定义的判据，落地须改生成器**；★ **实测依据（不许手改表）**：手改该列任一格 ⇒ `audit-vmu-docs` **变红**并提示 `node scripts/generate-vmu-settings-table.mjs --write`（R32 实测；该门跑的就是这个生成器的 `--check`）⇒ **规则＝改判据（生成器），不是改格子** ✓。
 > ★ **已知需要 `❓` 的实例（范围＋残差口径；R32 普查）**：**范围**＝§11 全部 **1226 行**；其中"接线"格含 `未接线` 的 **119 行**。**残差 A＝16 行**（键字面量**出现在运行时源码里**、但只落在**声明样**位置 ⇒ 值得人眼复核，**未必都错**）；**残差 B＝1 行**（`vmu.turn.selfCheck`：字面量连生成器的"声明行"过滤都通过、行仍标未接线）。★ **"靠派生名消费"这类机械判据看不见** —— 我**只逐一手核过两行**（`vmu.meetings.minutesDetail`：消费者 `kernel/meetings.js:925` 的 `K.minutesDetail`；`vmu.meetings.budgetOnExceed`：`kernel/meetingmarker.js:162/163/227` 的 `K.budgetOnExceed`），**其余【未核】** ✓（**"没核"就写"没核"**）。
 
+> ★★ **勘误（C#14，2026-11-17 真值批）**：下表 `vmu.budget.tokens` 一行显示 `✅ 已接线`，是按本表「字面读取」判据得出的（`kernel/budget.js` 的 `BUDGET_KINDS` 确实读这个键）；但**模型的 token usage 从不进入 budget** —— 全仓唯一的 `budget.charge(...)` 业务调用点是手动工具面 `vibe_vmu_budget { action:"charge", kind:"tokens" }`，宿主/内核不会把真实模型消耗记进去 ⇒ 这个上限**不会因真实 token 消耗自动触发**，应读作**部分接线**（工具面可手动记账；自动计量未接）。待 P0-c（model usage → budget.charge）落地后再按实际复核；在那之前不要把本行读成「已有成本闸」。
+
+> 其余 `✅ 已接线` 行的判据（可读取者可达）不变；这条是「被读 ≠ 被真实事件驱动」的具名例外。
+
 | 键 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 载体（首个**提到**它的运行时代码；消费点可能在其下游） | 说明 |
 |---|---|---|---|---|---|---|---|---|---|
 | `vmu.core.enabled` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 内核总开关（关闭＝完全不介入） |
@@ -1108,6 +1112,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.confidentialityDefault` | enum | `internal` | `public`∣`internal`∣`restricted` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同 |
 | `vmu.meetings.confidentialityQuotePolicy` | enum | `allow` | `allow`∣`redact`∣`deny` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同 |
 | `vmu.meetings.wakeFailurePolicy` | enum | `refuse` | `refuse`∣`skip`∣`retry` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 唤醒失败处置（refuse|skip|retry）；域与 meetings.js:188 逐字相同 |
+| `vmu.verified.requireMachineWarrant` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | verified 轨是否只收机器/文献 warrant：false（默认）= 也接受社会性 debate-unanimous；true = 只收 lean-conformance 或 literature，社会性 warrant 具名拒 VMU_PACK_V5R_SOCIAL_WARRANT_REFUSED |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
@@ -1572,7 +1577,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1169** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1170** 个，前缀家族 **118** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1689,6 +1694,7 @@ vmu.packs.active: [v5r]
 | `vmu.tx.*` | 6 |
 | `vmu.v3.*` | 19 |
 | `vmu.v5r.*` | 1 |
+| `vmu.verified.*` | 1 |
 | `vmu.visibility.*` | 1 |
 | `vmu.work.*` | 2 |
 | `vmu.workflow.*` | 27 |

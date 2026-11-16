@@ -123,7 +123,10 @@ console.log('\n=== WAVE2 CARD GUARDS (literal p / proof state / lean claim / ado
   const imposter = base(await call(b, 'vibe_v5_blueprint', { action: 'adopt', path: 'Shared/Protocol.md', draft: draftId, member: 'r-acad' },
     { kernel: k, agent: { id: 'session-r-1' } }))
   ok(imposter.ok === false && imposter.code === 'VMU_NOT_PERMITTED', '§4.2 a resident cannot adopt by naming the chair (the CALL is the seat)', imposter)
-  ok(/cannot adopt in another member/.test(String(imposter.message)), '§4.3 the refusal says the seat came from the call', imposter.message)
+  // ★ P0-d（ROUND-1 C#17）：越席 adopt 现在由统一 acting-seat 门先拒；它说清「席位从 CALL 读」——比 blueprint 自己的
+  // "cannot adopt in another member" 更早、同一语义。产品的正确判据是「席位来自调用、且请求不得点别人的名」。
+  ok(/seat is read from the CALL/.test(String(imposter.message)) && /may not act under another seat/.test(String(imposter.message)),
+    '§4.3 the refusal says the seat came from the call (unified acting-seat gate, P0-d)', imposter.message)
   // B5 requires BOTH seats to have written their own design section before adopt; add the resident's section first.
   const second = base(await call(b, 'vibe_v5_blueprint', { action: 'propose', materialize: true, path: 'Shared/Protocol.md', member: 'r-acad', text: '## 院士的设计·正文二' },
     { kernel: k, agent: { id: 'session-r-acad' } }))

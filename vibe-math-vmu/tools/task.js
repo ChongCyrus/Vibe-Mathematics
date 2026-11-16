@@ -6,7 +6,7 @@ export function makeTaskSpec({ param, refused, TOOL_NAMES, kernel }) {
       name: TOOL_NAMES.task,
       description: 'vmu 任务面：action=list|create|assign|transition|set_dependencies|stage|advance|brief|history。' +
         '任务是内核台账（依赖/阶段门/暂停门都由内核强制）；本工具只做**寻址与调用**，不复制任何策略。' +
-        '★ `set_dependencies` 是 v5r 提示词早已声明的动词（`packs/v5r/prompts/v5r-blocks-a.js:542/579/611`）的**落点**：' +
+        '★ `set_dependencies` 是 v5r 提示词早已声明的动词的**落点**（现行词表：`packs/v5r/prompts/v5r-reply-channel.js` 的 `vibe_v5_task_update` action 与 `packs/v5r/tools.js` 的同一 action 词表）：' +
         '两节点环/长环只能靠"改边"产生，所以这是 F35 的关键动作；成环 ⇒ `VMU_TASK_DEPENDENCY_CYCLE`（`detail.cycle` 给环路径）。',
       parameters: {
         action: param('string', 'list｜create｜assign｜transition｜set_dependencies｜stage｜advance｜brief｜history', { required: true,

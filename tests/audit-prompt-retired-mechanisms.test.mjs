@@ -78,7 +78,7 @@ const RETIRED = Object.freeze([
   Object.freeze({
     id: 'phantom-formal-tools',
     section: 'v5r-fix-formal',
-    declaredNeedles: ['end_verify', 'formal_proof', 'formal:{decision,file,note}', 'vibe_v5_verified_promote', 'warrant'],
+    declaredNeedles: ['end_verify', 'formal_proof', 'formal-shape', 'vibe_v5_fidelity_conclude', 'vibe_v5_verified_promote', 'warrant'],
   }),
   Object.freeze({
     id: 'tool-help-param',

@@ -62,11 +62,11 @@ const ok = (cond, label, detail) => {
   if (cond) { passed++; console.log('  ok   ' + label) } else { failed++; console.error('  FAIL ' + label, detail === undefined ? '' : detail) }
 }
 
-test('§1 every seat is taught the closed four-name phase set', () => {
+test('§1 every seat is taught the phase union (11 values), with the four flow phases named', () => {
   for (const seat of SEATS) {
     const t = texts[seat.member + '/normal']
-    ok(says(t, '派回合的 `phase` 是闭集，只有四个全名'), seat.member + ': the phase rule is in the assembled prompt')
-    for (const name of ['`heartbeat`', '`paper-write`', '`paper-review`', '`paper-final`']) ok(says(t, name), seat.member + ': names ' + name)
+    ok(says(t, 'phase` 取内核相位与 pack 声明的并集（11 个）'), seat.member + ': the phase rule is in the assembled prompt')
+    for (const name of ['`heartbeat`', '`paper-write`', '`paper-review`', '`paper-final`', '`normal`', '`meeting`', '`resume`']) ok(says(t, name), seat.member + ': names ' + name)
     ok(says(t, '`review`') && says(t, '不是 phase'), seat.member + ': review is denied as a phase name')
     ok(says(t, '`VMU_INVALID_ARGUMENT unknown phase`'), seat.member + ': names the rejection a bad phase earns')
     ok(says(t, '评审票'), seat.member + ': says the paper-review product is a review ballot')
@@ -80,9 +80,10 @@ test('§1 every seat is taught the closed four-name phase set', () => {
   // exact relapse this pin exists for (the four names live between 「只有四个全名」 and the following 「——」).
   for (const seat of SEATS) {
     const t = texts[seat.member + '/normal']
-    const seg = t.split('只有四个全名')[1].split('——')[0]
-    for (const name of ['`heartbeat`', '`paper-write`', '`paper-review`', '`paper-final`']) ok(seg.includes(name), seat.member + ': closed-set list contains ' + name)
-    for (const short of ['`review`', '`write`', '`final`']) ok(!seg.includes(short), seat.member + ': closed-set list does not contain a short name ' + short)
+    const anchor = '取内核相位与 pack 声明的并集（11 个）'
+    const seg = t.includes(anchor) ? t.split(anchor)[1].split('——')[0] : ''
+    for (const name of ['`founding`', '`normal`', '`checkpoint`', '`verify`', '`verify-debate`', '`meeting`', '`resume`', '`heartbeat`', '`paper-write`', '`paper-review`', '`paper-final`']) ok(seg.includes(name), seat.member + ': phase union names ' + name)
+    for (const short of ['`review`', '`write`', '`final`']) ok(!seg.includes(short), seat.member + ': phase union does not contain a short name ' + short)
   }
 })
 

@@ -1,4 +1,4 @@
-# Vibe Mathematics — Multi-Agent Mathematical Problem Solving and Verification Framework (Four Architectures)
+# Vibe Mathematics — Multi-Agent Mathematical Problem Solving and Verification Framework (the `vibe-math-vmu` institute system)
 
 English | [中文](README.md)
 
@@ -6,27 +6,27 @@ English | [中文](README.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/ChongCyrus/Vibe-Mathematics)](https://github.com/ChongCyrus/Vibe-Mathematics)
 
-> A set of **agent presets** running inside **DeepSeek Harness** (`vibe-math-v2` / `vibe-math-v3` / `vibe-math-v4` / `vibe-math-v5`),
-> which use multi-agent collaboration to automatically solve mathematical problems and perform multi-agent cross-verification of the conclusions. All four presets share the foundational capabilities of "**checkpoint resume**,
-> **mid-run manual intervention**, **progress reporting**, and **natural-language driving**", but adopt four generations of different solving architectures:
-> **💡 v4/v5 first** — `vibe-math-v4` (the "resident self-organizing collaborative research" architecture) and `vibe-math-v5` (the latest "institute system") are the **current focus of maintenance**; `vibe-math-v2` and `vibe-math-v3` are the **classic / early** architectures, now **architecturally frozen** and receiving **compatibility-only** maintenance (new capabilities land in v4/v5). All four still install and work; see [`docs/maintenance-policy.md`](docs/maintenance-policy.md). Choose according to your actual needs (see "How to choose" below).
+> A **single shipped agent preset** running inside **DeepSeek Harness**: **`vibe-math-vmu`** (the institute system) —
+> multi-agent collaboration that automatically solves mathematical problems and cross-verifies the conclusions; academicians + resident researchers + temp workers, a public charter, group chat and meetings, a compare-and-set task board and a `Verified/` threshold; state lives in hardened JSON under the institute directory and is **never written into the host session log** (zero token storage cost).
+> **Checkpoint resume / mid-run manual intervention / progress reporting / natural-language driving** are this preset's foundations; institutional differences are expressed by `vibe-math-vmu/packs/<id>` (swap the pack), not by copying a whole preset.
 >
-> - **`vibe-math-v2` (probability-driven · JSON data layer) · classic**: `qs.json` problem list + `Propos/` proposition library + probability-driven scheduling + code heuristic scheduling;
-> - **`vibe-math-v3` (third generation · paper-style md + planner agent + method library) · classic**: all knowledge is stored and extended in **Markdown paper/research-report form** (`Problems/` problem list + dependencies + source motivation, `Progress/` research log, `Propos/` proposition library, `Methods/` general theory invention library, `Verified/` absolutely trustworthy); before scheduling, the **planner agent** autonomously draws up a plan for the next N steps; theories/frameworks/tools/methods/ideas invented during solving are distilled by the **Method Keeper** into a reusable method system (as in inventing group theory or functional analysis).
-> - **`vibe-math-v4` (fourth generation · resident self-organizing collaborative research) 🧪 Experimental**: a group of **persistent resident subagents** **leave messages for one another + hold meetings**, and autonomously decide all task arrangements (no central scheduler); each accumulates its own progress/proposition/method/subproblem libraries and consults the others; verification is written to `Verified/` **only when all residents agree (true or false)**, otherwise it remains in the library with a probability attached; when the context reaches a threshold it automatically `/compact`s; it stops only when all agree that the original problem has been solved.
-> - **`vibe-math-v5` (fifth generation · institute system) 🧪 Experimental · Latest**: upgrades the residents into an **institute** — **academicians** (leaders / the organizing and coordinating center, responsible for decomposition and **assignment**, setting priorities, chairing meetings, and supervising progress) + **resident researchers** (with voting rights, able to autonomously hire/fire their own temp workers) + **temp workers** (no voting rights); it has a **public charter**, **group chat and meetings**, a **compare-and-set task board**, and **real firing**; a boolean agreement of **≥ m votes** is required to write to `Verified/` (opposing votes block, abstentions are not counted, and if the threshold is not met it remains in the library with an average probability attached); state is written to the **hardened JSON file** `State/<institute>.v5state.json` under the institute directory (serial writes, a mandatory load before read) — **never into the host session log** — at zero token cost.
+> **The shipped surface is exactly one preset**: after installing this package, DSH's preset picker shows **`vibe-math-vmu`**.
+> The old `v2`/`v3`/`v4`/`v5` presets are **deprecated and no longer shipped** (`installer.js` `PRESETS` contains only `vibe-math-vmu`, `cordis.patch.yml` declares only that row, and `package.json#files` has no old preset directory).
+> They remain as historical reference only — see [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md); the later sections of this README keep their (retired) architecture descriptions, while the current capability set is `vibe-math-vmu` plus `vibe-math-vmu/docs/`.
+>
+> **To add more presets**: copy/create a bundle under your own id and add a `preset-declaration` row to `cordis.patch.yml` (DSH ≥ 0.1.7), or place the directory in `~/.dsh/.agent-presets/<id>/` (DSH ≤ 0.1.6). See "Shipped surface: the only shipped preset, and how to add more" below.
 
-After installing this plugin package (or manually copying the presets), **four** agent presets appear in DSH's preset selector.
+After installing this plugin package, **one** agent preset appears in DSH's preset selector: `vibe-math-vmu` (display name **Vibe Math VMU**).
 
 ---
 
 ## 🧭 Navigation: I want to … → start here
 
 - **Get started (first run)** → [Start in five minutes](#-start-in-five-minutes)
-- **Which of the four presets to pick** → [How to choose among the four presets](#-how-to-choose-among-the-four-presets)
-- **Positioning, flow and division of labour of the four** → [Architecture Diagrams](#-architecture-diagrams-v2--v3--v4--v5) · [Architecture and division of labour](#-architecture-and-division-of-labour-all-four-in-parallel)
+- **Shipped surface (the only preset / where the old ones went / how to add more)** → [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md)
+- **Historical architectures (v2–v5, retired)** → [Architecture Diagrams](#-architecture-diagrams-v2--v3--v4--v5) · [Historical architectures and division of labour](#-historical-architectures-and-division-of-labour-v2v5-retired)
 - **New: the final paper (produced at closure)** → [Features](#-features) · [full contract](docs/final-paper.md)
-- **Lean formal verification** → [Lean formal verification](#-lean-formal-verification-shared-by-the-four-architectures-adjustable-switch) · [full contract](docs/formal-verification.md)
+- **Lean formal verification** → [Lean formal verification](#-lean-formal-verification-shared-by-the-historical-architectures-adjustable-switch) · [full contract](docs/formal-verification.md)
 - **Observability (`status()` / `report()` fields and their scopes)** → [complete field table](docs/status-report-fields.md)
 - **What is in the directories** → [Directory structure](#-directory-structure)
 - **Tuning parameters** → [Parameter quick reference](#-parameter-quick-reference)
@@ -36,6 +36,8 @@ After installing this plugin package (or manually copying the presets), **four**
 ---
 
 ## 🧩 Architecture Diagrams (v2 + v3 + v4 + v5)
+
+> ⚠️ **Historical architecture diagrams (v2–v5, retired)**: the shipped `vibe-math-vmu` architecture is in that preset's `02-architecture.md`.
 
 > Static architecture diagrams; for the complete process description see [the v1-era architecture notes](docs/架构图.md) (historical: the layout changed from v2 on) and
 > [the v5 detail diagrams](docs/DEPRECATED-LEGACY-PRESETS.md) (the full set of v5 detail diagrams);
@@ -116,7 +118,9 @@ flowchart TB
 
 ## ✨ Features
 
-- **Final paper (on by default in all four presets)**: at closure the run writes a complete paper that **only organises evidence it already has**, and the paper phase runs **before** the run is marked complete; the artifacts are `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}` (v2/v3 additionally write `paper.lock.json`). Parameters: `finalPaper` (default `true`) / `paperFormat` (default `both`) / `paperLanguage` (default `zh`) / `paperCompilePdf` (default `true`) (plus `paperEditor` on v4/v5); the manual trigger is `/vN paper [lang=] [format=] [editor=] [force]`. A PDF needs a LaTeX engine on the host (`xelatex` preferred for Chinese); without one the tex+md are still delivered. Full contract and usage: [`docs/final-paper.md`](docs/final-paper.md).
+> ⚠️ The original text of this section describes the **historical presets (v2–v5, no longer shipped)**; for the shipped `vibe-math-vmu` see `vibe-math-vmu/docs/`.
+
+- **Final paper (on by default in the historical v2–v5 presets; the vmu paper chain is documented in `vibe-math-vmu/docs/`)**
 - **Multi-agent automatic solving**: the main agent hands the problem to the scheduler, which dispatches explorer / solver / verifier (v2/v3) plus subagents such as **planner (planning agent, v3)** and **method-keeper (method organizing agent, v3)** to solve collaboratively; **you do not need to operate node by node by hand**.
 - **Multi-agent cross-validation**: every conclusion goes to ≥3 "strict reviewers" for **independent review → debate (exchange group) → adjudication** (v3 defaults to **near-consensus adjudication**: if on the same side and the mean is ≥0.85/≤0.15, take the mean, so that "0.9 vs 1" is not misjudged as 0.5).
 - **Paper-style Markdown knowledge base (v3)**: the problem list (including dependencies between problems, and the causes and plans of descendant problems), research log, propositions, and method library are all written and continued in md paper/research-report style (when a direction is re-derived, the logs of the old direction are automatically archived and kept); **only `Verified/` and the objects that a verifier judged true/false are absolutely trustworthy**, and all other md (including unverified assertions in the method library) serve only as empirical reference.
@@ -142,13 +146,15 @@ flowchart TB
 
 ---
 
-## 🧮 Lean formal verification (shared by the four architectures, adjustable switch)
+## 🧮 Lean formal verification (shared by the historical architectures, adjustable switch)
+
+> This section describes the historical architectures (v2–v5); for the shipped `vibe-math-vmu` formalization surface see [`docs/formal-verification.md`](docs/formal-verification.md).
 
 **What it changes is not "being a bit stricter" but the object of review itself.** m agents agreeing that "this is right" is still **consensus** —
 it cannot rule out shared misunderstanding; passing Lean is **machine checking**. The only remaining uncertainty is thus reduced to a question a single person can review effectively:
 **are the definitions / objects / conditions / assumptions / conclusions in the Lean code fully consistent with the original text of the proposition (fidelity)?**
 
-- **Switch `formalVerify` (same name in all four architectures, default `'off'`)**: `'off'` is a **true no-op** (no Lean content appears in the prompts, no formalization state is written, and the verification flow and gates are completely unchanged; the five tools stay registered and usable and the persona always lists them, otherwise the switch would be undiscoverable and could not be turned on); `'encourage'` is **encouraged but not mandatory** (decide by implementation difficulty whether to formalize; once Lean passes, the focus of review shifts to fidelity; **no gate**); `'require'` is **mandatory** — a true/false conclusion must satisfy "**Lean has passed**" or "**the blocking reason was explicitly recorded**", otherwise the adjudication does not take effect (recorded as undecided, reason `formal-required`, written into the "formalization TODO"). Related parameters: `leanCommand` (default `lean`), `leanArgs` (used with `lake env lean`), `leanTimeoutMs` (default 120s).
+- **Switch `formalVerify` (same name in the historical architectures, default `'off'`)**
 
 - **⚠️ A fidelity defect ≠ the proposition is false (important)**: passing Lean only guarantees that "this piece of code passed the kernel"; it **does not guarantee that it says what the proposition means to say**. When a voter finds the Lean code and the original proposition inconsistent (too narrow / too broad / a different object / a missing condition): **do not vote 0** (0 means "the proposition is false" — that would record "the formalization does not qualify" as "the proposition was disproved", and under v5's all-0 consistency rule it would even write the proposition into `Verified/` marked **false**, so a mechanism meant for truth-seeking would fabricate a wrong negative conclusion); instead vote a value strictly between 0 and 1 (an abstention) and record the deviation with the receipt `formal:{decision:'defect', note:'<specific deviation>'}`. The framework then **revokes the "passed" state of this proof** (downgraded to `attempted`, `Verified/Lean/<id>.lean` deleted or rewritten as a "withdrawn" note if the host cannot delete it, and written into the "formalization TODO"), and under `require` this adjudication is not concluded (the `encourage` setting has no gate, so you must not claim the framework will force a shelving). Vote 0 only when the voter, **independently of this Lean code**, can also determine that the proposition is false (and can give independent reasons).
 - **The receipt channel and three further hard requirements** (members who do not call the Lean tools can also leave a judgment; mandatory under `require`): the receipt field is `"formal": {"target":"<object id>", "decision":"used|blocked|defect", "file":"Formal/<object id>.lean", "note":"difficulty judgment/blocking reason/specific deviation"}`; when `decision='blocked'`/`'defect'`, **`note` is required** (if missing the whole entry is rejected), `used` only records the object as `attempted`, and under `off` this channel **is disabled** (otherwise `off` would not be a true no-op). Three more: tool names in the injected text are always given in **full** (`<prefix>_lean_archive`, not `lean_archive` — an abbreviation is not a registered name); before archiving a reusable definition/lemma **run it through first**, and if it does not run through it must not enter the library; when the **toolchain is missing** (`LEAN_NOT_FOUND` cannot resolve the executable / the host has no `subprocess` service), write the code down, archive it, and state "the host has no Lean toolchain" in `note` — this counts as an explicit blocking reason and the gate lets it through.
@@ -158,7 +164,7 @@ it cannot rule out shared misunderstanding; passing Lean is **machine checking**
 - **The five tools (one set per architecture, prefix following each one's naming)**: `<prefix>_lean_run` executes Lean on the host `subprocess` service (with `leanAsync=true` it enqueues and returns `{async:{jobId,state}}`; otherwise it returns `{ok, exitCode, ms, stdout, stderr}` synchronously) and **never throws** (missing toolchain → `LEAN_NOT_FOUND`, timeout → `LEAN_TIMEOUT`, path escape → rejected); `<prefix>_lean_archive`: `kind='def'/'lemma'` archives into the **cross-project** `Formal/Lib|Proved` (identical content is deduplicated), `kind='proof'` writes `Formal/<target>.lean` and **only a `settled(ok)` job** writes `Verified/Lean/<target>.lean` and marks the object Lean-passed, `kind='blocked'` records an explicit difficulty judgment/blocking reason (**reason required**); `<prefix>_lean_lib` rebuilds and returns the three indexes, the per-object status and the background jobs — **check for duplicates and reuse before writing a new definition**; `<prefix>_lean_read` reads one archived file back verbatim (only `Formal/Lib|Proved`, 64KB cap); `<prefix>_lean_job` inspects or waits for a background compile (read-only). For example, v5 is `vibe_v5_lean_*`, v2/v3 are `vibe_math_lean_*`, and v4 is `vibe_v4_lean_*` (each with run / archive / lib / read / job).
 - **Boundaries (intentional)**: the framework **does not bundle Lean** (no toolchain installation, no dependency downloads; when the toolchain is missing it degrades gracefully and records this faithfully); it **does not judge fidelity** (that is what agents/humans review and vote on; the framework is only responsible for **switching** the focus of review to fidelity); **Lean passing ≠ the proposition is true** — it only means "this piece of formalized code passed the kernel check".
 
-For the complete contract (parameters, paths, state transitions, prompt semantics, gate locations, index format, test requirements), see [`docs/formal-verification.md`](docs/formal-verification.md). The personas (the prompt the main agent receives) of all four presets fully list these five tools and eight parameters, and the `prefix` and `text` blocks are identical line by line (only line 0 may differ); this layer is guarded by [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) and [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) — when this feature was added, it was precisely in the four presets that the defect "the tools were registered but the persona never listed them" was found (see the release notes shipped with the package).
+The personas (the prompt the main agent receives) of the historical presets
 
 ---
 
@@ -166,7 +172,7 @@ For the complete contract (parameters, paths, state transitions, prompt semantic
 
 Two installation methods, choose either one (they can also coexist):
 
-### Method A: one-click install as a plugin package (recommended, installs all four presets at once)
+### Method A: one-click install as a plugin package (recommended, installs the single shipped preset)
 
 On the desktop app, install `dsh-vibe-math` from **Settings → Plugins**; on the command line, use a profile (**always pin a version**):
 
@@ -184,21 +190,21 @@ dsh plugin --profile <your profile> add github:ChongCyrus/Vibe-Mathematics
 >
 > **Why every example pins `@<version>`**: pnpm resolves a bare package name through the profile's `package.json` and `pnpm-lock.yaml` first, so **without a version you may stay on an OLD version**. Measured locally: `@latest`, `@^2`, `pnpm update --latest` and `pnpm add …@latest` **all four failed to move the install**; **only an explicit version** (e.g. `@2.8.5`) actually upgrades. Install and upgrade both use `add dsh-vibe-math@<version>` (use `add`, not `update`).
 
-Then start a new session and pick **Vibe Math V2** (v2, classic), **Vibe Math V3** (v3, classic), **Vibe Math V4** (v4, resident self-organization) or **Vibe Math V5** (v5, institute system) in the preset picker — the four architectures are peers, choose according to your actual needs (see "How to choose").
+Then start a new session and pick **Vibe Math VMU** (the only shipped preset) in the preset picker; the tools are prefixed `vibe_vmu_*` and typing `/vmu` in the input box autocompletes.
 **The two DSH generations land in different places, and this package adapts to both**:
 
-- **DSH ≥ 0.1.7 (current)**: agent presets are declared as composition rows. This package declares all four presets in `cordis.patch.yml` (each row hands that preset's full plugin list to the host's `agentPresets` service), and **writes nothing into `~/.dsh/.agent-presets/`** — that directory has not been read since 0.1.7.
-- **DSH ≤ 0.1.6**: presets are still directories, and the installer writes the four presets into `~/.dsh/.agent-presets/` (`vibe-math-v2/` … `vibe-math-v5/`); the declaration rows in the same `cordis.patch.yml` register nothing on those versions, so older hosts **do not error** at boot.
+- **DSH ≥ 0.1.7 (current)**: agent presets are declared as composition rows. This package declares the **single shipped preset** `vibe-math-vmu`
+- **DSH ≤ 0.1.6**: presets are still directories, and the installer writes the **single shipped preset** into
 
 **After upgrading the package version, restart DSH: the managed content is replaced wholesale with the new version's bytes — including files you edited by hand.** This is intentional: a preset that is "half old version, half new version" will fail to mount or behave strangely, and you cannot tell from the outside. **The hand edits that get replaced are not lost**: in the directory form the original text is first backed up to `~/.dsh/.agent-presets/.vibe-math-backup/<old version>/<preset>/`, and the file names are listed in the log.
 **If you want to customize a preset, do not edit managed content** — make a copy (the copy action in the preset picker, or declare it under a new id in your own bundle). Note: on current DSH, if you save your own declaration for the **same id**, this package skips registration and logs one line saying so — your declaration wins.
 
 ### Method B: manual declaration (customization / secondary development)
 
-- **DSH ≥ 0.1.7**: put the whole of `vibe-math-vN/agent.cordis.yml` into a declaration row as its `plugins` — either copy the `dsh-vibe-math/preset-declaration` row from this package's `cordis.patch.yml`, or use the host's own `@deepseek-ai/dsh-agent-preset` row; install this bundle into your profile. Full rules: the DSH skill `editing-cordis-compositions`.
-- **DSH ≤ 0.1.6**: copy `agent.cordis.yml` / `preset.yml` / `vibe-math-vN.js` from `vibe-math-vN/` into `~/.dsh/.agent-presets/vibe-math-vN/`.
+- **DSH ≥ 0.1.7**: put the whole of your bundle's `agent.cordis.yml` (e.g. `vibe-math-vmu/agent.cordis.yml`)
+- **DSH ≤ 0.1.6**: copy `agent.cordis.yml` / `preset.yml` / `<id>.js` from that bundle
 
-Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **"Vibe Math V4"** / **"Vibe Math V5"** in the preset picker; once the session starts it is ready to use: v2/v3 tools are `vibe_math_*`, v4 is `vibe_v4_*`, v5 is `vibe_v5_*`; typing `/vibe`, `/v4`, `/v5` in the input box gives autocompletion.
+Then start a new session and select **"Vibe Math VMU"** (the single shipped preset) in the preset picker; once the session starts its tools are `vibe_vmu_*`, and typing `/vmu` in the input box gives autocompletion.
 
 > After changing a preset definition you must **restart the DSH process** before starting a new session (a preset's standing mount is cached until the process exits).
 
@@ -218,50 +224,17 @@ Then start a new session and select **"Vibe Math V2"** / **"Vibe Math V3"** / **
 
 ---
 
-## 🧭 How to choose among the four presets
+## 🧭 Shipped surface: the only shipped preset, and how to add more
 
-> **💡 All four architectures are peers; choose according to your actual needs:**
->
-> - **Choose `vibe-math-v2` (probability-driven · JSON data layer)** if you:
->   - prefer **structured JSON data** (`qs.json` / `Propos/<category>_Propos.json` / `Verified/` cards), convenient for programmatic retrieval and further processing;
->   - want **mature and stable code-heuristic scheduling** (priority + probability, predictable behavior, not dependent on the planner agent's "improvisation");
->   - do not need method library accumulation / paper-style narration, and data being field-oriented is enough.
-> - **Choose `vibe-math-v3` (paper-style md + planner agent + method library)** if you:
->   - prefer a **paper/research-report-style natural-language knowledge base** (the problem list includes dependencies and the source motivation of follow-up problems, the research log is continued by direction and by round, human-readable and freely extendable);
->   - want scheduling to be **planned autonomously by the planner agent** as an N-step plan based on the actual situation (more flexible, automatically falls back to heuristics on failure);
->   - want a **general theory invention library** — theories/frameworks/tools/methods/ideas invented during solving are accumulated by the Method Keeper into a reusable, systematizable, cross-project-extendable methodology (like "inventing group theory while solving equations");
->   - accept the trust layering of "only `Verified/` is absolutely trustworthy, the rest of the md is empirical reference".
->
-> Both are mature and usable, continuously maintained, and both support checkpoint resume, manual/automatic intervention, progress reporting, multi-session isolation, proposition promotion, near-consensus/weighted adjudication and other core capabilities; the switching cost is low (the same set of `vibe_math_*` tools and `/vibe` commands, the same parameter system).
->
-> - **Choose `vibe-math-v4` (resident self-organization)** if you want a group of **persistent resident subagents** that message each other and hold meetings, **fully self-organizing** (no leader, no central scheduling), and can accept a strict threshold of "a conclusion requires unanimity".
-> - **Choose `vibe-math-v5` (institute system)** if you want:
->   - **organized self-organization** — like a real research institute, with a **leader (academician)** responsible for decomposition, assignment, prioritization, chairing meetings and supervising progress, but **judgment still belongs to each individual**;
->   - a **roster that can grow or shrink** — resident researchers + temp workers who can be **autonomously hired/dismissed** (temp workers have no voting rights, suitable for chores such as checking, trial computation and material organization);
->   - an **adjustable consistency threshold** — `m = min(quorumCap, number of voting members)` boolean-consistent votes settle the matter (because an opposing vote blocks, the effective threshold is still "every Boolean vote points the same way"; it differs only when fewer than `m` members cast a Boolean vote);
->   - **zero-token-cost state persistence** — the institute state is written to a hardened JSON file under the institute directory and does not consume member context budget.
->
-> **⚠️ `vibe-math-v2` and `vibe-math-v3` are the classic architectures; `vibe-math-v4` and `vibe-math-v5` are experimental architectures,** all four are peers and all are selectable; the old `vibe-math-v1` has been removed (this package contains only v2/v3/v4/v5).
+> **The shipped surface is exactly one preset: `vibe-math-vmu`.** `installer.js` `PRESETS` contains only `{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }`; `cordis.patch.yml` declares only `preset-vibe-math-vmu`; `package.json#files` has no `vibe-math-v2/` … `vibe-math-v5/` directories. DSH's preset picker should show **Vibe Math VMU** only.
 
-| | **v2 (probability-driven · classic)** | **v3 (paper-style md · classic)** | **v4 (resident self-organization · experimental)** | **v5 (institute system · experimental)** |
-|---|---|---|---|---|
-| Positioning | **Classic** (JSON data layer) | **Classic** (third generation) | **Experimental** (fourth generation) | **Experimental** (fifth generation) |
-| Core idea | Probability-driven: `qs.json` problems + `Propos/` proposition library, scheduled by "correctness probability / value" | **Paper-style md knowledge base + planner agent scheduling + general theory invention library** | **Persistent resident subagents self-organizing**: message each other + meetings decide all tasks, no central scheduling | **Institute**: the academician organizes and assigns, members research on their own; a conclusion requires **≥ m boolean-consistent votes**; temp workers can be hired as needed |
-| Data | `qs/qs.json` + `Propos/<category>_Propos.json` + `Reliable/` | `Problems/` + `Progress/` + `Propos/` + `Methods/` (all md, soft-spec anchors + free narration) + `Verified/` | `Problems/` + `Progress|Propos|Methods|Subproblems/<id>/` **owned by resident id** + `Shared/` (meetings/task board/debate) + `Verified/` | Same member-owned layout as v4, plus `Institutes.md` (roster mirror); **the authoritative state is `State/<institute>.v5state.json`**, and the other files are only mirrors and workspaces |
-| Roles | explorer → per-direction solver → verifier | **planner (planner agent)** → explorer → per-direction solver → verifier → **method-keeper (method organization agent)** | **N resident researchers** (continuable), no fixed roles | **academician acad** (leader) + **resident researcher r-n** (with voting rights) + **temp worker t-n** (no voting rights, hireable and dismissible) + institute office (does not research and does not vote) |
-| Scheduling | Code heuristics (priority + probability) | **The planner agent produces an N-step plan** (executed after validation, falls back to heuristics on failure) | **No central scheduling**: tasks arise from residents messaging each other / holding meetings (the framework is only a medium and does not assign) | **The framework still does not assign**; the **academician** decomposes/assigns/prioritizes/supervises, and members may object with reasons; the framework only relays, keeps the task board, holds meetings and counts |
-| Closing rule | A solution/proof reaching probability `1` closes it; `never` is never scheduled | Same as v2 (near-consensus adjudication fixes flat misjudgment) | Writes to `Verified/` **only when all residents agree (true or false)**, otherwise leaves it in the library with a probability | Writes to `Verified/` **only when boolean votes ≥ m = min(`quorumCap`, number of voting members) and all are 1 or all are 0**; opposing votes block; abstentions do not count as votes but count toward the average; (can be switched back to the v4 criterion) |
-| Stopping | All solved or stuck | All solved / no candidates | Stops **only when all residents unanimously agree the original problem is solved** | Same as v4: concluded **only when all voting members unanimously agree the original problem is solved** |
-| Context | None | None | **Resident context automatically runs `/compact` on reaching the threshold** (adjustable) | Same as v4 (threshold/round count adjustable; after compaction the charter still takes effect in the persona) |
-| Ad hoc capabilities | Automatic promotion of proposition "value/criticality" to the problem list; `reportMode file/push/both`; `priorityAdjust` | **Method library accumulation loop** (`methods_used`/`new_inventions` → Method Keeper); **plan approval gate/method promotion gate**; **project lock**; follow-up problem "source and motivation" as a first-class citizen | **Residents accumulate individually + read each other**; **unanimous verification**; **add/close residents at any time, intervene by message**; **checkpoint resume** | All v4 capabilities, plus: **real hiring/dismissal** (releases sub-sessions, reclaims tasks); **compare-and-set task board + dependency DAG**; **strict mutual exclusion between meetings and verification**; **roster mirror and conclusion records**; **zero-token-cost state** |
+- **Institutional differences are expressed by a pack**: `vibe-math-vmu` is the capability surface; institutions/policies live in `vibe-math-vmu/packs/<id>`. Swap the pack instead of copying the whole preset.
+- **To add more presets (customization / secondary development)**: (1) copy `vibe-math-vmu/` into a bundle under a new id (`agent.cordis.yml` / `preset.yml` / `<id>.js` / `host-*.js` / `kernel/**` / `settings/**`); (2) DSH ≥ 0.1.7: add a `preset-declaration` row to `cordis.patch.yml` (copy the `preset-vibe-math-vmu` row and change the `id` and plugin list); (3) DSH ≤ 0.1.6: place the directory in `~/.dsh/.agent-presets/<id>/`; (4) restart DSH and the new preset appears in the picker. When the same id is already declared by this package, the package skips registration and logs one line — your declaration wins.
+- **The old presets (v2–v5 / v5r) are retired and no longer shipped**: historical reference only — see [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md); the "Historical architectures and division of labour" section below keeps their architecture description.
 
-All four support: checkpoint resume (`vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume`), manual intervention and pause/resume,
-per-project isolation, subagent permission control, and natural-language driving. **All four architectures are peers** — choose v2 if you prefer structured JSON data and deterministic scheduling,
-choose v3 if you prefer paper-style md, the planner agent and the theory invention library; v4 is fully self-organizing resident collaborative research, and v5 is an institute system with "a leader + a roster that can grow or shrink + an adjustable threshold".
+## 🧠 Historical architectures and division of labour (v2–v5, retired)
 
----
-
-## 🧠 Architecture and division of labour (all four in parallel)
+> ⚠️ **This section describes historical architectures (v2–v5, no longer shipped)**; the shipped preset's architecture is in `vibe-math-vmu/docs/`.
 
 ### V2 (probability-driven · classic)
 
@@ -334,7 +307,9 @@ For the complete v5 architecture (member lifecycle, one-round timeline, consensu
 
 ## ⚡ Start in five minutes
 
-> One main line: **start in plain language → ask about progress at any time → (optionally) tune parameters / intervene → wrap up**. At closure all four presets **produce a final paper by default** (`Paper/<id>/`, see "Features" above and [`docs/final-paper.md`](docs/final-paper.md)). Pick whichever of the three usages below you like; you do not need to read them all.
+> ⚠️ The original text of this section describes the **historical presets (v2–v5, no longer shipped)**; for the shipped `vibe-math-vmu` see `vibe-math-vmu/docs/`.
+
+> One main line: **start in plain language → ask about progress at any time → (optionally) tune parameters / intervene → wrap up**. At closure the historical presets **produce a final paper by default** (`Paper/<id>/`, see "Features" above and [`docs/final-paper.md`](docs/final-paper.md)). Pick whichever of the three usages below you like; you do not need to read them all.
 
 ### Method A: Direct conversation (recommended, the least effort)
 
@@ -467,7 +442,7 @@ The main agent `vibe_math_status`: in `qs/qs.json`, `q1` has been written back w
 
 **Step 6 — the final paper is produced automatically at closure (on by default)**
 
-All four presets default to `finalPaper=true`: once the respective closure signal fires, the paper phase starts **before the run is marked complete** (in v2/v3 a dedicated "paper writer" subagent organises the existing evidence; in v4/v5 the team co-authors, cross-reviews, and the editor finalises on unanimous agreement). The artifacts are `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}` (v2/v3 additionally write `paper.lock.json`): `paper.tex` / `paper.pdf` are produced only when `paperFormat` includes tex and the host detects a LaTeX engine (`xelatex` preferred for Chinese; with no engine only md/tex are delivered, and the wrap-up is never blocked). Trigger it manually with `/vibe paper` (v2/v3), `/v4 paper` or `/v5 paper`, optionally with `lang=` / `format=` / `editor=` / `force`; the full contract is in [`docs/final-paper.md`](docs/final-paper.md).
+The historical presets (v2–v5) default to `finalPaper=true`: once the respective closure signal fires, the paper phase starts **before the run is marked complete** (in v2/v3 a dedicated "paper writer" subagent organises the existing evidence; in v4/v5 the team co-authors, cross-reviews, and the editor finalises on unanimous agreement). The artifacts are `Paper/<id>/{paper.md,paper.tex,paper.pdf,paper.meta.json,paper.log.md}` (v2/v3 additionally write `paper.lock.json`): `paper.tex` / `paper.pdf` are produced only when `paperFormat` includes tex and the host detects a LaTeX engine (`xelatex` preferred for Chinese; with no engine only md/tex are delivered, and the wrap-up is never blocked). Trigger it manually with `/vibe paper` (v2/v3), `/v4 paper` or `/v5 paper`, optionally with `lang=` / `format=` / `editor=` / `force`; the full contract is in [`docs/final-paper.md`](docs/final-paper.md).
 
 ### 🖼️ Real usage example (long screenshot)
 
@@ -483,6 +458,8 @@ All four presets default to `finalPaper=true`: once the respective closure signa
 ---
 
 ## ⚙️ Parameter quick reference
+
+> ⚠️ The original text of this section describes the **historical presets (v2–v5, no longer shipped)**; for the shipped `vibe-math-vmu` see `vibe-math-vmu/docs/`.
 
 ### Shared parameters (accepted by ≥2 presets)
 
@@ -556,7 +533,7 @@ v2 has **no preset-specific parameters**: its complete parameter set is every ro
 
 #### Final paper
 
-All four presets have it **on by default**: after the closure signal fires and **before the run is marked complete**, the run enters the paper phase. In v2 a dedicated "paper writer" subagent assembles the concluded evidence into `Paper/<id>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}` (plus `paper.pdf` only when an engine is detected). Manual: `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`. A PDF needs a LaTeX engine on the host (`xelatex` preferred for Chinese); with no engine or a failed compile the tex+md are still delivered with only a logged warning — the finalisation is never blocked and an existing pdf is never overwritten. Full contract: `docs/final-paper.md`.
+The historical presets (v2–v5) have it **on by default**: after the closure signal fires and **before the run is marked complete**, the run enters the paper phase. In v2 a dedicated "paper writer" subagent assembles the concluded evidence into `Paper/<id>/{paper.md,paper.tex,paper.meta.json,paper.log.md,paper.lock.json}` (plus `paper.pdf` only when an engine is detected). Manual: `/vibe paper [lang=zh|en] [format=both|md|tex] [force]`. A PDF needs a LaTeX engine on the host (`xelatex` preferred for Chinese); with no engine or a failed compile the tex+md are still delivered with only a logged warning — the finalisation is never blocked and an existing pdf is never overwritten. Full contract: `docs/final-paper.md`.
 
 ### v3 (paper-style md + planner agent + method library) preset-specific parameters
 
@@ -626,6 +603,8 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
 
 ## 📝 Checkpoint resume & manual intervention (two hard requirements)
 
+> ⚠️ The original text of this section describes the **historical presets (v2–v5, no longer shipped)**; for the shipped `vibe-math-vmu` see `vibe-math-vmu/docs/`.
+
 - **Checkpoint resume**: all state is persisted to disk (v2: `VibeMath_State/*.json`; v3: `State/*.json`; **v5: the hardened JSON `State/<institute>.v5state.json` under the institute directory**), and every subagent is a DSH **continuable persistent session** (the conversation is saved automatically by DSH). After a restart, open a new session → `vibe_math_resume` / `vibe_v4_resume` / `vibe_v5_resume` resumes the run. v2/v3 additionally use a **process epoch** to distinguish "same-process pause → resume" (keeping live subagents running) from "cross-process restart" (cleaning up stale tasks). **v3's md knowledge base is itself a narrative breakpoint** — on resume the agent continues writing from the tail of the research log / problem card / proposition card; **in v5 this role is taken by the state file** — recovery is simply "load before read", cross-process and same-process go through the same code path, and when member sessions are rebuilt they are re-seeded by "reading back your own Progress/" (rather than making them start over).
 - **Intervening mid-run**: `manual` mode suspends decisions at key points (v2: explorer/solver dispatch, verification verdicts; v3: the **plan approval gate** (after the planning agent produces a plan, it waits for your approve/reject), the verification verdict gate, and the **method promotion gate** (project methods → global library)); you can switch back to automatic at any time with `set_mode auto` (which automatically clears all pending decisions); you can `message_agent` / `interrupt_agent` any subagent. **v4/v5 are intervenable by nature**: leave a message for a member at any time (`vibe_v5_message`), convene a meeting, pause the whole institute, add or remove positions — members will see it on their next round.
 - **Progress reporting**: **event-driven** by default — reports are written only when an event such as an agent status update occurs (v2: `Progress_Logs/report.json`; v3: `Progress_Logs/report.json` + `Logs/报告.md`, a paper-style human-readable summary; `reportMode` can be `file`/`push`/`both`, and `push` wakes up resident agents to report proactively via `subagents.sendMessage(root agent, resident subagent, …)` — `followup` is **not** a method of the `subagents` service, it is only a method of the `Agent` object); scheduled automatic reporting (interval in milliseconds) starts only when `reportIntervalMs` is set to >0. **v4/v5 progress reporting is "self-reporting within the institute"**: members write their progress into their own `Progress/`, and state key conclusions in the group chat (in v5 there are also readers of the mirrors `Institutes.md` / `Shared/TaskBoard.md`, the meeting minutes, the debate records, and `Problems/conclusion.md`).
@@ -640,10 +619,11 @@ Common controls: `vibe_v5_configure` (configure first) → `vibe_v5_start` (star
 - **v5 (institute system)**: [the v5 specification](docs/DEPRECATED-LEGACY-PRESETS.md) (text specification) · [the v5 detail diagrams](docs/DEPRECATED-LEGACY-PRESETS.md) (the full set of architecture diagrams)
 - **v5 prompts and interaction corpus**: [`prompt-corpus-v5/prompt-corpus-v5.md`](prompt-corpus-v5/prompt-corpus-v5.md) (the verbatim text of every prompt the framework actually emits, so you can manually review whether identity/positions/interaction signatures are correct)
 - **Four sets of Lean prompt corpora**: [`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md) (each covering off / encourage / **require** / fidelity branches / work rounds / receipt contract; the workspace is normalized to `<WS>` and the VibeMath root to `<VIBEMATH>`)
-- **The persona source text of the four presets**: [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) (the prompts the main agent actually receives: which tools, which parameters, which slash subcommands; generated by `audit-persona-surface.test.mjs` and shipped with the package)
+- **The persona source text of the historical presets**: [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) (the prompts the main agent actually receives: which tools, which parameters, which slash subcommands; generated by `audit-persona-surface.test.mjs` and shipped with the package)
 - **Lean formal verification (a contract shared by the four architectures)**: [`docs/formal-verification.md`](docs/formal-verification.md)
 - **Final paper (a contract shared by the four architectures)**: [`docs/final-paper.md`](docs/final-paper.md) (the five parameters plus `paperEditor` on v4/v5, the "paper phase before the run is marked complete" ordering, the `Paper/<id>/` artifacts and the nine-section skeleton, LaTeX detection with repair-then-degrade, the v4/v5 team co-authoring flow and the v5 office-consultation rule)
-- **Test timing baseline and parallel run recipes**: [`docs/test-timing.md`](docs/test-timing.md) (`node tests/run-tests.mjs` runs **every suite AND every probe** in parallel: `TOTAL 889 (803 suites + 86 probes/variants — JOB counts, not file counts); the authority is `node tests/run-tests.mjs --counts` (JOB counts, not file counts), checked by [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs); which 484 of the `tests/*.mjs` files ship in the package (371 suites + 113 probe/script files) and which are repository-only is in §1.1 of that document; every runner prints its elapsed time/speedup so the next strategy can be chosen)
+- **Test timing baseline and parallel run recipes**: [`docs/test-timing.md`](docs/test-timing.md) (`node tests/run-tests.mjs` runs **every suite AND every probe** in parallel: `TOTAL 890 (804 suites + 86 probes/variants — JOB counts, not file counts); the authority is `node tests/run-tests.mjs --counts` (JOB counts, not file counts), checked by [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs); which 484 of the `tests/*.mjs` files ship in the package (371 suites + 113 probe/script files) and which are repository-only is in §1.1 of that document; every runner prints its elapsed time/speedup so the next strategy can be chosen)
+- **CI green ≠ releasable**: GitHub `gate` only proves that another clean machine can run the `static` gates + sharded suites green (local `--counts` currently yields 890 jobs = 804 suites + 86 probes (derived by the runner; the numbers move with the test tree); the CI shard scope is **gated 877** = 890 − 13 exclusions); releasability still rests on the local `release-ready.mjs` + real-model/real-host prerequisites — see [`docs/acceptance/ci-gate.md`](docs/acceptance/ci-gate.md).
 - **Static prompt-surface consistency (persona ↔ tool registry ↔ slash command hint/usage)**: [`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs) (260 assertions, and generates [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) for manual review) + [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs) (16 sensitivity probes) — guarding "every registered tool must appear in the persona / every name in the persona must really be registered / the `prefix` and `text` blocks must match line by line / hint, usage, and the actual branch must agree in all three places"
 - **Mandatory checklist for a full review**: [`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md) (this repository's mandatory audit process; §1.9 specifically checks "whether the tool parameter schema can accommodate them")
 - **Prompt/interaction invariants (all four sets together, re-checkable in one command)**: [`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs) (157 assertions) — encoding, one by one, "the classes of prompt/tool-surface defects that have really occurred historically" as static invariants (abbreviated tool names, projecting a fidelity defect as 0, `defect` written only in the prompt but not implemented, a receipt contract missing `defect`, passing without a note, wrong field names, the `off` tier still being able to write state in its receipt, uncertain corpora, missing probes, **a tool's closed schema that cannot accommodate the parameters in its own documentation**, **keys that the schema declares at the parameter level but silently drops**). Adding `--self-probe` injects these defect shapes in memory and requires the corresponding invariants to **turn red** while the unmutated control run **stays green** (5/5); the script itself additionally carries six self-checks X5–X8b (the comment scanner must recognize regex literals — including regexes **after a keyword** such as `return /…/` — `//` inside strings must be preserved, stripping comments must not change line structure, and the parse-level criterion that "the four sets of source, with comments stripped, must still parse under `node --check`")

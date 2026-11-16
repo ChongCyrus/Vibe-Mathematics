@@ -63,7 +63,7 @@
 | 方法 | 签名 | 用途 | **真读者** |
 |---|---|---|---|
 | `create` | `create({title, objective?, owner?, deps?, priority?, writeScopes?})` | 建任务；新增可选 `writeScopes`（advisory）与创建期环检测；回执新增 `deps/writeScopes/skippedScopes` | `tools/task.js:25`（core 需补 `write_scopes` 透传） |
-| `setDependencies` | `setDependencies(id, deps, {expectedRevision?})` | 改依赖边（DAG 守卫）；回执 `{ok,id,deps,revision}` | **待接线**：`vibe_vmu_task_update {action:'set_dependencies'}`（v5r 提示词已声明该动作：`packs/v5r/prompts/v5r-blocks-a.js:542/579/611`）⇒ 请 core 一行映射到本方法；**未接线前它是 reader-less，本轮具名**（它是 F35 的实现主体，不是为测试而加） |
+| `setDependencies` | `setDependencies(id, deps, {expectedRevision?})` | 改依赖边（DAG 守卫）；回执 `{ok,id,deps,revision}` | **待接线**：`vibe_vmu_task_update {action:'set_dependencies'}`（v5r 提示词已声明该动作：现行落点 `packs/v5r/prompts/v5r-reply-channel.js` 的 `vibe_v5_task_update` action 词表与 `packs/v5r/tools.js` 的同一词表；原 `v5r-blocks-a.js` 三处教学句已在 prompt 压缩轮删除，行号引用随删减退场，见本报告 §20 与对应 commit）⇒ 请 core 一行映射到本方法；**未接线前它是 reader-less，本轮具名**（它是 F35 的实现主体，不是为测试而加） |
 | `writeScopeConflicts` | `writeScopeConflicts()` → `[{a,b,scopeA,scopeB}]` | 写域重叠的**只读**视图 | `tasks.status().writeScopeConflicts`（同文件真读）＋`list()` 行 |
 
 - 说明：`setWriteScopes` 曾一并成型，**已删除**（唯一读者会是尚不存在的工具动作 ⇒ 不留 reader-less API）；改 scopes 的能力保留在 `create` 的声明面。`findDependencyCycle`/`normalizeWriteScope`/`scopesOverlap` 是导出纯函数，均有**同文件真读者**（create/setDependencies/writeScopeConflicts）。

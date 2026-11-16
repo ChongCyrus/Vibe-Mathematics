@@ -64,10 +64,10 @@ test('§5 item 5 each face names its own phase closed set and says the other fac
   for (const [slot, text] of Object.entries(normal)) {
     assert.ok(text.includes('派回合面'), slot + ': names the dispatch face')
     assert.ok(text.includes('`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面'), slot + ': the meeting-round face is explicitly another face')
-    // OLD WORLD: the closed-set sentence was written as a bare universal ("phase 是闭集，只有四个全名"), which a reader
-    // took as the only phase vocabulary in the product. It stays, but must now be scoped to its face in the same breath.
-    const at = text.indexOf('phase` 是闭集，只有四个全名')
-    assert.ok(at >= 0, slot + ': the dispatch-face closed set is still taught')
+    // ROUND-1 (2026-11-17): the closed set is now the kernel∪pack UNION (11 values), still scoped to its face in the
+    // same breath — the old four-name universal was a real miss (normal/meeting/... are legal phases).
+    const at = text.indexOf('phase` 取内核相位与 pack 声明的并集（11 个）')
+    assert.ok(at >= 0, slot + ': the dispatch-face phase union (11 values) is still taught')
     const scoped = text.slice(at, at + 400)
     assert.ok(scoped.includes('派回合面') && scoped.includes('不属于本面'), slot + ': the closed-set sentence is qualified by its face')
   }
@@ -129,8 +129,8 @@ const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
 // puts `final` back into the chair paper bullet, F80-12 derives attendance from `vmu.meetings.attendDeniedSeats` and
 // names `vmu.meetings.eligibleSeats` for the vote (the review rewrite: attendance never decided the vote), F80-4
 // restores the two legal spellings of an evidence pointer (paper phases are outside this water level). Per seat
-// + 51 / + 45 / 0, sum + 96.
-const TB2752_RUN80_FIXES = { chair: 51, member: 45, temp: 0, sum: 96 }
+// + 323 / + 317 / + 291, sum + 931 (ROUND-1 + B2 restores).
+const TB2752_RUN80_FIXES = { chair: 323, member: 317, temp: 291, sum: 931 } // ROUND-1 P0/P1 prompt fixes
 test('§11 three-seat normal sum is the baseline plus the corrections plus the RUN 272 restore, and nothing else', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   assert.equal(normalSum, TB2741_BASELINE.sum + TB2741_CORRECTIONS_NET.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum,

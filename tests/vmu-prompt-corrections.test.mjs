@@ -63,7 +63,7 @@ const PACK_BAND = orderMod.ORDER_RANGES && orderMod.ORDER_RANGES.pack
 const EXPECTED = Object.freeze([
   Object.freeze({ name: 'v5r-fix-json-reply', oldNeedles: ['json 代码围栏'], newNeedles: ['op:"reply"', 'VMU_TURN_REPLY_CONFLICT'], marker: '【更正·回复形状】' }),
   Object.freeze({ name: 'v5r-fix-tool-help', oldNeedles: ['vibe_v5_tool_help', '"tool"'], newNeedles: ['{member}', 'tool_help needs the member id'], marker: '【更正·工具查询】' }),
-  Object.freeze({ name: 'v5r-fix-formal', oldNeedles: ['end_verify', 'formal_proof'], newNeedles: ['formal:{decision,file,note}'], marker: '【更正·形式化】' }),
+  Object.freeze({ name: 'v5r-fix-formal', oldNeedles: ['end_verify', 'formal_proof'], newNeedles: ['formal', '{statement, proof}', 'vibe_v5_fidelity_conclude', 'vibe_v5_lean_archive'], marker: '【更正·形式化】' }),
   Object.freeze({ name: 'v5r-fix-m-vote', oldNeedles: ['m 票'], newNeedles: ['quorumRule', 'defaultTally', 'm-unanimous'], marker: '【更正·m 票】' }),
   Object.freeze({ name: 'v5r-fix-leader-id', oldNeedles: ['没有在册院士'], newNeedles: ['vmu.turn.leaderId', 'vibe_v5_configure', 'leadership.code'], marker: '【更正·领头人】' }),
 ])

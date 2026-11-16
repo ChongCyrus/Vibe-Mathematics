@@ -552,6 +552,16 @@ const phaseOf = (kind, text) => {
     { prefix: '你没有表决权及hire/fire权限', why: 'G7 AUDIT #2 C2: voting and hire/fire are per seat (seat-faces.js); the live line names the seat rights' },
     { prefix: '全体参与成员已在互审中表示“可交付”', why: 'G7 AUDIT #2 C5: the review cap can force finalisation; the live line adds that caveat' },
     { prefix: '检测不到 LaTeX 引擎时：① 只', why: 'ROUND 133/136: the live note names vmu.paper.latexCommand and drops the latexmk probe the face never runs' },
+    // ★★★ ROUND-1 AUDIT (2026-11-17, prompt-lane): the formal-shape teaching was proved FALSE by the kernel
+    // (formal only accepts {statement, proof}; decision/file/note is skipped by name as formal-shape) and the two
+    // 「旧版原句」 lines told the reader to abstain so the round could not converge. Correcting them changed exactly
+    // these four captured lines (12 occurrences); they are DECLARED like the F5/LEDGER families, so they leave BOTH
+    // sides and the ratio stays a fidelity number rather than a policy number. arithmetic: pool 649 -> 637, hits
+    // 501 -> 489 (unchanged by the declaration), 489/637 = 76.8% -> round 77, floors pinned AT the measurement.
+    { prefix: '② 用回执 formal:{decision:', why: 'ROUND-1 P0-2: the reply field formal only accepts {statement, proof}; decision/file/note is refused as formal-shape' },
+    { prefix: '「已通过」状态（降级为 attempt', why: 'ROUND-1 P0-2: the defect now goes through vibe_v5_fidelity_conclude, not the non-existent formal shape' },
+    { prefix: "vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:", why: 'ROUND-1 P0-2: the blocking record is lean_archive kind=blocked; the formal alternative is refused' },
+    { prefix: "只有 decision='blocked' 的 note", why: 'ROUND-1 P0-2: decision semantics were retired with the formal shape; lean_archive kind=blocked is the record' },
   ]
   const matchedDeclared = Object.fromEntries(DECLARED_DIVERGENCES_AB.map((d) => [d.prefix, 0]))
   let declaredAB = 0
@@ -572,6 +582,7 @@ const phaseOf = (kind, text) => {
   ok(declaredAB > 0 && Object.values(matchedDeclared).every((n) => n > 0),
     'V65b. ★★ THE DECLARED DIVERGENCES ARE LIVE: every rewritten family still matches captured lines, so an exclusion cannot outlive the reason for it - and excluding them is what keeps the ratio below a fidelity number rather than a policy number',
     { declaredLines: declaredAB, byPrefix: matchedDeclared, percentOfCorpus: Math.round(1000 * declaredAB / (declaredAB + totalAB)) / 10 })
+  if (process.env.VMU_AB_DUMP) console.error('AB_LEFT_DUMP ' + JSON.stringify([...leftAB.entries()].sort((a, b) => b[1] - a[1])))
   const pctAB = Math.round(100 * hitAB / totalAB)
   // ★ FLOORS RE-BASED TWICE, EACH TIME WITH THE ARITHMETIC WRITTEN DOWN.
   //   2026-10-24 (first re-base): the declared divergences stopped being counted as HITS. Before that the excluded families
@@ -605,7 +616,7 @@ const phaseOf = (kind, text) => {
   //   prompts). They are DECLARED above like every earlier family, so they leave BOTH sides: pool 655 -> 649, hits unchanged
   //   at 500 (500/649 = 77.04%, measured 77%) - the ratio is UNCHANGED, which is the check that nothing but the declared
   //   lines was lost. Floors pinned AT the measurement: pool 649 >= 649, ratio 77 >= 77.
-  const AB_POOL_FLOOR = 649
+  const AB_POOL_FLOOR = 637 // ROUND-1 re-base: four corrected captured families (12 occurrences) are DECLARED, pool 649 -> 637; floors pinned at the measurement
   const PCTAB_FLOOR = 77
   ok(totalAB >= AB_POOL_FLOOR && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",

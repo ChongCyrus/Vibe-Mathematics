@@ -173,9 +173,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  ▸ 一致 → verdict = 1。',
         '  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：',
         '      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；',
-        '      ② 用回执 formal:{decision:\'defect\', note:\'<具体偏差>\'} 记录它。框架会撤回这条证明的',
-        '         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；',
-        '         修正形式化并重新跑通后再投票。',
+'      ② 用 `vibe_v5_fidelity_conclude` 记录它（形参 `{ card, fidelity:"defect", lean_job, note }`；`decision/file/note` 不是形参）。框架会撤回这条证明的',
+'         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；',
+'         修正形式化并重新跑通后再投票。',
         '  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。',
       ].join('\n'),
     },
@@ -205,7 +205,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与',
         '    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。',
         '  · 归档前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）。归档行是**索引** `{name,kind,file,statement,hash,at}`：代码以 `file` 为准（库**不复制正文**，原文用 `vibe_v5_lean_read`），运行结果在 `vibe_v5_lean_run/job` 回执（`state`/`passed`/`hashUnchanged`）里；只写「通过了」不算证据。',
-        '  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind=\'blocked\' note=… 或回执 formal:{decision:\'blocked\', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。',
+'  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（`vibe_v5_lean_archive kind=\'blocked\' note=…`）——这算显式阻塞原因，定论门禁可以据此放行。',
       ].join('\n'),
     },
   },
@@ -279,7 +279,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // (record is a progress-log line and say only reaches the floor of a bound meeting). The capture stays
         // VERBATIM (it is the fidelity baseline) and the truth is stated on its own line, as with run 61 below.
         '（上面这句是捕获原文；字段形状以清单为准：record 是研究日志**一行** {track,text}，成果卡用 vibe_v5_record_*，say 只在有会议绑定的轮次进楼层，群聊/私信要用 vibe_v5_say。）',
-        'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
+'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
         // AUDIT12: the captured line above teaches three reply FIELDS whose taught shapes the dispatcher cannot deliver
         // (a reply field carries one value; these name positional face operations). The capture stays VERBATIM - it is the
         // fidelity baseline - and the truth is stated on its own line, exactly as run 61 below does for the state table.
@@ -348,8 +348,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       verify: [
         '若你本轮做了形式化，用 `vibe_v5_lean_archive` 归档那份 .lean 文件：`kind` 取 def | lemma | proof | blocked（定理用 proof），`name` 必填，`file` 给文件路径，',
-        '`statement` 写它形式化的命题原文（`target` 只是 statement 的旧别名，别再用）。难度与结论写进回合字段 `formal:{decision,file,note}`：decision 取 used | blocked | defect，',
-        'blocked 在 note 里写难点（这也是定论门禁认可的显式阻塞），defect 在 note 里写明具体偏差——不要另用 JSON 回复块表达形式化结论。',
+'`statement` 写它形式化的命题原文（`target` 只是 statement 的旧别名，别再用）。回执 `formal` 字段**只收 {statement, proof}**（`decision/file/note` 会被具名跳过 formal-shape）：难度判断用 `vibe_v5_lean_archive kind=\'blocked\' note=…`，保真缺陷用 `vibe_v5_fidelity_conclude fidelity="defect"`——不要另用 JSON 回复块表达形式化结论。',
       ].join('\n'),
     },
   },
@@ -410,10 +409,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
-        '本轮是**验证轮**：审查对象从"推导是否正确"变成"Lean 代码是否忠实于命题"。',
+        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。你可以维持、修改或反驳任何人的看法。',
         '若你认为某条"已通过"的结论其实不成立（或代码与命题不符），**不要用弃权来卡住流程**——给 `vibe_v5_verdict` 一个你相信的概率并写清理由，框架会记为 pending、撤回该条证明并写入形式化待办。只有你确实无法判断时，才给一个严格介于 0 与 1 之间的值。',
-        '（旧版原句，**请勿照做**，保留只为对照出处：）你可以维持、修改或反驳任何人的看法。审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。',
-        '（旧版原句，**危险，勿执行**：）「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）。本档没有门禁：请务必给一个严格介于 0 与 1 之间的弃权值，以保证本轮无法得出一致结论；',
       ].join('\n'),
     },
   },
@@ -497,8 +494,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       verify: [
         '· **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用',
-        'vibe_v5_lean_archive kind=\'blocked\' note=… 记录，或用回执 formal:{decision:\'blocked\', note:…}。',
-        '  · 只有 decision=' + "'" + 'blocked' + "'" + ' 的 note 会写成阻塞记录；decision=' + "'" + 'used' + "'" + ' 的 note 只是难度判断，',
+'vibe_v5_lean_archive kind=\'blocked\' note=… 记录。',
+'  · 只有 kind=\'blocked\' 的 note 会写成阻塞记录；kind=\'proof\' 的 note 只是难度判断，',
         '会被记为未定论（原因 formal-required）并进入「形式化待办」。',
       ].join('\n'),
     },
@@ -952,7 +949,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '【开会与预约：按事件时机的顺序（你的手册）】会议类型六种：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型；动议 kind 为 topic/procedural/resolution；**可用的命令随类型与身份不同**。辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权；上面这些动词只是常用手段，不是穷举。**会议进行中的一切内容、控制、活动都由你的命令决定**——但每个成员的动作（发言、投票、签到）仍由成员自己在其回合做完，你编排的是顺序与时机。',
         '  · ① 先定议程：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 读议程条目、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——`agendaitems`/`agendaclose` 这两个动词只认**内核原语会**（`vibe_vmu_meeting { action:"open" }` 开的）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`title` 是**可选**的独立名称（非字符串会被具名拒）。`open` 回执里的 `procedureNote` 是**建议**（`procedure` 同源，`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：`ordinary` 类型**故意不给推荐骨架**，其余五种的步骤只是**建议**，可跳过、可重排，是否遵循由你决定。　★ **正式议程要条目就给数组**：`formal_agenda` 传 `["条目", {title:"条目2", kind:"review"}]` 才逐条落库（`formalAgendaItems` 读得到）；传 `true` 只是**声明**（`formalAgendaDeclared:true`、`formalAgendaItems:null` ＋ `formalAgendaItemsWhy`），读者一条都看不到（真机 P-04 正因如此只剩这个布尔。）',
         '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做；有 roster 未到场者时，`close` 前先问 `status.present`）。召集成功会对除主席外每位在册者发出 `meeting-appointment` **耐久邮件**（`channel:"mail"`，每个被邀者一条，含议题/时间/你的席位/可照抄的入席调用）：回执 `invitation.delivered`＝已投递——对方**下个回合提示最上方的 `[新到的消息]` 块**里会出现一行 `【会议预约·<你>】…`，在其 `mailbox ack` 之前每回合都在（也可用 `vibe_v5_inbox` 读），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。预约/召集的回执还直接给内核投递三数组：`notified`（真拿到行的成员）、`notifyRows`（每人 mailId）、`notifyFailed`（逐人具名原因，附 `noticesMeans`）——`notifyFailed` 里的人才是你要补发的，别把「约过」当「通知到」。不必逐个私信催：没投出去的人会具名出现在 `unreachable`／open 回执的 `notifyFailed` 里，只有他们需要补消息；被邀者迟迟不 attend 是他自己回合的事，不是你没通知到。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
-        '  · ③ 预约与会前：`vibe_v5_meeting { type, agenda, at: <epoch ms / ISO-8601 / 相对偏移如 "+120s"> }`（可写相对偏移——**你没有自己的钟**，由内核换算）→ 会议进入 `scheduled`；`status`/`summary` 可读，开始前的治理动作都被具名拒；例外：`attend` 可提前签到（不开会）、主席可 `proceed` 提前开（记 `startsEarly`/`earlyByMs`，提前开不是迟到）。**到点不会自己开会**：到点后的下一次 touch 只结算一次考勤——那一刻人已齐才直接开（`startedLate:true`），否则落 `waiting`，并给 `waitingFor`（`"quorum"`＝人没齐；`"chair-proceed"`＝人齐了等你）。`waiting` 期间迟到者 `attend` 让考勤满足时那次 touch 仍会开；等待到期只把 `waitDecisionDue` 置真（提醒，不开会）；其余只有 `proceed` 能开（`lapse` 弃会、`recess` 体会是两个出口）。`requiresChairProceed:true` 的准确含义是「开会不是框架按钟自己决定的」：需要一个动作把它推过去（你 `proceed`，或考勤在等待期间被补齐）。没有定时器：靠 `beat()` 的 sweep 与 touch 结算；回执 `nextActions` 列出此刻能接的动作——出现 `proceed` 就是你开（可提前开，记 `startedLate:true`），出现 `attend`＝还要有人签到，出现 `beat` 说明只差一次 touch。迟到入席看每会 `lateAdmission`（open|chair|refuse，缺省 chair）决定：`open` 直接入座记 `late:true`；`chair` 挡在门口（`pendingLate:true`），只有主席 `vibe_vmu_meeting { action:"admit", id, member, actor }` 放行；`refuse` 具名拒 `VMU_LATE_ADMISSION_REFUSED`；「迟到」由 `lateAfterMs` 对 `openedAt` 判定（缺省 0）。',
+'  · ③ 预约/会前：`at` 收 epoch ms／ISO-8601／相对偏移（如 "+120s"——**你没有自己的钟**，由内核换算）。开始前的治理动作都被具名拒；例外：`attend` 可提前签到（不开会）、主席可 `proceed` 提前开。**到点不会自己开会**：下一次 touch 只结算一次考勤——人已齐才直接开，否则落 `waiting`，`waitingFor` 给原因——`"quorum"`＝人没齐；`"chair-proceed"`＝人齐了等你；等待到期只置 `waitDecisionDue`（提醒，不开会）；`requiresChairProceed:true` 的准确含义是「开会不是框架按钟自己决定的」；`nextActions` 列此刻能接的动作——`proceed` 是你开、`lapse` 弃会、`recess` 体会。迟到入席按每会 `lateAdmission`（open|chair|refuse，缺省 chair）。',
         '  · ⑦ 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
         '  · ⑧ 面别记错：`vibe_v5_meeting` 只**召集/预约**；`close`/`attend`/`hand`/`admit`/`status`/`summary` 走 `vibe_vmu_meeting { action, id, member?, actor? }`，拿错面会被具名拒 `VMU_INVALID_ARGUMENT`。',
         '  · ⑨ 以**主席名义**的动作（召集、裁决、放行迟到）不能代做：先 `vibe_vmu_turn { op:"drive", member: "<院士 id>" }` 给院士派一回合，否则具名拒 `VMU_CHAIR_ACT_NOT_DELEGATED`。辩论的 `subject` 必须是**证明已完成**的命题卡（`proofRef`+`proofState:"complete"`、已进 verified，或跑通的 Lean 结果）或 `subject_evidence.file`；一句话命题会被具名拒 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`。',
@@ -1066,7 +1063,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         "【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（尝试过的路线）｜`obstacles`（阻塞与原因）｜`rejected`（已证伪的路）｜`state`（状态板）。`track:\"state\"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。",
-        "**派回合的 `phase` 是闭集，只有四个全名**：`heartbeat`／`paper-write`／`paper-review`／`paper-final`——`review`／`write`／`final` 是流程词不是 phase（旧任务书简写），写成它们会得到 `VMU_INVALID_ARGUMENT unknown phase`（派回合面；`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面）；`paper-review` 回合的产物是**评审票**，结题票 `vote_solved` 不用于评审。",
+"**派回合的 `phase` 取内核相位与 pack 声明的并集（11 个）**：`founding`／`normal`／`checkpoint`／`verify`／`verify-debate`／`meeting`／`resume`／`heartbeat`／`paper-write`／`paper-review`／`paper-final`——裸 `review`／`write`／`final` 是流程词不是 phase（旧任务书简写），写成它们会得到 `VMU_INVALID_ARGUMENT unknown phase`（派回合面；`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面）；`paper-review` 回合的产物是**评审票**，结题票 `vote_solved` 不用于评审。",
         "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库 `lean_lib`（编译过≠命题真）；论文 = `vibe_v5_paper` 的 part 阶段；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法库卡：`vibe_v5_record_method`。",
         "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数）；**不在名册**的 id 具名拒。**归属口径**：`memberWorkShare = memberActs/(memberActs+officeRelayedActs)`（`unknownActs` 不进分母）；**代笔回执**带 `memberActed:false`、`actedForMember`、`ranInOwnTurn:false`，落盘行带 `writtenFrom`（`own-turn`｜`relayed`｜`unknown`，问的是「这次写是怎么到这个席位的」）。`[结题]` 票数读 `closureVote.votesCast`/`votesTotal`（分母=有表决权席，不含 temp），别自己数人头。**`[蓝图]` 行由内核注入**：有就读（无现行版写「无现行版（rev 0，md 未落盘）」）；读不到用 `vibe_vmu_turn{op:\"status\",detail:\"board\"}` 的 `liveReadings.blueprint`，**不会因为**缺块当没有。",
         "  · 读别人的板：`vibe_v5_read_library`（`member`、`track`）；走不通的路写 `rejected`（别把证伪当进展）。",

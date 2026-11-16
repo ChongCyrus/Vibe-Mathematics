@@ -1793,8 +1793,11 @@ try {
   // ★★★ LIVE RUN 28 (the institute's own report, item 9): the face had NO sender parameter, so `from` was always
   // "office" and a member-to-member message could not be expressed at all. `member` is the sender now (omitted =
   // office) and the receipt names both sides (`from` vs `relayedBy`), so the deployed schema has FIVE keys.
-  ok(msgProps.length === 5 && msgProps.filter((n) => n === 'urgent' || n === 'subject' || n === 'member').length === 3,
-    '★★★ bug A 反/正 + run-28 item 9：宿主真正发布的 schema 里有 subject、urgent 与发送者 member', msgProps)
+  // ★ P0-d（ROUND-1 C#17）：统一 acting-seat 门需要一个**发布在 schema 里**的 `actedFor`（office/root 显式代写声明）；
+  // 宿主会先按发布的 parameters 过滤参数，未发布的键根本到不了 handler。所以本面现在是 6 个键：原有 5 个 + actedFor。
+  // 判据（产品正确）：subject/urgent/member 仍在 AND actedFor 也在（越席拒与 office 代写披露都靠它）。
+  ok(msgProps.length === 6 && msgProps.filter((n) => n === 'urgent' || n === 'subject' || n === 'member' || n === 'actedFor').length === 4,
+    '★★★ bug A 反/正 + run-28 item 9：宿主真正发布的 schema 里有 subject、urgent、发送者 member 与 actedFor（P0-d）', msgProps)
   const mkMsgStub = () => {
     const stub = { members: { roster: () => [{ id: 'r-1', slot: 'member', state: 'live' }] }, _sent: null }
     stub.mailbox = { send: (from, payload) => { stub._sent = { from, payload }; return { ok: true, ids: ['m1'] } } }

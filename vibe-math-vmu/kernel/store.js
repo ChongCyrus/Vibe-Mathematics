@@ -139,11 +139,13 @@ export const PUBLIC_KEYS = Object.freeze([
   'closure_window',
 ])
 
-/** Named refusal (codes are registered in docs/03 §8). */
-export function refuse(code, message, hint) {
+/** Named refusal (codes are registered in docs/03 §8). `extra` carries the machine-readable facts of the refusal
+ *  (expected/current version or fingerprint) so a caller can branch without parsing prose — never silently dropped. */
+export function refuse(code, message, hint, extra = null) {
   const err = new Error(message)
   err.code = code
   if (hint) err.hint = hint
+  if (extra && typeof extra === 'object' && !Array.isArray(extra)) for (const k of Object.keys(extra)) if (!(k in err)) err[k] = extra[k]
   return err
 }
 
@@ -168,6 +170,19 @@ function clone(value) {
  * Create a Store over one JSON file. `clock` is injected so tests are deterministic (docs/01 R12):
  * the framework owns time, a caller never passes an instant.
  */
+/** ★ P0-d C#10: stable JSON with sorted keys — the compare-and-set token must not change because an object was built in
+ *  another key order. Value-based, so two kernels/processes over one store compare the same token. */
+const fingerprint = (value) => {
+  const walk = (v) => {
+    if (v === null || typeof v !== 'object') return v
+    if (Array.isArray(v)) return v.map(walk)
+    const out = {}
+    for (const k of Object.keys(v).sort()) out[k] = walk(v[k])
+    return out
+  }
+  return JSON.stringify(walk(value))
+}
+
 export function createStore({ root, migrators = [], clock = () => new Date().toISOString(),
   coherence = 'auto', lock = true, lockBackoffMs = 25, lockRetries = 40, lockTimeoutMs = 2000 } = {}) {
   if (typeof root !== 'string' || root.length === 0) {
@@ -489,6 +504,16 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       return clone(fold.keys[key])
     },
 
+    /** ★ P0-d C#10: the stable fingerprint of a key's CURRENT durable value, the token a compare-and-set writer passes
+     *  back as `expectFingerprint`. It is value-based, so it works across processes/kernels (a version counter kept in
+     *  memory could not). null when the key is absent. */
+    fingerprintOf(key) {
+      if (!fold) throw refuse('VMU_STORE_FAILED', 'store is not open')
+      assertKey(key)
+      reloadIfStale('fingerprint')
+      return fold.keys[key] === undefined ? null : fingerprint(fold.keys[key])
+    },
+
     /** Register a callback that runs after EVERY reload this instance performs. Returns its disposer. */
     onReload(fn) {
       if (typeof fn !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'onReload needs a function')
@@ -503,11 +528,27 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       return Object.assign({ ok: true, stamp, coherence: coherenceOn ? 'on' : 'off' }, r)
     },
 
-    /** Wholesale replace with compare-and-set. Prefer `patch` unless the value is a whole new thing. */
+    /**
+     * Wholesale replace with compare-and-set. Prefer `patch` unless the value is a whole new thing.
+     * ★★★ P0-d C#10 (ROUND-1 audit): A CONCURRENT WRITE MUST BE REFUSED BY A NAME THAT SAYS "CONFLICT", not by the
+     * generic failure code. The store already carried the optimistic version (`fold.version`); what was missing was the
+     * named answer: two writers that both read vN and both write would get a plain VMU_STORE_FAILED on the second, which
+     * reads like a corrupt store. The loser now gets `VMU_STORE_CONFLICT` carrying expected/current, and NOTHING from the
+     * losing write lands (the check runs inside the exclusive section, before the merge).
+     */
     write(key, value, opts = {}) {
       return mutate(key, 'write', () => clone(value), () => {
+        if (opts.expectFingerprint !== undefined && opts.expectFingerprint !== fingerprint(fold.keys[key])) {
+          throw refuse('VMU_STORE_CONFLICT',
+            'concurrent write refused: the durable value of "' + key + '" changed since this writer read it (expected fingerprint ' + JSON.stringify(opts.expectFingerprint) + ', current ' + JSON.stringify(fingerprint(fold.keys[key])) + ')',
+            'this write did NOT land. Re-read the row (read/fingerprintOf) and retry against the NEW value; two writers on one row is a conflict, not a corrupt store',
+            { key, expectedFingerprint: opts.expectFingerprint, currentFingerprint: fingerprint(fold.keys[key]) })
+        }
         if (opts.expect !== undefined && opts.expect !== fold.version) {
-          throw refuse('VMU_STORE_FAILED', 'durable version changed under us: expected v' + opts.expect + ', at v' + fold.version)
+          throw refuse('VMU_STORE_CONFLICT',
+            'concurrent write refused: this writer expected durable version v' + opts.expect + ', the store is at v' + fold.version + ' (another writer landed in between)',
+            'this write did NOT land. Re-read the row (read/patch) and retry against the NEW version; two writers on one row is a conflict, not a corrupt store',
+            { key, expectedVersion: opts.expect, currentVersion: fold.version })
         }
       })
     },

@@ -10,6 +10,9 @@
 
 这句话是**判据输入**，不是说明文字：`tests/ci-exclusions.test.mjs` §3 断言的正是上面这一行逐字存在。原因不是洁癖——我们踩过「文档也是判据输入」的坑：如果这句话从文档里消失，而 CI 的绿勾仍在，下一个读者会把「CI 绿」读成「可以发布」，而那两件事之间隔着真机、真模型、真实耗时和本地 `release-ready.mjs` 的前置条件。
 
+
+> **计数口径（2026-11-17 真值批）**：本地 `node tests/run-tests.mjs --counts` 当前 = **890 作业**（804 套件 + 86 探针/变体，数字由 runner 派生）；CI 分片口径 = **gated 877**（890 − `ci-exclusions.json` 的 13 条排除，`node scripts/ci/shard-plan.mjs --check` 实测 `full=890 excluded=13 expected=877`）。两个数都对，问的问题不同：前者是「本机能跑多少」，后者是「CI 实际跑多少」。
+
 具体的分工：
 
 | 问题 | 谁来回答 | CI 能不能回答 |

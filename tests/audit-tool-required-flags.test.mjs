@@ -156,8 +156,11 @@ ok(noChannel.ok === false && noChannel.code === 'VMU_RULING_NEEDS_CHANNEL',
 const rulingChannel = await callHandler(verdict, { verdict: 1, meeting: 'mt-1', proposition_id: 'p-1' })
 ok(!(rulingChannel.ok === false && rulingChannel.code === 'VMU_RULING_NEEDS_CHANNEL'),
   '★★★ CONTROL: 改走 debate ruling 通道（meeting + proposition_id）⇒ 不再被 "needs a channel" 拒，证明那条拒绝是【条件性】的而不是 target 必填', rulingChannel)
-ok(scanner.EXEMPTIONS.some((e) => e.tool === 'vibe_v5_verdict' && e.param === 'target' && e.direction === 'optional-but-guard-throws'),
-  '★★ 这条合法样例必须【具名登记】在豁免表里（一句理由 + 首次发现批次）', scanner.EXEMPTIONS.map((e) => e.tool + '.' + e.param))
+// ★ 2026-11-17（B3 账本批）：`vibe_v5_verdict.target` 与 `vibe_v5_assign.subject` 两条「optional-but-guard-throws」豁免
+// 已被过期探测器判定为 STALE —— 机制不再触发该形状（handler 对两条通道的裁定变了），留着它们会让"表里每行都承重"失真。
+// 两条**已删除**（审计口径：删除/收紧，绝不放宽）；下面这条 pin 改指仍在承重的合法样例之一，避免把删掉的旧样例钉回来。
+ok(scanner.EXEMPTIONS.some((e) => e.tool === 'vibe_vmu_control' && e.param === 'action' && e.direction === 'declared-required-but-accepted-without-it'),
+  '★★ 合法样例必须【具名登记】在豁免表里（一句理由 + 首次发现批次）', scanner.EXEMPTIONS.map((e) => e.tool + '.' + e.param))
 
 // ─────────────────────────────────────────────────────────── 4. the defect sample: declared required, no mechanism ──
 const accepting = { name: 'fake_required_unchecked', parameters: { x: { required: true } }, source: 'synthetic', handler: async () => ({ ok: true }), handlerSource: 'async function h() { return { ok: true } }' }

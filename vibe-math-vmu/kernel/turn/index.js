@@ -1455,15 +1455,64 @@ export function interruptViaSubagents(subagents) {
   }
 }
 
-/** Resolve the effective ownership table: the declared default, with a caller-supplied override winning per field. */
-export function resolveOwners(bindings = null) {
-  if (!bindings || typeof bindings !== 'object') return FIELD_OWNERS
+/**
+ * ★★★ P0-b (ROUND-1 audit C#2): THE RECEIPT PROTOCOL IS EXTENSIBLE BY A PACK, WITHOUT EDITING THE KERNEL.
+ * The kernel used to own a FROZEN table (`FIELD_OWNERS`/`FIELDS`) and `resolveOwners` could only OVERRIDE an existing
+ * field's face/op — so a pack that wanted one more reply field had to change kernel source. A pack manifest may now
+ * declare `replyFields:[{field,face,op,shape?,textCoercion?}]`; this merges them in ONE place. Two rules are refusals,
+ * not silent wins: (a) a pack field may NOT reuse a CORE field name — the core semantics (say/record/progress/…) belong
+ * to the framework, and a pack overriding them would change what every deployment means by that field; (b) a duplicate
+ * field between two packs is refused with BOTH pack ids where known. The code is a named refusal; no field is dropped.
+ */
+export function mergeReplyFieldOwners(extraFields = null, core = FIELD_OWNERS) {
+  const list = Array.isArray(extraFields) ? extraFields.filter((d) => d && typeof d === 'object') : []
+  if (list.length === 0) return core
+  const merged = Object.assign({}, core)
+  const seen = new Map()
+  for (const decl of list) {
+    const field = typeof decl.field === 'string' ? decl.field.trim() : ''
+    const packId = typeof decl.pack === 'string' && decl.pack !== '' ? decl.pack : '(unnamed pack)'
+    if (!field) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a pack replyFields entry needs a non-empty `field` name',
+        'declare {field:"<name>", face:"<service>", op:"<method>"} in the pack manifest replyFields[]', { pack: packId })
+    }
+    if (Object.prototype.hasOwnProperty.call(core, field)) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'pack ' + packId + ' reply field "' + field + '" COLLIDES with a CORE reply field of the same name: a pack may ADD fields, never redefine what a core field means',
+        'choose a different field name; the core fields are the framework\'s interface (say/record/progress/task_update/…), and the kernel keeps their semantics',
+        { field, conflict: 'core', pack: packId, coreFields: Object.keys(core).slice() })
+    }
+    if (seen.has(field)) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'reply field "' + field + '" is declared by BOTH ' + seen.get(field) + ' and ' + packId + ': one name, two faces — the kernel refuses instead of picking a winner',
+        'rename one of the two fields; a reply field maps to exactly one face.op', { field, packs: [seen.get(field), packId] })
+    }
+    if (typeof decl.face !== 'string' || decl.face.trim() === '' || typeof decl.op !== 'string' || decl.op.trim() === '') {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'pack ' + packId + ' reply field "' + field + '" does not name a face.op to dispatch to',
+        'declare face:"<service name>" and op:"<method name>" (the same shape the core table uses)', { field, pack: packId })
+    }
+    seen.set(field, packId)
+    merged[field] = Object.freeze({
+      face: decl.face, op: decl.op, packDeclared: true, pack: packId,
+      ...(decl.shape === undefined ? {} : { shape: decl.shape }),
+      ...(decl.textCoercion === undefined ? {} : { textCoercion: decl.textCoercion }),
+    })
+  }
+  return Object.freeze(merged)
+}
+
+/** Resolve the effective ownership table: the declared default, with a caller-supplied override winning per field,
+ *  plus the reply fields PACKS declared (P0-b). The core field set stays the kernel's; a pack only ADDS names. */
+export function resolveOwners(bindings = null, extraFields = null) {
+  const base = mergeReplyFieldOwners(extraFields)
+  if (!bindings || typeof bindings !== 'object') return base
   const merged = {}
-  for (const k of FIELDS) {
+  for (const k of Object.keys(base)) {
     const o = bindings[k]
     merged[k] = o && typeof o === 'object' && typeof o.face === 'string' && typeof o.op === 'string'
       ? Object.freeze({ face: o.face, op: o.op })
-      : FIELD_OWNERS[k]
+      : base[k]
   }
   return Object.freeze(merged)
 }
@@ -2343,6 +2392,9 @@ export function createTurnOrchestrator({
   // says out loud that it is local.
   closureVote = null,
   prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString(),
+  // ★★★ P0-b: reply fields DECLARED BY PACKS (manifest replyFields[]). Merged with the core table by resolveOwners;
+  // the kernel keeps the core semantics and only ADDS names. Absent ⇒ exactly the frozen core table (zero mechanism).
+  replyFields = null,
   // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams. Both are optional; a loop without them can still
   // START turns, and a caller that asks for the missing verb gets a NAMED refusal rather than a silent no-op.
   sendMessage = null, interrupt = null,
@@ -2404,8 +2456,12 @@ export function createTurnOrchestrator({
   // vote, through BOTH input channels (reply field and `vibe_vmu_vote`), and the kernel writes the shared fold row.
   // Absent ⇒ the historical, honest behaviour: the vote lives in this session and the reading says so.
   persistClosureVote = null } = {}) {
-  const owners = resolveOwners(bindings)
+  const owners = resolveOwners(bindings, replyFields)
   const known = Object.keys(owners)
+  // ★★★ P0-d C#16: REPLAY DOES NOT DOUBLE-WRITE. A dispatch that is retried with the SAME (turn, member, reply) gets the
+  // FIRST receipt back with `idempotent:true` — the effect already landed, and a second write would be a duplicate the
+  // member never asked for. Keyed on the canonical reply bytes, so key order does not create a second identity.
+  const appliedReplyReceipts = new Map()
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
   // left WHEN and WITH WHICH PROMPT to its host - which is why only that host could run an institute. The policy is
   // a declared setting here, so the framework drives its own rounds and a host may still override the choice.
@@ -4457,6 +4513,13 @@ export function createTurnOrchestrator({
 
   const apply = async (reply, faceMap = null, memberId = null, opts = null) => {
     const map = faceMap || faces
+    const idempotencyKey = opts && opts.turnId !== undefined && opts.turnId !== null && String(opts.turnId).trim() !== ''
+      ? String(opts.turnId).trim() + '|' + String(memberId === null || memberId === undefined ? '' : memberId) + '|' + canonicalReplyValue(reply)
+      : null
+    if (idempotencyKey !== null && appliedReplyReceipts.has(idempotencyKey)) {
+      return Object.assign({}, appliedReplyReceipts.get(idempotencyKey), { idempotent: true, replayed: true,
+        idempotentMeans: 'this exact reply was already applied to this turn/member: the FIRST receipt is returned unchanged (idempotent:true) and nothing was written a second time — a replay is not a new act' })
+    }
     // ★★★ RUN 77 / TB-2723 (F77-1): THE TURN'S OWN DELIVERY FACT REACHES THE WRITE. A reply field that writes a row
     // (`progress` -> the records `put` action) used to reach the ledger with no caller and no delivery, so the row said
     // `writtenFrom:"relayed"` while this same turn's receipt said `deliveryPath:"activation"` + `memberActed:true` -
@@ -4973,7 +5036,7 @@ export function createTurnOrchestrator({
     // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
     // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
-    return { ok: true, executed, skipped, skippedFields,
+    const applyReceipt = { ok: true, executed, skipped, skippedFields,
       failedFieldCount: skippedFields.length,
       appliedFieldCount: executed.length,
       planned: dispatches.length, bookkeeping, meeting: boundMeeting,
@@ -4997,6 +5060,11 @@ export function createTurnOrchestrator({
       // later found the meeting, the Lean jobs and the ruling cards in the shared records. The receipt counts DISPATCH,
       // not the member's work (it says so in `executedMeans`), but it never said WHERE that work is readable.
       memberActsMeans: MEMBER_ACTS_MEANS }
+    if (idempotencyKey !== null) {
+      appliedReplyReceipts.set(idempotencyKey, applyReceipt)
+      if (appliedReplyReceipts.size > 64) appliedReplyReceipts.delete(appliedReplyReceipts.keys().next().value)
+    }
+    return applyReceipt
   }
 
   /**

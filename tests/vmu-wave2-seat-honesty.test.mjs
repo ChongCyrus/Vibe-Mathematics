@@ -123,7 +123,9 @@ try {
   ok(refusedWith(impersonate, 'VMU_NOT_PERMITTED'),
     '★ 常驻研究员在参数里写院士 id ⇒ VMU_NOT_PERMITTED（不是"按下去了"）', impersonate && (impersonate.code || impersonate.ok))
   const impMsg = String(impersonate.message || '')
-  ok(/called by member "r-1"/.test(impMsg) && /names "r-acad"/.test(impMsg),
+  // ★ P0-d：越席调用由统一 acting-seat 门先拒；规范句仍是「点名 caller + 点名参数里的名字」（旧句用 names，新句用
+  // `its arguments name "…"`——同一事实，措辞随唯一拒点统一）。
+  ok(/called by member "r-1"/.test(impMsg) && /arguments name "r-acad"/.test(impMsg),
     '★ 拒绝文案同时点名按键的人（r-1）与参数里的名字（r-acad）', impMsg)
   ok(/seat is read from the CALL/i.test(impMsg), '拒绝文案说清「席位从这次调用读，不从请求文本读」', impMsg)
 

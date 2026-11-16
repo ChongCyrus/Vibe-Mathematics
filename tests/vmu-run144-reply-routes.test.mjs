@@ -170,7 +170,7 @@ try {
     const block = blocksB.CHARTER_BLOCKS_B.find((s) => String((s.texts && s.texts.shared) || '').includes('task_done：完成的任务id'))
     const text = String((block && block.texts && block.texts.shared) || '')
     ok(text.includes('task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。'),
-      '§5a. 捕获句仍逐字在位（fixture 保真基线不动）')
+      '§5a. 捕获句仍逐字在位（fixture 保真基线不动；release 的真值在 v5r-fix-formal 更正段里教）')
     ok(text.includes('这三件事都**不是回执字段**') && text.includes('vibe_v5_task_update') && text.includes('VMU_TURN_FIELD_NOT_APPLICABLE'),
       '§5b. 紧随其后的一行说清它们不是回执字段，并点名工具与拒绝码', text.slice(0, 120))
   }

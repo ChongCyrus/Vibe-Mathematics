@@ -616,6 +616,26 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             note: "this face answers only 'whose table is this and which seam is which'; detail:'settings' for the key map, detail:'summary' for the rest" }
         }
         const out = Object.assign({ ok: true, instance }, kernel.status({ detail }))
+        // ★ P0-c: the model-token reading travels on the status receipt (input/output/accumulated/limit + wiring).
+        try {
+          const read = typeof kernel.refreshModelUsage === "function" ? await kernel.refreshModelUsage() : (typeof kernel.noteModelUsage === "function" ? kernel.noteModelUsage() : null)
+          // ★ P0-c: the SUMMARY stays readable (the status summary has a size bound), so only the four readings the
+          // contract promises + wiring/refusal travel here: input / output / cumulative / limit, and why NOT wired or
+          // NOT charged when that is the case. detail:'full' carries the same object (one source, compacted once).
+          const u = read || { usageWired: false, failure: { code: "VMU_ENGINE_UNAVAILABLE", message: "no model-usage tracker is attached to this kernel" } }
+          out.usage = { usageWired: u.usageWired === true, inputTokens: u.inputTokens === undefined ? null : u.inputTokens,
+            outputTokens: u.outputTokens === undefined ? null : u.outputTokens, totalTokens: u.totalTokens === undefined ? null : u.totalTokens,
+            chargedTokens: u.chargedTokens === undefined ? null : u.chargedTokens, tokensLimit: u.tokensLimit === undefined ? null : u.tokensLimit,
+            failure: u.failure ? { code: u.failure.code || null, message: u.failure.message || null } : null,
+            chargeFailure: u.chargeFailure ? { code: u.chargeFailure.code || null, message: u.chargeFailure.message || null } : null,
+            means: u.usageWired === true
+              ? "host provider-reported token meter (root + member sessions); new totals are charged to budget scope model-usage as deltas — chargeFailure names any budget refusal (e.g. VMU_RESOURCE_BUDGET), never a silent cap"
+              : "model token usage is NOT WIRED on this host (" + ((u.failure && u.failure.message) || "no readable token meter") + ") — usageWired:false, NOT a claim of 0 tokens spent" }
+        } catch (e) {
+          out.usage = { usageWired: false, inputTokens: null, outputTokens: null, totalTokens: null, chargedTokens: null, tokensLimit: null,
+            failure: { code: (e && e.code) || "VMU_ENGINE_UNAVAILABLE", message: String((e && e.message) || e) }, chargeFailure: null,
+            means: "reading model token usage threw: reported as NOT WIRED, never as zero" }
+        }
         // ROUND 1 / K1 (D-01): WHICH faces exist and WHY the other ones do not. A face that silently disappears is
         // exactly the failure this map exists to end, so the answer travels with the status receipt.
         // ROUND 26 / task-141 (the third "receipt vs fact" instance): `published` used to be THIS evaluation's tool
@@ -2018,6 +2038,109 @@ function blockAssembledAtMsOfMeans(kernel) {
  * offers it - the host's own guidance requires that, and it is what unwinds them on subtree unload - and
  * fall back to keeping the returned disposers otherwise.
  */
+/**
+ * ★★★ P0-c (ROUND-1 audit C#14): MODEL TOKENS WERE NEVER CHARGED. The only `budget.charge` in the tree was the
+ * TOOL face (a member had to call it), so a run could burn the model budget and the budget receipt still read 0.
+ * The host is the layer that can see the REAL meter: DSH exposes each session's provider-reported usage as
+ * `sessions.list()[].projections.values.tokenUsage` ({uncachedInputTokens, outputTokens, cacheReadTokens,
+ * cacheWriteTokens}). This tracker reads that meter on the turn boundary / status read, sums the ROOT session plus
+ * its child (member) sessions, and charges the DELTA to the kernel budget under one scope. Everything is named:
+ * no sessions service ⇒ usageWired:false + failure; no budget ⇒ wired-but-uncharged with the reason; exceeding the
+ * declared total ⇒ the budget service's own named refusal (VMU_RESOURCE_BUDGET) is carried, not swallowed.
+ */
+function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
+  const state = { wired: false, failure: null, inputTokens: null, outputTokens: null, cacheTokens: null, totalTokens: null,
+    chargedTokens: 0, chargeFailure: null, lastReadAt: null, scopeOpen: false, sessionCount: 0, lock: null }
+  const sessionsOf = () => { try { return ctx && typeof ctx.get === "function" ? ctx.get("sessions") : null } catch (e) { return null } }
+  const rootIdOf = () => { try { return ctx && typeof ctx.sessionId === "string" && ctx.sessionId ? ctx.sessionId : null } catch (e) { return null } }
+  const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
+  const usageOf = (row) => { try { const t = row && row.projections && row.projections.values ? row.projections.values.tokenUsage : null; return t && typeof t === "object" ? t : null } catch (e) { return null } }
+  const readMeter = async () => {
+    const store = sessionsOf()
+    if (!store || typeof store.list !== "function") {
+      state.wired = false
+      state.failure = { code: "VMU_ENGINE_UNAVAILABLE", source: "sessions", message: "this host exposes no sessions service, so model token usage cannot be read (the budget cannot be charged from it)" }
+      return { wired: false }
+    }
+    let rows = null
+    try { rows = await store.list() } catch (e) {
+      state.wired = false
+      state.failure = { code: (e && e.code) || "VMU_ENGINE_UNAVAILABLE", source: "sessions.list", message: String((e && e.message) || e) }
+      return { wired: false }
+    }
+    if (!Array.isArray(rows)) {
+      state.wired = false
+      state.failure = { code: "VMU_STATE", source: "sessions.list", message: "sessions.list() did not answer an array, so no usage can be summed" }
+      return { wired: false }
+    }
+    const root = rootIdOf()
+    const mine = rows.filter((row) => row && (root === null || row.sessionId === root || row.parentSessionId === root))
+    let input = 0, output = 0, cache = 0
+    for (const row of mine) {
+      const t = usageOf(row)
+      if (!t) continue
+      input += num(t.uncachedInputTokens)
+      output += num(t.outputTokens)
+      cache += num(t.cacheReadTokens) + num(t.cacheWriteTokens)
+    }
+    state.wired = true
+    state.failure = null
+    state.inputTokens = input
+    state.outputTokens = output
+    state.cacheTokens = cache
+    state.totalTokens = input + output + cache
+    state.sessionCount = mine.length
+    state.lastReadAt = (() => { try { const c = kernel && kernel.clockguard && typeof kernel.clockguard.now === "function" ? Number(kernel.clockguard.now()) : null; return Number.isFinite(c) ? c : null } catch (e) { return null } })()
+    return { wired: true, total: state.totalTokens }
+  }
+  const chargeDelta = async (total) => {
+    if (!Number.isFinite(total) || total <= state.chargedTokens) return
+    const budget = kernel && kernel.budget
+    if (!budget || typeof budget.charge !== "function") {
+      state.chargeFailure = { code: "VMU_ENGINE_UNAVAILABLE", message: "this kernel has no budget service: model usage is READ but NOT charged" }
+      return
+    }
+    try {
+      if (!state.scopeOpen) {
+        try { await budget.open({ scope: "model-usage", limits: {} }) } catch (e) { /* already open is fine; real failures surface below */ }
+        state.scopeOpen = true
+      }
+      await budget.charge({ scope: "model-usage", kind: "tokens", amount: total - state.chargedTokens })
+      state.chargedTokens = total
+      state.chargeFailure = null
+    } catch (e) {
+      // the budget service's OWN named path (VMU_RESOURCE_BUDGET + current/limit facts); never a silent truncation
+      state.chargeFailure = { code: (e && e.code) || "VMU_RESOURCE_BUDGET", message: String((e && e.message) || e), hint: (e && e.hint) || null }
+    }
+  }
+  const reading = () => {
+    let limit = null
+    try {
+      const items = kernel && kernel.budget && typeof kernel.budget.list === "function" ? kernel.budget.list().items : []
+      const scope = (Array.isArray(items) ? items : []).filter((x) => x && x.scope === "model-usage")[0] || null
+      const lim = scope && scope.limits ? Number(scope.limits.tokens) : NaN
+      limit = Number.isFinite(lim) ? lim : null
+    } catch (e) { limit = null }
+    return { usageWired: state.wired === true, usageSource: "sessions.projections.values.tokenUsage",
+      sessionCount: state.sessionCount, inputTokens: state.inputTokens, outputTokens: state.outputTokens, cacheTokens: state.cacheTokens,
+      totalTokens: state.totalTokens, chargedTokens: state.chargedTokens, tokensLimit: limit, lastReadAt: state.lastReadAt,
+      failure: state.failure, chargeFailure: state.chargeFailure,
+      means: state.wired !== true
+        ? "model token usage is NOT WIRED on this assembly: " + (state.failure && state.failure.message ? state.failure.message : "the host exposes no readable token meter") + " — the budget reports that absence (usageWired:false), it does not claim 0 tokens were spent"
+        : "model token usage is the HOST'S provider-reported meter (sessions.projections.values.tokenUsage), summed over the root session and its member children; every new total is charged to the kernel budget scope model-usage as a DELTA. A chargeFailure names the budget refusal (e.g. VMU_RESOURCE_BUDGET) instead of silently capping" }
+  }
+  const refresh = async () => {
+    if (state.lock) return state.lock
+    state.lock = (async () => {
+      try { const got = await readMeter(); if (got.wired) await chargeDelta(state.totalTokens) } catch (e) { log("vmu model usage refresh: " + String((e && e.message) || e)) }
+      finally { state.lock = null }
+      return reading()
+    })()
+    return state.lock
+  }
+  return { reading, refresh, attach: () => ({ noteModelUsage: () => reading(), refreshModelUsage: () => refresh() }) }
+}
+
 export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, promptSection = null, ...faceFlags } = {}) {
   const disposers = []
   // ★ LISTENER DISPOSERS ARE COUNTED SEPARATELY FROM TOOL DISPOSERS, and the separation is a defect fix rather than
@@ -2046,6 +2169,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   let installed = false
   let ownedByHost = false
   let chain = Promise.resolve()
+  // ★ P0-c: the usage tracker is attached to the kernel object so the STATUS face (and any later reader) can read
+  // the REAL meter through one seam. The tracker is created here (it needs ctx + kernel) and refreshed on the turn
+  // boundary and on every status read.
+  const modelUsage = createModelUsageTracker({ ctx, kernel, log })
+  if (kernel && typeof kernel === "object") {
+    try { kernel.noteModelUsage = () => modelUsage.reading(); kernel.refreshModelUsage = () => modelUsage.refresh() } catch (e) { log("vmu: could not attach the model-usage readers: " + String((e && e.message) || e)) }
+  }
 
   // ROUND 1 / K1 (D-01): the face set is resolved ONCE here and handed to `toolSpecs`, so what `plan()` promises and
   // what `install()` registers can never disagree (the same "one fact, one source" rule the seams follow). The legacy
@@ -2827,6 +2957,9 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       // tolerates a host that returns nothing (then there is simply nothing to dispose — reported as `host-managed`).
       const keepOn = (d) => { if (typeof d === 'function') { try { listenerDisposers.push(d) } catch { /* non-fatal */ } return d } return d }
       if (rootCtx && typeof rootCtx.on === 'function') { keepOn(rootCtx.on('system-prompt/assemble', pullMemberToolFace, { global: true })); if (kernel.setToolFacePullRegistered) kernel.setToolFacePullRegistered(true) }
+      // ★ P0-c FIX (final16b B5): the usage refresh RIDES THE ENTRY'S ONE `agent/turn-stopping` listener; registering a
+      // second one here made the host count 2 and made the first handler a no-op clock (measured ticks=0). The kernel
+      // still exposes refreshModelUsage, and the entry calls it at the turn boundary — ONE registration, both effects.
       if (ctx && typeof ctx.on === 'function') {
         keepOn(ctx.on('agent/created', (payload) => {
           const agent = payload && payload.agent

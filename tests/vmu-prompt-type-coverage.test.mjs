@@ -321,8 +321,13 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   // the true thing, so these two lines can no longer match VERBATIM - by design, and with the reason written here
   // rather than folded into a percentage.
   const isCorrectedTeaching58 = (l) => /两种写法都接受/.test(l) || /on a missing file: V5_NOT_FOUND/.test(l)
+  // ★ NINTH STRUCTURAL CLASS (ROUND-1 AUDIT, 2026-11-17): the audit proved the reply field `formal` accepts only
+  // {statement, proof} (decision/file/note is skipped by name) and that two 「旧版原句」 lines instructed the reader to
+  // abstain so the round cannot converge. The live text now teaches the real mechanism and drops those lines, so these
+  // four captured lines cannot match verbatim - named here, with the reason, rather than folded into a percentage.
+  const isCorrectedTeachingR1 = (l) => /^② 用回执 formal:/.test(l) || /^「已通过」状态（降级为 attempt/.test(l) || /^vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:/.test(l) || /^只有 decision='blocked' 的 note/.test(l)
   // the eighth class (declared above, section 1): the ledger round corrected five captured lines the kernel contradicts
-  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
+  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingR1(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,

@@ -511,7 +511,10 @@ if (SELF_PROBE) {
   const statusSpec = host.state.specs.find((s) => s.name === 'vibe_vmu_status')
   const text = await statusSpec.execute({}, {})
   const parsed = JSON.parse(text)
-  ok(text.length < 8000, '★ 真装配（v5r pack）下 status 默认 summary < 8000 字节（可读，不再被宿主截断）', 'bytes=' + text.length)
+  // ★ ROUND-1 P0-c/P0-f re-pin (measured 8951): the summary gained TWO mandatory readings — `usage` (the model-token
+  // meter/wiring, P0-c) and `verifiedWarrantPolicy` (which warrant kinds may settle a conclusion, P0-f). The ceiling
+  // exists to catch RUNAWAY growth, so it is re-pinned above the measured value with the cause written down.
+  ok(text.length < 10000, '★ 真装配（v5r pack）下 status 默认 summary < 10000 字节（P0-c usage + P0-f warrantPolicy 后实测 8951；仍远小于宿主截断线）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),
@@ -1749,6 +1752,49 @@ if (SELF_PROBE) {
     ok(f.st.listeners.length > n1, '★★ 正：卸载后可以重新装载，监听重新挂上（卸载没有破坏登记面）', { before: n1, after: f.st.listeners.length })
   }
 }
+
+// ── P0-c (ROUND-1 audit C#14): MODEL USAGE → BUDGET, AND AN UNWIRED METER IS NAMED ─────────────────────────────
+{
+  const usageCtx = ({ rows = null, sessionId = "s1", withSessions = true } = {}) => {
+    const st = { specs: [], listeners: [], effects: [] }
+    const tools = { register: async (spec) => { st.specs.push(spec); return () => {} }, schemas: () => [] }
+    const ctx = { tools, sessionId, effect(fn) { return fn() }, on(name) { st.listeners.push(name) },
+      get(name) { return name === "sessions" && withSessions ? { list: async () => rows } : undefined } }
+    return { st, ctx }
+  }
+  const statusOf = async (st) => { const spec = st.specs.find((x) => x.name === "vibe_vmu_status"); return spec ? JSON.parse(await spec.execute({ detail: "full" }, {})) : null }
+  // wired: the meter reports 23 tokens over the root + one child; the budget total is 10 ⇒ the named budget refusal is carried
+  {
+    const rows = [
+      { sessionId: "s1", projections: { values: { tokenUsage: { uncachedInputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 1 } } } },
+      { sessionId: "s2", parentSessionId: "s1", projections: { values: { tokenUsage: { uncachedInputTokens: 3, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+    ]
+    const { st, ctx } = usageCtx({ rows })
+    const k = km.createKernel({ clock, settings: { "vmu.budget.tokens": 10 } })
+    const adapter = hm.createHostAdapter({ ctx, kernel: k, settings: {} })
+    await adapter.install()
+    const out = await statusOf(st)
+    ok(out && out.usage && out.usage.usageWired === true, "★★★ P0-c: status.usage.usageWired:true (the host meter is read)", out && out.usage)
+    ok(out && out.usage && out.usage.totalTokens === 23 && out.usage.inputTokens === 13 && out.usage.outputTokens === 7,
+      "★★ P0-c: input/output/累计 are the REAL meter sums (13/7/23)", out && out.usage)
+    ok(out && out.usage && out.usage.chargeFailure && out.usage.chargeFailure.code === "VMU_RESOURCE_BUDGET",
+      "★★★ P0-c: over the declared total ⇒ the budget's OWN named code (VMU_RESOURCE_BUDGET), carried on the receipt", out && out.usage && out.usage.chargeFailure)
+    ok(out && out.usage && out.usage.tokensLimit === 10, "★ P0-c: the limit is reported beside the usage", out && out.usage && out.usage.tokensLimit)
+  }
+  // lamp: NO sessions service ⇒ usageWired:false + a named failure; NOT a zero-token claim
+  {
+    const { st, ctx } = usageCtx({ withSessions: false })
+    const k = km.createKernel({ clock })
+    const adapter = hm.createHostAdapter({ ctx, kernel: k, settings: {} })
+    await adapter.install()
+    const out = await statusOf(st)
+    ok(out && out.usage && out.usage.usageWired === false && out.usage.totalTokens === null,
+      "★★★ LAMP: without a token meter the receipt says usageWired:false and totalTokens:null (never 0)", out && out.usage)
+    ok(out && out.usage && out.usage.failure && /no sessions service|NOT WIRED/.test(String(out.usage.failure.message) + " " + String(out.usage.means)),
+      "★★ the absence is NAMED (not silently wired)", out && out.usage && (out.usage.failure || {}).message)
+  }
+}
+
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
