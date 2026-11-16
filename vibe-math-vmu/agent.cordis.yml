@@ -195,9 +195,12 @@
 # ── Vibe Math Unify ─────────────────────────────────────────────────────────
 
 # THE vmu FRAMEWORK: a preset-local plugin (./vibe-math-vmu.js) that provides the capability
-# surfaces and the hook bus and registers the vibe_vmu_* tools. P0 ships the inert skeleton:
-# the entry point deliberately registers nothing until each capability lands together with
-# its own scenario and mutant family (see the header of vibe-math-vmu.js).
+# surfaces and the hook bus and registers the vibe_vmu_* tools. With no declaration the entry
+# publishes exactly ONE tool (vibe_vmu_status) — that zero-mechanism default is a DOCUMENTED
+# behaviour, not an empty skeleton: every other face is switched on by a declaration (the
+# installer/doctor seed a minimal runnable face set into an installed copy, see
+# scripts/lib/install-seed.mjs and node scripts/doctor.mjs). Check what is actually registered
+# with 'vibe_vmu_status' -> coldStart (installed / registeredTools / unavailable / configSource).
 #
 # It consumes HOST subagents/agents/fs/tools/commands/timer services; it publishes only its
 # own versioned services (docs/03). Durable state lives in vmu/state.json — the host session

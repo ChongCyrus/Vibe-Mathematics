@@ -1477,13 +1477,13 @@ export function mergeReplyFieldOwners(extraFields = null, core = FIELD_OWNERS) {
         'declare {field:"<name>", face:"<service>", op:"<method>"} in the pack manifest replyFields[]', { pack: packId })
     }
     if (Object.prototype.hasOwnProperty.call(core, field)) {
-      throw refuse('VMU_INVALID_ARGUMENT',
+      throw refuse('VMU_PACK_CONFLICT',
         'pack ' + packId + ' reply field "' + field + '" COLLIDES with a CORE reply field of the same name: a pack may ADD fields, never redefine what a core field means',
         'choose a different field name; the core fields are the framework\'s interface (say/record/progress/task_update/…), and the kernel keeps their semantics',
         { field, conflict: 'core', pack: packId, coreFields: Object.keys(core).slice() })
     }
     if (seen.has(field)) {
-      throw refuse('VMU_INVALID_ARGUMENT',
+      throw refuse('VMU_PACK_CONFLICT',
         'reply field "' + field + '" is declared by BOTH ' + seen.get(field) + ' and ' + packId + ': one name, two faces — the kernel refuses instead of picking a winner',
         'rename one of the two fields; a reply field maps to exactly one face.op', { field, packs: [seen.get(field), packId] })
     }
@@ -2395,6 +2395,10 @@ export function createTurnOrchestrator({
   // ★★★ P0-b: reply fields DECLARED BY PACKS (manifest replyFields[]). Merged with the core table by resolveOwners;
   // the kernel keeps the core semantics and only ADDS names. Absent ⇒ exactly the frozen core table (zero mechanism).
   replyFields = null,
+  // ★★★ C#16 (ROUND-2 audit): THE DURABLE IDEMPOTENCY LEDGER (kernel.idempotency, store-backed). The in-process reply
+  // map below is only a fast path; a replay after a CRASH/RESTART must consult this seam, or the same dispatch is
+  // written twice. Key: (turnId, field, callIndex) — the audit's criterion, not the whole reply.
+  idempotency = null,
   // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams. Both are optional; a loop without them can still
   // START turns, and a caller that asks for the missing verb gets a NAMED refusal rather than a silent no-op.
   sendMessage = null, interrupt = null,
@@ -4797,6 +4801,9 @@ export function createTurnOrchestrator({
     const ATTRIBUTION_MEANS = 'the author of this row is the member whose turn it is: the turn already knows whose turn it is, so the row is attributed here instead of demanding the model write its own id into the reply json'
     const executed = []
     const skipped = []
+    // C#16: durable-ledger facts for THIS apply (replayed dispatches + why the ledger was unusable, if it was)
+    let replayedDispatches = 0
+    let idemLedgerNote = null
     // ★★★ RUN 254 / P0-1 (T5): A DISPATCH THAT THREW IS A NAMED SKIP, NOT THE END OF THE TURN. Two lists, one meaning
     // each: `skippedFields` holds ONLY the fields whose dispatch actually THREW (with the refusal code, message, hint
     // and the underlying error), while `skipped` keeps the whole picture the receipt has always published (shape skips,
@@ -4936,6 +4943,45 @@ export function createTurnOrchestrator({
         continue
       }
       const attributed = recordComposed !== null && recordComposed.attributed ? recordComposed.payload : null
+      // ★★★ C#16 (ROUND-2 audit): DURABLE, PER-FIELD DISPATCH IDEMPOTENCY, keyed (turnId, field, callIndex). The ledger
+      // commit lands in the kernel store, so a crash/restart retry of the SAME turn consults it before writing again;
+      // the receipt says which dispatches were replayed. The old in-memory whole-reply map above stays as a fast path.
+      const dispatchTurnId = opts && opts.turnId !== undefined && opts.turnId !== null && String(opts.turnId).trim() !== '' ? String(opts.turnId).trim() : null
+      const dispatchIndex = dispatches.indexOf(d)
+      const dispatchIdemKey = dispatchTurnId !== null && idempotency ? dispatchTurnId + '|' + String(d.field) + '|' + String(dispatchIndex) : null
+      if (dispatchIdemKey !== null) {
+        try {
+          const seen = idempotency.begin({ key: dispatchIdemKey, scope: 'turn-dispatch', payload: { member: memberId === null || memberId === undefined ? null : String(memberId), field: String(d.field) }, by: memberId === null || memberId === undefined ? null : String(memberId) })
+          if (seen && seen.state === 'committed' && (seen.deduplicated === true || seen.reused === true)) {
+            counts.dispatched += 1
+            replayedDispatches += 1
+            executed.push({ field: d.field, face: d.face, op: d.op, result: seen.result,
+              replayed: true, idempotent: true,
+              replayedMeans: 'this dispatch was ALREADY COMMITTED to the durable idempotency ledger under key (turnId, field, callIndex) = ' + dispatchIdemKey + ': the stored result is returned and the face was NOT called again (crash/restart replay)' })
+            continue
+          }
+          if (seen && seen.inFlight === true) {
+            // ★★★ C#16/crash-retry: a PENDING key whose attempt never committed (the process died, the run was abandoned)
+            // is a DEAD pending, not a live concurrent write — our commits happen immediately after the dispatch returns.
+            // Abort it and retry the dispatch; treating it as permanently in-flight is what made a restart/replay skip a
+            // field that had never landed (measured: kernel.turn.run lost its task_create to a t-1 pending entry).
+            try {
+              idempotency.abort({ key: dispatchIdemKey, scope: 'turn-dispatch', reason: 'stale-pending: previous attempt never committed (crash/abandoned run) — retrying' })
+              idempotency.begin({ key: dispatchIdemKey, scope: 'turn-dispatch', payload: { member: memberId === null || memberId === undefined ? null : String(memberId), field: String(d.field) }, by: memberId === null || memberId === undefined ? null : String(memberId) })
+              idemLedgerNote = 'dispatch key ' + dispatchIdemKey + ' was PENDING from an attempt that never committed: aborted and retried (crash/restart replay)'
+            } catch (e) {
+              counts.notExecuted += 1
+              skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'dispatch-in-flight', code: 'VMU_TURN_DUPLICATE_SKIPPED',
+                means: 'the same dispatch key (' + dispatchIdemKey + ') is IN FLIGHT and the ledger refused to abort it (' + String((e && e.code) || 'VMU_STATE') + '): this attempt did not write a second time.' })
+              continue
+            }
+          }
+        } catch (e) {
+          // a ledger that cannot record (cap/degraded store) must not silently become "no idempotency": say so on the receipt
+          if (e && e.code === 'VMU_RESOURCE_BUDGET') { idemLedgerNote = 'the durable ledger is FULL (' + String((e && e.message) || e) + '): this turn fell back to the in-process map only'; }
+          else { idemLedgerNote = 'the durable ledger refused this key (' + String((e && e.code) || 'VMU_STATE') + '): this turn fell back to the in-process map only'; }
+        }
+      }
       let res
       let releaseDelivery = null
       try {
@@ -4971,6 +5017,12 @@ export function createTurnOrchestrator({
         const row = { field: d.field, face: d.face, op: d.op, code, why, hint,
           message: String((e && e.message) || e), cause: (e && e.code) ? String(e.code) : null }
         counts.notExecuted += 1
+        // C#16: a throw means the act did NOT land, so the durable key must not stay PENDING (a pending key would make a
+        // later retry skip it forever, or make a stale replica refuse). Abort it and say so.
+        if (dispatchIdemKey !== null) {
+          try { idempotency.abort({ key: dispatchIdemKey, scope: 'turn-dispatch', reason: 'dispatch threw ' + code }) }
+          catch (err) { idemLedgerNote = 'the durable ledger could not abort ' + dispatchIdemKey + ' after a refused dispatch (' + String((err && err.code) || 'VMU_STATE') + '): the key stays PENDING' }
+        }
         skippedFields.push(row)
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'dispatch-refused', code,
           message: row.message, hint,
@@ -4993,6 +5045,10 @@ export function createTurnOrchestrator({
       if (onBehalf) { entry.onBehalf = true; entry.onBehalfMeans = ON_BEHALF_MEANS; entry.composed = { meeting: composed.meeting, member: composed.member } }
       if (attributed) { entry.attributedTo = String(memberId); entry.attributionMeans = ATTRIBUTION_MEANS }
       executed.push(entry)
+      if (dispatchIdemKey !== null) {
+        try { idempotency.commit({ key: dispatchIdemKey, scope: 'turn-dispatch', result: res, by: memberId === null || memberId === undefined ? null : String(memberId) }) }
+        catch (e) { idemLedgerNote = 'the durable ledger refused to commit ' + dispatchIdemKey + ' (' + String((e && e.code) || 'VMU_STATE') + '): a replay of this dispatch would repeat the write' }
+      }
     }
     // ★★★ RUN 254 / P0-1: THE TURN FAILS ONLY WHEN NOTHING COULD BE APPLIED — and the failure says so by NAMING what
     // was refused, never by pretending something landed. A single refused field keeps the pre-254 contract (the face's
@@ -5043,6 +5099,9 @@ export function createTurnOrchestrator({
       meetingMeans: boundMeeting === null
         ? 'no meeting was bound to this turn, so a reply field that needs { meeting, member, text } cannot be dispatched (a bare sentence is kept in notes, never silently dropped)'
         : 'this turn was bound to the named meeting, so a member\'s bare sentence was recorded as THAT MEMBER\'S speech and the receipt carries onBehalf for it', effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
+      durableIdempotency: idempotency ? 'store-backed-ledger (key turnId|field|callIndex)' : 'none',
+      replayedDispatches,
+      ...(idemLedgerNote === null ? {} : { idempotencyLedgerNote: idemLedgerNote }),
       notes: keptNotes,
       notesMean: 'lines that were NOT dispatched but ARE kept: a reading of what the member said, bounded to ' + NOTE_CAP + ' chars each - an empty list means no such line existed, never that a line was dropped silently',
       // ★★★ ROUND 240 (FEEDBACK63 ①5): THE COUNT AND THE NAMED ROWS CANNOT DRIFT. Every field counted in

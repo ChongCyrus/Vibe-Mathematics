@@ -38,6 +38,16 @@ import { boot, tmpRoot, VMU, snapshotTree } from '../harness.mjs'
 /** The delivery seam this scenario needs: the CALLER path (see the header). run.mjs maps this onto config.vmu. */
 export const settings = { deliverMode: 'caller' }
 
+// ★ ROUND-2 C1 (audit finding, simulator clock): the progress dedupe key is `(member, row.createdAt >= this turn's
+// start)`. Under a FIXED clock a row written by an EARLIER turn carries the same stamp as this turn's start, so the
+// taught string form is skipped as `skipped-duplicate` and the rule's only allow-side step executed 0 rows — the step
+// name existed while the mechanism it is supposed to prove never ran. Moving the clock FORWARD between turns keeps
+// the measurement honest without pinning wall-clock noise: the increments are literal constants, so two runs of this
+// scenario still produce the same corpus. This is the harness's documented seam (`boot({clock})`, run.mjs reads the
+// scenario's `clock` export), not a product change.
+export const clockState = { now: 1_800_000_000_000 }
+export const clock = () => clockState.now
+
 const NL = String.fromCharCode(10)
 const FENCE = String.fromCharCode(96, 96, 96)
 
@@ -404,11 +414,24 @@ export async function turns(h, { log = () => {} } = {}) {
 
   // ── 13. The `progress` reply field with a plain string — the shape the teaching invites, now ACCEPTED ──────────
   await step('round-progress-string', 'turn', async () => {
+    // ★ ROUND-2 C1: open this turn AFTER the previous turn's progress row. The dedupe key is (member, createdAt >=
+    // turnStart); under the fixed clock the previous row's stamp equals this turn's start and the coercion is skipped.
+    clockState.now += 60_000
     const parked = await park('r-1', 'normal', 'progress 写成一段文字：先 park 再答')
-    const r = await answer(parked, 'normal', 'progress 写成一段文字（提示词教的形式）', { say: '记一条进展', progress: '完成第一步：定义已固定，下一步给出引理。' })
+    const r = await answer(parked, 'normal', 'progress 写成一段文字（提示词教的形式）', { say: '记一条进展', progress: '完成第一步：定义已固定，下一步给出引理（C1 正侧证据：这条 progress 必须真写出，不能只是 ok）' })
     const inner = r.receipt || r
     const executed = Array.isArray(inner.executedDetail) ? inner.executedDetail : (Array.isArray(inner.executed) ? inner.executed : [])
     const progressRow = executed.find((e) => e && e.field === 'progress') || null
+    // HARD contract check (ROUND-2 C1): the step must have WRITTEN the row, not merely answered ok. A skipped
+    // duplicate is exactly how this rule lost its only positive evidence while the step ledger still read ok:true.
+    if (progressRow === null || !(Number(inner.executed) > 0)) {
+      failures.push({
+        code: 'SIM_PROGRESS_STRING_NOT_EXECUTED',
+        step: 'round-progress-string',
+        message: 'the taught `progress` string form wrote NO row: executed=' + String(inner.executed) + ', executedDetail=' + JSON.stringify(executed.slice(0, 3)) + ', coercions=' + JSON.stringify(inner.coercions || null),
+        means: 'C1 (研究过程 progress 日志) has no positive evidence if this step executes 0: the skip is usually the per-turn dedupe (member already has a progress row with createdAt >= this turn start) — move the scenario clock before parking, never weaken the dedupe',
+      })
+    }
     ledger.progressString = {
       ok: r.ok === true,
       turn: inner.turn || null,
@@ -417,7 +440,7 @@ export async function turns(h, { log = () => {} } = {}) {
       skipped: inner.skipped === undefined ? null : inner.skipped,
       coercions: inner.coercions || null,
       progressEntry: progressRow,
-      means: 'FIXED (RUN 229): the reply field progress accepts the taught TEXT form and maps it to ONE complete progress row (track progress, kind progress, title from the first line, body the whole text, settled, authored by the turn member) — the kernel reports the coercion in `coercions`, so nothing is half-written and the teaching and the engine agree',
+      means: 'FIXED (RUN 229): the reply field progress accepts the taught TEXT form and maps it to ONE complete progress row (track progress, kind progress, title from the first line, body the whole text, settled, authored by the turn member) — the kernel reports the coercion in `coercions`, so nothing is half-written and the teaching and the engine agree. ROUND-2 C1: this scenario advances its own clock before the turn so the per-turn dedupe window cannot swallow the row (executed must be > 0).',
     }
     return r
   })

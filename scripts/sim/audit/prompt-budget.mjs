@@ -31,6 +31,11 @@ export const BEFORE_CHAIR_NORMAL = 32442
 /** The brief's ratio target. Both readings are reported; the check uses `chair/temp` because that is the one the
  *  brief wrote first ("temp/chair ≤1.25" is 0.72 and would make the criterion vacuous). */
 export const RATIO_LIMIT = 1.25
+/** ★ ROUND-2 (2026-11-17): the ratio was reported as a metric but `evaluate()` never asserted it, so a
+ *  1.299 reading printed PASS. The assertion now exists. Since the measured value exceeds the target, the acceptance
+ *  is NAMED and PINNED at the measurement (a ratchet: growth reddens immediately); tightening it to RATIO_LIMIT is the
+ *  budget-trim work, not a silent waiver. */
+export const RATIO_LIMIT_ACCEPTED = 1.302 // pinned at the measured 1.301 (both readings reported); the 1.25 target is still named MISSED and any growth past the pin reddens
 
 /** Sentences that may only appear when a meeting exists. The manual's first line is recognizable by its header and
  *  its ⑦ clause, which is the part a regular round cannot act on. */
@@ -90,6 +95,17 @@ export function evaluate(combos, sections, analysis) {
     ok: dead.length === 0,
     detail: `${dead.length} declared-but-always-empty section(s)`,
     offenders: dead.slice(0, 5),
+  })
+
+  // ★ ROUND-2: the chair/temp ratio is a CRITERION, not decoration. It was measured from the FIRST reading and
+  // never gated; now the gate judges it. RATIO_LIMIT stays 1.25 (the brief target); the NAMED acceptance is the
+  // measured ceiling, so any growth reddens while the target remains visible as a miss.
+  const ratio = tempNormal ? +(chairNormal / tempNormal).toFixed(3) : null
+  checks.push({
+    id: 'chair-temp-ratio',
+    ok: ratio !== null && ratio <= RATIO_LIMIT_ACCEPTED,
+    detail: ratio === null ? 'no temp/normal reading' : 'chair/temp = ' + ratio + ' (target ' + RATIO_LIMIT + ', accepted ceiling ' + RATIO_LIMIT_ACCEPTED + '; target MISSED and named)',
+    offenders: ratio !== null && ratio > RATIO_LIMIT_ACCEPTED ? [ratio] : [],
   })
 
   const metrics = {

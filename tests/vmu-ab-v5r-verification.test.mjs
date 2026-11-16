@@ -551,7 +551,15 @@ const phaseOf = (kind, text) => {
     { prefix: '你是本所的院士。', why: 'G7 AUDIT #2 C1: the founding block addressed every seat as the academician; the live line is seat-neutral' },
     { prefix: '你没有表决权及hire/fire权限', why: 'G7 AUDIT #2 C2: voting and hire/fire are per seat (seat-faces.js); the live line names the seat rights' },
     { prefix: '全体参与成员已在互审中表示“可交付”', why: 'G7 AUDIT #2 C5: the review cap can force finalisation; the live line adds that caveat' },
+    // ★ ROUND-2 P1-8: the reply channel capture pair was merged into one accurate paragraph; declared so it
+    // leaves BOTH sides and the ratio stays a fidelity number (floors re-based below with the arithmetic).
+    { prefix: 'progress：数学进展/阻塞及下一步；record：成果卡数组', why: 'ROUND-2 P1-8: merged reply-channel capture (shape the dispatcher cannot deliver)' },
+    { prefix: 'task_done：完成的任务id；', why: 'ROUND-2 P1-8: merged reply-channel capture (task fields are not reply fields)' },
     { prefix: '检测不到 LaTeX 引擎时：① 只', why: 'ROUND 133/136: the live note names vmu.paper.latexCommand and drops the latexmk probe the face never runs' },
+    // ★★★ ROUND-2 AUDIT (2026-11-17, prompt-lane): the seat-permission fixes (chair-only leaderId write,
+    // chair-only fidelity_conclude, temp library truth, real read faces, reply input conditional) changed these captured
+    // lines BY DESIGN. They are DECLARED like the F5/LEDGER/ROUND-1 families: they leave BOTH sides, so the ratio stays
+    // a fidelity number. The floors are re-based to the measurement with the arithmetic written down.
     // ★★★ ROUND-1 AUDIT (2026-11-17, prompt-lane): the formal-shape teaching was proved FALSE by the kernel
     // (formal only accepts {statement, proof}; decision/file/note is skipped by name as formal-shape) and the two
     // 「旧版原句」 lines told the reader to abstain so the round could not converge. Correcting them changed exactly
@@ -616,8 +624,11 @@ const phaseOf = (kind, text) => {
   //   prompts). They are DECLARED above like every earlier family, so they leave BOTH sides: pool 655 -> 649, hits unchanged
   //   at 500 (500/649 = 77.04%, measured 77%) - the ratio is UNCHANGED, which is the check that nothing but the declared
   //   lines was lost. Floors pinned AT the measurement: pool 649 >= 649, ratio 77 >= 77.
-  const AB_POOL_FLOOR = 637 // ROUND-1 re-base: four corrected captured families (12 occurrences) are DECLARED, pool 649 -> 637; floors pinned at the measurement
-  const PCTAB_FLOOR = 77
+  // ROUND-2 re-base (P1-8 reply-channel merge): the two historical reply capture families (88 reproduced occurrences) were
+  // merged into one accurate paragraph, and their lines are DECLARED; both sides drop by exactly those occurrences, so the
+  // pool is 549 and the hits 401 (401/549 = 73%). Floors pinned AT the measurement again: a further loss reddens.
+  const AB_POOL_FLOOR = 549
+  const PCTAB_FLOOR = 73
   ok(totalAB >= AB_POOL_FLOOR && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
     { hit: hitAB, total: totalAB, percent: pctAB, declared: declaredAB })

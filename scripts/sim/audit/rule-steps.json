@@ -455,7 +455,8 @@
         {
           "scenario": "turns",
           "step": "round-progress-string",
-          "side": "allow"
+          "side": "allow",
+          "note": "ROUND-2 C1: this step now advances the scenario clock by 60s BEFORE parking the turn, so the per-turn progress dedupe window (member, createdAt >= turnStart) cannot treat the previous turn's row as 'this turn'. The step also hard-asserts executed>0 + a field=progress entry in executedDetail (turns.mjs), so 'the step ran but wrote nothing' is red by name, not a fake ok:true."
         },
         {
           "scenario": "turns",
@@ -463,7 +464,7 @@
           "side": "refuse"
         }
       ],
-      "notes": ""
+      "notes": "ROUND-2 C1: the only allow-side step used to execute 0 rows under the fixed clock (skipped-duplicate); the scenario now owns a mutable clock (run.mjs injects the scenario's `clock` export) and moves it forward deterministically between turns. Fixed clock is still the default for every other scenario."
     },
     "C2": {
       "rule": "已尝试路线/方法及其进度",
@@ -892,17 +893,29 @@
       "rule": "成员命令随会议类型与身份不同",
       "steps": [
         {
+          "scenario": "actions-extra",
+          "step": "M/pack-meeting/types",
+          "side": "allow",
+          "note": "type catalog MEASURES the type half: receipt.receipt.types[type=debate] carries narrowed:true / narrowingTo:20 / allowedTools 20 — the face a member may use depends on the meeting TYPE"
+        },
+        {
+          "scenario": "refusals",
+          "step": "refusal/meeting-round-success",
+          "side": "allow",
+          "note": "meeting_round MEASURES the identity half: narrowing.members[].narrowing.identityFaceVisible=3 (identityFaceUnreadable names the unreadable case) — the face a member sees depends on WHO they are"
+        },
+        {
           "scenario": "turns",
           "step": "prompt-matrix",
           "side": "prose",
           "promptProbe": {
             "seat": "member",
-            "phase": "normal",
-            "text": "命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工无表决权）"
+            "phase": "meeting",
+            "text": "命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`）。"
           }
         }
       ],
-      "notes": ""
+      "notes": "ROUND-2 E12: the prose probe follows the RENDERED text (the old tail '；临时工无表决权）' is no longer rendered; it now matches member/meeting exactly). The allow side is mapped to the two receipts that MEASURE type- and identity-dependent narrowing (actions-extra type catalog + refusals meeting_round), so the old 'UNREACHABLE (depends on subagents)' blind spot is gone."
     },
     "E13": {
       "rule": "会议类型：正常/学术交流/辩论/结题/论文交流/未来规划",
@@ -1059,13 +1072,13 @@
           "step": "prompt-matrix",
           "side": "prose",
           "promptProbe": {
-            "seat": "chair",
+            "seat": "member",
             "phase": "normal",
-            "text": "表决分两段：先【独立初评】——看不到别人意见时独立给票与理由"
+            "text": "表决分两段：先【独立初评】（看不到别人意见）"
           }
         }
       ],
-      "notes": ""
+      "notes": "ROUND-2 E25: the probe follows the rendered MEMBER text ('（看不到别人意见）' is the member wording of the rule's '看不到别人意见时独立给票与理由'; the chair wording is '——独立给票与理由')."
     },
     "E26": {
       "rule": "辩论骨架②轮流/举手/邀请展开",
@@ -1311,11 +1324,11 @@
           "promptProbe": {
             "seat": "chair",
             "phase": "normal",
-            "text": "★ 回执正文里【不要】粘贴 JSON 对象或工具回执原文"
+            "text": "工具是主路，围栏不能替代工具"
           }
         }
       ],
-      "notes": ""
+      "notes": "ROUND-2 G6: the old probe ('回执正文里【不要】粘贴 JSON 对象…') is no longer rendered anywhere; the teaching that survived the rewording is '【工具做事，回执汇报】…工具是主路，围栏不能替代工具' — the probe now follows that sentence (35/35 rendered prompts)."
     },
     "G7": {
       "rule": "提示词与规则完全相符、自洽",
@@ -1451,11 +1464,11 @@
           "promptProbe": {
             "seat": "chair",
             "phase": "normal",
-            "text": "表决分两段：先【独立初评】——看不到别人意见时独立给票与理由"
+            "text": "**单次发言版群聊**两法："
           }
         }
       ],
-      "notes": ""
+      "notes": "ROUND-2 E36: removed the copy of E25's probe (two rules sharing one stale sentence was the finding). This probe is the rendered chair/normal teaching of the FIRST step of the recommended flow — the simultaneous single-statement chat ('单次发言版群聊'), which the rule's own text names; the debate-rounds half is measured by E29's `vmu.meetings.verdictMaxRounds` probe."
     },
     "G8": {
       "rule": "the mainline is stated as the blueprint of the original problem, coarse to fine",

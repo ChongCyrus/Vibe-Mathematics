@@ -211,6 +211,14 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
   let loadError = null
   // ── round 10 / task-123: monotonic sequence + writer identity (DETECTION of concurrent overwrites) ──
   let knownSeq = 0            // the highest seq this instance has written or read
+  // ★★★ C#10 (ROUND-2 audit): the PRODUCTION compare-and-set token. The ledger projection is built from the rows this
+  // instance has loaded, then persisted; two kernels over one store can both build a projection from the same base and
+  // the later write would silently DROP the earlier entries. `baseFingerprint` is the durable value this instance's view
+  // was built from, and every persist passes it as `expectFingerprint`; a conflict reloads and retries once instead of
+  // overwriting. This is the one real call site the audit asked for (not only tests).
+  let baseFingerprint = null
+  let casConflicts = 0
+  let casRetries = 0
   let lastWrite = null        // the last successful write BY US: { seq, writerId, at }
   let lastSeen = null         // what the store last showed us: { seq, writerId, at }
   let staleWrites = 0
@@ -320,7 +328,10 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       // happened. Now: the ledger's own bookkeeping (seq / lastWrite) is assigned synchronously, but `lastPatchOk` and
       // the reason are set ONLY by the promise's settlement, and the in-flight receipt says `pending:true` with
       // `durable:false`. `whenDurable()` lets a caller await the aggregate of every write issued so far.
-      const write = Promise.resolve(store.patch(LEDGER_KEY, () => doc))
+      // C#10: compare-and-set against the value this projection was built from. Absent the token (no seam yet) the
+      // write is the old unconditional one - but the token is learned on the first read/write, so production keeps it.
+      const casOpts = baseFingerprint === null ? undefined : { expectFingerprint: baseFingerprint }
+      const write = Promise.resolve(store.patch(LEDGER_KEY, () => doc, casOpts))
       inFlight.add(write)
       knownSeq = nextSeq
       lastWrite = { seq: nextSeq, writerId: writer, at: now() }
@@ -334,6 +345,7 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       write.then(() => {
         settled()
         lastPatchOk = true
+        try { baseFingerprint = typeof store.fingerprintOf === 'function' ? store.fingerprintOf(LEDGER_KEY) : null } catch (e) { baseFingerprint = null }
         // M3: a successful WRITE alone must never be read as "we have durability" — the degraded verdict is
         // cleared ONLY when the store has also been read back successfully in this lifetime (loadOk).
         if (loadOk) {
@@ -345,6 +357,15 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
         }
       }, (e) => {
         settled()
+        if (e && e.code === 'VMU_STORE_CONFLICT' && casRetries < 2) {
+          casConflicts += 1
+          casRetries += 1
+          say({ type: 'idempotency/cas-conflict', at: now(), key: LEDGER_KEY, code: e.code, retry: casRetries,
+            why: 'another kernel wrote the idempotency ledger between our read and our write: reloading and re-projecting instead of overwriting (nothing is lost)' })
+          try { load({ force: true }) } catch (err) { /* keep the old view; the retry below still runs */ }
+          persist()
+          return
+        }
         durableDegraded = true
         lastPatchOk = false
         lastPersistError = String((e && e.message) || e)
@@ -376,6 +397,7 @@ export function createIdempotency({ clock = () => 0, log = null, settings = {}, 
       doc = store.read(LEDGER_KEY)
       loadOk = true
       loadError = null
+      try { baseFingerprint = typeof store.fingerprintOf === 'function' ? store.fingerprintOf(LEDGER_KEY) : null } catch (e) { baseFingerprint = null }
     } catch (e) {
       loadOk = false
       loadError = String((e && e.message) || e)

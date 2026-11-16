@@ -166,6 +166,21 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   // itself and could never fail. It is declared WITH its meaning and source because an undeclared discovery is the
   // exact blind spot RULE C exists to find (the old `accounted`-only identity is why `holds` was a tautology).
   'universeCounted',
+  // ROUND-2 PRODUCT AUDIT (C#26 residual): the warrant policy is SELF-REPORTED on two faces, and the mechanical
+  // claim-family extraction finds all three fields — leaving them undeclared would be exactly the blind spot RULE C
+  // exists to find. They are declared WITH meaning and source:
+  //   · `machineCheckedOnly`     - vibe-math-vmu/packs/v5r/tools.js:3188 (warrantPolicy on the verified-promote
+  //                                 receipt) and kernel/index.js:5495 (status().verifiedWarrantPolicy): false BY
+  //                                 DEFINITION under this policy, because a LITERATURE citation is admitted and a
+  //                                 citation is HUMAN-reviewed, not a machine proof. It exists so a reader cannot
+  //                                 over-read `machineOrLiterature` as "machine proof" (the old `machineOnly` said
+  //                                 "machine only" while accepting literature — that mismatch was the C#26 defect).
+  //                                 Gate that scans it: tests/vmu-run97-verified-gate.test.mjs §⑦.
+  // NOTE the two companion flags (`machineOrLiterature`, `literatureHumanReviewed`) are NOT declared here: RULE C's
+  // table must reconcile BOTH ways with the mechanical claim-family discovery, and those names carry no
+  // count/verify/scan/ran/checked token, so declaring them would create ghost entries (the table's other failure mode).
+  // They remain on the receipts; `machineCheckedOnly` is the claim-shaped one this rule governs.
+  'machineCheckedOnly',
 ])
 
 /** Top-level keys of every `return { … }` object literal in one source. */

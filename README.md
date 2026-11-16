@@ -305,7 +305,7 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
    └─ State/<研究所>.v5state.json                  # ★ 权威状态（加固 JSON、串行写、读前必 load）
 ```
 
-**铁律（四套）**：v2/v3 的调度器是**唯一文件写者**（v3 另支持代理直接写 md，靠 `vibe_math_claim_write`/`vibe_math_release_write` 写锁保证同一文件同一时刻只有一个写者）；只有 `Verified/` 与标注"已验证·真/假"的卡片**绝对可信**，其余 md（含 `Methods/` 里未验证的断言）只是经验参考；v5 的权威状态只写在 `State/<研究所>.v5state.json`，上面其余文件都只是**镜像/工作区**（手工改坏不会破坏研究所），成员**只写自己的库**、入库必须写明**价值程度 / 动机用途计划 / 自己的概率估计**。启用 Lean 时另有本所 `Formal/`（工作文件 + 索引 + 形式化待办）与 `Verified/Lean/`（归档证明），以及**跨项目**的 `<VibeMath根>/Formal/{Lib,Proved}/`——详见上方「Lean 形式化验证」一节。
+**铁律（历史四套；当前发货 preset 见 `vibe-math-vmu/docs/`）**：v2/v3 的调度器是**唯一文件写者**（v3 另支持代理直接写 md，靠 `vibe_math_claim_write`/`vibe_math_release_write` 写锁保证同一文件同一时刻只有一个写者）；只有 `Verified/` 与标注"已验证·真/假"的卡片**绝对可信**，其余 md（含 `Methods/` 里未验证的断言）只是经验参考；v5 的权威状态只写在 `State/<研究所>.v5state.json`，上面其余文件都只是**镜像/工作区**（手工改坏不会破坏研究所），成员**只写自己的库**、入库必须写明**价值程度 / 动机用途计划 / 自己的概率估计**。启用 Lean 时另有本所 `Formal/`（工作文件 + 索引 + 形式化待办）与 `Verified/Lean/`（归档证明），以及**跨项目**的 `<VibeMath根>/Formal/{Lib,Proved}/`——详见上方「Lean 形式化验证」一节。
 
 ---
 
@@ -483,7 +483,7 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `promoteValueThreshold` | 0.7 | v2·v3 | Propos 中「价值/关键性」≥ 该值且未决(0,1) 的命题自动加入 qs.json |
 | `priorityAdjust` | `none` | v2·v3 | `none` / `deadend-deprioritize`（全死路降优先级）/ `survival-map`（按存活率重算） |
 | `proposPriorityAdjust` | `none` | v2·v3 | 命题优先级动态调整：`none` / `progress-graded`（按定论接近度+证明/证伪材料量重算，越接近定论越优先验证） |
-| `provider` / `model` | 空 | 四套 | 模型路由（空 = 继承根代理）。**各预设语义**：v2/v3 = 子代理模型（v3 的规划代理另见专属表 `plannerProvider`/`plannerModel`）；v4 = **常驻 LLM 路由**（此前声明未用，v1.4.1 真正接入）；v5 = 成员 LLM 路由（空 = 继承所办/主代理路由） |
+| `provider` / `model` | 空 | 历史预设 | 模型路由（空 = 继承根代理）。**各预设语义**：v2/v3 = 子代理模型（v3 的规划代理另见专属表 `plannerProvider`/`plannerModel`）；v4 = **常驻 LLM 路由**（此前声明未用，v1.4.1 真正接入）；v5 = 成员 LLM 路由（空 = 继承所办/主代理路由） |
 | `solverPersona` / `verifierPersona` / `explorerPersona` | 空 | v2·v3 | 注入求解器/验证器/explorer 提示词开头的人格/要求 |
 | `knowledgeContext` | 空 | v2·v3 | 共享知识/数据模型说明（空 = 内置完整版：对象/属性定义、概率语义、文件夹用途、输出完整性要求；非空 = 覆盖并注入所有子代理提示词） |
 | `solverToolAllow` / `solverToolDeny` | `[]` | v2·v3 | 求解器允许/禁止的工具 |
@@ -492,12 +492,12 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `solverAllowScripts` / `verifierAllowScripts` | 空 | v2·v3 | 脚本工具开关（bash/pwsh）：同上 |
 | `solverMaxToolCalls` / `verifierMaxToolCalls` | 0 | v2·v3 | 每轮外部工具调用上限（0=不限） |
 | `reportIntervalMs` | 0 | v2·v3 | 0 = 仅事件驱动（有状态更新才写/推）；>0 = 定时自动汇报（毫秒） |
-| `mathComputation` | `auto` | 四套 | 数学计算工具档位：`off`（真 no-op，不探测/不执行/不进提示词）/ `auto`（探测到引擎才工作）/ `on`。详见 [`docs/math-computation.md`](docs/math-computation.md) |
-| `mathMode` | `typed+shell` | 四套 | **提示词策略**（插件无法强制）：`typed+shell` 允许工具不可用时用宿主 shell 兜底，但结论必须标注"未经工具归档"、只有工具路径算可复核支撑材料；`typed` 不提 shell 且禁用 `engine:'cli'` |
-| `mathEngines` | `[python, r, octave, julia, matlab, maple, wolfram, cli]` | 四套 | 允许的引擎及探测顺序。商业三家（matlab/maple/wolfram）只探测与许可检查、**永不安装**；去掉 `cli` 即关闭通用逃生口 |
-| `mathTimeoutMs` | `60000` | 四套 | 单次计算上限（毫秒，最小 1000）；超时后主动终止进程 |
-| `mathPackages` | `[]` | 四套 | 默认要求存在的包/工具箱；缺包只报告并给安装计划，**不自动安装** |
-| `mathInstallScope` | `user` | 四套 | 安装作用域；`system` 必须**每次显式指定且不被记住**（多数包管理器没有 system 模板，此时会被拒绝） |
+| `mathComputation` | `auto` | 历史预设 | 数学计算工具档位：`off`（真 no-op，不探测/不执行/不进提示词）/ `auto`（探测到引擎才工作）/ `on`。详见 [`docs/math-computation.md`](docs/math-computation.md) |
+| `mathMode` | `typed+shell` | 历史预设 | **提示词策略**（插件无法强制）：`typed+shell` 允许工具不可用时用宿主 shell 兜底，但结论必须标注"未经工具归档"、只有工具路径算可复核支撑材料；`typed` 不提 shell 且禁用 `engine:'cli'` |
+| `mathEngines` | `[python, r, octave, julia, matlab, maple, wolfram, cli]` | 历史预设 | 允许的引擎及探测顺序。商业三家（matlab/maple/wolfram）只探测与许可检查、**永不安装**；去掉 `cli` 即关闭通用逃生口 |
+| `mathTimeoutMs` | `60000` | 历史预设 | 单次计算上限（毫秒，最小 1000）；超时后主动终止进程 |
+| `mathPackages` | `[]` | 历史预设 | 默认要求存在的包/工具箱；缺包只报告并给安装计划，**不自动安装** |
+| `mathInstallScope` | `user` | 历史预设 | 安装作用域；`system` 必须**每次显式指定且不被记住**（多数包管理器没有 system 模板，此时会被拒绝） |
 | `tickIntervalMs` | 2000 | v2·v3 | 调度器心跳间隔（毫秒） |
 | `activityLogCap` | 100 | v2·v3 | 活动日志保留条数（report 最多显示 30 条） |
 | `maxExplorerRetries` | 3 | v2·v3 | explorer 拆方向失败的重派生上限 |
@@ -509,19 +509,19 @@ v5 的完整架构（成员生命周期、一轮时序、共识状态机、会�
 | `compactAfterRounds` | 8 | v4·v5 | 每累计 N 轮（未压缩）触发状态保存；v5 仅宿主真实压缩成功才重置计数，失败至少间隔 N 个完成回合重试 |
 | `meetingKeepEvery` | 5 | v4·v5 | 每积累 N 个新产物自动触发一次同步会议 |
 | `toolAllow` / `toolDeny` | `[]` | v4·v5 | **常驻/常驻员工工具权限**（经 `startContinuable` 的 `toolFilter` 做作用域 `tools.restrict()`；空 = 继承全部工具；⚠️ 空 `allow:[]` 会拒绝一切工具）；v5 的临时工另有专属 `tempToolAllow`/`tempToolDeny` |
-| `formalVerify` | `'off'` | 四套 | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
-| `leanCommand` | `'lean'` | 四套 | 要执行的 Lean 可执行文件（例：`'lake'`） |
-| `leanArgs` | `[]` | 四套 | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
-| `leanTimeoutMs` | `120000` | 四套 | 单次 Lean 运行的上限（毫秒）（异步作业同样用它作单次预算） |
-| `leanAsync` | `true` | 四套 | Lean 编译模式：`true`（默认）= 后台队列，`lean_run` / `lean_archive{run:true}` 入队即返回 `async.jobId`，成员不阻塞；`false` = 同步 await（旧语义逐字保留） |
-| `leanJobsMaxParallel` | `1` | 四套 | 后台编译并发上限（默认 1 = 串行；调大即并行） |
-| `leanInitiative` | `'normal'` | 四套 | **日常形式化主动性**：`off` / `normal`（默认，顺手形式化）/ `eager`（更主动）。与 `formalVerify`（验证时的要求强度）**是两件事** |
-| `leanSearchPaths` | `[]` | 四套 | 额外 Lean 搜索根（先注入它们、再注入自动的 `<VibeMath 根>`；`leanArgs` 里已有 `-R`/`--root` 时不注入） |
-| `finalPaper` | `true` | 四套 | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
-| `paperFormat` | `both` | 四套 | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
-| `paperLanguage` | `zh` | 四套 | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
-| `paperCompilePdf` | `true` | 四套 | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
-| `paperLatexCommand` | `''` | 四套 | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
+| `formalVerify` | `'off'` | 历史预设 | **Lean 形式化验证开关**：`'off'` 不额外要求（默认）｜`'encourage'` 鼓励（验证时按实现难度自行决定是否形式化）｜`'require'` 强制（真/假结论必须先有「Lean 通过」或显式阻塞记录，否则记为未定论并进入形式化待办）。非法值一律回退 `'off'` |
+| `leanCommand` | `'lean'` | 历史预设 | 要执行的 Lean 可执行文件（例：`'lake'`） |
+| `leanArgs` | `[]` | 历史预设 | 插在文件名之前的附加参数（例：`['env','lean']` 配合 `leanCommand='lake'`） |
+| `leanTimeoutMs` | `120000` | 历史预设 | 单次 Lean 运行的上限（毫秒）（异步作业同样用它作单次预算） |
+| `leanAsync` | `true` | 历史预设 | Lean 编译模式：`true`（默认）= 后台队列，`lean_run` / `lean_archive{run:true}` 入队即返回 `async.jobId`，成员不阻塞；`false` = 同步 await（旧语义逐字保留） |
+| `leanJobsMaxParallel` | `1` | 历史预设 | 后台编译并发上限（默认 1 = 串行；调大即并行） |
+| `leanInitiative` | `'normal'` | 历史预设 | **日常形式化主动性**：`off` / `normal`（默认，顺手形式化）/ `eager`（更主动）。与 `formalVerify`（验证时的要求强度）**是两件事** |
+| `leanSearchPaths` | `[]` | 历史预设 | 额外 Lean 搜索根（先注入它们、再注入自动的 `<VibeMath 根>`；`leanArgs` 里已有 `-R`/`--root` 时不注入） |
+| `finalPaper` | `true` | 历史预设 | **最终论文**：收口时自动撰写（`false` 只关自动触发，手动命令仍可用）。完整契约见 `docs/final-paper.md` |
+| `paperFormat` | `both` | 历史预设 | 论文产出格式：`both`（md+tex）/ `md`（跳过编译，且不报"缺 tex"）/ `tex` |
+| `paperLanguage` | `zh` | 历史预设 | 论文语言：`zh`（ctexart，引擎优先 xelatex）/ `en`（article，pdflatex 优先） |
+| `paperCompilePdf` | `true` | 历史预设 | 检测到 LaTeX 时编译 `paper.pdf`；无引擎或编译失败则保留 tex+md 并记日志告警 |
+| `paperLatexCommand` | `''` | 历史预设 | 指定 LaTeX 引擎可执行文件（空 = 按语言自动探测 xelatex→latexmk→pdflatex→lualatex→tectonic） |
 | `paperEditor` | v4 `office`；v5 `academician` | v4·v5 | 定稿代表。v4：`office`（会话根/人类侧，默认）或 `resident:<id>`（该 resident 已离职则降级 office 并在 meta/log 记明）；v5：`academician`（默认，无人值守也能完成）或 `office`（仅手动 `/v5 paper editor=office`，须先与全所交流 + 开会） |
 
 > **归档即证据**：每次计算写 `Computation/<id>/`（回执含 `scriptPath`+`scriptHash`）；脚本改后必须用 `mode:'file'` 重跑取新回执（`scriptChanged`/`scriptChangedDuringRun` 会告警，旧回执不代表改后代码）；归档只追加不覆盖。详见 [`docs/math-computation.md`](docs/math-computation.md) §4.1。
@@ -622,16 +622,16 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 - **v4（常驻自组织）**：[`vibe-math-v4/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)
 - **v5（研究所体系）**：[`vibe-math-v5/实现方案.md`](docs/DEPRECATED-LEGACY-PRESETS.md)（文字规格）· [`vibe-math-v5/架构图.md`](docs/DEPRECATED-LEGACY-PRESETS.md)（全套架构图）
 - **v5 提示词与交互语料**：[`prompt-corpus-v5/prompt-corpus-v5.md`](prompt-corpus-v5/prompt-corpus-v5.md)（框架真正发出的每一条提示词原文，可直接人工复核身份/编制/交互署名是否正确）
-- **四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
+- **历史四套 Lean 提示词语料**：[`prompt-corpus-v2/formal-verify-v2.md`](prompt-corpus-v2/formal-verify-v2.md) · [`prompt-corpus-v3/formal-verify-v3.md`](prompt-corpus-v3/formal-verify-v3.md) · [`prompt-corpus-v4/formal-verify-v4.md`](prompt-corpus-v4/formal-verify-v4.md)（各自覆盖 off / encourage / **require** / 忠实性分支 / 工作轮 / 回执契约；工作区归一化为 `<WS>`、VibeMath 根为 `<VIBEMATH>`）
 - **历史预设的 persona 原文**：[`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md)（主代理实际收到的提示词：有哪些工具、哪些参数、哪些斜杠子命令；由 `audit-persona-surface.test.mjs` 生成，随包发布）
-- **Lean 形式化验证（四架构共用契约）**：[`docs/formal-verification.md`](docs/formal-verification.md)
-- **最终论文（四架构共用契约）**：[`docs/final-paper.md`](docs/final-paper.md)（五个参数与 v4/v5 的 `paperEditor`、收口顺序"先论文后完成"、`Paper/<id>/` 产物与 9 节骨架、LaTeX 检测顺序与"先修复后降级"、v4/v5 团队合写流程与 v5 所办咨询规则）
+- **Lean 形式化验证（历史四架构共用契约；`vibe-math-vmu` 的形式化面见该 preset 的 `09-math-formalization.md`）**：[`docs/formal-verification.md`](docs/formal-verification.md)
+- **最终论文（历史四架构共用契约）**：[`docs/final-paper.md`](docs/final-paper.md)（五个参数与 v4/v5 的 `paperEditor`、收口顺序"先论文后完成"、`Paper/<id>/` 产物与 9 节骨架、LaTeX 检测顺序与"先修复后降级"、v4/v5 团队合写流程与 v5 所办咨询规则）
 - **测试耗时基线与并行跑法**：[`docs/test-timing.md`](docs/test-timing.md)（`node tests/run-tests.mjs` 并行跑**全部套件 + 全部探针**：`TOTAL 890`（804 套件 + 86 探针/变体，**作业计数**（job count），不是文件计数）；**这些数字必须派生**：`node tests/run-tests.mjs --counts` 是权威来源（**作业计数**，不是文件计数），并由 [`tests/audit-readme-counts.mjs`](tests/audit-readme-counts.mjs) 校验本页与另两份文档；随包发布的是 `files[]` 里的 484 个 `tests/*.mjs`（371 个套件 + 113 个探针/脚本）（文件计数），其余仅开发检出可见，清单见该文档 §1.1；每个 runner 都会打印耗时/加速比供下次选策略）
 - **CI 绿 ≠ 可发布**：GitHub `gate` 只证明另一台干净机器上 `static` 门禁 + 分片套件能绿（本地 `--counts` 当前是 890 作业 = 804 套件 + 86 探针（数字由 runner 派生，会随测试增减）；CI 分片口径 **gated 877** = 890 − 13 条排除）；可发布仍由本地 `release-ready.mjs` + 真机前置决定，见 [`docs/acceptance/ci-gate.md`](docs/acceptance/ci-gate.md)。
 - **静态提示词面一致性（persona ↔ 工具注册表 ↔ 斜杠命令 hint/usage）**：[`audit-persona-surface.test.mjs`](tests/audit-persona-surface.test.mjs)（260 条断言，并生成 [`prompt-corpus-persona/persona-corpus.md`](prompt-corpus-persona/persona-corpus.md) 供人工复核）+ [`audit-persona-sensitivity.mjs`](tests/audit-persona-sensitivity.mjs)（16 条灵敏度探针）——守"注册的工具必须在 persona 里出现 / persona 里的名字必须真的注册 / `prefix` 与 `text` 两块逐行一致 / hint、usage、实际分支三处必须一致"
 - **全面检查必查清单**：[`AUDIT-CHECKLIST.md`](docs/AUDIT-CHECKLIST.md)（本仓库的强制审计流程；§1.9 专门查"工具参数 schema 收不收得下"）
-- **提示词/交互不变式（四套一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
-- **规格 ↔ 代码可追溯（四套一起）**：[`audit-spec-traceability.mjs`](tests/audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受
+- **提示词/交互不变式（历史四套语料一起，可一键复核）**：[`audit-prompt-invariants.mjs`](tests/audit-prompt-invariants.mjs)（157 条断言）——把"历史上真实发生过的提示词/工具面缺陷类别"逐条编码成静态不变式（缩写工具名、把忠实性缺陷投成 0、`defect` 只写在提示词里没实现、回执契约缺 `defect`、无 note 放行、字段名错、`off` 档回执仍能写状态、语料不确定、探针缺失、**工具的封闭 schema 收不下它自己文档里的参数**、**schema 声明了参数层却静默丢弃的键**）。加 `--self-probe` 会在内存里注入这些缺陷形状，要求对应不变式**变红**、未变异的对照跑**仍为绿**（5/5）；脚本自身另带 X5–X8b 六条自检（注释扫描器必须认正则字面量——包括 `return /…/ ` 这种**关键字后面**的正则——字符串里的 `//` 必须保留、抹注释不改变行结构，以及"四套源码抹掉注释后仍必须能被 `node --check` 解析"这条解析级判据）
+- **规格 ↔ 代码可追溯（历史四套一起）**：[`audit-spec-traceability.mjs`](tests/audit-spec-traceability.mjs)（94 条断言）——`实现方案.md`/README 里承诺的工具必须真的注册；四个 Lean 参数必须同时被文档与代码接受
 - **v5 静态完整性**：[`audit-v5-integrity.mjs`](tests/legacy/audit-v5-integrity.mjs)（≈0.5 s）——调用了但未定义的函数、未声明的 `params.*` 读取、会话 API 上不存在的方法、文档化但从未抛出的错误码、遗留开发标记，外加**扫描器解析级自检**（它先把注释/字符串/正则抹掉再扫描，自检保证"抹除后的源码仍能被 `node --check` 解析"——2.3.5 修掉的正是这个扫描器读错 30 行的盲区）；配套 [`audit-v5-sensitivity.mjs`](tests/legacy/audit-v5-sensitivity.mjs)（39 条探针，全红才算通过）
 
 ---
@@ -639,12 +639,12 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 ## ⚠️ 已知边界（有意简化）
 
 **v2**：
-- **（DSH ≤ 0.1.6 的目录形式）** 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——**版本一变（或无记录的老安装首次运行）就整体替换受管文件，不看它是否被改过**；被替换的手改原文先备份到 `<presetRoot>/.vibe-math-backup/<旧版本>/<preset>/` 并在日志里列出。同一个版本内**不重写任何文件**（重启 DSH 不会改写 preset、也不会扰动它按 mtime 记的生成代际），缺失文件随时补回。想强制全量重装：删除那四个 preset 目录后重启 DSH。
+- **（DSH ≤ 0.1.6 的目录形式）** 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——**版本一变（或无记录的老安装首次运行）就整体替换受管文件，不看它是否被改过**；被替换的手改原文先备份到 `<presetRoot>/.vibe-math-backup/<旧版本>/<preset>/` 并在日志里列出。同一个版本内**不重写任何文件**（重启 DSH 不会改写 preset、也不会扰动它按 mtime 记的生成代际），缺失文件随时补回。想强制全量重装：删除受管 preset 目录后重启 DSH（当前发货面只有一个 `vibe-math-vmu`）。
   在 DSH ≥ 0.1.7 上安装器**不写这些目录**（预设由上文「安装」里的组合行提供），启动时只会提示旧副本可安全删除。
-- **在 DSH ≤ 0.1.6 上，这四个目录由安装器负责**：删掉其中任一文件或整个目录，只会在下次启动 DSH 时被补回（这正是上面"强制全量重装"可行的原因）。在 DSH ≥ 0.1.7 上它们不再被读取、也不再被写入，直接删掉即可；想彻底不要本包的预设，就卸载本包（`dsh plugin --profile <你的 profile> remove dsh-vibe-math`）。
+- **在 DSH ≤ 0.1.6 上，这些受管 preset 目录由安装器负责**：删掉其中任一文件或整个目录，只会在下次启动 DSH 时被补回（这正是上面"强制全量重装"可行的原因）。DSH ≤ 0.1.6 的目录形态也只装**唯一发货 preset**（旧 v2–v5 目录不随包）；在 DSH ≥ 0.1.7 上它们不再被读取、也不再被写入，直接删掉即可；想彻底不要本包的预设，就卸载本包（`dsh plugin --profile <你的 profile> remove dsh-vibe-math`）。
 - `flat` 裁决在辩论不一致时取各验证者概率的**等权平均**（不再直接判 `0.5`；早期把高置信分歧 0.9 vs 1 误判为 0.5 的问题已在 v2/v3 修复）；`forced` 按历史准确率+严谨性加权，且准确率只在对象此后获得布尔裁决时计分。
 - `never` 优先级的问题/命题**永不调度**，且不阻塞严格终止（视为主动弃权）。
-- 四个 preset 文件互相独立、可共存；同一会话同时只能选一个预设。
+- 受管 preset 文件互相独立、可共存；同一会话同时只能选一个 preset。
 
 **v3**：
 - **软规范而非零规范**：md 知识库只强制对象头部的 4~7 行锚点（`- ID/类型/状态/概率/优先级/依赖/...`）与条目标题行（`### 解法/证明/证伪 N｜标题｜概率X｜状态Y`），供调度器可靠索引；正文完全自由论文式叙述，调度器从不解析正文。手工编辑锚点可能导致索引漂移（调度器会保留上次有效索引并告警）。

@@ -623,13 +623,23 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           // contract promises + wiring/refusal travel here: input / output / cumulative / limit, and why NOT wired or
           // NOT charged when that is the case. detail:'full' carries the same object (one source, compacted once).
           const u = read || { usageWired: false, failure: { code: "VMU_ENGINE_UNAVAILABLE", message: "no model-usage tracker is attached to this kernel" } }
-          out.usage = { usageWired: u.usageWired === true, inputTokens: u.inputTokens === undefined ? null : u.inputTokens,
+          const cov = u.coverage && typeof u.coverage === "object" ? u.coverage : {}
+          out.usage = { usageWired: u.usageWired === true, source: u.source === undefined ? null : u.source,
+            inputTokens: u.inputTokens === undefined ? null : u.inputTokens,
             outputTokens: u.outputTokens === undefined ? null : u.outputTokens, totalTokens: u.totalTokens === undefined ? null : u.totalTokens,
             chargedTokens: u.chargedTokens === undefined ? null : u.chargedTokens, tokensLimit: u.tokensLimit === undefined ? null : u.tokensLimit,
+            // ★ ROUND-2 C#14: coverage is a READING, not a footnote — recursive depth, attributed sessions, and the
+            // sessions that could NOT be attributed (named, never silently 0).
+            coverage: { attributedSessions: cov.attributedSessions === undefined ? null : cov.attributedSessions,
+              descendantDepthMax: cov.descendantDepthMax === undefined ? null : cov.descendantDepthMax,
+              unattributedSessions: cov.unattributedSessions === undefined ? null : cov.unattributedSessions,
+              unattributedTokens: cov.unattributedTokens === undefined ? null : cov.unattributedTokens,
+              attribution: cov.attribution === undefined ? null : cov.attribution },
+            ledgerMode: u.ledger && u.ledger.mode ? u.ledger.mode : null,
             failure: u.failure ? { code: u.failure.code || null, message: u.failure.message || null } : null,
             chargeFailure: u.chargeFailure ? { code: u.chargeFailure.code || null, message: u.chargeFailure.message || null } : null,
             means: u.usageWired === true
-              ? "host provider-reported token meter (root + member sessions); new totals are charged to budget scope model-usage as deltas — chargeFailure names any budget refusal (e.g. VMU_RESOURCE_BUDGET), never a silent cap"
+              ? "provider meter over the root AND ALL DESCENDANTS (recursive; depth " + (cov.descendantDepthMax === undefined ? "?" : cov.descendantDepthMax) + ", " + (cov.attributedSessions === undefined ? "?" : cov.attributedSessions) + " attributed session(s)); unattributed sessions are named in coverage and NOT charged here (never 0); ledgerMode per-kernel = each kernel charges its own state budget, so a cross-kernel total is the SUM of chargedTokens (no single ledger); source real|fake says whether the meter is a real SessionStore shape or a list-only stub"
               : "model token usage is NOT WIRED on this host (" + ((u.failure && u.failure.message) || "no readable token meter") + ") — usageWired:false, NOT a claim of 0 tokens spent" }
         } catch (e) {
           out.usage = { usageWired: false, inputTokens: null, outputTokens: null, totalTokens: null, chargedTokens: null, tokensLimit: null,
@@ -2048,20 +2058,47 @@ function blockAssembledAtMsOfMeans(kernel) {
  * no sessions service ⇒ usageWired:false + failure; no budget ⇒ wired-but-uncharged with the reason; exceeding the
  * declared total ⇒ the budget service's own named refusal (VMU_RESOURCE_BUDGET) is carried, not swallowed.
  */
+/**
+ * ★★★ P0-c (ROUND-1 audit C#14) + ROUND-2 residual: MODEL TOKENS ARE CHARGED FROM THE REAL METER.
+ * The host is the layer that can see DSH's provider-reported usage (`sessions.list()[].projections.values.tokenUsage`).
+ * ROUND-2 tightened three things the audit measured as incomplete:
+ *   ① COVERAGE: the old sum took the root plus DIRECT children only, so a member that spawned grandchildren was
+ *      under-counted. The tracker now walks the parent chain RECURSIVELY and includes every descendant of the root;
+ *      sessions that cannot be attributed to this root are NAMED (`unattributed`) instead of being silently 0.
+ *   ② LEDGER: each kernel charges its own budget scope (state projection, last writer wins), so there is NO single
+ *      institute ledger; the reading says so (`ledger.mode:"per-kernel"`) instead of looking complete.
+ *   ③ EVIDENCE: the session-service shape is classified (`source:"real"|"fake"|"unknown"`) so a test stub can never
+ *      be read as a real DSH meter: real = get/create/list like SessionStore; fake = a list-only stub.
+ * Everything is named: no sessions service ⇒ usageWired:false + failure; no budget ⇒ wired-but-uncharged with the
+ * reason; exceeding the declared total ⇒ the budget service's own named refusal (VMU_RESOURCE_BUDGET), carried.
+ */
 function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
-  const state = { wired: false, failure: null, inputTokens: null, outputTokens: null, cacheTokens: null, totalTokens: null,
-    chargedTokens: 0, chargeFailure: null, lastReadAt: null, scopeOpen: false, sessionCount: 0, lock: null }
+  const state = { wired: false, failure: null, source: null, inputTokens: null, outputTokens: null, cacheTokens: null, totalTokens: null,
+    chargedTokens: 0, chargeFailure: null, lastReadAt: null, scopeOpen: false, lock: null,
+    coverage: { sessionsSeen: 0, attributedSessions: 0, descendantDepthMax: 0, unattributedSessions: 0, unattributedTokens: 0, rootSessionId: null, attribution: null } }
   const sessionsOf = () => { try { return ctx && typeof ctx.get === "function" ? ctx.get("sessions") : null } catch (e) { return null } }
   const rootIdOf = () => { try { return ctx && typeof ctx.sessionId === "string" && ctx.sessionId ? ctx.sessionId : null } catch (e) { return null } }
   const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
   const usageOf = (row) => { try { const t = row && row.projections && row.projections.values ? row.projections.values.tokenUsage : null; return t && typeof t === "object" ? t : null } catch (e) { return null } }
+  const rowIdOf = (row) => { const v = row && (row.sessionId !== undefined ? row.sessionId : row.id); return v === undefined || v === null ? null : String(v) }
+  /** Classify the SERVICE SHAPE. A list-only object is a test stub shape, not DSH's SessionStore. */
+  const sourceOf = (store) => {
+    const has = (n) => !!(store && typeof store[n] === "function")
+    if (has("get") && has("list") && (has("create") || has("prepare"))) return "real"
+    if (has("list")) return "fake"
+    return "unknown"
+  }
+  const zero = () => ({ input: 0, output: 0, cache: 0 })
+  const addUsage = (acc, t) => { acc.input += num(t.uncachedInputTokens); acc.output += num(t.outputTokens); acc.cache += num(t.cacheReadTokens) + num(t.cacheWriteTokens) }
   const readMeter = async () => {
     const store = sessionsOf()
     if (!store || typeof store.list !== "function") {
       state.wired = false
+      state.source = null
       state.failure = { code: "VMU_ENGINE_UNAVAILABLE", source: "sessions", message: "this host exposes no sessions service, so model token usage cannot be read (the budget cannot be charged from it)" }
       return { wired: false }
     }
+    state.source = sourceOf(store)
     let rows = null
     try { rows = await store.list() } catch (e) {
       state.wired = false
@@ -2073,23 +2110,49 @@ function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
       state.failure = { code: "VMU_STATE", source: "sessions.list", message: "sessions.list() did not answer an array, so no usage can be summed" }
       return { wired: false }
     }
-    const root = rootIdOf()
-    const mine = rows.filter((row) => row && (root === null || row.sessionId === root || row.parentSessionId === root))
-    let input = 0, output = 0, cache = 0
-    for (const row of mine) {
+    // ① recursive attribution: root → children → grandchildren → …; everything else is NAMED, never dropped as 0.
+    const byId = new Map()
+    const children = new Map()
+    for (const row of rows) { const id = rowIdOf(row); if (id === null) continue; byId.set(id, row) }
+    for (const row of rows) {
+      const id = rowIdOf(row); const parent = row && row.parentSessionId !== undefined && row.parentSessionId !== null ? String(row.parentSessionId) : null
+      if (id === null || parent === null) continue
+      if (!children.has(parent)) children.set(parent, [])
+      children.get(parent).push(id)
+    }
+    let root = rootIdOf()
+    if (root === null && rows.length === 1) root = rowIdOf(rows[0])
+    const attributed = new Set()
+    let depthMax = 0
+    if (root !== null && byId.has(root)) {
+      const queue = [[root, 0]]
+      while (queue.length > 0) {
+        const [id, depth] = queue.shift()
+        if (attributed.has(id)) continue
+        attributed.add(id)
+        if (depth > depthMax) depthMax = depth
+        for (const child of children.get(id) || []) if (!attributed.has(child)) queue.push([child, depth + 1])
+      }
+    }
+    const sum = zero(); const loose = zero(); let looseSessions = 0
+    for (const row of rows) {
+      const id = rowIdOf(row)
       const t = usageOf(row)
       if (!t) continue
-      input += num(t.uncachedInputTokens)
-      output += num(t.outputTokens)
-      cache += num(t.cacheReadTokens) + num(t.cacheWriteTokens)
+      if (id !== null && attributed.has(id)) addUsage(sum, t)
+      else { addUsage(loose, t); looseSessions += 1 }
     }
+    const looseTokens = loose.input + loose.output + loose.cache
     state.wired = true
     state.failure = null
-    state.inputTokens = input
-    state.outputTokens = output
-    state.cacheTokens = cache
-    state.totalTokens = input + output + cache
-    state.sessionCount = mine.length
+    state.inputTokens = root === null ? null : sum.input
+    state.outputTokens = root === null ? null : sum.output
+    state.cacheTokens = root === null ? null : sum.cache
+    // a root we cannot name is NOT charged (null, not 0): the total would be a guess at whose budget it is
+    state.totalTokens = root === null ? null : sum.input + sum.output + sum.cache
+    state.coverage = { sessionsSeen: rows.length, attributedSessions: attributed.size, descendantDepthMax: depthMax,
+      unattributedSessions: looseSessions, unattributedTokens: looseTokens, rootSessionId: root,
+      attribution: root === null ? "no-root-session" : (depthMax > 1 ? "root-descendants(recursive)" : "root+children") }
     state.lastReadAt = (() => { try { const c = kernel && kernel.clockguard && typeof kernel.clockguard.now === "function" ? Number(kernel.clockguard.now()) : null; return Number.isFinite(c) ? c : null } catch (e) { return null } })()
     return { wired: true, total: state.totalTokens }
   }
@@ -2121,13 +2184,15 @@ function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
       const lim = scope && scope.limits ? Number(scope.limits.tokens) : NaN
       limit = Number.isFinite(lim) ? lim : null
     } catch (e) { limit = null }
-    return { usageWired: state.wired === true, usageSource: "sessions.projections.values.tokenUsage",
-      sessionCount: state.sessionCount, inputTokens: state.inputTokens, outputTokens: state.outputTokens, cacheTokens: state.cacheTokens,
+    return { usageWired: state.wired === true, source: state.source, usageSource: "sessions.projections.values.tokenUsage",
+      coverage: Object.assign({}, state.coverage),
+      inputTokens: state.inputTokens, outputTokens: state.outputTokens, cacheTokens: state.cacheTokens,
       totalTokens: state.totalTokens, chargedTokens: state.chargedTokens, tokensLimit: limit, lastReadAt: state.lastReadAt,
+      ledger: { mode: "per-kernel", scope: "model-usage", means: "every kernel charges its OWN budget scope (state projection, last writer wins): there is NO single institute ledger, so a cross-kernel total is the SUM of each kernel's usage.chargedTokens (or vibe_vmu_budget {action:'list'} on each kernel), not one shared number" },
       failure: state.failure, chargeFailure: state.chargeFailure,
       means: state.wired !== true
         ? "model token usage is NOT WIRED on this assembly: " + (state.failure && state.failure.message ? state.failure.message : "the host exposes no readable token meter") + " — the budget reports that absence (usageWired:false), it does not claim 0 tokens were spent"
-        : "model token usage is the HOST'S provider-reported meter (sessions.projections.values.tokenUsage), summed over the root session and its member children; every new total is charged to the kernel budget scope model-usage as a DELTA. A chargeFailure names the budget refusal (e.g. VMU_RESOURCE_BUDGET) instead of silently capping" }
+        : "model token usage is the HOST'S provider-reported meter, summed over the root session AND ALL ITS DESCENDANTS (recursive parent-children walk; depth " + state.coverage.descendantDepthMax + ", " + state.coverage.attributedSessions + " session(s)). Sessions that cannot be attributed to this root are NAMED in coverage.unattributedSessions/unattributedTokens and are NOT charged to this kernel (never counted as 0). Every new total is charged to the kernel budget scope model-usage as a DELTA; ledger.mode says per-kernel (no single institute ledger). source says whether the meter is a real SessionStore shape or a list-only test stub. A chargeFailure names the budget refusal (e.g. VMU_RESOURCE_BUDGET) instead of silently capping" }
   }
   const refresh = async () => {
     if (state.lock) return state.lock
@@ -2140,7 +2205,6 @@ function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
   }
   return { reading, refresh, attach: () => ({ noteModelUsage: () => reading(), refreshModelUsage: () => refresh() }) }
 }
-
 export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, promptSection = null, ...faceFlags } = {}) {
   const disposers = []
   // ★ LISTENER DISPOSERS ARE COUNTED SEPARATELY FROM TOOL DISPOSERS, and the separation is a defect fix rather than
@@ -2300,8 +2364,21 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     return receipt
   }
 
+  // ★★★ ROUND-2 / P0-e (C#24, the residual): THE INSTALL RECEIPT'S THREE FACTS REACH status().coldStart. Until this
+  // call the kernel could only answer reported:false (honest, but the operator still had to run the doctor to learn the
+  // count). ONE call, the SAME numbers the receipt carries — no second computation. configSource is NOT invented here:
+  // the kernel derives it from the settings layer, and the seed marker is the doctor's evidence.
+  const reportColdStart = (partial) => {
+    try {
+      if (kernel && typeof kernel.noteColdStartFacts === 'function') {
+        kernel.noteColdStartFacts(Object.assign({ source: 'host.js adapter install receipt' }, partial))
+      }
+    } catch { /* diagnostics: the install receipt already exists; the status projection must never break install */ }
+  }
   const doInstall = async () => {
     if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
+      reportColdStart({ installed: false, registered: 0, failed: 0, failures: [],
+        installError: { code: 'VMU_ENGINE_UNAVAILABLE', message: 'the host context has no tools.register' } })
       throw Object.assign(new Error('the host context has no tools.register'), { code: 'VMU_ENGINE_UNAVAILABLE',
         hint: 'pass a DSH context; the adapter never invents a tool surface' })
     }
@@ -2337,6 +2414,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     if (list.length === 0) {
       installed = true
       log('vmu is disabled: nothing registered')
+      reportColdStart({ installed: true, registered: 0, failed: 0, failures: [] })
       return { ok: true, installed: 0, names: [], note: 'vmu.core.enabled = false: the adapter registers nothing' }
     }
     const hasEffect = typeof ctx.effect === 'function'
@@ -2406,8 +2484,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       presentAs: presentation.presentAs,
       unapplied: presentation.unapplied.map((u) => Object.assign({}, u)),
     }
-    return { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)),
+    const coldStartReceipt = { ok: failures.length === 0, installed: registered.length, names: registered.slice(), ownedByHost, failures: failures.map((f) => Object.assign({}, f)),
       presentation: presentationState }
+    reportColdStart({ installed: true, registered: coldStartReceipt.installed, failed: coldStartReceipt.failures.length,
+      failures: coldStartReceipt.failures })
+    return coldStartReceipt
   }
 
   /**

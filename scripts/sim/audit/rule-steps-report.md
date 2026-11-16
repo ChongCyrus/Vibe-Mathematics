@@ -11,8 +11,8 @@
 | 口径 | 条数 |
 | --- | --- |
 | 台账规则总数 | 93 |
-| 有可执行步骤证据（allow/refuse） | 80 |
-| 只有提示词证据（prose） | 13 |
+| 有可执行步骤证据（allow/refuse） | 81 |
+| 只有提示词证据（prose） | 12 |
 | 其中能拿到具名拒（refuse）的规则 | 23 |
 | **已覆盖合计** | **93** |
 | 无步骤可引用 | 0 |
@@ -55,18 +55,17 @@
 | `G3` | 支持人工干预研究所决策与运行 | `rules-extra/g3-assign-queued`（REJ） `rules-extra/g3-approval-queue`（OK） `rules-extra/g3-approval-state`（OK） `rules-extra/g3-approval-decide`（OK） `rules-extra/g3-assign-allowed`（OK） | 1 个具名拒 |
 | `G4` | 支持断点续跑 | `rules-extra/g4-pause`（OK） `rules-extra/g4-resume`（OK） | 仅 allow |
 
-## 3. 只有 prose 证据的规则（13 条）
+## 3. 只有 prose 证据的规则（12 条；ROUND-2 后 E12 移入机制证据，见 §3.1）
 
 这些规则在提示词里有逐字指令，但没有任何工具面会拒绝或记录它；因此本文件只登记 `promptProbe`（可逐字核对的片段），不声称是机制闸。
 
 | 规则 | 席面/相位 | 逐字片段 |
 | --- | --- | --- |
-| `E12` | member/normal | `命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工无表决权）` |
-| `E25` | chair/normal | `表决分两段：先【独立初评】——看不到别人意见时独立给票与理由` |
+| `E25` | member/normal | `表决分两段：先【独立初评】（看不到别人意见）`（ROUND-2：旧 probe 在 chair/normal 已 0 命中，现文 chair 写法是「——独立给票与理由」、member 写法带「（看不到别人意见）」） |
 | `E29` | chair/normal | `辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）` |
-| `G6` | chair/normal | `★ 回执正文里【不要】粘贴 JSON 对象或工具回执原文` |
+| `G6` | chair/normal | `工具是主路，围栏不能替代工具`（ROUND-2：旧句「回执正文里【不要】粘贴 JSON…」在 35/35 渲染提示词中 0 命中，现行教学是「工具做事，回执汇报」） |
 | `G7` | chair/normal | `**在册各席逐字一致**（三类同文，可抄回比对）` |
-| `E36` | chair/normal | `表决分两段：先【独立初评】——看不到别人意见时独立给票与理由` |
+| `E36` | chair/normal | `**单次发言版群聊**两法：`（ROUND-2：不再复用 E25 的失效 probe；这句是规则原文「先各成员同时「单次发言版群聊」」的逐字教学；轮数半边由 E29 的 `vmu.meetings.verdictMaxRounds` probe 覆盖） |
 | `G8` | chair/normal | `一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**` |
 | `G9` | chair/normal | `持续积累与主线推进、改进、调整相关的认知与有价值反馈` |
 | `G10` | chair/normal | `①这回合推进或扩张蓝图的哪个节点？②该节点的信息更新了没有（当下评价 / 初始计划与启发 / 相关计划 / 可行性及原因 / 价值性及原因 / 结论与经验 / 障碍与方案 / 过去经验）` |
@@ -74,6 +73,17 @@
 | `G12` | chair/normal | `吸取经验持续改进，把经验一般化、迁移到新问题` |
 | `G13` | chair/normal | `能迁移复用就复用，别重复探索` |
 | `G14` | chair/normal | `③**以前是否处理过类似问题**——先查蓝图与归档` |
+
+### 3.1 ROUND-2：E12 从 prose-only 移入机制证据（类型/身份两个半边都量到了）
+
+`E12`（成员命令随会议类型与身份不同）不再只是提示词规则：它现在有两条 **allow 侧**步骤，来自本层真实回执，且原来的 A.2「UNREACHABLE（依赖 subagents）」盲区已不成立。
+
+| 半边 | 场景/步骤 | 回执读数 |
+| --- | --- | --- |
+| **类型** | `actions-extra/M/pack-meeting/types` | `receipt.types[type=debate]`：`narrowed:true`、`narrowingTo:20`、`allowedTools` 20 条（辩论会议期间工具面按类型收窄） |
+| **身份** | `refusals/refusal/meeting-round-success` | `narrowing.members[].narrowing.identityFaceVisible:3`（`identityFaceUnreadable` 命名读不到的情形；身份面按席位收窄） |
+
+同时 prose probe 已改到**现行渲染文本**：`member/meeting`、逐字 `命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`）。`（旧 tail「；临时工无表决权）」已不在渲染文本里，旧 probe 在该相位 0 命中。）
 
 ## 4. 需要新增的仿真步骤
 

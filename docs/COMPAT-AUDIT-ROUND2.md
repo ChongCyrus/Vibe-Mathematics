@@ -103,15 +103,17 @@
 > 注：`subprocess` 服务宿主**确实提供**（`dsh-base/cordis.patch.yml:199` 挂载 `@deepseek-ai/dsh-subprocess-local`），缺的是**挂载顺序保证**。
 > **修法**：把这三个加入 `inject`（硬依赖语义，服务到位后自动激活），或改成调用时惰性 `ctx.get()`。
 
-### F-4b 隔离 realm：插件取到的是**宿主根** compaction，预设自己的配置不生效（中）
+### F-4b 隔离 realm：插件取到的是**宿主根** compaction，预设自己的配置不生效（中；v2/v3/v4 已删除的历史快照）
 
 三套预设都在同一个位置声明了隔离组：
 
+> **历史快照（2026-11-17 真值批）**：下表记录的是 v2/v3/v4 **当时**的 `agent.cordis.yml`；这三个 preset 已从仓库与发货面删除，行号引用随之失效（不再可解析），故只保留结构与结论、不再写行号。
+
 | 预设 | 组 | isolate | 插件行位置 |
 |---|---|---|---|
-| v2 | `agent.cordis.yml:170-188` | `{compaction: true, toolResultPruner: true}` | `:254`（组**外**） |
-| v3 | `agent.cordis.yml:191-209` | 同上 | `:276`（组**外**） |
-| v4 | `agent.cordis.yml:212-230` | 同上 | `:299`（组**外**） |
+| v2（已删除） | 隔离组声明 | `{compaction: true, toolResultPruner: true}` | 插件行（组**外**） |
+| v3（已删除） | 隔离组声明 | 同上 | 插件行（组**外**） |
+| v4（已删除） | 隔离组声明 | 同上 | 插件行（组**外**） |
 
 组内是 `compaction-basic` + `command-compact` + `tool-result-pruner`（`thresholdChars: 8192 / headChars: 4096 / tailChars: 1024`）。
 按 cordis 隔离语义，`isolate: {compaction: true}` 把该服务放进**该组私有 realm**；插件行与组**平级**，其 `ctx.get('compaction')`（v4:18）解析到的是**宿主根**实例，**不是**组内实例。

@@ -941,8 +941,11 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(asmFm.text.includes('发现任何偏差，不要投 0') && asmFm.text.includes('偏差只说明**形式化不合格**，不代表命题为假') && asmFm.text.includes('严格介于 0 与 1 之间'),
     'T90. **** and a DEFECT IS NOT A REFUTATION: abstaining plus recording the defect, because deviation-to-zero would make the mechanism that exists for rigour fabricate a false negative',
     { rule: 'deviation != false' })
-  ok(asmFm.text.includes('只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0') && asmFm.text.includes('vibe_v5_fidelity_conclude') && asmFm.text.includes('"defect"'),
-    'T91. **** a zero verdict requires an INDEPENDENT argument, and the defect goes into the RECEIPT (fidelity_conclude) so the framework withdraws the passed status',
+  // ROUND-2 P0-3: recording a fidelity defect is CHAIR-ONLY (seat-face). The member path is reason + ask the chair;
+  // the chair path carries the full required shape {card, fidelity:"defect", lean_job, note}.
+  const asmFmChair = await pipeFm.assemble({ member: 'acad', role: 'chair', roleLabel: '院士', phase: 'normal', round: 5, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: SET })
+  ok(asmFm.text.includes('只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0') && asmFm.text.includes('请主席撤回') && asmFm.text.includes('不是你的工具面') && asmFmChair.text.includes('vibe_v5_fidelity_conclude') && asmFmChair.text.includes('"defect"') && asmFmChair.text.includes('note 必填'),
+    'T91. **** a zero verdict requires an INDEPENDENT argument, and the defect goes into the RECEIPT by the CHAIR (fidelity_conclude, note required) while a member asks the chair so the framework withdraws the passed status',
     { independent: true })
   ok(asmFm.text.includes('没把握的先别入库') && asmFm.text.includes('在作业落地为“通过”之前，不得把该对象当成已通过'),
     'T92. **** and the as-you-go line keeps two honesty rules: do not archive what you are unsure of, and never call a queued compile passed',
@@ -1997,12 +2000,12 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'P0b-2 …without touching the frozen CORE table (zero mechanism preserved when no pack declares fields)', { coreHas: 'demo_note' in FIELD_OWNERS, say: owners.say })
   let coreHit = null
   try { mergeReplyFieldOwners([{ field: 'say', face: 'x', op: 'y', pack: 'bad-pack' }]) } catch (e) { coreHit = e }
-  ok(!!coreHit && coreHit.code === 'VMU_INVALID_ARGUMENT' && /CORE/.test(String(coreHit.message)) && /say/.test(String(coreHit.message)),
-    'P0b-3 a pack may NOT redefine a CORE field: refused by name with the field and the reason', coreHit && { code: coreHit.code, message: coreHit.message })
+  ok(!!coreHit && coreHit.code === 'VMU_PACK_CONFLICT' && /CORE/.test(String(coreHit.message)) && /say/.test(String(coreHit.message)),
+    'P0b-3 a pack may NOT redefine a CORE field: refused by name (VMU_PACK_CONFLICT, the registered pack-conflict code) with the field and the reason', coreHit && { code: coreHit.code, message: coreHit.message })
   let dupHit = null
   try { mergeReplyFieldOwners([{ field: 'z', face: 'a', op: 'b', pack: 'p1' }, { field: 'z', face: 'a', op: 'b', pack: 'p2' }]) } catch (e) { dupHit = e }
-  ok(!!dupHit && dupHit.code === 'VMU_INVALID_ARGUMENT' && /p1/.test(String(dupHit.message)) && /p2/.test(String(dupHit.message)),
-    'P0b-4 two packs may not take the same field name: refused and BOTH pack ids named', dupHit && { code: dupHit.code, message: dupHit.message })
+  ok(!!dupHit && dupHit.code === 'VMU_PACK_CONFLICT' && /p1/.test(String(dupHit.message)) && /p2/.test(String(dupHit.message)),
+    'P0b-4 two packs may not take the same field name: refused by VMU_PACK_CONFLICT and BOTH pack ids named', dupHit && { code: dupHit.code, message: dupHit.message })
   const rt = mk({ replyFields: [{ field: 'demo_note', face: 'demo.face', op: 'note', pack: 'demo-pack' }], faces: { 'demo.face': { note: async (payload) => ({ ok: true, got: payload }) } } })
   const out = await rt.apply({ demo_note: 'hello from a pack field' }, null, 'r-1')
   const executed = Array.isArray(out && out.executed) ? out.executed : []
@@ -2127,6 +2130,93 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'P0d-9 ★ C#16 重放同一 (turn,member,reply) ⇒ 回执带 idempotent:true/replayed:true 且没有第二次写', { idempotent: replay && replay.idempotent, replayed: replay && replay.replayed, calls: calls.length })
   ok(replay && JSON.stringify(replay.executed) === JSON.stringify(first.executed) && typeof replay.idempotentMeans === 'string',
     'P0d-10 …返回的是 FIRST receipt（同一 effects），idempotentMeans 说明重放不是新动作', replay && replay.idempotentMeans)
+}
+
+
+// ★★★ ROUND-2 audit C#10 + C#16: the two "half mechanisms" are now named, observable and durable.
+{
+  // ── C#10a: a lock that could not be taken must NOT look like a lock ──────────────────────────────────────────
+  const sroot = mkdtempSync(join(tmpdir(), 'vmu-c10-lock-'))
+  const store = createStore({ root: sroot, clock: () => 1000, lockRetries: 1, lockBackoffMs: 1, lockTimeoutMs: 1 })
+  await store.open()
+  const lockFile = join(sroot, 'vmu', 'state.json.lock')
+  writeFileSync(lockFile, '{"pid":0,"at":0}')          // a stale lock the store cannot take
+  const degraded = await store.write('phase', 'unlocked-write')
+  ok(degraded && degraded.lockSkipped === true && degraded.lockMode === 'unlocked-best-effort' && /WITHOUT the cross-kernel file lock/.test(String(degraded.lockModeMeans)),
+    'C10-1 ★ 锁拿不到 ⇒ 回执不得当已加锁：lockSkipped:true + lockMode:"unlocked-best-effort" + means 明说没有锁', degraded && { lockMode: degraded.lockMode, lockSkipped: degraded.lockSkipped })
+  rmSync(lockFile, { force: true })
+  const locked = await store.write('phase', 'locked-write')
+  ok(locked && locked.lockMode === 'exclusive' && locked.lockSkipped === undefined,
+    'C10-2 ★ 正常路径回执写 lockMode:"exclusive"（同一个回执字段，读的人能分辨）', locked && { lockMode: locked.lockMode, lockSkipped: locked.lockSkipped })
+  // ★ lamp: copy tree, remove the lock-skip disclosure -> the degraded write looks locked again (the defect shape)
+  const lampDir = join(sroot, 'lamp')
+  cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+  const storePath = join(lampDir, 'vibe-math-vmu', 'kernel', 'store.js')
+  const storeSrc = readFileSync(storePath, 'utf8')
+  const from1 = 'if (lockSkipSeen) {'
+  ok(storeSrc.indexOf(from1) !== -1, 'C10 lamp-setup: the disclosure branch exists')
+  writeFileSync(storePath, storeSrc.replace(from1, 'if (false) {'))
+  const lampMod = await import(pathToFileURL(storePath).href + '?c10lamp=1')
+  const lampRoot = join(sroot, 'lamp-ws')
+  const lampStore = lampMod.createStore({ root: lampRoot, clock: () => 1000, lockRetries: 1, lockBackoffMs: 1, lockTimeoutMs: 1 })
+  await lampStore.open()
+  const lampLock = join(lampRoot, 'vmu', 'state.json.lock')
+  writeFileSync(lampLock, '{"pid":0,"at":0}')
+  const lampOut = await lampStore.write('phase', 'lamp')
+  ok(lampOut && lampOut.lockSkipped === undefined && lampOut.lockMode === 'unlocked-best-effort',
+    'C10 lamp RED-worthy: without the disclosure branch the unlocked write carries no lockSkipped (the silent degrade comes back)', lampOut && { lockSkipped: lampOut.lockSkipped, lockMode: lampOut.lockMode })
+  rmSync(sroot, { recursive: true, force: true })
+}
+
+{
+  // ── C#10b: the PRODUCTION path really uses the CAS token (not only tests) ──────────────────────────────────
+  const src = readFileSync(join(REPO_DIR, 'vibe-math-vmu', 'kernel', 'idempotency.js'), 'utf8')
+  ok(/expectFingerprint/.test(src) && /cas-conflict/.test(src) && /baseFingerprint/.test(src),
+    'C10-3 ★ C#10 生产路径真实使用 CAS：idempotency ledger 的 persist() 传 expectFingerprint，冲突时 reload+重试（不覆盖别人的条目）')
+}
+
+{
+  // ── C#16: durable, per-field dispatch idempotency survives a "restart" (new loop, same store-backed ledger) ──
+  const kroot = mkdtempSync(join(tmpdir(), 'vmu-c16-'))
+  const kernel = createKernel({ clock: () => 1000, root: kroot })
+  await kernel.store.open()
+  const calls = []
+  const faces = { 'vmu.records': { put: async () => { calls.push('put'); return { ok: true, id: 'rec-c16' } } } }
+  const reply = { progress: { track: 'progress', text: 'one line, twice across a restart' } }
+  const rt1 = createTurnOrchestrator({ faces, idempotency: kernel.idempotency })
+  const out1 = await rt1.apply(reply, null, 'r-1', { turnId: 't-c16' })
+  // a "restart": a brand-new loop over the SAME durable ledger (the old in-process map is empty)
+  const callsAfterFirst = calls.length
+  const rt2 = createTurnOrchestrator({ faces, idempotency: kernel.idempotency })
+  const out2 = await rt2.apply(reply, null, 'r-1', { turnId: 't-c16' })
+  ok(out1 && out1.replayedDispatches === 0 && callsAfterFirst === 1,
+    'C16-1 (precondition) the first run dispatched exactly once', { calls: callsAfterFirst })
+  ok(out2 && out2.replayedDispatches === 1 && out2.executed.length === 1 && out2.executed[0].replayed === true && out2.executed[0].idempotent === true,
+    'C16-2 ★★★ C#16 崩溃/重启重放：新循环（内存 Map 为空）通过【持久 ledger】认出 (turnId,field,callIndex)，返回首份回执 + replayed:true', out2 && { replayedDispatches: out2.replayedDispatches, executed: out2.executed })
+  ok(calls.length === 1,
+    'C16-3 ★ 重放没有第二次调用 face（calls 仍是 1）：重启后也不会双写', { calls: calls.length })
+  // ★ lamp: copy tree, disable the durable-ledger branch -> the restart replay writes a SECOND time (the defect)
+  const lampDir = mkdtempSync(join(tmpdir(), 'vmu-c16-lamp-'))
+  cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+  const turnPath = join(lampDir, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
+  let turnSrc = readFileSync(turnPath, 'utf8')
+  const from2 = 'if (dispatchIdemKey !== null) {'
+  ok(turnSrc.indexOf(from2) !== -1, 'C16 lamp-setup: the durable ledger branch exists')
+  turnSrc = turnSrc.split(from2).join('if (false) {')
+  writeFileSync(turnPath, turnSrc)
+  const lampTurn = await import(pathToFileURL(turnPath).href + '?c16lamp=1')
+  const lampCalls = []
+  const lampFaces = { 'vmu.records': { put: async () => { lampCalls.push(1); return { ok: true, id: 'rec-lamp' } } } }
+  const lk = createKernel({ clock: () => 1000, root: mkdtempSync(join(tmpdir(), 'vmu-c16-lamp-ws-')) })
+  await lk.store.open()
+  const l1 = lampTurn.createTurnOrchestrator({ faces: lampFaces, idempotency: lk.idempotency })
+  await l1.apply(reply, null, 'r-1', { turnId: 't-lamp' })
+  const l2 = lampTurn.createTurnOrchestrator({ faces: lampFaces, idempotency: lk.idempotency })
+  const lout = await l2.apply(reply, null, 'r-1', { turnId: 't-lamp' })
+  ok(lampCalls.length === 2 && !(lout && lout.replayedDispatches > 0),
+    'C16 lamp RED-worthy: 撤掉持久 ledger 分支 ⇒ 重启重放又写第二次（C#16 的原状）', { calls: lampCalls.length, replayed: lout && lout.replayedDispatches })
+  rmSync(kroot, { recursive: true, force: true })
+  rmSync(lampDir, { recursive: true, force: true })
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

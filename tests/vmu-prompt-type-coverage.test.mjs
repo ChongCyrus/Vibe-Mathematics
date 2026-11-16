@@ -143,6 +143,15 @@ const looksLikeData = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^
 // Excluding these from the per-type prose figure is the rule the DECLARED divergences already follow in
 // tests/vmu-ab-v5r-verification.test.mjs: a corrected capture measures POLICY, not transcription, and folding it into
 // the ratio would reward keeping the defect.
+// ★ ROUND-2: lines the file ALREADY lists as structurally retired in section 5 (F5/RETIRED/CHAIR-ONLY classes) are
+// not transcription gaps; counting them in the prose ratio double-counted the same defect (they made a corrected type
+// look like it had lost prose). They are excluded from BOTH sides here, like the corrected-teaching rows below.
+const isStructurallyRetired = (l) =>
+  /^只输出一个合法 JSON 对象/.test(l) ||
+  /^协调需要时可propose_verify/.test(l) ||
+  /^协调需要时可用assign/.test(l) ||
+  /^作为院士，除了做研究/.test(l) ||
+  /^哪里是瓶颈；把工作拆成任务并用/.test(l)
 const isCorrectedTeachingLedger = (l) =>
   /^或者向团队发消息（say）、开一个议题/.test(l) ||
   /^（流程：\*\*先轮流发言\*\*/.test(l) ||
@@ -158,7 +167,22 @@ const isCorrectedTeachingLedger = (l) =>
   /^你没有表决权及hire\/fire权限/.test(l) ||
   // 9. G7 AUDIT #2 (C5, rule L56): :550 asserted 「全体参与成员…表示可交付」 even on the capped path, where kit/paper.js
   //    goes to the editor with warnings. The live line now says that out loud, so the capture can no longer match.
-  /^全体参与成员已在互审中表示/.test(l)
+  /^全体参与成员已在互审中表示/.test(l) ||
+  // ★ ROUND-2 (2026-11-17): the seat-permission / read-face / reply-channel fixes changed these captured lines BY
+  // DESIGN (chair-only leaderId write, chair-only fidelity_conclude, temp library truth, REAL read faces, the reply
+  // capture merged into one accurate paragraph). Like the F5/LEDGER/ROUND-1 rows above, the capture stays the capture
+  // and these lines measure POLICY, so folding them into the prose ratio would reward keeping the defect.
+  /^所办 .next_step. 是.*编排建议/.test(l) ||
+  /^3. 任何人可以读任何人的成果库/.test(l) ||
+  /^4. 你写下的有价值内容/.test(l) ||
+  /^在册名单与法定票数 m/.test(l) ||
+  /^▎ 本节只讲/.test(l) ||
+  /^progress：数学进展/.test(l) ||
+  /^task_done：完成的任务id/.test(l) ||
+  /^本所正在对下列对象/.test(l) ||
+  /^（会议轮请把你的发言填进 JSON/.test(l) ||
+  /^修正形式化并重新跑通后再投票/.test(l) ||
+  /^对象 id 与类型以本轮帧/.test(l)
 let correctedLedgerLines = 0
 const perType = new Map()
 for (const p of PROMPTS) {
@@ -167,13 +191,14 @@ for (const p of PROMPTS) {
   const bucket = perType.get(ph)
   const mine = norm(ours[ph] || '')
   for (const line of fixedOf(p.text)) {
-    if (isCorrectedTeachingLedger(line)) { correctedLedgerLines += 1; continue }
+    if (isCorrectedTeachingLedger(line) || isStructurallyRetired(line)) { correctedLedgerLines += 1; continue }
     bucket.total += 1
     const data = looksLikeData(line)
     if (data) bucket.dataTotal = (bucket.dataTotal || 0) + 1
     if (mine.includes(norm(line))) { bucket.hit += 1; if (data) bucket.dataHit = (bucket.dataHit || 0) + 1 }
   }
 }
+if (process.env.VMU_TYPECOV_DUMP) { const miss=[]; for (const p of PROMPTS) { const ph=phaseOf(String(p.kind), String(p.text)); const mine=norm(ours[ph]||''); for (const line of fixedOf(p.text)) if (!isCorrectedTeachingLedger(line) && !looksLikeData(line) && !mine.includes(norm(line))) miss.push(ph+'|'+line) } console.error('TYPECOV_MISS ' + JSON.stringify(miss)) }
 const rows = [...perType.entries()].map(([ph, v]) => { const dt = v.dataTotal || 0; const proseTotal = v.total - dt; const proseHit = v.hit - (v.dataHit || 0); return { ph, ...v, pct: Math.round(100 * v.hit / v.total), proseTotal, proseHit, prosePct: proseTotal ? Math.round(100 * proseHit / proseTotal) : 100 } }).sort((a, b) => a.prosePct - b.prosePct)
 for (const r of rows) console.log('    prose ' + String(r.prosePct).padStart(3) + '%  (' + r.proseHit + '/' + r.proseTotal + ')   all ' + String(r.pct).padStart(3) + '%  (' + r.hit + '/' + r.total + ')   ' + r.ph)
 ok(correctedLedgerLines > 0,
@@ -325,9 +350,12 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   // {statement, proof} (decision/file/note is skipped by name) and that two 「旧版原句」 lines instructed the reader to
   // abstain so the round cannot converge. The live text now teaches the real mechanism and drops those lines, so these
   // four captured lines cannot match verbatim - named here, with the reason, rather than folded into a percentage.
+  // ★ ROUND-2 P1-8: the reply channel's two historical capture lines were merged into one accurate paragraph
+  // (B-矛盾#5/B-冗余#1), so they cannot match the capture verbatim - named class, with the reason.
+  const isMergedReplyCapture = (l) => /^progress：数学进展/.test(l) || /^task_done：完成的任务id；/.test(l)
   const isCorrectedTeachingR1 = (l) => /^② 用回执 formal:/.test(l) || /^「已通过」状态（降级为 attempt/.test(l) || /^vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:/.test(l) || /^只有 decision='blocked' 的 note/.test(l)
   // the eighth class (declared above, section 1): the ledger round corrected five captured lines the kernel contradicts
-  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingR1(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
+  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingR1(x.line) && !isMergedReplyCapture(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,

@@ -171,11 +171,11 @@ try {
   const litBody = verifiedBodyOf(kernel, cardId)
   ok(litBody.includes('warrant ' + CITE + ' (literature) settled it at 1'),
     '⑦ P0-f: a p=1 conclusion NAMES its warrant kind (literature), not just "真 (p=1)"', litBody.slice(0, 220))
-  ok(lit && lit.warrantPolicy && lit.warrantPolicy.machineOnly === false && lit.warrantPolicy.requireMachineWarrant === false,
-    '⑦ P0-f: the promotion receipt carries warrantPolicy.machineOnly:false (the default accepts a social/debate warrant)', lit && lit.warrantPolicy)
+  ok(lit && lit.warrantPolicy && lit.warrantPolicy.machineOrLiterature === false && lit.warrantPolicy.requireMachineWarrant === false && lit.warrantPolicy.machineCheckedOnly === false,
+    '⑦ C#26: the promotion receipt carries warrantPolicy.machineOrLiterature:false (the default accepts a social/debate warrant) and does NOT claim machine-checked-only', lit && lit.warrantPolicy)
   const statusFull = json(await callJSON(b, 'vibe_vmu_status', { detail: 'full' }))
-  ok(statusFull && statusFull.verifiedWarrantPolicy && statusFull.verifiedWarrantPolicy.machineOnly === false,
-    '⑦ P0-f: kernel status exposes verifiedWarrantPolicy (machineOnly:false by default)', statusFull && statusFull.verifiedWarrantPolicy)
+  ok(statusFull && statusFull.verifiedWarrantPolicy && statusFull.verifiedWarrantPolicy.machineOrLiterature === false && statusFull.verifiedWarrantPolicy.machineCheckedOnly === false,
+    '⑦ C#26: kernel status exposes verifiedWarrantPolicy (machineOrLiterature:false, machineCheckedOnly:false by default)', statusFull && statusFull.verifiedWarrantPolicy)
   // machine-only deployment: a social (debate-unanimous) warrant is refused BY NAME; literature still admitted
   const moRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-machine-'))
   const b2 = await boot({ root: moRoot, 'vmu.verified.requireMachineWarrant': true })
@@ -191,8 +191,8 @@ try {
   ok(/warrantPolicy/.test(socialHint) && /lean-conformance/.test(socialHint),
     '⑦ the refusal hint names the machine/literature alternatives and the policy', socialHint)
   const st2 = json(await callJSON(b2, 'vibe_vmu_status', { detail: 'full' }))
-  ok(st2 && st2.verifiedWarrantPolicy && st2.verifiedWarrantPolicy.machineOnly === true && JSON.stringify(st2.verifiedWarrantPolicy.acceptedKinds) === JSON.stringify(['lean-conformance', 'literature']),
-    '⑦ P0-f: status on the machine-only deployment says machineOnly:true and lists machine/literature kinds', st2 && st2.verifiedWarrantPolicy)
+  ok(st2 && st2.verifiedWarrantPolicy && st2.verifiedWarrantPolicy.machineOrLiterature === true && st2.verifiedWarrantPolicy.machineCheckedOnly === false && st2.verifiedWarrantPolicy.literatureHumanReviewed === true && JSON.stringify(st2.verifiedWarrantPolicy.acceptedKinds) === JSON.stringify(['lean-conformance', 'literature']),
+    '⑦ C#26: the strict policy is honestly named machineOrLiterature:true / machineCheckedOnly:false (literature is HUMAN-reviewed, not a machine proof)', st2 && st2.verifiedWarrantPolicy)
   {
     const lampRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-p0f-lamp1-'))
     cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })

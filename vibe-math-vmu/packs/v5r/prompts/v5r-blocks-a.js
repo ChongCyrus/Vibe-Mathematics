@@ -67,7 +67,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '你自己**——它分派的是工作，不是结论。',
       ].join('\n'),
       leaderless: [
-'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**若本所已有院士席**，组织与协调由它牵头（先按 `v5r-fix-leader-id` 把 `vmu.turn.leaderId` 写上，本节按该声明选择措辞）；',
+'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**只有院士席能写领头人**：若你在院士席且 `vibe_v5_overview.leadership.code` 报 `chair-seated-but-leaderId-empty`，用 `vibe_v5_set` 写 `vmu.turn.leaderId`；其他席位不要尝试（工具面会拒），在群聊点名请院士补数据。**没有院士席**时组织与协调由全体有表决权者商议（所办代表外部）。',
 '**若确无院士席**，组织与协调由**全体有表决权者共同商议**（所办代表外部）；但请守住同一条分工：',
 '**组织归院士/集体，判断属于你自己**——讨论决定的是工作，不是结论。',
       ].join('\n'),
@@ -139,7 +139,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
       ].join('\n'),
       leaderless: [
         '  · 你的雇主：{{ setting:vmu.turn.tempHiredBy }}。它给你派活。',
-'  · 领头人声明：先按 `v5r-fix-leader-id` 把 `vmu.turn.leaderId` 写上；若确无院士席，除雇主外由全体有表决权者商议，你不必向某个院士汇报。',
+'  · 领头人声明：`vmu.turn.leaderId` 由**院士席**用 `vibe_v5_set` 写（其他席位不要调）；若确无院士席，除雇主外由全体有表决权者商议，你不必向某个院士汇报。',
       ].join('\n'),
     },
   },
@@ -151,7 +151,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-'  在册名单与法定票数 m 以本轮提示的 `[状态板]`／名册为准（本节不再复制模板占位）。',
+'  在册名单读 `vibe_vmu_turn {op:"status"}` 的 roster（或本轮会议预约行）；法定票数 m 只在投票/裁决回执里读（`floor.required`／裁决回执的票总数）——[状态板] 四行不含这两项；读不到就写明「来源未提供」，不要猜。',
       ].join('\n'),
     },
   },
@@ -168,8 +168,8 @@ export const CHARTER_BLOCKS_A = Object.freeze([
 '  2. Verified/ 只保证「按本所规则，该命题的 warrant 已通过」；warrant 可能是**辩论／文献／机器（lean-conformance）**三种之一，**是否机器可核要看 `warrant.kind`**——它不是机器证明。',
         '     其余一切——他人的推测、你自己的未验结论、Progress/、Methods/ 里的未验证断言——',
         '     都只是经验性参考，引用时必须注明"未验证"。',
-        '  3. 任何人可以读任何人的成果库；你只能写自己的库（Members/{{ member }}/）。',
-        '  4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项：',
+'  3. 任何人可以读任何人的成果库；你只写自己名下的产物：常驻研究员写 Members/<你>/，**临时工不写所内库**（产出写回执）。',
+'  4. 你写下的有价值内容由你自己判断是否入库，但入库必须写明三项（临时工不适用：不写卡；过程写回执 progress）：',
         '     价值程度、动机用途计划、你自己对"该对象为真"的概率估计。',
         '  5. 你随时可以在群聊里说话；要单独找人可以私信。需要集体决策就提议开会。',
         '  6. 请主动读同事的库，对齐事实、避免重复劳动、发现冲突。',
@@ -216,7 +216,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     texts: {
       shared: [
         "【三、院士与常驻研究员的资料库、progress 与卡片格式】",
-        "  ▸ 本节只讲**院士与常驻研究员**；下文「你/你的」都指这两档。",
+'  ▸ 本节的库与卡片规则**只对院士/常驻研究员**适用（临时工见下一行）。',
         "  ▸ **临时工例外**：临时工没有 `vibe_v5_record_*` 卡片面（工具面按席位**具名拒**），也不写所内的命题/方法/子问题/成果库；过程记录写回执的 `progress` 字段（或自己的工作目录/工作日志）；产出由自己写进回执（指派者只核对、不代写）。",
         "  资料库根：Members/{{ member }}/（`<你>`=你的成员 id；**只写自己的库**）。",
 '  ⚠ 文件工具的**相对路径以会话工作目录为基准**，直接读写用**带库根的完整路径**：`<roots.libraryRoot>/Members/<你的 id>/Proofs/…`（如 `<roots.libraryRoot>/Members/r-acad/Proofs/p-1.md`）；**`proof_ref` 的基准是库根**，不是会话目录；**临时工**改用回执与自己的工作目录（`vibe_v5_record_*` 对该席具名拒）。',
@@ -540,8 +540,8 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '  "formal": {"target":"p-x","decision":"used|blocked|defect","file":"Formal/p-x.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}',
-        '             ← Lean 形式化：{{ setting:vmu.turn.formalModeLine }}详见提示词里的【Lean 形式化验证】段',
+'  "formal": {"statement":"<命题原文>","proof":"<Lean 证明脚本正文>"}',
+'             ← 形式化：做了就归档（`vibe_v5_lean_archive`）；没做就在 lean_archive 记 `kind:"blocked"`（note 必填）。',
       ].join('\n'),
     },
   },
@@ -593,7 +593,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         // phase. Round 415 transcribed it into THIS variant as well, and the acceptance ratio did not move by a single
         // line, which was the clue I failed to take: the lines were already present. Round 421 removes the duplicate,
         // because two copies of a protocol is exactly how the two copies begin to disagree. Only the frame pointer stays.
-        '议程与类型由本轮会议帧给出；请按议程发言，需要发言时举手。',
+'**若本回合绑定了会议**：议程与类型由本轮会议帧给出，按议程发言、需要时举手。**若没有会议 id（本回合未绑定）**：不要举手、不要填 input——发言用工具 `vibe_v5_say`（回执里的 say 不会投递）。',
         // ★★★ RUN 60 / task-30 (P8): the frame printed a meeting with NO id anywhere, so a member guessed the meeting
         // from the agenda type and guessed wrong. The heading above now renders the id (`vmu.turn.meetingId`, supplied as
         // per-turn FACTS by the turn loop), and this line says what the binding MEANS: where a sentence goes, and that a

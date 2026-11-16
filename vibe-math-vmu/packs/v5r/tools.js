@@ -3179,14 +3179,19 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
   // is in force and, when the deployment asks for machine/literature evidence only, a social warrant is refused BY NAME.
   const verifiedSettings = settingsOf(kernel) || {}
   const requireMachineWarrant = verifiedSettings['vmu.verified.requireMachineWarrant'] === true
+  // ★★ ROUND-2 C#26 residual: the old field was named `machineOnly` while its acceptedKinds INCLUDED literature — the
+  // name said "machine-checked only", the value said "machine or a citation". The name now says what the policy does,
+  // and the literature half is labelled for what it is: HUMAN-REVIEWED evidence, never a machine proof.
   const warrantPolicy = {
     requireMachineWarrant,
-    machineOnly: requireMachineWarrant,
+    machineOrLiterature: requireMachineWarrant,
+    machineCheckedOnly: false,   // literature is admitted by this policy, so the policy is NOT machine-checked-only
+    literatureHumanReviewed: true,
     acceptedKinds: requireMachineWarrant ? ['lean-conformance', 'literature'] : ['debate-unanimous', 'lean-conformance', 'literature'],
     setting: 'vmu.verified.requireMachineWarrant',
     source: requireMachineWarrant
-      ? 'the deployment set vmu.verified.requireMachineWarrant=true: only machine-checked (lean-conformance) or literature citations may settle a conclusion'
-      : 'the default policy (vmu.verified.requireMachineWarrant=false): a SOCIAL warrant (debate-unanimous) is accepted as a judge; set the setting to true to require machine/literature evidence',
+      ? 'the deployment set vmu.verified.requireMachineWarrant=true: conclusions must be settled by a MACHINE-CHECKED run (lean-conformance) or a LITERATURE citation — the citation is HUMAN-reviewed evidence, not a machine proof; a social/unanimous vote is refused'
+      : 'the default policy (vmu.verified.requireMachineWarrant=false): a SOCIAL warrant (debate-unanimous) is accepted as a judge; set the setting to true to require machine-checked/literature evidence',
   }
   const warrantKind = KIND_ALIAS[warrantKindGiven] || warrantKindGiven
   // ★ B2: a literature promotion names its SOURCE as the warrant. The caller still passes warrant_kind:"literature"
@@ -8486,9 +8491,11 @@ const RAW_PACK_TOOLS = Object.freeze([
  * member and write into THAT member's library. The fix is one wrapper on every v5r tool handler:
  *   · the caller comes from the turn (`ctx.callerMember`, resolved by the host's one caller reader — no second map);
  *   · caller present + claimed `member` present + they differ ⇒ NAMED refusal VMU_NOT_PERMITTED with
- *     `detail:{caller, claimed, required}`; the office/root exception is an ACTING CALL (no seat identity) and must
- *     say `actedFor` explicitly — the receipt then discloses `memberActed:false` + `actedFor`;
- *   · a mismatching explicit `actedFor` is refused by name (it is a claim, not a hint);
+ *     `detail:{caller, claimed, required}`; an office/root call has NO seat identity, so it is an ACTING CALL (not the
+ *     member's own turn): the receipt DISCLOSES `memberActed:false`/`callerMember:null`/`actedForMember`; `actedFor` is
+ *     OPTIONAL and, when supplied, is echoed + must equal `member` (an explicit declaration, not a requirement);
+ *   · a mismatching explicit `actedFor` is refused by name (it is a claim, not a hint); omitting it is ALLOWED and
+ *     disclosed as an unattributed acting call — the tool description says exactly that (code is the truth);
  *   · the disclosure is ADDED by this one wrapper, so no handler has to remember it.
  * Tools whose `member` names a TARGET/read subject rather than the acting seat stay out of the gate by name.
  */
@@ -8511,7 +8518,7 @@ function withActingSeatGate(toolName, handler) {
       if (caller !== null && caller !== claimed) {
         throw refuse('VMU_NOT_PERMITTED',
           'a member turn may not act under another seat: this call was called by member "' + caller + '" (the caller), but its arguments name "' + claimed + '" — the seat is read from the CALL, and only that member may act in its own name; the request text may not name another seat',
-          'call this face as YOURSELF (member:"' + caller + '", or omit member so the caller is used); an office/root session records FOR a seat by calling without a seat identity and passing actedFor:"' + claimed + '" explicitly — the receipt then discloses memberActed:false/actedFor',
+          'call this face as YOURSELF (member:"' + caller + '", or omit member so the caller is used); an office/root session records FOR a seat by calling without a seat identity (its receipt discloses memberActed:false/callerMember:null); actedFor:"' + claimed + '" is OPTIONAL and, when given, is echoed and must equal member',
           { caller, claimed, required: claimed, tool: toolName, detail: { caller, claimed, required: claimed } })
       }
       if (caller === null && Object.prototype.hasOwnProperty.call(args, 'actedFor')

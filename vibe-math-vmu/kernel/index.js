@@ -3036,6 +3036,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     sectionPolicy: sectionPolicy || null,
     // ★★★ P0-b: the pack's own reply fields (empty ⇒ core table only).
     replyFields: Array.isArray(replyFields) && replyFields.length > 0 ? replyFields : null,
+    // ★★★ C#16 (ROUND-2 audit): the STORE-BACKED idempotency ledger. Handed to the turn loop so a dispatch replay after a
+    // crash/restart consults the durable ledger (key turnId|field|callIndex) instead of writing the same act twice.
+    idempotency,
     // ★★★ RUN 249 (task-69 / F-11): the PACK still wins, but the framework now has a default of its own. Before this,
     // a deployment with no pack noticeBlock folded the queue into the status block and the `[新到的消息]` header never
     // appeared (the 69th live run: 7 unread mails, 0 hits in the capture). `kernelNoticeBlock` is the same shape as the
@@ -5489,12 +5492,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // never has to infer it from the settings dump; default false = social warrants remain accepted.
         verifiedWarrantPolicy: (() => {
           const req = settings['vmu.verified.requireMachineWarrant'] === true
-          return { requireMachineWarrant: req, machineOnly: req,
+          return { requireMachineWarrant: req, machineOrLiterature: req, machineCheckedOnly: false, literatureHumanReviewed: true,
             acceptedKinds: req ? ['lean-conformance', 'literature'] : ['debate-unanimous', 'lean-conformance', 'literature'],
             setting: 'vmu.verified.requireMachineWarrant',
             source: req
-              ? 'vmu.verified.requireMachineWarrant=true: only machine-checked (lean-conformance) or literature warrants settle a conclusion'
-              : 'the default (vmu.verified.requireMachineWarrant=false): a SOCIAL warrant (debate-unanimous) is accepted as a judge — agreement is not proof of correctness, so set the setting to true to require machine/literature evidence',
+              ? 'vmu.verified.requireMachineWarrant=true: machine-checked (lean-conformance) OR literature citations settle a conclusion — a citation is HUMAN-reviewed evidence, not a machine proof, so this policy is NOT machine-checked-only; a social vote is refused'
+              : 'the default (vmu.verified.requireMachineWarrant=false): a SOCIAL warrant (debate-unanimous) is accepted as a judge — agreement is not proof of correctness, so set the setting to true to require machine-checked/literature evidence',
           }
         })(),
         // ROUND 1 / K5: the ONE pack path, stated rather than implied. `loader` means `kernel/pack.js` via the injected

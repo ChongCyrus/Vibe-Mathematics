@@ -261,7 +261,11 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     return { reloaded: true, why: 'newer-on-disk' }
   }
 
-  /** Exclusive-create lock so two KERNELS cannot interleave a read-modify-write. Best effort and bounded. */
+  // ★★★ C#10 (ROUND-2 audit): A LOCK THAT COULD NOT BE TAKEN MUST NOT LOOK LIKE A LOCK. `lockSkips` used to be the only
+  // trace; the write receipt said `ok:true` with nothing else. Now the skip is recorded per operation and every receipt
+  // built by `mutate` carries `lockMode` (`exclusive` | `unlocked-best-effort`), plus `lockSkipped:true` + a sentence
+  // when it degraded — "landed without the cross-kernel lock" is a fact the caller can see and judge.
+  let lockSkipSeen = false
   const withFileLock = async (fn) => {
     if (!lock) return fn()
     const started = Date.now()
@@ -275,8 +279,10 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       }
     }
     if (fd === null) {
-      // A stale lock must not deadlock the institute: report it, then proceed WITHOUT it (the rename stays atomic).
+      // A stale lock must not deadlock the institute, so the write still proceeds WITHOUT it (the rename stays atomic) —
+      // but it is no longer silent: the skip is recorded here and every receipt this operation produces says so.
       stats.lockSkips += 1
+      lockSkipSeen = true
       return fn()
     }
     try {
@@ -349,7 +355,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
    * before the file lock and never re-entered, the lock is released in `withFileLock`'s finally, and a lock that cannot
    * be taken degrades to its bounded "proceed without it" path (stats.lockSkips) rather than waiting forever.
    */
-  const mutate = (key, where, compute, before, landed) => runExclusive(() => withFileLock(async () => {
+  const mutate = (key, where, compute, before, landed) => runExclusive(() => { lockSkipSeen = false; return withFileLock(async () => {
     let attempt = 0
     for (;;) {
       attempt += 1
@@ -400,12 +406,17 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
         continue
       }
       notify(key, fold.keys[key], prev)
-      const receipt = { ok: true, key, version: fold.version, changed: true }
+      const receipt = { ok: true, key, version: fold.version, changed: true,
+        lockMode: lockSkipSeen ? 'unlocked-best-effort' : 'exclusive' }
+      if (lockSkipSeen) {
+        receipt.lockSkipped = true
+        receipt.lockModeMeans = 'this ' + where + ' landed WITHOUT the cross-kernel file lock (lock contention or a stale lock file, stats.lockSkips): the atomic rename still prevents a torn file, but another kernel read-modify-writing the same key at the same moment is NOT excluded — treat this receipt as unlocked, not as locked'
+      }
       if (attempt > 1) receipt.attempts = attempt // honest: the write only landed after a transient retry
       if (typeof landed === 'function') landed(receipt)
       return receipt
     }
-  }))
+  }) })
 
   const notify = (key, next, prev) => {
     for (const fn of listeners.get(key) || []) fn(clone(next), clone(prev))

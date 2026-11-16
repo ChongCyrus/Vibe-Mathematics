@@ -1767,7 +1767,12 @@ if (SELF_PROBE) {
   {
     const rows = [
       { sessionId: "s1", projections: { values: { tokenUsage: { uncachedInputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 1 } } } },
+      // a DIRECT child (a member session)
       { sessionId: "s2", parentSessionId: "s1", projections: { values: { tokenUsage: { uncachedInputTokens: 3, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+      // ★ ROUND-2 C#14: a GRANDCHILD (a member that spawned its own child) — the old sum missed it entirely
+      { sessionId: "s3", parentSessionId: "s2", projections: { values: { tokenUsage: { uncachedInputTokens: 2, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+      // a session of ANOTHER root: it cannot be attributed to s1, so it must be NAMED, never added or dropped as 0
+      { sessionId: "x9", parentSessionId: "other-root", projections: { values: { tokenUsage: { uncachedInputTokens: 4, outputTokens: 3, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
     ]
     const { st, ctx } = usageCtx({ rows })
     const k = km.createKernel({ clock, settings: { "vmu.budget.tokens": 10 } })
@@ -1775,11 +1780,54 @@ if (SELF_PROBE) {
     await adapter.install()
     const out = await statusOf(st)
     ok(out && out.usage && out.usage.usageWired === true, "★★★ P0-c: status.usage.usageWired:true (the host meter is read)", out && out.usage)
-    ok(out && out.usage && out.usage.totalTokens === 23 && out.usage.inputTokens === 13 && out.usage.outputTokens === 7,
-      "★★ P0-c: input/output/累计 are the REAL meter sums (13/7/23)", out && out.usage)
+    // root 10/5/2/1 + child 3/2 + GRANDCHILD 2/1 = input 15, output 8, cache 3 ⇒ total 26 (the foreign root x9 is NOT summed)
+    ok(out && out.usage && out.usage.totalTokens === 26 && out.usage.inputTokens === 15 && out.usage.outputTokens === 8,
+      "★★ P0-c: input/output/累计 cover the ROOT + ALL DESCENDANTS recursively (15/8/26; grandchild counted)", out && out.usage)
     ok(out && out.usage && out.usage.chargeFailure && out.usage.chargeFailure.code === "VMU_RESOURCE_BUDGET",
       "★★★ P0-c: over the declared total ⇒ the budget's OWN named code (VMU_RESOURCE_BUDGET), carried on the receipt", out && out.usage && out.usage.chargeFailure)
     ok(out && out.usage && out.usage.tokensLimit === 10, "★ P0-c: the limit is reported beside the usage", out && out.usage && out.usage.tokensLimit)
+    // ★ ROUND-2 C#14: coverage + unattributed + source + ledger are READINGS, not footnotes
+    ok(out && out.usage && out.usage.coverage && out.usage.coverage.attributedSessions === 3 && out.usage.coverage.descendantDepthMax === 2,
+      "★★★ C#14: coverage says THREE attributed sessions and depth 2 (the grandchild is reached recursively)", out && out.usage && out.usage.coverage)
+    ok(out && out.usage && out.usage.coverage && out.usage.coverage.unattributedSessions === 1 && out.usage.coverage.unattributedTokens === 7,
+      "★★★ C#14: the foreign-root session is NAMED in unattributed (1 session / 7 tokens), not silently 0 and not charged here", out && out.usage && out.usage.coverage)
+    ok(out && out.usage && out.usage.source === "fake",
+      "★★ C#14: a list-only sessions service is labelled source:\"fake\" (a test stub cannot be mistaken for the real DSH meter)", out && out.usage && out.usage.source)
+    ok(out && out.usage && out.usage.ledgerMode === "per-kernel",
+      "★★ C#14: ledgerMode names the per-kernel ledger (no single institute ledger claimed)", out && out.usage && out.usage.ledgerMode)
+  }
+  // ★ ROUND-2 C#14: a SessionStore-SHAPED service (get/create/list) is labelled source:"real" — the marker exists so a
+  // list-only test stub (above, source:"fake") can never be read as a real DSH meter.
+  {
+    const realStore = { list: async () => [{ sessionId: "s1", projections: { values: { tokenUsage: { uncachedInputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 } } } }],
+      get: () => null, create: () => null }
+    const st = { specs: [] }
+    const ctx = { tools: { register: async (spec) => { st.specs.push(spec); return () => {} }, schemas: () => [] }, sessionId: "s1",
+      effect(fn) { return fn() }, on() {}, get(name) { return name === "sessions" ? realStore : undefined } }
+    const k = km.createKernel({ clock })
+    const adapter = hm.createHostAdapter({ ctx, kernel: k, settings: {} })
+    await adapter.install()
+    const spec = st.specs.find((x) => x.name === "vibe_vmu_status")
+    const out = JSON.parse(await spec.execute({ detail: "full" }, {}))
+    ok(out && out.usage && out.usage.source === "real", "★★ C#14: a SessionStore-shaped service is labelled source:\"real\" (get/list/create)", out && out.usage && out.usage.source)
+  }
+  // ★ ROUND-2 C#14: no root session id AND several sessions ⇒ nothing is attributed: totalTokens is NULL (not 0) and
+  // every usage-bearing session is NAMED unattributed — never silently charged to a guessed budget.
+  {
+    const rows = [
+      { sessionId: "a", projections: { values: { tokenUsage: { uncachedInputTokens: 5, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+      { sessionId: "b", projections: { values: { tokenUsage: { uncachedInputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } } } },
+    ]
+    const st = { specs: [] }
+    const ctx = { tools: { register: async (spec) => { st.specs.push(spec); return () => {} }, schemas: () => [] },
+      effect(fn) { return fn() }, on() {}, get(name) { return name === "sessions" ? { list: async () => rows } : undefined } }
+    const k = km.createKernel({ clock })
+    const adapter = hm.createHostAdapter({ ctx, kernel: k, settings: {} })
+    await adapter.install()
+    const spec = st.specs.find((x) => x.name === "vibe_vmu_status")
+    const out = JSON.parse(await spec.execute({ detail: "full" }, {}))
+    ok(out && out.usage && out.usage.totalTokens === null && out.usage.coverage && out.usage.coverage.attribution === "no-root-session" && out.usage.coverage.unattributedSessions === 2,
+      "★★★ C#14: no root ⇒ totalTokens:null and both sessions named unattributed (never charged to a guessed budget)", out && out.usage)
   }
   // lamp: NO sessions service ⇒ usageWired:false + a named failure; NOT a zero-token claim
   {

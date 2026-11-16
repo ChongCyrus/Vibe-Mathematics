@@ -173,6 +173,90 @@ const rowHasConfig = (text) => {
     Object.keys(cs))
 }
 
+// ── 4b. HOST WIRING (round-2 residual): the install receipt MUST reach status().coldStart ────────────────────────────
+// The kernel seam existed but nothing called it, so status was honest-yet-empty (reported:false). host.js now reports
+// once after adapter.install() with the SAME numbers the receipt carries. The lamp below proves the reading is produced
+// by that call and not by some inference: remove the call in a tree copy ⇒ reported goes back to false.
+{
+  const mkFakeHost = ({ throwFor = null } = {}) => {
+    const registered = []
+    const ctx = {
+      tools: {
+        register: async (spec) => {
+          if (throwFor !== null && spec && spec.name === throwFor) {
+            throw Object.assign(new Error('the host refused this registration'), { code: 'VMU_ENGINE_UNAVAILABLE' })
+          }
+          registered.push(spec && spec.name)
+          return () => {}
+        },
+        schemas: () => registered.slice(),
+      },
+      effect: (fn) => fn(),
+      on: () => () => {},
+      get: () => null,
+    }
+    return { ctx, registered }
+  }
+  const km = await import(pathToFileURL(join(SRC, 'kernel', 'index.js')).href)
+  const hmPath = pathToFileURL(join(SRC, 'host.js')).href
+
+  // ★ the happy path: one tool (the documented zero-mechanism default), zero failures
+  {
+    const hm = await import(hmPath + '?coldstart=ok')
+    const k = km.createKernel({ clock: () => 1000 })
+    const fake = mkFakeHost()
+    const adapter = hm.createHostAdapter({ ctx: fake.ctx, kernel: k, settings: {} })
+    const receipt = await adapter.install()
+    const cs = k.status({}).coldStart
+    ok(cs.registeredTools.reported === true && cs.registeredTools.registered === receipt.installed &&
+      cs.registeredTools.failed === 0 && cs.installed.value === true && cs.installed.how === 'reported-by-host' &&
+      cs.source === 'host.js adapter install receipt',
+      '★★★ 判据（host 接线）：install 之后 status.coldStart 由 host 上报——reported:true、registered == install receipt、failed:0、source 具名',
+      { coldStart: { registeredTools: cs.registeredTools, installed: cs.installed, source: cs.source }, receipt: { installed: receipt.installed } })
+    ok(receipt.installed === 1 && fake.registered.length === 1,
+      '★★ 正：零机制默认下 install 恰好注册 1 个工具（status），与 test 期望一致', { receipt: receipt.installed, registered: fake.registered })
+  }
+  // ★ the failing path: a refused registration is NAMED in status (not counted as "nothing failed")
+  {
+    const hm = await import(hmPath + '?coldstart=fail')
+    const k = km.createKernel({ clock: () => 1000 })
+    const fake = mkFakeHost({ throwFor: 'vibe_vmu_status' })
+    const adapter = hm.createHostAdapter({ ctx: fake.ctx, kernel: k, settings: {} })
+    const receipt = await adapter.install()
+    const cs = k.status({}).coldStart
+    ok(cs.registeredTools.reported === true && cs.registeredTools.registered === receipt.installed &&
+      cs.registeredTools.failed === receipt.failures.length && cs.registeredTools.failed >= 1,
+      '★★★ 判据（失败面）：注册被拒 ⇒ status 的 failed 数与 install receipt 的 failures 数相等（不是"0 失败"）',
+      { registeredTools: cs.registeredTools, receipt: { installed: receipt.installed, failures: receipt.failures.length } })
+    const item = cs.unavailable.items[0] || null
+    ok(item && item.name === 'vibe_vmu_status' && item.code === 'VMU_ENGINE_UNAVAILABLE' &&
+      typeof item.hint === 'string' && item.hint.length > 20,
+      '★★★ 判据（失败具名）：unavailable.items 点名被拒的工具 + code + repair hint', item)
+  }
+  // ★ 反灯 D: remove host's report call in a tree copy ⇒ status goes back to `reported:false` (the wiring is the source)
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-cold-lamp-d-'))
+    try {
+      const copy = join(dir, 'vibe-math-vmu')
+      await cp(SRC, copy, { recursive: true, filter: (src) => !/[\\/]docs([\\/]|$)/.test(src) })
+      const hostFile = join(copy, 'host.js')
+      const src = await read(hostFile)
+      const anchor = 'reportColdStart({ installed: true, registered: coldStartReceipt.installed,'
+      ok(src.indexOf(anchor) !== -1, 'R2 lamp D: host report mutation point present')
+      await writeFile(hostFile, src.replace(anchor, 'if (false) reportColdStart({ installed: true, registered: coldStartReceipt.installed,'))
+      const lk = await import(pathToFileURL(join(copy, 'kernel', 'index.js')).href + '?lampD=1')
+      const lh = await import(pathToFileURL(hostFile).href + '?lampD=1')
+      const k = lk.createKernel({ clock: () => 1000 })
+      const fake = mkFakeHost()
+      await lh.createHostAdapter({ ctx: fake.ctx, kernel: k, settings: {} }).install()
+      const cs = k.status({}).coldStart
+      ok(cs.registeredTools.reported === false && cs.registeredTools.registered === null,
+        '★★ 反灯 D（去掉 host 的 noteColdStartFacts 调用）⇒ status 回到 reported:false / registered:null（诚实，不是 0）',
+        { registeredTools: cs.registeredTools })
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+}
+
 // ── 5. LAMPS ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 {
   // Lamp A: drop the named failures from status ⇒ the "failures are named" criterion must go red.

@@ -214,7 +214,7 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
   // (`packs/v5r/settings/defaults.json:10`, a live-run-20 decision). The framework default is not this institute's value,
   // and a sentence that quotes the default while the mechanism refuses is the same class of defect as a receipt that
   // promises a reachable repair. The line now states the value this pack DECLARES and who can relax it.
-  lines.push('· 键只能是上表名字：多一个未登记键整轮被 `VMU_TURN_UNKNOWN_FIELD` 具名拒（本所该键＝`refuse`，所办可改）；被要求的字段以本轮指令为准。')
+'· 键只能是**已登记的回执字段**：本表 7 个常用 + `vmu.turn.replyCatalogue=full` 的全部 29 个（会议轮发言的 `input` 也在其中）；**未登记**的键才整轮被拒 `VMU_TURN_UNKNOWN_FIELD`（本所该键＝`refuse`，所办可改）。',
   lines.push('· 拒绝点各不相同：没有可用形状的在投递前被具名跳过，缺权限的在工具面具名拒（临时工无表决权：投票工具拒，vote_solved 不計票）。一次回复至少一个字段。')
   if (seat && REPLY_SEAT_NOTES[seat]) lines.push('· ' + REPLY_SEAT_NOTES[seat])
   // ★ The minimal shape NAMES `solved`, so the same line carries what it means — a catalogue that prints a field

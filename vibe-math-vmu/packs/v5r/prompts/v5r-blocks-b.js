@@ -164,19 +164,33 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     name: 'v5r-formal-review',
     order: 747,
     range: 'pack',
-    kind: 'shared',
+    kind: 'role',
     texts: {
-      shared: [
+      academician: [
         '  · 该对象已有**通过的 Lean 形式化证明**（{{ setting:vmu.turn.formalProof }}，最近运行 exit 0）。',
         '    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的',
         '    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。',
         '  ▸ 一致 → verdict = 1。',
         '  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：',
         '      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；',
-'      ② 用 `vibe_v5_fidelity_conclude` 记录它（形参 `{ card, fidelity:"defect", lean_job, note }`；`decision/file/note` 不是形参）。框架会撤回这条证明的',
-'         「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；',
-'         修正形式化并重新跑通后再投票。',
+        '      ② 只有**主席**能撤回这条证明：你调 `vibe_v5_fidelity_conclude { card, fidelity:"defect", lean_job, note:"<具体偏差>" }`（**note 必填**）；非主席调用会被拒。',
+        '         框架会撤回「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）；修正形式化并重新跑通后再投票。',
         '  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。',
+      ].join('\n'),
+      researcher: [
+        '  · 该对象已有**通过的 Lean 形式化证明**（{{ setting:vmu.turn.formalProof }}，最近运行 exit 0）。',
+        '    **你不需要重新检查推导**。你的任务是**忠实性审查**：逐条核对 Lean 代码里的',
+        '    定义 / 对象 / 条件 / 假设 / 结论是否与命题原文**完全一致**。',
+        '  ▸ 一致 → verdict = 1。',
+        '  ▸ **发现任何偏差，不要投 0**：偏差只说明**形式化不合格**，不代表命题为假。此时请：',
+        '      ① verdict 给一个严格介于 0 与 1 之间的值（记为弃权），并在 reason 里写清偏差；',
+        '      ② **把偏差写进 reason**，并用 `vibe_v5_say`/私信请主席撤回——撤回只能由主席做（保真工具不是你的工具面）。',
+        '         修正形式化并重新跑通后再投票。',
+        '  ▸ 只有当你**独立于这份 Lean 代码**也能确定命题为假时，才投 0，并在 reason 里写清独立理由。',
+      ].join('\n'),
+      temp: [
+        '  · 本轮是验证轮：你是**临时工**——只读、可在群聊/私信给意见；投票与 Lean 归档不是你的工具面（会得到 VMU_NOT_PERMITTED）。',
+        '  · 发现偏差就写进意见交给你的雇主/主席，不要自己调裁决或归档工具。',
       ].join('\n'),
     },
   },
@@ -187,7 +201,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '  · 该对象已被记录为**形式化阻塞**：{{ setting:vmu.turn.formalBlockedNote }}。',
+        '  · 该对象已被记录为**形式化阻塞**；原因见 `vibe_v5_lean_lib` 的 blocked 记录。',
         '    请复核这个判断是否成立；若你认为其实可以形式化，请指出来并动手做。',
       ].join('\n'),
     },
@@ -274,28 +288,22 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // above is), but they are what the source actually printed, and `tests/vmu-prompt-type-coverage.test.mjs`
         // measures reproduction of each prompt TYPE against that source: deleting them turns the compact type's
         // remaining-gap report from "structural, explained by class" into two unexplained lines.
-        'progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
-        // AUDIT10 C2/C3: the captured line above promises a reply-field shape the dispatcher cannot deliver
-        // (record is a progress-log line and say only reaches the floor of a bound meeting). The capture stays
-        // VERBATIM (it is the fidelity baseline) and the truth is stated on its own line, as with run 61 below.
-        '（上面这句是捕获原文；字段形状以清单为准：record 是研究日志**一行** {track,text}，成果卡用 vibe_v5_record_*，say 只在有会议绑定的轮次进楼层，群聊/私信要用 vibe_v5_say。）',
-'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
+        '回执字段（7 常用；`vmu.turn.replyCatalogue=full` 共 29 个）：`progress`＝进展/阻塞；`record`＝研究日志**一行** {"track":"progress","text":"…"}；`say`＝必要消息。',
+        '`task_done`/`task_update`/`reject_assign` **不是回执字段**（写了被具名拒 `VMU_TURN_FIELD_NOT_APPLICABLE`）：完成任务用 `vibe_v5_task_update { task_id, expected_revision, action: claim|transition|complete|reopen }`（`release` 不是动作）；异议用 `vibe_v5_record_progress` 记账。',
+        '任务的合法转移：open→assigned|doing、assigned→doing|open、doing→done|assigned；从 assigned 不能直接 done（需先 transition 到 doing），transition 必须带 to。',
+        '复杂工具首次使用前调 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查方法（只收 member）；`source` 是**读数来源**（null=未测量，不是「该席位没有工具」）；`count`/`declaredCount` 见工具 description。',
         // AUDIT12: the captured line above teaches three reply FIELDS whose taught shapes the dispatcher cannot deliver
         // (a reply field carries one value; these name positional face operations). The capture stays VERBATIM - it is the
         // fidelity baseline - and the truth is stated on its own line, exactly as run 61 below does for the state table.
-        '（上面这句也是捕获原文；这三件事都**不是回执字段**：完成/改任务用 `vibe_v5_task_update`，异议用 `vibe_v5_record_progress`（track "obstacles"）记账并在会议轮用 `vibe_v5_say` 提出；写进回执会被具名拒 `VMU_TURN_FIELD_NOT_APPLICABLE`。）',
         // ★ LIVE RUN 61 (a member lost a round to the line above): the field list reads as "action=complete is the way to
         // finish", but the board's own table is open→assigned→doing→done, so a completion from `assigned` is refused BY
         // NAME (`illegal transition assigned -> done`) and the member has to read the hint and call again with
         // transition→doing first. The captured sentence is kept VERBATIM (it is the fidelity baseline) and the state table
         // is stated on its own line, because the ambiguity is a missing fact, not a wrong one.
-        '任务的合法转移：open→assigned|doing、assigned→doing|open、doing→done|assigned；从 assigned 不能直接 done（需先 transition 到 doing），transition 必须带 to。',
         // THE MORE COMMON OF TWO WORDINGS. The corpus carries this line in two forms and they are not interchangeable:
         // this one appears in thirty-three entries across eighteen kinds, while the other (`协调需要时可用assign（…）、
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
-        '协调需要时可 hire/fire、创建或分派任务（vibe_v5_task_create／vibe_v5_assign）；开会由院士用 vibe_v5_meeting 召集（type 见会议类型目录），具体字段查手册。',
-        '复杂工具首次使用前调 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查方法（只收 member，缺它具名拒）；`source` 是**读数来源**（null=未测量），`count`/`declaredCount` 见工具 description；null 不是「该席位没有工具」。',
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
       ].join('\n'),
     },
@@ -348,7 +356,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       verify: [
         '若你本轮做了形式化，用 `vibe_v5_lean_archive` 归档那份 .lean 文件：`kind` 取 def | lemma | proof | blocked（定理用 proof），`name` 必填，`file` 给文件路径，',
-'`statement` 写它形式化的命题原文（`target` 只是 statement 的旧别名，别再用）。回执 `formal` 字段**只收 {statement, proof}**（`decision/file/note` 会被具名跳过 formal-shape）：难度判断用 `vibe_v5_lean_archive kind=\'blocked\' note=…`，保真缺陷用 `vibe_v5_fidelity_conclude fidelity="defect"`——不要另用 JSON 回复块表达形式化结论。',
+        '`statement` 写它形式化的命题原文（`target` 只是 statement 的旧别名，别再用）。回执 `formal` 字段**只收 {statement, proof}**（`decision/file/note` 会被具名跳过 formal-shape）：难度判断用 `vibe_v5_lean_archive kind="blocked" note=…`；**保真缺陷由主席**用保真工具记录（形参见工具声明，note 必填）——不要另用 JSON 回复块表达形式化结论。',
       ].join('\n'),
     },
   },
@@ -708,8 +716,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       verify: [
         '【求真表决 —— {{ roleLabel }} {{ member }}】',
         '',
-        '本所正在对下列对象发起共识验证：',
-        '  对象 id 与类型以本轮帧或状态块为准（投票时把它填进 `target`）。',
+'本所正在对下列对象发起共识验证：',
+'  **对象的 id 与陈述从 `vibe_vmu_turn {op:"status"}` 的 verify.target 抄（或读 `vibe_v5_read_library` / `vibe_vmu_records {action:"list"}` 的 id）；没有绑定对象就不要投票**——请所办补帧。',
         '',
         '请给出你**诚实独立的判断**：',
         '  verdict = 1  表示你认为该对象**绝对为真**；',
@@ -838,7 +846,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。',
         '',
         '请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。',
-        '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
+'（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
+        '（**只有本回合绑定了会议**才填 input；没有会议 id 就用 `vibe_v5_say`，别举手、别填 input。）',
         '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
         '★ 席位不参会（temp：attend 被拒）时 `input`/`hand` 被拒——走 `vibe_v5_say`。',
         '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。院士用 `vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "<被邀者 id>", by: "<你的 id>", why: "<为何请他发言>" }` 请人发言（**`by` 必填且必须是主席自己**：服务会议缺 `by` ⇒ `VMU_INVALID_ARGUMENT`、`by` 不是主席 ⇒ `VMU_NOT_PERMITTED`；`why` 必填；批量用 `members: [ … ]` 按给定顺序入队）——邀请≠签到，被邀者仍须自己 `attend` 才计法定人数。',
