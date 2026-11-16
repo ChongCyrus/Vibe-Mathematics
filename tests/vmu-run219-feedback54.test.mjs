@@ -27,7 +27,7 @@ import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
 const VMU = join(REPO, 'vibe-math-vmu')
-const TMP = 'D:/_tmp/r219'
+const TMP = scratchPath('r219')
 mkdirSync(TMP, { recursive: true })
 
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
@@ -47,6 +47,7 @@ const codeOf = (e) => (e && (e.code || (e.cause && e.cause.code))) || null
 
 const entry = await import(pathToFileURL(join(VMU, 'vibe-math-vmu.js')).href)
 const quality = await import(pathToFileURL(join(VMU, 'packs', 'v5r', 'paper-quality.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const boot = async (config = {}) => {
   const state = { specs: [] }

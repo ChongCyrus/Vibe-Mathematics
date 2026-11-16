@@ -23,7 +23,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
-const TMP = 'D:/_tmp/sim-tests'
+const TMP = scratchPath('sim-tests')
 
 let passed = 0
 let failed = 0
@@ -135,6 +135,7 @@ ok(exact === rows.length, 'the two rulers produce byte-identical sizes on identi
 // ── ② the settings layer is SHARED, not duplicated ─────────────────────────────────────────
 const SETTINGS = await import(pathToFileURL(join(REPO, 'scripts', 'sim', 'settings.mjs')).href)
 const SCHEMA = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const layer = SETTINGS.promptSettings()
 ok(typeof layer[SETTINGS.PROMPT_FIXTURE_KEY] === 'string' && layer[SETTINGS.PROMPT_FIXTURE_KEY] === SETTINGS.PROMPT_FIXTURE_MODE, 'one helper names the fixture mode the deployed institute runs', layer[SETTINGS.PROMPT_FIXTURE_KEY])
 // ★ THE DECLARED KEY, NOT A PLAUSIBLE-LOOKING ONE. Both rulers used to pin `'v5r.fixtureMode'`, which the schema does

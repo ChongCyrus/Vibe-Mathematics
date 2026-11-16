@@ -19,7 +19,7 @@ let passed = 0
 const failures = []
 const ok = (cond, name, detail) => { if (cond) { passed += 1; return } failures.push(name + (detail === undefined ? '' : ' [' + String(detail).slice(0, 170) + ']')) }
 const runCopy = (dir) => {
-  try { return { code: 0, err: '', out: execFileSync(process.execPath, [dir + '\\' + GEN, '--json'], { cwd: dir, encoding: 'utf8' }) } }
+  try { return { code: 0, err: '', out: execFileSync(process.execPath, [join(dir, GEN), '--json'], { cwd: dir, encoding: 'utf8' }) } }
   catch (e) { return { code: e.status === undefined ? 1 : e.status, err: String(e.stderr || ''), out: String(e.stdout || '') } }
 }
 const mkCopy = (dir) => { mkdirSync(dir, { recursive: true }); for (const p of ['scripts', 'vibe-math-vmu']) cpSync(join(REPO, p), join(dir, p), { recursive: true }) }

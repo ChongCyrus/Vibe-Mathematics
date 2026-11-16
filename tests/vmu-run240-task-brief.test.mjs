@@ -21,6 +21,7 @@ import { REPO } from './_lib/repo-root.mjs'
 // tests/audit-package-membership.mjs demand that the harness ship in package.json files, because that gate exists to
 // stop a RUNTIME module from shipping without its harness, not to force dev scripts into the tarball.
 const HARNESS = await import(pathToFileURL(join(REPO, 'scripts', 'sim', 'harness.mjs')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const boot = HARNESS.boot
 
 const read = (p) => readFileSync(join(REPO, p), 'utf8')
@@ -40,7 +41,7 @@ ok(/run: async \(\{ action, id, title, objective, owner, deps, write_scopes, blo
 ok(/await tasks\.brief\(need\(id, 'id'\), text\)/.test(src), '§0c the forwarder passes text as the second argument')
 
 console.log('--- 1. the tool round-trip works')
-const root = 'D:/_tmp/sim-tests/task-brief'
+const root = scratchPath('sim-tests-task-brief')
 const h = await boot({ root, clock: () => 1000, withPrompt: false })
 const called = async (name, args) => {
   try { return await h.call(name, args, { as: { agent: { id: 'r-acad' } } }) } catch (e) { return { thrown: true, code: e && e.code, message: String(e && e.message), hint: e && e.hint } }

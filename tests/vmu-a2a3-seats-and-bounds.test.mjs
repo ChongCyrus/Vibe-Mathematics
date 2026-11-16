@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
-import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+import { tmpRoot as __tmpRoot, mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -69,14 +69,14 @@ try {
     ok(researchers.length === 3, '★ 默认值真的是 3（不是 0、不是 2）', rosterIds(kernel))
   }
   {
-    const b0 = await boot({ root: await mkdtemp(join('D:/_tmp', 'vmu-a2a3-z-')), packs: ['v5r'] })
+    const b0 = await boot({ root: mkScratch('vmu-a2a3-z-'), packs: ['v5r'] })
     const r = await call(b0, 'vibe_v5_start', { researcherCount: 0 })
     ok(r.parsed && r.parsed.ok === true, 'researcherCount=0 是合法域内值（只有主席）', r.parsed)
     const researchers = rosterIds(b0.handle.kernel).filter((id) => id !== 'r-acad')
     ok(researchers.length === 0, '★ 0 真的坐 0 个研究员（域下界不是摆设）', rosterIds(b0.handle.kernel))
   }
   for (const bad of [51, -1]) {
-    const b1 = await boot({ root: await mkdtemp(join('D:/_tmp', 'vmu-a2a3-b-')), packs: ['v5r'] })
+    const b1 = await boot({ root: mkScratch('vmu-a2a3-b-'), packs: ['v5r'] })
     const r = await call(b1, 'vibe_v5_start', { researcherCount: bad })
     ok(r.parsed && r.parsed.ok === false && r.parsed.code === 'VMU_INVALID_ARGUMENT',
       '★ researcherCount=' + bad + ' ⇒ 具名拒 VMU_INVALID_ARGUMENT（不截断、不静默取默认）', r.parsed)

@@ -41,6 +41,14 @@ const KIT_SRC = readFileSync(KIT, 'utf8')
 const PACK_PAPER_SRC = readFileSync(PACK_PAPER, 'utf8')
 const TOOLS_SRC = readFileSync(TOOLS, 'utf8')
 
+// TB-2758 / GitHub CI: an absolute path has TWO shapes (POSIX /... and Windows C:/...); the property a receipt must
+// prove is "absolute + forward slashes", not "on a drive letter". Judge the SHAPE, never the host.
+const isAbsolutePosixPath = (value) => {
+  const text = String(value === undefined || value === null ? '' : value)
+  const normalized = text.split(String.fromCharCode(92)).join('/')
+  return normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)
+}
+
 let passed = 0
 let failed = 0
 const failures = []
@@ -398,7 +406,7 @@ console.log('§6 G10：编译成功的回执带 argv/produced，final 的 missin
   ok(fin && fin.pdf && Array.isArray(fin.pdf.argv) && fin.pdf.argv.length > 0, 'G10：pdf 块带编译器 argv（路径证据）', fin && fin.pdf && fin.pdf.argv)
   const argv = ((fin || {}).pdf || {}).argv || []
   const texArg = String(argv.filter((a) => String(a).includes('.tex'))[0] || '')
-  ok(texArg.length > 0 && !texArg.includes('\\') && /^\//.test(texArg), 'G10：argv 里的源文件是绝对 + 正斜杠路径', texArg)
+  ok(texArg.length > 0 && !texArg.includes('\\') && isAbsolutePosixPath(texArg), 'G10：argv 里的源文件是绝对 + 正斜杠路径（POSIX / Windows 盘符两种绝对形状都接受）', texArg)
   ok(Array.isArray(fin && fin.missing) && !fin.missing.includes('pdf'), 'G10：missing 里不再出现 "pdf"（回执不自相矛盾）', fin && fin.missing)
   // 反向：编译失败时说清楚「没产出」，且 pdf.ok 是 false（不会同时声称成功）
   const latexBad = { check: async () => { const e = new Error('xelatex 失败'); e.code = 'VMU_PAPER_LATEX_FAILED'; e.stderrTail = '! Undefined control sequence.'; e.tailSource = 'stderr'; throw e } }

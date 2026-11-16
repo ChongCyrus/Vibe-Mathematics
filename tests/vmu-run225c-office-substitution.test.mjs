@@ -16,7 +16,7 @@ import { pathToFileURL } from 'node:url'
 import { REPO } from './_lib/repo-root.mjs'
 
 const VMU = join(REPO, 'vibe-math-vmu')
-const TMP = 'D:/_tmp/run225'
+const TMP = scratchPath('run225')
 
 const SRC_PACK_TOOLS = (await import('node:fs')).readFileSync(join(VMU, 'host-pack-tools.js'), 'utf8')
 
@@ -46,6 +46,7 @@ const ctx = {
   tools: { register: async (spec) => { specs.push(spec); return () => {} } },
 }
 const entry = await import(pathToFileURL(join(VMU, 'vibe-math-vmu.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const handle = entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root })
 await handle.ready()
 await handle.kernel.store.open()

@@ -43,6 +43,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -91,7 +92,7 @@ const codeOf = (r) => (r && r.code ? String(r.code) : null)
 const decl = (n) => V5R_PACK_TOOLS.filter((t) => t && t.name === n)[0] || null
 
 // ★ TEMP FILES stay under the task's own scratch root (never in the repo).
-const TMP = 'D:/_tmp/r31/ruling-channel'
+const TMP = scratchPath('r31-ruling-channel')
 mkdirSync(TMP, { recursive: true })
 const rootA = mkdtempSync(join(TMP, 'k-'))
 const roots = [rootA]

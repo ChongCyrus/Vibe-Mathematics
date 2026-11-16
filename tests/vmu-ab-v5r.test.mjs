@@ -28,7 +28,7 @@ import { createMembers } from '../vibe-math-vmu/kernel/members.js'
 import { createFairness } from '../vibe-math-vmu/kernel/fairness.js'
 import { TOOL_NAMES, sanitizeToolFilter } from '../vibe-math-vmu/host.js'
 
-import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+import { tmpRoot as __tmpRoot, mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 let passed = 0
 let failed = 0
 const failures = []
@@ -133,7 +133,7 @@ const VERDICTS = { EQUAL: [], PROPERTY: [], NOT_ADOPTED: [], DIVERGENT: [] }
 
 // ── F. 同一性质：内容同一性（两边构造不同，性质必须相同 ✓）────────────────────────────────────
 {
-  const lib = createLibrary({ settings: { get: () => undefined }, clock: () => 0, root: 'D:/_tmp/ab-v5r-fp' })
+  const lib = createLibrary({ settings: { get: () => undefined }, clock: () => 0, root: scratchPath('ab-v5r-fp') })
   // 真实签名是 `fingerprint(kind, { statement, proof? })`（读源码得到 ✓，不是猜的 ✗ —— 我先猜了两次都错 ✓）
   const vmu = (s, proof) => lib.fingerprint('proposition', proof === undefined ? { statement: s } : { statement: s, proof })
   const stable = vmu('n^2+n is even') === vmu('n^2+n is even')

@@ -40,7 +40,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
-import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+import { tmpRoot as __tmpRoot, mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const imp = (p) => import(pathToFileURL(resolve(REPO, p)).href)
@@ -234,7 +234,7 @@ section('⑥ A THIRD KERNEL boots from the same root and still sees the mail (st
 
 section('⑦ TWO KERNELS MINTING THE SAME ID IN ONE TICK: the collision is repaired, nothing is lost')
 {
-  const root2 = await mkdtemp(join('D:/_tmp', 'vmu-run31-sid-'))
+  const root2 = mkScratch('vmu-run31-sid-')
   const c = await boot(root2, () => 4000)
   const d = await boot(root2, () => 4100)
   // Both kernels pull (empty store), then mint — synchronously, before either write-through lands. `seq` is per
@@ -273,7 +273,7 @@ section('⑦ TWO KERNELS MINTING THE SAME ID IN ONE TICK: the collision is repai
 
 section('⑧ BOOT ORDER: reading before `store.open()` is a NAMED refusal that retries (kernels are built before open)')
 {
-  const root3 = await mkdtemp(join('D:/_tmp', 'vmu-run31-boot-'))
+  const root3 = mkScratch('vmu-run31-boot-')
   const early = km.createKernel({ root: root3, clock: () => 5000, settings: {} })   // NOT opened: the real boot order
   const cold = early.mailbox.status()
   ok(cold.shared.pullRefused >= 1 && cold.shared.lastError && cold.shared.lastError.code === 'VMU_STORE_FAILED',
@@ -335,7 +335,7 @@ section('⑨ NO STORE PORT: durability is not faked, and nothing pretends to be 
 
 section('⑩ A RESUME PROJECTION OWNING THE KEY: the write-through declines BY NAME instead of clobbering the envelope')
 {
-  const root4 = await mkdtemp(join('D:/_tmp', 'vmu-run31-proj-'))
+  const root4 = mkScratch('vmu-run31-proj-')
   const k = await boot(root4, () => 7000)
   // `kernel/resume.js` `stateEnvelope(value)` writes this shape and hydrates through `mailbox.hydrate(env.value)`.
   // `tests/vmu-resume-e2e.test.mjs` attaches exactly this projection, so in that process the key belongs to resume.

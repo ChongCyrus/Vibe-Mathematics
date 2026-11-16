@@ -66,7 +66,8 @@ ok(!cardBlock.includes('记录本契约') && !fixtureText.includes('REGISTRAR DU
 // whose owner/writer/by were all null: the write path must refuse by name instead of filing one.
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const entry = await import(pathToFileURL(ENTRY).href)
-const root = mkdtempSync(join('D:/_tmp', 'vmu-registration-contract-'))
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
+const root = mkScratch('vmu-registration-contract-')
 const rtSpecs = []
 const rtHandle = entry.apply({ effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { rtSpecs.push(spec); return () => {} } } }, { clock: () => 1000, root, packs: ['v5r'] })
 await rtHandle.ready()

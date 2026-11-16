@@ -41,21 +41,26 @@ const PLUGINS = {
   'vibe-math-v3': legacyFile('vibe-math-v3', 'vibe-math-v3.js'),
 };
 
-/** What this win32 preset composition registers (see prove-f2-toolfilter-throws). */
-const REGISTERED = new Set([
-  'pwsh', 'read', 'write', 'edit', 'glob', 'grep', 'web_search', 'todo_write',
+/**
+ * The host tool registry, MINUS the one platform-dependent script interpreter. The interpreter name is NOT copied
+ * here: it is read from the PRODUCT source's SCRIPT_TOOLS/IS_WINDOWS ternary in each preset below, so this fixture
+ * cannot disagree with the product about which interpreter THIS platform registers (GitHub CI runs Linux: bash).
+ */
+const HOST_TOOLS = [
+  'read', 'write', 'edit', 'glob', 'grep', 'web_search', 'todo_write',
   'ask_user_question', 'skill', 'present', 'job_output', 'job_list', 'job_kill',
   'create_goal', 'get_goal', 'update_goal', 'ralph', 'interrupt_agent',
   'list_subagents', 'subagent', 'workflow', 'send_message', 'read_image',
-]);
+]
+const registeredFor = (scriptTool) => new Set(HOST_TOOLS.concat([scriptTool]))
 
 /** The host's real rejection message shape (dsh-tools/lib/index.js:2803). */
-const hostRejection = (unknown) =>
+const hostRejection = (unknown, REGISTERED) =>
   `tools.restrict() names unknown global tool${unknown.length > 1 ? 's' : ''} ` +
   `${unknown.map((n) => `"${n}"`).join(', ')}; known global tools: ${[...REGISTERED].sort().join(', ')}`;
 
 /** The host's actual acceptance rule. */
-function hostAccepts(filter) {
+function hostAccepts(filter, REGISTERED) {
   for (const key of ['allow', 'deny']) {
     const list = filter[key];
     if (!list) continue;
@@ -96,24 +101,25 @@ for (const [preset, file] of Object.entries(PLUGINS)) {
   );
   const scriptMatch = src.match(/const SCRIPT_TOOLS\s*=\s*IS_WINDOWS\s*\?\s*\[([^\]]*)\]\s*:\s*\[([^\]]*)\]/);
   assert(scriptMatch !== null, 'SCRIPT_TOOLS parses as a platform ternary');
-  if (scriptMatch) {
-    const win = scriptMatch[1].match(/['"]([^'"]+)['"]/)[1];
-    const nix = scriptMatch[2].match(/['"]([^'"]+)['"]/)[1];
-    const chosen = isWin ? win : nix;
-    assert(REGISTERED.has(chosen), `chosen script tool "${chosen}" is registered on ${process.platform}`);
-    assert(chosen === (isWin ? 'pwsh' : 'bash'), `chosen script tool is the platform interpreter`);
-    const other = isWin ? nix : win;
-    assert(!REGISTERED.has(other), `the other platform's tool "${other}" is correctly excluded here`);
-  }
+  // ★ GitHub CI (Linux) / maintainer machine (win32): the registry's script interpreter comes from the PRODUCT's own
+  // ternary, not from a copied win32 constant. "this platform's tool is in / the other platform's tool is out" is the
+  // property that must hold on BOTH platforms.
+  const winScript = scriptMatch ? scriptMatch[1].match(/['"]([^'"]+)['"]/)[1] : null;
+  const nixScript = scriptMatch ? scriptMatch[2].match(/['"]([^'"]+)['"]/)[1] : null;
+  const hostScript = isWin ? winScript : nixScript;
+  const otherScript = isWin ? nixScript : winScript;
+  const REGISTERED = registeredFor(hostScript);
+  assert(REGISTERED.has(hostScript), `this platform's script tool "${hostScript}" is registered on ${process.platform}`);
+  assert(!REGISTERED.has(otherScript), `the other platform's tool "${otherScript}" is correctly excluded here`);
 
   // (3) the retry cycle, using the plugin's real sanitizer
   const { sanitizeToolFilter, registeredToolsFromError } = await loadSanitizer(file);
 
   // simulate the OLD (buggy) filter to prove the sanitizer rescues it
   const buggyDeny = { deny: ['web_search', 'web', 'fetch', 'bash', 'pwsh'] };
-  assert(!hostAccepts(buggyDeny), 'the pre-fix filter is genuinely rejected by the host rule');
+  assert(!hostAccepts(buggyDeny, REGISTERED), 'the pre-fix filter is genuinely rejected by the host rule');
 
-  const rejection = hostRejection(buggyDeny.deny.filter((n) => !REGISTERED.has(n)));
+  const rejection = hostRejection(buggyDeny.deny.filter((n) => !REGISTERED.has(n)), REGISTERED);
   assert(/names unknown global tool/.test(rejection), 'host rejection message has the expected shape');
 
   const known = registeredToolsFromError(rejection);
@@ -121,11 +127,11 @@ for (const [preset, file] of Object.entries(PLUGINS)) {
 
   const rescued = sanitizeToolFilter(buggyDeny, known);
   assert(rescued !== undefined, 'sanitizeToolFilter returned a non-empty filter');
-  assert(hostAccepts(rescued), `host now ACCEPTS the sanitized filter ${JSON.stringify(rescued)}`);
+  assert(hostAccepts(rescued, REGISTERED), `host now ACCEPTS the sanitized filter ${JSON.stringify(rescued)}`);
   assert(rescued.deny.includes('web_search'), 'the deny intent that DOES exist is preserved (web_search)');
-  assert(rescued.deny.includes('pwsh'), 'the deny intent that DOES exist is preserved (pwsh)');
+  assert(rescued.deny.includes(hostScript), `the deny intent that DOES exist is preserved (${hostScript})`);
   assert(!rescued.deny.includes('web'), 'the non-tool "web" was dropped');
-  assert(!rescued.deny.includes('bash'), 'the unregistered "bash" was dropped');
+  assert(!rescued.deny.includes(otherScript), `the unregistered other-platform tool "${otherScript}" was dropped`);
 
   // a filter that sanitizes to nothing must be dropped, not passed empty
   const allBad = sanitizeToolFilter({ deny: ['web', 'fetch'] }, known);

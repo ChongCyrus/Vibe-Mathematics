@@ -48,6 +48,7 @@ const codeOf = (e) => (e && (e.code || (e.cause && e.cause.code))) || null
 const gates = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'verification-gates.js')).href)
 const verified = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'verified.js')).href)
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const boot = async (config = {}) => {
   const state = { specs: [] }
@@ -169,7 +170,7 @@ console.log('=== 4. 一句话命题不是规则允许的形态 ⇒ 具名拒，�
 }
 
 console.log('=== 5. 真机：声明能写能读，辩论开会时真的被拦 ===')
-const root = await mkdtemp(join('D:/_tmp', 'vmu-debate-proof-'))
+const root = mkScratch('vmu-debate-proof-')
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

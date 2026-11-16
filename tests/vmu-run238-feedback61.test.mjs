@@ -44,6 +44,7 @@ const has = (text, needle, label) => ok(typeof text === 'string' && text.indexOf
 const hasNot = (text, needle, label) => ok(!(typeof text === 'string' && text.indexOf(needle) !== -1), label, { needle })
 
 const entry = await import(pathToFileURL(ENTRY).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const boot = async (root) => {
   const specs = []
@@ -94,7 +95,7 @@ const boot = async (root) => {
   ok(/revision: t\.revision/.test(TASK_SRC), 'H: task create returns the revision of the task it created')
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run238-'))
+const root = mkScratch('vmu-run238-')
 try {
   const b = await boot(root)
   const kernel = b.kernel

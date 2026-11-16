@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 // RUN 2699 (TB-2699 / F75-04) — proofRefState has ONE producer, and `unknown` means exactly NOT CHECKED.
 //
 // MEASURED on the 75th real-machine run: the card-write receipt answered `proofRefState:"resolved"` while the read face
@@ -184,7 +185,7 @@ test('§3 R2 — without a resolver the word is unknown + checked:false + a copy
 test('§4 R3 — an absolute path and a directory are CHECKED failures, not resolved', async () => {
   const abs = R(await b.call('vibe_v5_record_proposition', {
     statement: 'r2699 absolute', value: 'objects', motive: 'run2699 absolute', p: 0.5,
-    proof_state: 'complete', proof_ref: 'D:/wd/tmp/r2699-absolute.md', member: 'r-1',
+    proof_state: 'complete', proof_ref: resolve(tmpdir(), 'r2699-absolute.md'), member: 'r-1',
   }))
   eq(abs.ok, true, '§4a precondition: the absolute-pointer write is admitted (lock deferred)', abs && { code: abs.code })
   eq(abs.proofRefState, 'missing', '§4b ★★★ an ABSOLUTE pointer is missing (the old write face said resolved)')

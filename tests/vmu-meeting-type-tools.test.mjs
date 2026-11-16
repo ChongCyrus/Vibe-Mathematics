@@ -40,6 +40,7 @@ const faceMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 
 const procMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'meeting-procedures.js')).href)
 const toolsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')).href)
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const roundTool = toolsMod.default.find((t) => t.name === 'vibe_v5_meeting_round')
 
@@ -239,7 +240,7 @@ try {
   ok(roundTool && typeof roundTool.description === 'string' && /会议类型/.test(roundTool.description) && /narrows|收窄/i.test(roundTool.description),
     'the description states the narrowing rule (agents read descriptions, not source)', roundTool && roundTool.description.slice(0, 60))
   // TEMP ROOT ON D:（AGENTS.md §6）
-  const root = await mkdtemp(join('D:/_tmp', 'vmu-meeting-type-tools-'))
+  const root = mkScratch('vmu-meeting-type-tools-')
   try {
     const booted = await boot({ root, packs: ['v5r'] })
     ok(booted.names.includes('vibe_v5_meeting_round'), 'the tool is published by a real boot (`packs:["v5r"]`)', booted.names.includes('vibe_v5_meeting_round'))

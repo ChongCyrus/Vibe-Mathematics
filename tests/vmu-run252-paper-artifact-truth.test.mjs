@@ -34,7 +34,7 @@ import { createHash } from 'node:crypto'
 import { missingCharactersOf } from '../vibe-math-vmu/kernel/latex.js'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
-import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+import { tmpRoot as __tmpRoot, mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -140,7 +140,7 @@ ok(TOOLS_SRC.includes('if (typeof paper.PaperArtifacts === \'function\') return 
 
 // ── §1. A REAL md-FORMAT PAPER: RENDER, THEN COMPILE THROUGH THE TOOL FACE ────────────────────────────────────
 console.log('=== 1. format "md" ⇒ NO tex row will ever exist; compile still produces the PDF, and the receipt must not call tex missing ===')
-const base = await mkdtemp(join('D:/_tmp', 'vmu-run252-paper-'))
+const base = mkScratch('vmu-run252-paper-')
 // The kit resolves the compile's `outDir` (`Paper/<folder>`, a RELATIVE path in the pack's policy data) against
 // `process.cwd()`, so the suite moves the process into its own temp root for the duration and puts it back at the
 // end: every artifact this test produces is measured inside D:/_tmp, never inside the checkout.

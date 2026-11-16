@@ -28,6 +28,7 @@
 import { mkdtemp } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -110,7 +111,7 @@ const call = async (b, name, args = {}) => {
 }
 const R = (r) => r.parsed || { ok: false, code: r.code, message: r.message, hint: r.hint }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run30-'))
+const root = mkScratch('vmu-run30-')
 const b = await boot({ root, packs: ['v5r'] })
 const kernel = b.handle.kernel
 for (const id of ['acad-01', 'res-01', 'res-02']) await kernel.members.hire({ id, slot: id === 'acad-01' ? 'chair' : 'member' })

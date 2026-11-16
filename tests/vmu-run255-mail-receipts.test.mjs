@@ -17,7 +17,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+import { tmpRoot as __tmpRoot, mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -158,7 +158,7 @@ try {
 // even with `slots:['chair','member','temp']` at boot. That binding order is kernel/index.js, outside this lane's
 // write domain: the pairing itself is proved on the mailbox face (explicit recipient array) and the handler
 // mapping is proved with a rows-bearing fake.
-const root2 = await mkdtemp(join('D:/_tmp', 'vmu-run255-mail-all-'))
+const root2 = mkScratch('vmu-run255-mail-all-')
 let b2 = null
 try {
   console.log('\n=== 2. 多收件人 + 重投：rows 逐人配对（不是 ids+to 拉链），重投标 deduped ===')

@@ -43,6 +43,7 @@ const codeOf = (p) => (p && p.code) || null
 const J = (o) => JSON.stringify(o)
 
 const entry = await import(pathToFileURL(ENTRY).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 let NOW = 1000
 
 const boot = async (config = {}) => {
@@ -65,7 +66,7 @@ const call = async (b, name, args = {}) => {
   return { raw, parsed, missing: false }
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run31-'))
+const root = mkScratch('vmu-run31-')
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

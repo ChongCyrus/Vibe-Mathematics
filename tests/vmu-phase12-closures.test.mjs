@@ -38,6 +38,7 @@ const ok = (cond, label, detail) => {
 }
 
 const entry = await import(pathToFileURL(ENTRY).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const boot = async (config = {}) => {
   const state = { specs: [] }
@@ -61,7 +62,7 @@ const receipt = async (b, name, args = {}) => {
 const refusal = (res) => (res && res.parsed && res.parsed.ok === false) ? res.parsed : null
 
 // TEMP ROOT ON D: — this repository's rule is that scratch files never land on the C: drive (AGENTS.md §6).
-const root = await mkdtemp(join('D:/_tmp', 'vmu-phase12-closures-'))
+const root = mkScratch('vmu-phase12-closures-')
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

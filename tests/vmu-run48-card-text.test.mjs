@@ -44,6 +44,7 @@ const ok = (cond, label, detail) => {
 const entry = await import(pathToFileURL(ENTRY).href)
 const verified = await import(pathToFileURL(VERIFIED).href)
 const gates = await import(pathToFileURL(GATES).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const { parseBody, parseCardBody, parseCard, CARD_TRACK, CARD_KIND } = verified
 
 let NOW = 1000
@@ -102,7 +103,7 @@ const callJSON = async (b, name, args = {}, ctx = {}) => {
   ok(trailing.fields.p === '1', 'trailing blank lines are spacing, not part of the value', trailing.fields.p)
 }
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run48-cardtext-'))
+const root = mkScratch('vmu-run48-cardtext-')
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

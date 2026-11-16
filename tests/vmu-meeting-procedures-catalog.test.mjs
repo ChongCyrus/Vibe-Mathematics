@@ -37,6 +37,7 @@ const ok = (cond, label, detail) => {
 
 const proc = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'meeting-procedures.js')).href)
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const boot = async (config = {}) => {
   const state = { specs: [] }
@@ -113,7 +114,7 @@ const catalogProblems = ({ typeIds, procedures, decisions, toolNames }) => {
 
 // 真机 boot：工具目录来自运行时注册表（不是本文件里的一份清单）。
 // TEMP ROOT ON D: —— 本仓规矩是临时文件不落 C:（AGENTS.md §6）。
-const root = await mkdtemp(join('D:/_tmp', 'vmu-meeting-proc-'))
+const root = mkScratch('vmu-meeting-proc-')
 const booted = await boot({ root, packs: ['v5r'] })
 ok(booted.handle.kernel !== null && booted.handle.kernel !== undefined, 'the pack really applied (a boot without a library root would silently make every name below look missing)', booted.handle.kernel ? 'kernel' : null)
 const packToolNames = booted.handle.kernel ? booted.handle.kernel.packTools().map((t) => t.name) : []

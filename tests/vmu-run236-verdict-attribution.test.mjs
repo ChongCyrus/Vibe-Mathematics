@@ -41,6 +41,7 @@ const ok = (cond, label, detail) => {
 
 const entry = await import(pathToFileURL(ENTRY).href)
 const faces = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'seat-faces.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const SRC = readFileSync(TOOLS, 'utf8')
 
 const boot = async (config = {}) => {
@@ -96,7 +97,7 @@ ok(faces.RULE_INDEX && typeof faces.RULE_INDEX.mainline === 'string' && faces.RU
   'source: the mainline has a citable key (the rule document names the section; no invented number)', faces.RULE_INDEX && faces.RULE_INDEX.mainline)
 
 // TEMP ROOT ON D: — scratch files never land on C: (AGENTS.md §6).
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run236-m3-'))
+const root = mkScratch('vmu-run236-m3-')
 try {
   const b = await boot({ root, packs: ['v5r'] })
   const kernel = b.handle.kernel

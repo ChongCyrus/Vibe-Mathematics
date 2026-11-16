@@ -58,6 +58,7 @@ const ok = (cond, label, detail) => {
 const eq = (actual, expected, label) => ok(actual === expected, label, actual)
 
 const entry = await import(pathToFileURL(ENTRY).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const boot = async (config = {}) => {
   const state = { specs: [], effects: [] }
@@ -80,7 +81,7 @@ const receipt = async (b, name, args = {}) => {
 }
 const codeOf = (parsed) => parsed && parsed.code ? parsed.code : null
 
-const root = await mkdtemp(join('D:/_tmp', 'vmu-v5r-verdict-final-'))
+const root = mkScratch('vmu-v5r-verdict-final-')
 try {
   // ── 0. THE FACE EXISTS AT ALL ───────────────────────────────────────────────────────────────────────────────
   console.log('=== 0. ZERO MECHANISM: WITH NO PACK NEITHER NEW FACE EXISTS ===')

@@ -18,6 +18,7 @@
 | 分片拆开后，有没有作业一行都没跑？ | `union`（Σ 各片 selected == plan 的 post-exclusion 总数） | 能，且不等即红并列每片数字 |
 | 这台机器是否可发布？ | 本地 `scripts/sim/audit/release-ready.mjs` + 真机前置（真模型、真耗时、真语料） | **不能** |
 | 那十三条被排除的机器属性量得对不对？ | 本机（`localGuard` 列出的命令），不是托管 runner | **不能**，所以被排除 |
+| 仓库外母文件（`../宏观层面v5r运行规则.md`，故意不在版本控制里）不存在时，「vendored == master 重装判定」还能不能证？ | `tests/rules-source-reproducible.test.mjs` §1a 与 `tests/vmu-turn-mainline.test.mjs` §3：**具名 SKIP（`ENV-LIMIT`）**；vendored 自洽与全部 CONTENT 判据（§0d/§1b/§1c、§2a–§2h）**仍在 CI 跑** | **不能**——所以明确具名 skip，绝不当 PASS；完整重装判定只在带母文件的本机跑 | 工作区检出（母文件在工作区根）：`node tests/rules-source-reproducible.test.mjs`（本机 `0 skipped`）、`node tests/vmu-turn-mainline.test.mjs`（本机 `0 skipped`） |
 
 ## 2. 四个 job 与依赖
 
@@ -61,6 +62,13 @@ static ──► partition ──► suite(1..8, matrix) ──► union
 | `e2e-f1-agent-detach.test.mjs` | host-install | 已安装的 DSH 宿主包（`@deepseek-ai/cordis`、`@deepseek-ai/dsh-agent`） | 发布机（`DSH_NODE_MODULES` 指向安装处） |
 | `brief-claims-match-product.test.mjs` | out-of-repo-fixture | `../taskbooks/RUN-BRIEF-TEMPLATE.md`（按工作区约定在仓库外） | 工作区检出（或 `VMU_BRIEF_TEMPLATE_PATH`） |
 | `run79-brief-corrections.test.mjs` | out-of-repo-fixture | 同上模板 | 工作区检出（或 `VMU_BRIEF_TEMPLATE_PATH`） |
+
+> **关于仓库外母文件（`../宏观层面v5r运行规则.md`）**：两个套件**都不进排除表**——
+> `tests/rules-source-reproducible.test.mjs` 的 vendored 自洽（§0d/§1b/§1c、93 行 anchors）与 `tests/vmu-turn-mainline.test.mjs` 的 CONTENT 判据（§2a–§2h：逐字句子、章节顺序）在 CI 上照跑（前者读 vendored 副本，后者也改读 vendored 副本）；
+> 只有「master == vendored 的重装判定」（前者 §1a、后者 §3）在托管 runner 上因母文件不在版本控制内而**具名 SKIP（`ENV-LIMIT`）**：前者末行 `SKIPPED(named)` 计数 +1，后者 node:test 报 `# ENV-LIMIT: …` 且 `skipped 1`。
+> **读法：skip ≠ pass**——「不可得」不等于「通过」；要证这两条就在工作区检出（母文件在）跑同一套件（本机读数 `0 skipped`）。
+>
+> **关于仓库外工作区文档（`../_oneoff/`，同为仓外 provenance）**：`tests/audit-claim-traceability.test.mjs` **也不进排除表**——它的 EXTERNAL 表六条（D11/D12/G8/G11/G13/G17）由操作员工作区 `_oneoff/` 下的 design 文档定义，托管 runner 没有该工作区，所以只有「EXTERNAL 文件在工作区根下存在」这条**具名 SKIP**（`SKIP … NOT MEASURED on this host: no _oneoff/ beside the repo`，末行 `skipped` 计数 +1）；`IN_REPO`（F53）存在性、每个 claim id 的落点解析、表形状等 CONTENT 判据在 CI 照跑。工作区检出（有 `_oneoff/`）时本机读数 `8 passed, 0 failed, 0 skipped`；`VMU_WORKSPACE_ROOT` 可把工作区根指到别处（用于证明 SKIP 路径）。同样：**skip ≠ pass**。
 
 两条**没有**被排除的红，及其定性：
 

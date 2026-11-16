@@ -34,6 +34,14 @@ const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const QUALITY = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')
 
+// TB-2758 / GitHub CI: an absolute path has TWO shapes (POSIX /... and Windows C:/...); the property a receipt must
+// prove is "absolute + forward slashes", not "on a drive letter". Judge the SHAPE, never the host.
+const isAbsolutePosixPath = (value) => {
+  const text = String(value === undefined || value === null ? '' : value)
+  const normalized = text.split(String.fromCharCode(92)).join('/')
+  return normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)
+}
+
 let passed = 0
 let failed = 0
 const failures = []
@@ -228,7 +236,7 @@ console.log('§1 问题 1：编译失败时，`final` 的 pdf 块带着真实的
   ok(!!e, '前提：compilePdf 在编译失败时拒绝', e && e.code)
   ok(!!e && Array.isArray(e.argv) && e.argv.length > 0 && e.argv.length === FAKE_ARGV.length, '问题 1：拒绝对象带面真正 spawn 的 argv（5 个元素）', e && e.argv)
   ok(!!e && Array.isArray(e.argv) && e.argv.length > 0 && JSON.stringify(e.argv) === JSON.stringify(FAKE_ARGV), '问题 1：argv 逐字等于面收到的 argv（不是 []、不是另编的）', e && e.argv)
-  ok(!!e && String(e.argv.filter((a) => String(a).includes('.tex'))[0] || '').startsWith('D:/'), '问题 1：argv 里的源文件是绝对 + 正斜杠路径',
+  ok(!!e && isAbsolutePosixPath(String(e.argv.filter((a) => String(a).includes('.tex'))[0] || '')), '问题 1：argv 里的源文件是绝对 + 正斜杠路径（POSIX / Windows 盘符两种绝对形状都接受）',
     e && (e.argv || []).filter((a) => String(a).includes('.tex')))
   ok(!!e && String(e.stderrTail || '').length > 0 && e.tailSource === 'stdout',
     '问题 1：引擎把话写在 stdout 时 stderrTail 放 stdout 尾部，tailSource 说明来源', e && { tailSource: e.tailSource })
@@ -251,7 +259,7 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   ok(!!block && Array.isArray(block.argv) && block.argv.length >= 4, '问题 2：compiled 块带面真正 spawn 的 argv', block && block.argv)
   ok(!!block && ((block.argv || []).some((a) => String(a).startsWith('-output-directory='))), '问题 2：argv 带着它真正用的输出目录', block && block.argv)
   const texArg = String(((block || {}).argv || []).filter((a) => String(a).endsWith('.tex'))[0] || '')
-  ok(texArg.length > 0 && /^[A-Za-z]:\//.test(texArg), '问题 2：argv 里的源文件是绝对 + 正斜杠路径（G2 的路径证据）', texArg)
+  ok(texArg.length > 0 && !texArg.includes('\\') && isAbsolutePosixPath(texArg), '问题 2：argv 里的源文件是绝对 + 正斜杠路径（G2 的路径证据；两种绝对形状都接受）', texArg)
   ok(!!block && /^VMU_/.test(String(block.code || '')) && (String(block.message || '').includes('编译器说') || String(block.message || '').includes('Undefined control sequence')),
     '问题 2：compiled 块带具名 code 与编译器原话', block && { code: block.code, message: String(block.message || '').slice(0, 120) })
   ok(!!block && String(block.stderrTail || '').includes('Undefined control sequence') && block.tailSource === 'stdout',

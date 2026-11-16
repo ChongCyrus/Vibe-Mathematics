@@ -45,6 +45,7 @@ const ok = (cond, label, detail) => {
 }
 
 const entry = await import(pathToFileURL(ENTRY).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 let NOW = 1000
 
 const boot = async (config = {}) => {
@@ -68,7 +69,7 @@ const call = async (b, name, args = {}) => {
 }
 
 const TURN_ID = /^t-\d+$/
-const root = await mkdtemp(join('D:/_tmp', 'vmu-run32-'))
+const root = mkScratch('vmu-run32-')
 try {
   // caller-played delivery: the route the live acceptance uses (`vmu.turn.deliverMode` = caller), so a step returns an
   // AWAITING receipt carrying `memberPrompt` instead of trying to run the member turn in-process.

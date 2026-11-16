@@ -42,10 +42,14 @@ const MASTER = resolve(REPO, '..', '宏观层面v5r运行规则.md') // workspac
 let passed = 0
 let failed = 0
 let notes = 0
+let skipped = 0
 const ok = (cond, name, detail) => {
   if (cond) { passed += 1; console.log('  ok   ' + name) } else { failed += 1; console.log('  FAIL ' + name + (detail === undefined ? '' : '  ->  ' + JSON.stringify(detail))) }
 }
 const note = (msg) => { notes += 1; console.log('  NOTE ' + msg) }
+// A NAMED SKIP is neither a pass nor a failure: the assertion is UNOBTAINABLE in this environment (ENV-LIMIT).
+// It is printed, counted, and keeps the property honest: "could not check" must never read as "checked, fine".
+const skip = (name, why) => { skipped += 1; console.log('  SKIP(named) ' + name + ' :: ' + why) }
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 
 // ---- §0 the ledger names a version-controlled copy, and that copy is the audited document -----------
@@ -70,6 +74,12 @@ const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 // ---- §1 the master copy, when present, is still the same document -----------------------------------
 {
   const ledger = JSON.parse(readFileSync(LEDGER, 'utf8'))
+  // ★ CI (hosted runner) case: the master lives OUTSIDE version control (`../宏观层面v5r运行规则.md`), so it is
+  // absent on every clean checkout. The vendored self-consistency checks below do NOT depend on it and still run
+  // everywhere; only the REASSEMBLY comparison (master == vendored) is unobtainable there, and that branch is a
+  // NAMED SKIP — never a silent pass, never a failure.
+  ok(sha256(readFileSync(VENDORED)) === ledger.source.revision, '§1b the committed copy, as stored, equals the ledger revision pin')
+  ok(!/\r/.test(readFileSync(VENDORED, 'utf8')), '§1c the vendored copy carries no CR bytes: the pin is the bytes git stores, not the ones this laptop happened to write')
   if (existsSync(MASTER)) {
     // Line endings first: this machine keeps the master with CRLF, while .gitattributes (`*.md text eol=lf`)
     // stores and checks out the repository copy with LF. Comparing raw bytes would therefore fail on a document
@@ -78,12 +88,10 @@ const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
     const masterSha = fold(readFileSync(MASTER))
     const vendoredSha = fold(readFileSync(VENDORED))
     ok(masterSha === vendoredSha, '§1a the workspace master and the vendored copy are the same text (line endings aside; a re-audit must re-vendor)', { master: masterSha.slice(0, 16), vendored: vendoredSha.slice(0, 16) })
-    ok(sha256(readFileSync(VENDORED)) === ledger.source.revision, '§1b and the committed copy, as stored, equals the ledger revision pin')
-    ok(!/\r/.test(readFileSync(VENDORED, 'utf8')), '§1c the vendored copy carries no CR bytes: the pin is the bytes git stores, not the ones this laptop happened to write')
   } else {
-    // The clean-clone case. This is NOT a pass: there is no master to compare, which is precisely why the
-    // vendored copy exists. Saying so out loud keeps "not compared" from reading as "compared, fine".
-    note('§1 the workspace master is not present beside the repository (clean-clone case): the vendored copy is the only source, and §0d is what pins it')
+    skip('§1a master == vendored (reinstall check)',
+      'ENV-LIMIT: the workspace master is not beside the checkout (hosted runner; ../宏观层面v5r运行规则.md is deliberately outside version control). ' +
+      'The vendored copy is the only source here and §0d/§1b/§1c pin it. To execute the full reinstall check, run this suite on the workstation that carries the master.')
   }
 }
 
@@ -121,5 +129,5 @@ const hideAbsoluteSources = (root) => {
   ok(/VMU_RULES|rule document|source/i.test(broken.out), '§2d and it names the missing source instead of passing quietly', broken.out.split('\n').filter(Boolean).slice(-4))
 }
 
-console.log('\n=== rules-source-reproducible: ' + passed + ' passed, ' + failed + ' failed, ' + notes + ' note ===')
+console.log('\n=== rules-source-reproducible: ' + passed + ' passed, ' + failed + ' failed, ' + notes + ' note, ' + skipped + ' skipped(named) ===')
 assert.equal(failed, 0, failed + ' assertion(s) failed')

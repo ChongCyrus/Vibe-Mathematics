@@ -35,11 +35,17 @@
 // prose with none of them still escapes, which is the honest limit of a text predicate.
 //
 // AND THE "0 MISSING" RESULT IS ONLY WORTH ANYTHING IF THE PREDICATE CAN FIRE, so `--selftest` builds a tree whose prompt
-// cites an invented tool in each shape and requires the scan to name it, and the main run re-scans the PRE-FIX corpus from
-// git history and requires the real dead name to come back.
+// cites an invented tool in each shape and requires the scan to name it, and the main run re-scans the PRE-FIX corpus and
+// requires the real dead name to come back.
+//
+// ★ CI C-class fix (2026-11-16): the pre-fix corpus is a HASHED REPOSITORY FIXTURE
+// (`tests/fixtures/pre-fix-corpus-11f6be1b.json`, taken from commit 11f6be1b and carrying per-file sha256), not a
+// `git show` over history. GitHub's gate checkout is `fetch-depth: 1`, so the old form silently produced an empty
+// counterfactual there; a fixture makes the same assertion run on any clone, shallow or not. The fixture is a historical
+// record: do not edit it in place (a repair that rewrites its own counterfactual proves nothing).
 
 import { readdirSync, readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { join, dirname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -50,8 +56,10 @@ const REPO = join(HERE, '..')
 const VMU = join(REPO, 'vibe-math-vmu')
 
 /** ★ THE PRE-FIX BASELINE, named rather than "HEAD": HEAD moves, and a counterfactual that silently re-points itself at
- *  the repaired tree stops being a counterfactual. RUN 31 / task-18 found the dead names at this commit. */
+ *  the repaired tree stops being a counterfactual. RUN 31 / task-18 found the dead names at this commit, and the fixture
+ *  beside this file records that commit + the per-file sha256 of the corpus it captured. */
 const DEAD_NAME_BASELINE = '11f6be1b'
+const PRE_FIX_FIXTURE = join(HERE, 'fixtures', 'pre-fix-corpus-11f6be1b.json')
 
 /** ★ A SCAN THAT ITERATES OVER A POSSIBLY-EMPTY LISTING CAN PASS VACUOUSLY, and RULE E in
  *  `audit-declaration-criterion` said so twice about this very file: first the `existsSync ? readdir : []` ternary, then
@@ -346,23 +354,34 @@ ok(judgeWhitelist({ corpusDirs }).length === 0,
   judgeWhitelist({ corpusDirs }))
 
 // ★★ THE COUNTERFACTUAL. "0 naked names" is only worth something if the predicate fires on the corpus where the defect WAS
-// real. This re-scans the LIVE prompt sections at the pre-fix baseline commit and requires the archived-tool name to come
-// back. It also keeps `end_verify` whitelisted there, proving the whitelist is scoped by file, not by name.
+// real. This re-scans the PRE-FIX corpus (a repository fixture taken from 11f6be1b, NOT git history — CI is fetch-depth: 1)
+// and requires the archived-tool name to come back. It also keeps `end_verify` whitelisted there, proving the whitelist
+// is scoped by file, not by name.
 {
+  // Preconditions first: an absent/empty/self-repointed fixture must be a NAMED failure, never a silent pass.
+  ok(existsSync(PRE_FIX_FIXTURE), '★★ 前提：pre-fix 语料 fixture 存在（浅克隆里反事实靠它，不靠 git 历史）', PRE_FIX_FIXTURE)
+  let fixture = null
+  try { fixture = JSON.parse(readFileSync(PRE_FIX_FIXTURE, 'utf8')) } catch (e) { fixture = null }
+  ok(!!fixture && fixture.sourceCommitShort === DEAD_NAME_BASELINE,
+    '★★ 前提：fixture 声明它取自 ' + DEAD_NAME_BASELINE + '（反事实不能自我指向 HEAD）',
+    fixture && { sourceCommit: fixture.sourceCommit, recordedShort: fixture.sourceCommitShort, expected: DEAD_NAME_BASELINE })
+  const fixtureFiles = fixture && fixture.files && typeof fixture.files === 'object' ? fixture.files : {}
+  const fixtureSha = fixture && fixture.sha256 && typeof fixture.sha256 === 'object' ? fixture.sha256 : {}
+  const fixturePaths = Object.keys(fixtureFiles)
+  ok(fixturePaths.length > 0, '★★ 前提：fixture 不是空的（0 个文件会让下面的反事实静默通过）', fixturePaths.length)
+  // INTEGRITY: every file must match the sha256 the manifest recorded for it. A fixture that drifts silently is the same
+  // defect class as a counterfactual that re-points itself at the repaired tree.
+  const drift = fixturePaths.filter((rel) => createHash('sha256').update(String(fixtureFiles[rel]), 'utf8').digest('hex') !== fixtureSha[rel])
+  ok(drift.length === 0, '★★ fixture 内部 sha256 自洽（语料没被悄悄改写；改写必须换 sourceCommit 并把 sha 一起重取）', drift.slice(0, 5))
+
   const baselineHits = []
-  for (const pack of packRoots) {
-    const pd = join(packsRoot, pack, 'prompts')
-    if (!existsSync(pd)) continue
-    for (const f of listing(pd, { mayBeEmpty: false }).filter((n) => n.endsWith('.js'))) {
-      const rel = 'vibe-math-vmu/packs/' + pack + '/prompts/' + f
-      let src = null
-      try {
-        src = execFileSync('git', ['show', DEAD_NAME_BASELINE + ':' + rel], { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
-      } catch { continue }
-      for (const v of nakedViolationsInSource(src, declared)) {
-        if (NAKED_WHITELIST.some((w) => w.name === v.name && (w.allowedIn || []).includes(f))) continue
-        baselineHits.push(v.name + '@' + pack + '/' + f)
-      }
+  for (const rel of fixturePaths) {
+    if (!rel.endsWith('.js') || !/packs\/[^/]+\/prompts\//.test(rel)) continue
+    const f = basename(rel)
+    const pack = rel.split('/packs/')[1].split('/')[0]
+    for (const v of nakedViolationsInSource(String(fixtureFiles[rel]), declared)) {
+      if (NAKED_WHITELIST.some((w) => w.name === v.name && (w.allowedIn || []).includes(f))) continue
+      baselineHits.push(v.name + '@' + pack + '/' + f)
     }
   }
   ok(baselineHits.some((h) => h.startsWith('math_computation@')),

@@ -43,6 +43,7 @@ const ok = (cond, label, detail) => {
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
 const entry = await import(ENTRY)
 const proc = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'meeting-procedures.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 const bootWith = async (entryUrl, config) => {
   const specs = []
@@ -66,7 +67,7 @@ const call = async (b, name, args = {}) => {
   return { raw, parsed, missing: false }
 }
 
-const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || (existsSync('D:/_tmp') ? 'D:/_tmp' : tmpdir())
+const TMP_ROOT = process.env.VMU_TEST_TMP_ROOT || tmpRoot()
 const root = await mkdtemp(join(TMP_ROOT, 'vmu-run76-alias-'))
 let mutatedRoot = null
 try {

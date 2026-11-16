@@ -32,7 +32,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { mkdtemp, mkdir } from 'node:fs/promises'
 
-import { tmpRoot as __tmpRoot } from './_lib/scratch.mjs'
+import { tmpRoot as __tmpRoot, mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
@@ -286,7 +286,7 @@ function fakeLatex(mode) {
   const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
   const entry = await import(pathToFileURL(ENTRY).href)
   let tick = 5000
-  const root = await mkdtemp(join('D:/_tmp/r177', 'prose-'))
+  const root = mkScratch('r177-prose-')
   const specs = []
   const ctx = {
     effect(fn) { return fn() },
@@ -339,7 +339,7 @@ function fakeLatex(mode) {
 
   const { mkdtemp } = await import('node:fs/promises')
   const entry = await import(pathToFileURL(ENTRY).href)
-  const root = await mkdtemp(join('D:/_tmp', 'r177-dedupe-'))
+  const root = mkScratch('r177-dedupe-')
   const specs = []
   const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (s) => { specs.push(s); return () => {} } } }
   const handle = entry.apply(ctx, { root, packs: ['v5r'], clock: () => 7000 })

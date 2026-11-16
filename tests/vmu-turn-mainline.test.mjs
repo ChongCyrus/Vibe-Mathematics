@@ -7,7 +7,8 @@
 // too, because a doctrine nobody can point at is exactly what this repository refuses to ship.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { createTurnOrchestrator, statusBoardReadings } from '../vibe-math-vmu/kernel/turn/index.js'
@@ -23,7 +24,13 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 const BLOCKS = read('vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js')
 const TURN_TEST = read('tests/vmu-turn.test.mjs')
 const LEDGER = JSON.parse(read('docs/acceptance/rules-ledger.json'))
-const DOC = read('../宏观层面v5r运行规则.md')
+// ★ CI (hosted runner): the operator's master document lives OUTSIDE version control (`../宏观层面v5r运行规则.md`).
+// The repository ships its audited copy (`docs/acceptance/v5r-rules-source.md`, pinned by the ledger's
+// source.pathRelative + sha256), so every CONTENT pin (§2a–§2h: verbatim sentences, section order) runs on that copy
+// everywhere. Only the REASSEMBLY comparison (master == vendored) needs the workspace master; when it is absent, that
+// single check is a NAMED SKIP (ENV-LIMIT) — never a silent pass and never a failure.
+const DOC = read('docs/acceptance/v5r-rules-source.md')
+const MASTER_DOC = join(ROOT, '..', '宏观层面v5r运行规则.md')
 
 const ok = (cond, msg, extra) => assert.ok(cond, msg + (extra === undefined ? '' : '\n' + JSON.stringify(extra, null, 2)))
 const has = (hay, needle, msg) => ok(String(hay).includes(needle), msg + ' — missing: ' + needle)
@@ -154,6 +161,19 @@ test('the mainline reaches every seat, every round', async () => {
     ok(DOC.indexOf('## 核心推进方向（主线）') < DOC.indexOf('## 流程'), '§2g and it sits BEFORE the process section, exactly as decided')
     ok((DOC.match(/## 核心推进方向（主线）/g) || []).length === 1, '§2h it is one section, not a heading repeated per phase')
   }
+})
+
+// ── §3 the vendored copy, when compared to the workspace master, is the same document ────────────
+test('§3 the workspace master and the vendored copy are the same text (reinstall check)', {
+  skip: existsSync(MASTER_DOC)
+    ? false
+    : 'ENV-LIMIT: the workspace master is not beside the checkout (hosted runner; ../宏观层面v5r运行规则.md is deliberately outside version control). §2a–§2h run on the vendored copy, which the ledger pins by sha256. Verify locally on the workstation that carries the master.',
+}, () => {
+  // Line endings first: this laptop keeps the master with CRLF while .gitattributes stores/checks out the repository
+  // copy with LF; comparing raw bytes would fail on a document that never changed. Compare the DOCUMENT.
+  const fold = (s) => String(s).replace(/\r\n/g, '\n')
+  assert.equal(fold(readFileSync(MASTER_DOC, 'utf8')), fold(DOC),
+    'the workspace master and the vendored copy drifted apart (line endings aside): re-vendor and re-pin the ledger in the same change')
 })
 
 // ── D1 (rule L37 `- 各自推进各自的总任务。`): "each advances its OWN total task" ────────────────────────────────

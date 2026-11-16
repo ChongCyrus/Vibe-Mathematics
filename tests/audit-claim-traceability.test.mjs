@@ -10,16 +10,23 @@
 //     so they are listed here with the file that defines them - the gap is recorded, not hidden.
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const DOCS = join(REPO, 'vibe-math-vmu', 'docs')
-const WS = join(REPO, '..')
+// The WORKSPACE root (the checkout's parent) is where the operator keeps the `_oneoff/` design documents the EXTERNAL
+// table points at. That is a property of the HOST, not of the code: CI has no `_oneoff/`, and `VMU_WORKSPACE_ROOT`
+// overrides it — point it at a directory that does not exist to exercise the NAMED-SKIP path (no `_oneoff/` beside the
+// repo) instead of passing vacuously on a runner that never had the fixture.
+const WS = process.env.VMU_WORKSPACE_ROOT ? resolve(String(process.env.VMU_WORKSPACE_ROOT).trim()) : join(REPO, '..')
 
 let passed = 0
 let failed = 0
+let skipped = 0
 const failures = []
+// A check that cannot be MEASURED on this host is a named SKIP, never a silent pass (the property stays unverified on CI).
+const skip = (label, detail) => { skipped += 1; console.log('  SKIP ' + label + (detail === undefined ? '' : ' - ' + JSON.stringify(detail))); return false }
 const ok = (cond, label, detail) => {
   if (cond) { passed++; console.log('  ok   ' + label); return true }
   failed++; failures.push(label + (detail === undefined ? '' : ' - ' + JSON.stringify(detail)))
@@ -103,14 +110,25 @@ ok(Object.keys(EXTERNAL).length === 6,
 ok(Object.keys(IN_REPO).length === 1 && IN_REPO.F53 === 'docs/acceptance/03-v5r-full-inventory.md',
   'and the IN_REPO table is exactly F53, so a file that moves cannot quietly park itself here',
   { keys: Object.keys(IN_REPO) })
-const missingExternal = Object.entries(EXTERNAL).filter(([, p]) => !existsSync(join(WS, p)))
-ok(missingExternal.length === 0,
-  'each recorded EXTERNAL file exists under the WORKSPACE root, so the pointer is a fact rather than a hope',
-  { missing: missingExternal.map(([id]) => id) })
+// ★ TB-2758 / GitHub CI: the six EXTERNAL design volumes live under the WORKSPACE root's _oneoff/ — a directory that
+// exists beside a maintainer checkout but NOT in a CI checkout (which contains only this repository). The property is
+// "the recorded pointer is a fact"; when the workspace side is absent the check cannot be measured, so it is reported as
+// a NAMED SKIP (with the reason) rather than converted into a vacuous pass. When the workspace IS present (a maintainer
+// machine) the existence property is still asserted in full.
+const WS_EXTERNAL = join(WS, '_oneoff')
+if (!existsSync(WS_EXTERNAL)) {
+  skip('each recorded EXTERNAL file exists under the WORKSPACE root — NOT MEASURED on this host: no _oneoff/ beside the repo (a CI checkout has no workspace siblings); the recorded gap stays recorded, this is not a pass', { workspace: WS, expected: WS_EXTERNAL })
+} else {
+  const toHostPath = (p) => join(WS, ...String(p).split('/').filter(Boolean))
+  const missingExternal = Object.entries(EXTERNAL).filter(([, p]) => !existsSync(toHostPath(p)))
+  ok(missingExternal.length === 0,
+    'each recorded EXTERNAL file exists under the WORKSPACE root, so the pointer is a fact rather than a hope',
+    { missing: missingExternal.map(([id]) => id) })
+}
 const missingInRepo = Object.entries(IN_REPO).filter(([, p]) => !existsSync(join(REPO, p)))
 ok(missingInRepo.length === 0,
   'and each recorded IN_REPO file exists under the REPOSITORY root, so moving a volume in cannot leave its recorded id dangling',
   { missing: missingInRepo.map(([id]) => id) })
 
-console.log('=== CLAIM TRACEABILITY: ' + passed + ' passed, ' + failed + ' failed ===')
+console.log('=== CLAIM TRACEABILITY: ' + passed + ' passed, ' + failed + ' failed, ' + skipped + ' skipped ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

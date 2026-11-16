@@ -41,6 +41,7 @@ const toolsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs',
 // that declaration. The role-section assertions below read the declaration instead of hard-typing a subset, so a policy
 // change lands in one place (and a prompt that drifts from it fails here).
 const seatMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'seat-faces.js')).href)
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 /** The names the pack is expected to declare (bands 1–6: 6 + 6 + 7 + 7 + 11). */
 const EXPECTED = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe_v5_record_method',
@@ -86,7 +87,7 @@ const countOf = (kernel, track) => {
   return -1
 }
 // TEMP ROOT ON D: — this repository's rule is that scratch files never land on the C: drive (AGENTS.md §6).
-const root = await mkdtemp(join('D:/_tmp', 'vmu-v5r-tools-'))
+const root = mkScratch('vmu-v5r-tools-')
 try {
   // ── ① ZERO MECHANISM ────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== 1. NO PACK ⇒ NOT ONE v5r TOOL EXISTS ===')
@@ -445,7 +446,7 @@ try {
 
   // ★ min_votes NOT met ⇒ the ballot does NOT count. A SECOND kernel declares a real floor so the case is deterministic
   // instead of depending on a default: one vote cast, floor 2, close ⇒ the box's own registered code fires.
-  const strictRoot = await mkdtemp(join('D:/_tmp', 'vmu-v5r-tools-strict-'))
+  const strictRoot = mkScratch('vmu-v5r-tools-strict-')
   const strictBoot = await boot({ root: strictRoot, packs: ['v5r'], 'vmu.ballot.minVotes': 2 })
   try {
     await strictBoot.handle.kernel.members.hire({ id: 'r-chair', slot: 'chair' })

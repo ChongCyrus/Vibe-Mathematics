@@ -2,7 +2,9 @@
 // 运行：`node tests/vmu-resource.test.mjs`（末行 `=== VMU RESOURCES: N passed, M failed ===`）。
 
 import assert from 'node:assert/strict'
+import { resolve as resolvePath } from 'node:path'
 import { createResource, RESOURCE_KEYS, WIRED_RESOURCE_KEYS, PLANNED_RESOURCE_KEYS } from '../vibe-math-vmu/kernel/resource.js'
+import { mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 
 let passed = 0
 let failed = 0
@@ -283,7 +285,7 @@ test('the capture reference is required, can be defaulted, can be waived, and en
 
 // ⑲ ROUND 148：台账落盘经【注入接缝】，且【写成功才发布内存】（v5 那次外部评审的教训 ✓）
 test('the ledger lands through the injected seam, and memory advances only after the write succeeds', () => {
-  const base = { 'vmu.resource.requireCalibration': false, 'vmu.resource.requireOwner': false, 'vmu.resource.ledgerDir': 'D:/_tmp/instr-ledger' }
+  const base = { 'vmu.resource.requireCalibration': false, 'vmu.resource.requireOwner': false, 'vmu.resource.ledgerDir': scratchPath('instr-ledger') }
   const withSeam = (over, seam) => createResource({ settings: mk(over).settings, clock: () => 0, log: () => {}, writeLedger: seam })
   const call = (f) => { f.register({ id: 'u1', owner: 'm1' }); return f.use({ id: 'u1', by: 'm1', purpose: 'p', capture: 'lib/x' }) }
 
@@ -305,7 +307,9 @@ test('the ledger lands through the injected seam, and memory advances only after
   const good = withSeam(base, (w) => { seen.push(w); return { ok: true, path: w.dir + '/' + w.name } })
   const r3 = call(good)
   assert.equal(r3.ok, true, '接缝成功 ⇒ 通过')
-  assert.equal(r3.persisted, 'D:/_tmp/instr-ledger/' + r3.usageId + '.json', '回执给出落盘路径（路径含 CAPTURED id，不写死 ur-1）')
+  // TB-2758 / GitHub CI: the ledger dir is HOST-DERIVED now (scratchPath), so compare resolved paths instead of pinning
+  // a drive letter. The assertion still requires the CAPTURED id in the path (not a hardcoded ur-1).
+  assert.equal(resolvePath(r3.persisted), resolvePath(base['vmu.resource.ledgerDir'], r3.usageId + '.json'), '回执给出落盘路径（路径含 CAPTURED id，不写死 ur-1；平台无关比较）')
   assert.equal(seen.length, 1, '接缝恰好被调用一次')
   assert.ok(seen[0].text.indexOf(r3.usageId) !== -1 && seen[0].text.indexOf('lib/x') !== -1,
     '★ 落盘内容含记录 id（捕获值）与捕获引用（引用随记录走 ✓）')
