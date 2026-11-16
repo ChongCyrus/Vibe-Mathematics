@@ -1883,7 +1883,7 @@ function cardProjectionOf(records, id) {
           : 'the card body could not be parsed') }
   }
   const fields = parsed.fields || {}
-  return { id: row.id, p: parsed.card.p,
+  return { id: row.id, p: parsed.card.p, statement: parsed.card.statement === undefined ? '' : String(parsed.card.statement),
     leanJob: fields.leanJob === undefined ? (row.lean_job === undefined || row.lean_job === null ? '' : str(row.lean_job)) : str(fields.leanJob),
     proofRef: fields.proofRef === undefined ? '' : str(fields.proofRef),
     proofState: fields.proofState === undefined ? '' : str(fields.proofState),
@@ -3186,7 +3186,11 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
     requireMachineWarrant,
     machineOrLiterature: requireMachineWarrant,
     machineCheckedOnly: false,   // literature is admitted by this policy, so the policy is NOT machine-checked-only
-    literatureHumanReviewed: true,
+    // ★★ ROUND-3 P1 (C#26): this used to be a HARDCODED `literatureHumanReviewed: true` — a constant dressed as a
+    // measurement. The product cannot measure whether a given citation was human-reviewed, so the field now says exactly
+    // what it is: a POLICY declaration, with measured:false and the evidence the gate would need named.
+    literaturePolicy: { kind: 'human-reviewed-citation', measured: false,
+      means: 'policy declaration, NOT a measurement: this institute treats a literature warrant as human-reviewed evidence; the product cannot verify that a reviewer read the source, so no receipt claims it did' },
     acceptedKinds: requireMachineWarrant ? ['lean-conformance', 'literature'] : ['debate-unanimous', 'lean-conformance', 'literature'],
     setting: 'vmu.verified.requireMachineWarrant',
     source: requireMachineWarrant
@@ -3325,6 +3329,8 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   // promise: the chair could sign a final ruling on a proposition whose Lean run had never passed, and the receipt looked
   // identical to a formalised one. The ruling now refuses BY NAME, and the refusal names which of the two evidences the
   // card lacks — a "blocked" decision is the rule's own escape hatch for a claim that cannot be formalised at all.
+  // ★ P0-c: the gate's VERDICT about formalisation is reported on the ruling receipt (decision + named source).
+  let formalDecisionReport = null
   const formalPolicy = formalVerifyPolicyOf(kernel)
   if (formalPolicy && formalPolicy.requireFormal === true) {
     const cardRow = rowOrNull(kernel && kernel.records, propositionId) || null
@@ -3335,7 +3341,34 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     const leanVerdict = leanJobId ? leanPassedOf(kernel, leanJobId) : null
     const leanOk = !!(leanVerdict && leanVerdict.passed === true)
     const formalDecision = proj && proj.formal && proj.formal.decision ? str(proj.formal.decision) : ''
+    if (leanOk) formalDecisionReport = { decision: 'lean-passed', source: 'lean-job' }
+    else if (formalDecision === 'blocked') formalDecisionReport = { decision: 'blocked', source: 'card-projection' }
+    // ★★★ P0-c (ROUND-3): THE SECOND READING IS THE DURABLE BLOCKED RECORD the archive face writes. The old branch read
+    // only `proj.formal.decision`, whose sole reader was this line and which had NO WRITER — so "archive blocked then the
+    // gate lets the ruling through" was asserted by the prompt and impossible in the product. A blocked archive now writes
+    // track state / kind state / title formal-blocked|<name>; this gate matches it to the card by statement or proof file
+    // and NAMES the source on the receipt (`formalDecisionSource:"lean-archive"`).
+    let formalBlockedRecord = null
     if (!leanOk && formalDecision !== 'blocked') {
+      try {
+        const listed = kernel.records && typeof kernel.records.list === 'function' ? kernel.records.list({ track: 'state', limit: 0 }) : null
+        const heads = listed && Array.isArray(listed.items) ? listed.items : []
+        const cardStatement = proj && proj.statement ? String(proj.statement).trim() : ''
+        const cardFile = proj && proj.proofRef ? String(proj.proofRef).trim() : ''
+        const norm = (v) => String(v || '').replace(/\\/g, '/').toLowerCase()
+        for (const h of heads) {
+          if (!h || String(h.kind) !== 'state' || !/^formal-blocked\|/.test(String(h.title || ''))) continue
+          let body = null
+          try { const got = kernel.records.get({ id: h.id }); const row = got && got.record ? got.record : got; body = JSON.parse(String((row && row.body) || '{}')) } catch { body = null }
+          if (!body) continue
+          const sameStatement = cardStatement !== '' && String(body.statement || '').trim() === cardStatement
+          const sameFile = cardFile !== '' && norm(body.file) !== '' && (norm(body.file) === norm(cardFile) || norm(body.file).endsWith('/' + norm(cardFile).split('/').pop()))
+          const sameCard = body.card !== null && body.card !== undefined && String(body.card) === propositionId
+          if (sameStatement || sameFile || sameCard) { formalBlockedRecord = { recordId: String(h.id), name: body.name || null, note: body.note || null, file: body.file || null }; formalDecisionReport = { decision: 'blocked', source: 'lean-archive', blockedRecordId: formalBlockedRecord.recordId, note: formalBlockedRecord.note }; break }
+        }
+      } catch (e) { formalBlockedRecord = null }
+    }
+    if (!leanOk && formalDecision !== 'blocked' && formalBlockedRecord === null) {
       throw refuse('VMU_PACK_V5R_FORMAL_REQUIRED',
         'this institute requires formalisation (vmu.math.formalVerify:"require") and ' + propositionId
           + ' has neither a PASSED Lean run nor a recorded "blocked" decision'
@@ -3343,7 +3376,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
             ? ' — its lean_job "' + leanJobId + '" has not passed'
               + (leanVerdict ? ' (state: ' + str(leanVerdict && leanVerdict.state) + ')' : ' (this deployment exposes no Lean face, so no job can be read)')
             : ' — it names no lean_job at all'),
-        'run vibe_v5_lean_run on the card\'s file, wait for vibe_v5_lean_job to read passed:true, then rule; or, when the claim cannot be formalised at all, record the "blocked" decision the rule allows so the ruling can say why. The office sets vmu.math.formalVerify (off/encourage/require)')
+        'run vibe_v5_lean_run on the card\'s file, wait for vibe_v5_lean_job to read passed:true, then rule; OR, when the claim cannot be formalised at all, call vibe_v5_lean_archive {kind:"blocked", name:"<stable name>", file:"<the .lean file>", statement:"<the card statement>", note:"<why it cannot be formalised>"} — a blocked decision is a durable record this gate reads (no Lean toolchain needed) and the ruling then names formalDecisionSource:"lean-archive". The office sets vmu.math.formalVerify (off/encourage/require)')
     }
   }
   // ★★★ TASK-12 / RUN 31 — THE SUBMISSIONS ARE COLLECTED HERE, AND THE CHAIR NO LONGER HAS TO TYPE THEM.
@@ -3782,6 +3815,11 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   })()
   return {
     ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
+    // ★★★ P0-c: the formalisation decision this ruling ran on, with the source that produced it. `lean-archive` is the
+    // blocked decision the archive face persisted (and the gate read); null when the deployment does not require formalisation.
+    formalDecision: formalDecisionReport === null ? null : formalDecisionReport.decision,
+    formalDecisionSource: formalDecisionReport === null ? null : formalDecisionReport.source,
+    formalBlockedDecision: formalDecisionReport && formalDecisionReport.source === 'lean-archive' ? { recordId: formalDecisionReport.blockedRecordId, note: formalDecisionReport.note } : null,
     p1RulingReading,
     p1CannotBack,
     p1CannotBackMeans: p1CannotBack === null

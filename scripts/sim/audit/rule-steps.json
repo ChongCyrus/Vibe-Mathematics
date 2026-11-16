@@ -868,10 +868,11 @@
         {
           "scenario": "meetings",
           "step": "types/ordinary",
-          "side": "allow"
+          "side": "allow",
+          "note": "ROUND-3 E10: this convene now passes `durationMs: 3600000` (the chair sets the meeting's own bound) and the scenario hard-asserts the receipt reads back `wallLimitMs: 3600000`, `wallLimitMsSource: \"convene\"` — before this, every wallLimitMs receipt in the layer came from the deployment default and the rule's allow side never happened."
         }
       ],
-      "notes": ""
+      "notes": "ROUND-3 E10: measured by the chair-set `durationMs` on the mapped convene step (+ hard assertion E10-CONVENE-DURATION-NOT-EFFECTIVE in meetings.mjs)."
     },
     "E11": {
       "rule": "允许一次性连续召开多个会议",
@@ -960,11 +961,18 @@
       "steps": [
         {
           "scenario": "meetings",
-          "step": "floor/order-after-hand",
-          "side": "allow"
+          "step": "orderwrite/write",
+          "side": "allow",
+          "note": "ROUND-3 E16: the WRITE form on the public face (`vibe_vmu_meeting { action:\"order\", id, by, members }`) — receipt carries before/after/moved/dropped; the scenario hard-asserts before=[r-1,r-2], after=[r-2,r-1], moved names both 1-based moves, dropped=[] (E16-ORDER-WRITE-NOT-MEASURED)."
+        },
+        {
+          "scenario": "meetings",
+          "step": "orderwrite/read-after",
+          "side": "allow",
+          "note": "the STORE agrees with the write: the next `order` read returns [r-2,r-1] (a receipt nobody can read back is not a record)."
         }
       ],
-      "notes": "回执没有 before/after 对照，只能证明「举手后可按顺序发言」，不能证明重排生效。"
+      "notes": "ROUND-3 E16: the old mapping was the READ-ONLY `floor/order-after-hand` (mode fifo, no before/after) — it could only prove a queue exists. HEAD's kernel order({meeting,members,by}) write path was already implemented and pinned by tests/vmu-run242-order-write.test.mjs; the layer simply never called it. The new steps close that coverage gap; the old read step remains in the scenario as supporting evidence."
     },
     "E17": {
       "rule": "常见命令：单次发言版群聊（每人各说一次、不打断）",
@@ -1192,10 +1200,11 @@
         {
           "scenario": "paper",
           "step": "paper/review/decision-refused",
-          "side": "refuse"
+          "side": "refuse",
+          "note": "ROUND-3 F3: the refusal now goes through the NORMAL call path, so its receipt is in receipts.jsonl (code VMU_INVALID_ARGUMENT + hint verbatim, declared as an expected refusal by seq); the old expectRefusal bypassed h.call and the frozen layer had 19 steps / 17 receipts."
         }
       ],
-      "notes": ""
+      "notes": "ROUND-3 F3: refuse side is verifiable in the corpus now (code+hint landed; declared expected so A1 does not read it as a mechanism defect)."
     },
     "F4": {
       "rule": "面向读者：系统/正确/完整/严谨清晰",
@@ -1224,10 +1233,11 @@
         {
           "scenario": "paper",
           "step": "paper/final/blocked-by-office-consult",
-          "side": "refuse"
+          "side": "refuse",
+          "note": "ROUND-3 F5: the refusal receipt now lands in receipts.jsonl through the normal call path (code VMU_OFFICE_CONSULT_REQUIRED + hint + final.blockedBy=\"office-consult\" + requestId), so the hint is verifiable; declared expected by seq."
         }
       ],
-      "notes": ""
+      "notes": "ROUND-3 F5: refuse side verifiable in the corpus now (code+hint+final block landed; declared expected so A1 does not flag it)."
     },
     "G1": {
       "rule": "支持成员使用 Python 等数学计算工具",
@@ -1309,10 +1319,11 @@
         {
           "scenario": "paper",
           "step": "paper/final/blocked-by-office-consult",
-          "side": "refuse"
+          "side": "refuse",
+          "note": "ROUND-3 G5: same refusal receipt as F5, now recorded in the corpus (code + hint + requestId) by the normal call path; the office-consult question IS the 'ask the office' shape this rule teaches."
         }
       ],
-      "notes": ""
+      "notes": "ROUND-3 G5: refuse side verifiable in the corpus now (code+hint landed; declared expected)."
     },
     "G6": {
       "rule": "绝大多数功能走工具而非每轮末尾输出 JSON",

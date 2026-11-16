@@ -319,6 +319,52 @@ async function toolLeanArchive(args = {}, { kernel } = {}) {
   }
   const file = fromRaw !== null ? fromRaw : (fileRaw !== null ? fileRaw : '')
   if (!file) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs the existing .lean file (from/file)', 'this face registers existing files; it does not take inline content')
+  const archNote = has(args.note) ? str(args.note).trim() : ''
+  const isBlocked = mapped === 'assumption'
+  if (isBlocked) {
+    // ★★★ P0-c (ROUND-3): THE RULE'S ESCAPE HATCH WAS UNREACHABLE. The prompt teaches "no Lean toolchain ⇒ write it down
+    // and archive kind='blocked' note=…, and the final-ruling gate accepts that as the explicit block reason" — but the
+    // archive face was reached only when a Lean face existed (it does not without a subprocess seam), the handler DROPPED
+    // note, and the gate read a projection (`formal.decision`) that had no producer. Now a blocked decision is a DURABLE
+    // RECORD of its own: written before any archive attempt, readable by the gate, carrying the note that is the reason.
+    if (archNote === '') {
+      throw refuse('VMU_LEAN_BLOCKED_NOTE_REQUIRED', 'a blocked archive needs the note that explains WHY the claim could not be formalised',
+        'pass note:"<the blocker: which definition/step/statement could not be formalised, and why> — the final-ruling gate admits a blocked decision only when a note records what was in the way')
+    }
+    let recordId = null
+    let recordError = null
+    const records = kernel && kernel.records
+    if (records && typeof records.put === 'function') {
+      try {
+        const put = records.put({ track: 'state', kind: 'state', title: 'formal-blocked|' + str(args.name),
+          by: has(args.member) ? str(args.member) : null,
+          body: JSON.stringify({ name: str(args.name), note: archNote, file: has(args.file) ? str(args.file) : (has(args.from) ? str(args.from) : ''),
+            statement: has(args.statement) ? str(args.statement).trim() : (has(args.target) ? str(args.target).trim() : ''),
+            card: has(args.card) ? str(args.card) : (has(args.card_id) ? str(args.card_id) : null), kind: 'blocked', at: (() => { try { const c = kernel.clockguard && typeof kernel.clockguard.now === 'function' ? kernel.clockguard.now() : null; return Number.isFinite(Number(c)) ? Number(c) : null } catch { return null } })() }),
+        })
+        recordId = put && (put.id || put.recordId) ? String(put.id || put.recordId) : null
+      } catch (e) { recordError = { code: (e && e.code) || 'VMU_STATE', message: String((e && e.message) || e), hint: (e && e.hint) || null } }
+    } else {
+      recordError = { code: 'VMU_ENGINE_UNAVAILABLE', message: 'this kernel exposes no records service, so a blocked decision cannot be persisted', hint: 'assemble a kernel with a records/library face (the final-ruling gate reads the durable blocked record)' }
+    }
+    if (recordId === null && recordError !== null) {
+      throw refuse(recordError.code, 'the blocked decision could not be persisted: ' + recordError.message,
+        'a blocked decision is the escape hatch for a claim that cannot be formalised — it must be a durable fact the final-ruling gate can read, so an unwritable block is refused instead of returned as if recorded (a recordError on a success receipt would be a silent no-op)')
+    }
+    // Best effort: also register the file in the Lean archive when this deployment HAS a Lean face. Its failure does NOT
+    // erase the durable blocked record — the record is the fact the gate reads, the archive is a library convenience.
+    let archiveReceipt = null
+    let archiveError = null
+    if (kernel && kernel.lean) {
+      try { archiveReceipt = await kernel.lean.archive({ name: str(args.name), kind: mapped, file: has(args.file) ? str(args.file) : (has(args.from) ? str(args.from) : ''), statement: has(args.statement) ? str(args.statement).trim() : (has(args.target) ? str(args.target).trim() : ''), note: archNote }) } catch (e) { archiveError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) } }
+    }
+    return { ok: true, tool: 'vibe_v5_lean_archive', mappedKind: mapped, kindRequested: str(args.kind),
+      name: str(args.name), kind: 'assumption', file: has(args.file) ? str(args.file) : (has(args.from) ? str(args.from) : ''), note: archNote, noteStored: true,
+      blockedRecorded: true, blockedRecordId: recordId,
+      archive: archiveReceipt, archiveError,
+      engine: archiveReceipt ? 'lean-archive' : 'blocked-record-only',
+      means: 'a blocked decision is a DURABLE RECORD (track state, title formal-blocked|' + str(args.name) + '): the final-ruling gate reads it when vmu.math.formalVerify=require, so "cannot be formalised" is now an explicit, reachable fact instead of a dropped note. The record carries the required note (the blocker).' + (archiveReceipt ? ' The file was ALSO registered in the Lean archive library.' : (kernel && kernel.lean ? ' The Lean archive registration failed; the blocked record still stands (see archiveError).' : ' This deployment has no Lean face (no subprocess toolchain), which is exactly the case the rule anticipates: the blocked record alone is the escape hatch.')) }
+  }
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_archive')
   // ★ LIVE RUN 59: a member archived a compiled lemma with the proposition text in `note` and the library came back
   // with `statement:""` — the archive face had no `statement` parameter at all and only ever filled the field from the

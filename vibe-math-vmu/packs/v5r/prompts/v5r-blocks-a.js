@@ -67,7 +67,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '你自己**——它分派的是工作，不是结论。',
       ].join('\n'),
       leaderless: [
-'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**只有院士席能写领头人**：若你在院士席且 `vibe_v5_overview.leadership.code` 报 `chair-seated-but-leaderId-empty`，用 `vibe_v5_set` 写 `vmu.turn.leaderId`；其他席位不要尝试（工具面会拒），在群聊点名请院士补数据。**没有院士席**时组织与协调由全体有表决权者商议（所办代表外部）。',
+'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**只有院士席能写领头人**：若你在院士席且 `vibe_v5_overview.leadership.code` 报 `chair-seated-but-leaderId-empty`，用 `vibe_v5_set` 写 `vmu.turn.leaderId`；其他席位不要尝试（工具面会拒），在群聊点名请院士补数据。',
 '**若确无院士席**，组织与协调由**全体有表决权者共同商议**（所办代表外部）；但请守住同一条分工：',
 '**组织归院士/集体，判断属于你自己**——讨论决定的是工作，不是结论。',
       ].join('\n'),
@@ -151,7 +151,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-'  在册名单读 `vibe_vmu_turn {op:"status"}` 的 roster（或本轮会议预约行）；法定票数 m 只在投票/裁决回执里读（`floor.required`／裁决回执的票总数）——[状态板] 四行不含这两项；读不到就写明「来源未提供」，不要猜。',
+'  在册名单看本轮提示状态块的 `[在册]` 行（没有就写「来源未提供」并请所办补；会议预约行只列被邀者，不是全名册）；`vibe_vmu_turn {op:"status"}` 回执**不含** roster。法定票数 m 读本轮状态块的 `[表决] 法定票数 m = N` 行（内核 turnFacts 注入；没渲染就写「来源未提供」），也可用投票/裁决回执的 `floor.required` 复核。',
       ].join('\n'),
     },
   },
@@ -219,7 +219,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
 '  ▸ 本节的库与卡片规则**只对院士/常驻研究员**适用（临时工见下一行）。',
         "  ▸ **临时工例外**：临时工没有 `vibe_v5_record_*` 卡片面（工具面按席位**具名拒**），也不写所内的命题/方法/子问题/成果库；过程记录写回执的 `progress` 字段（或自己的工作目录/工作日志）；产出由自己写进回执（指派者只核对、不代写）。",
         "  资料库根：Members/{{ member }}/（`<你>`=你的成员 id；**只写自己的库**）。",
-'  ⚠ 文件工具的**相对路径以会话工作目录为基准**，直接读写用**带库根的完整路径**：`<roots.libraryRoot>/Members/<你的 id>/Proofs/…`（如 `<roots.libraryRoot>/Members/r-acad/Proofs/p-1.md`）；**`proof_ref` 的基准是库根**，不是会话目录；**临时工**改用回执与自己的工作目录（`vibe_v5_record_*` 对该席具名拒）。',
+'  ⚠ 文件工具的**相对路径以会话工作目录为基准**，直接读写用**带库根的完整路径**：`<roots.libraryRoot>/Members/<你的 id>/Proofs/…`（如 `<roots.libraryRoot>/Members/<你的 id>/Proofs/p-1.md`）；**`proof_ref` 的基准是库根**，不是会话目录；**临时工**改用回执与自己的工作目录（`vibe_v5_record_*` 对该席具名拒）。',
         "",
         "  · Members/<你>/Progress/progress.md —— **你的研究日志**（叙述体，可追加）：路线与历程、进展与计划、障碍及原因、猜想与评估；**失败与死路同样值得记**。",
         "    ▸ 它是思考痕迹与**压缩后恢复状态的主要依据**（丢对话、丢不掉你写的文件），也是院士统筹的输入；按时间追加，结论与理由分开写。",
@@ -327,7 +327,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · 用 `vibe_v5_verdict` 给出你的判断：一个 [0,1] 的数值概率与理由。1 = 绝对为真；0 = 绝对为假；介于之间 = 不确定；裁决规则是**全体一致时取该值，否则取全组平均概率**。",
         "  · 进入 Verified/ 的门：概率必须为 **1**，且这个 1 必须有**具名凭据**——你一个人在初评里写下的 1 不算数；凭据是三项之一：辩论裁决集合全体一致为 1；该命题已在 verified 轨有 conclusion:true 行；Lean 通过**且**辩论已裁定代码与所需一致。缺凭据的 1 会被具名拒绝（`VMU_PACK_V5R_P1_NEEDS_DEBATE`），Verified/ 的写入只有 `vibe_v5_verified_promote` 一个入口（`VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`）。",
         "  · 规则还允许**参考文献中的命题**直接进 Verified（不经辩论）：写卡时带 `literature_ref:\"<作者, 出处, 定理/页码>\"` 且 `p:1`，再用 `vibe_v5_verified_promote`（`warrant_kind:\"literature\"`、`literature_ref` 填同一句引用）入轨；warrant 就是那句引用，引用要具体到定理/页码，不要写「见文献」。",
-        "  · **表决**（议题办不办、会议能不能开）用法定票数 m = min(所办上限, 在册有表决权人数)，以状态块读数为准。",
+"  · **表决**（议题办不办、会议能不能开）用法定票数 m = min(所办上限, 在册有表决权人数)，读状态块的 `[表决] 法定票数 m = N` 行。",
         "  · 表决分两段：先【独立初评】——独立给票与理由；若未定论再进入【公开辩论】——意见公开，可引用、反驳、修改后重投。辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）：它定这场会议最多被提几次动议（**任何 kind 的动议都计入**，程序动议会吃掉一轮辩论），默认 3，到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。",
         "  · 仍未定论的对象**留在原库**，附裁决读数与完整辩论记录，不强判真假；条件成熟可再次提议验证。",
         "  · **永远不要为了让流程往前走而投出你不相信的 1 或 0。** 诚实的「不确定」远好过虚假的「一致」。本所宁可留下未定论，也不要一个骗人的 Verified。",

@@ -149,14 +149,14 @@ ok(toolsSrc.includes('leadershipReading({'), 'tools.js CALLS it', true)
 ok(/leadership\s*\}/.test(toolsSrc) || toolsSrc.includes('leadership }'), 'the overview receipt CARRIES `leadership`', true)
 ok(toolsSrc.includes('leadershipWarning('), 'the overview asks for the warning through the shared helper', true)
 ok(toolsSrc.includes('out.warning'), 'the warning reaches the receipt as a top-level field', true)
-// The prompt-side correction exists and names both halves: the setting and the write path.
-const corr = await import(pathToFileURL(join(PACK_DIR, 'prompts', 'v5r-corrections.js')).href)
-const CORR_LEADER = (corr.V5R_CORRECTION_SECTIONS || []).filter((s) => s && s.name === 'v5r-fix-leader-id')[0]
-ok(CORR_LEADER !== undefined, 'the pack carries a NAMED correction for the leader duty (not a silent hope)', CORR_LEADER && CORR_LEADER.name)
-ok(CORR_LEADER && String(CORR_LEADER.text).includes('vmu.turn.leaderId'), 'the correction names the setting', CORR_LEADER && CORR_LEADER.text.slice(0, 80))
-ok(CORR_LEADER && String(CORR_LEADER.text).includes('vibe_v5_configure'), 'the correction names the write path', true)
-ok(CORR_LEADER && String(CORR_LEADER.text).includes(LEADERSHIP_STATES.CHAIR_WITHOUT_ID), 'the correction names the STATE a reader will see', LEADERSHIP_STATES.CHAIR_WITHOUT_ID)
-ok(CORR_LEADER && CORR_LEADER.order > 800 && CORR_LEADER.order < 900, 'the correction sits in the pack band, after the wording it repairs', CORR_LEADER && CORR_LEADER.order)
+// The prompt-side duty is TAUGHT (ROUND-3: the named correction section was deleted; the duty lives in the charter's
+// leaderless division text, which is read on a turn whose leaderId is not set).
+const charterA = readFileSync(join(PACK_DIR, 'prompts', 'v5r-blocks-a.js'), 'utf8')
+ok(charterA.includes('只有院士席能写领头人') && charterA.includes('vibe_v5_set') && charterA.includes('chair-seated-but-leaderId-empty'), 'the charter names the leaderId write path, the tool and the state a reader will see')
+ok(charterA.includes('vmu.turn.leaderId'), 'the charter names the setting to write')
+const corrMod = await import(pathToFileURL(join(PACK_DIR, 'prompts', 'v5r-corrections.js')).href)
+ok(Array.isArray(corrMod.V5R_CORRECTION_SECTIONS) && corrMod.V5R_CORRECTION_SECTIONS.length === 0, 'the legacy correction ledger is EMPTY (ROUND-3 Lead ruling); the duty is taught in the charter, not in a history note')
+ok(!charterA.includes('【更正·领头人】'), 'the deleted correction does not linger in the charter source')
 
 console.log('')
 if (failed > 0) { for (const f of failures) console.log('FAILED: ' + f) }

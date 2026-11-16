@@ -6,17 +6,17 @@ English | [中文](README.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/ChongCyrus/Vibe-Mathematics)](https://github.com/ChongCyrus/Vibe-Mathematics)
 
-> A **single shipped agent preset** running inside **DeepSeek Harness**: **`vibe-math-vmu`** (the institute system) —
+> The **vmu institute system** inside **DeepSeek Harness**: **one installed directory `vibe-math-vmu` + two preset ids** (framework seat `vibe-math-vmu`; member seat `vibe-math-vmu-member`, registered as a composition row with no directory of its own) —
 > multi-agent collaboration that automatically solves mathematical problems and cross-verifies the conclusions; academicians + resident researchers + temp workers, a public charter, group chat and meetings, a compare-and-set task board and a `Verified/` threshold; state lives in hardened JSON under the institute directory and is **never written into the host session log** (zero token storage cost).
 > **Checkpoint resume / mid-run manual intervention / progress reporting / natural-language driving** are this preset's foundations; institutional differences are expressed by `vibe-math-vmu/packs/<id>` (swap the pack), not by copying a whole preset.
 >
-> **The shipped surface is exactly one preset**: after installing this package, DSH's preset picker shows **`vibe-math-vmu`**.
-> The old `v2`/`v3`/`v4`/`v5` presets are **deprecated and no longer shipped** (`installer.js` `PRESETS` contains only `vibe-math-vmu`, `cordis.patch.yml` declares only that row, and `package.json#files` has no old preset directory).
+> **The shipped surface (three lists, one bundle)**: the installer's `installer.js` `PRESETS` installs **exactly one directory, `vibe-math-vmu`**; the generated `cordis.patch.yml` declares **two preset ids** on DSH ≥ 0.1.7 — `vibe-math-vmu` (framework seat) and `vibe-math-vmu-member` (**member seat**: the same bundle with the six families of host escape hatches removed by `scripts/build-preset-rows.mjs`'s `MEMBER_DROP` — shell, background jobs, self-delegation, network, direct user questions, /goal — plus a `packToolAllow` pack-tool allow-list). The member seat is **not installed by the installer** (no directory/files of its own; it exists only as a composition row), and the DSH ≤ 0.1.6 directory form carries the framework seat only.
+> The old `v2`/`v3`/`v4`/`v5` presets are **deprecated and no longer shipped** (`package.json#files` has no old preset directory).
 > They remain as historical reference only — see [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md); the later sections of this README keep their (retired) architecture descriptions, while the current capability set is `vibe-math-vmu` plus `vibe-math-vmu/docs/`.
 >
-> **To add more presets**: copy/create a bundle under your own id and add a `preset-declaration` row to `cordis.patch.yml` (DSH ≥ 0.1.7), or place the directory in `~/.dsh/.agent-presets/<id>/` (DSH ≤ 0.1.6). See "Shipped surface: the only shipped preset, and how to add more" below.
+> **To add more presets**: copy/create a bundle under your own id and add a `preset-declaration` row to `cordis.patch.yml` (DSH ≥ 0.1.7), or place the directory in `~/.dsh/.agent-presets/<id>/` (DSH ≤ 0.1.6). See "Shipped surface: two preset ids, one installed directory" below.
 
-After installing this plugin package, **one** agent preset appears in DSH's preset selector: `vibe-math-vmu` (display name **Vibe Math VMU**).
+After installing this plugin package, the framework preset `vibe-math-vmu` (display name **Vibe Math VMU**) is available in DSH's preset selector; on DSH ≥ 0.1.7 the **Vibe Math Unify · Member Seat** (`vibe-math-vmu-member`) also appears (see "Shipped surface").
 
 ---
 
@@ -172,7 +172,7 @@ The personas (the prompt the main agent receives) of the historical presets
 
 Two installation methods, choose either one (they can also coexist):
 
-### Method A: one-click install as a plugin package (recommended, installs the single shipped preset)
+### Method A: one-click install as a plugin package (recommended; installs the framework preset `vibe-math-vmu`; the member seat comes from the composition row)
 
 On the desktop app, install `dsh-vibe-math` from **Settings → Plugins**; on the command line, use a profile (**always pin a version**):
 
@@ -190,11 +190,11 @@ dsh plugin --profile <your profile> add github:ChongCyrus/Vibe-Mathematics
 >
 > **Why every example pins `@<version>`**: pnpm resolves a bare package name through the profile's `package.json` and `pnpm-lock.yaml` first, so **without a version you may stay on an OLD version**. Measured locally: `@latest`, `@^2`, `pnpm update --latest` and `pnpm add …@latest` **all four failed to move the install**; **only an explicit version** (e.g. `@2.8.5`) actually upgrades. Install and upgrade both use `add dsh-vibe-math@<version>` (use `add`, not `update`).
 
-Then start a new session and pick **Vibe Math VMU** (the only shipped preset) in the preset picker; the tools are prefixed `vibe_vmu_*` and typing `/vmu` in the input box autocompletes.
+Then start a new session and pick **Vibe Math VMU** (the framework seat) in the preset picker; the tools are prefixed `vibe_vmu_*` and typing `/vmu` in the input box autocompletes. On DSH ≥ 0.1.7 you will also see **Vibe Math Unify · Member Seat** (`vibe-math-vmu-member`, see the "Shipped surface" section).
 **The two DSH generations land in different places, and this package adapts to both**:
 
-- **DSH ≥ 0.1.7 (current)**: agent presets are declared as composition rows. This package declares the **single shipped preset** `vibe-math-vmu`
-- **DSH ≤ 0.1.6**: presets are still directories, and the installer writes the **single shipped preset** into
+- **DSH ≥ 0.1.7 (current)**: agent presets are declared as composition rows. This package declares **two preset ids** in `cordis.patch.yml` (generated by `scripts/build-preset-rows.mjs`): `vibe-math-vmu` (framework seat) and `vibe-math-vmu-member` (member seat)
+- **DSH ≤ 0.1.6**: presets are still directories, and the installer writes the **framework preset** into
 
 **After upgrading the package version, restart DSH: the managed content is replaced wholesale with the new version's bytes — including files you edited by hand.** This is intentional: a preset that is "half old version, half new version" will fail to mount or behave strangely, and you cannot tell from the outside. **The hand edits that get replaced are not lost**: in the directory form the original text is first backed up to `~/.dsh/.agent-presets/.vibe-math-backup/<old version>/<preset>/`, and the file names are listed in the log.
 **If you want to customize a preset, do not edit managed content** — make a copy (the copy action in the preset picker, or declare it under a new id in your own bundle). Note: on current DSH, if you save your own declaration for the **same id**, this package skips registration and logs one line saying so — your declaration wins.
@@ -224,10 +224,17 @@ Then start a new session and select **"Vibe Math VMU"** (the single shipped pres
 
 ---
 
-## 🧭 Shipped surface: the only shipped preset, and how to add more
+## 🧭 Shipped surface: two preset ids, one installed directory (and how to add more)
 
-> **The shipped surface is exactly one preset: `vibe-math-vmu`.** `installer.js` `PRESETS` contains only `{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }`; `cordis.patch.yml` declares only `preset-vibe-math-vmu`; `package.json#files` has no `vibe-math-v2/` … `vibe-math-v5/` directories. DSH's preset picker should show **Vibe Math VMU** only.
+> **The three lists describe the same thing at different granularities — stated once here (2026-11-17 round-3 audit)**:
 
+| List (source of truth) | Fact |
+|---|---|
+| `installer.js` `PRESETS` | **one entry**: `{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }` — the installer installs **one directory** (that is also the DSH ≤ 0.1.6 directory form) |
+| `cordis.patch.yml` (generated by `scripts/build-preset-rows.mjs`; never hand-edit) | **two** preset rows: `preset-vibe-math-vmu` (framework seat `vibe-math-vmu`) + `preset-vibe-math-vmu-member` (**member seat** `vibe-math-vmu-member`); on DSH ≥ 0.1.7 they register through `agentPresets` ⇒ the picker shows **two** |
+| `package.json#files` | ships `cordis.patch.yml` and `vibe-math-vmu/**`; there is **no** separate member-seat directory/file — the member seat reuses the same bundle (the same composition minus `MEMBER_DROP`'s host-escape rows, with a `packToolAllow` pack-tool allow-list) |
+
+- **Why the lists differ (by design)**: the member seat is a **per-child-session preset** (`vmu.turn.childPreset` decides which preset a member child agent gets — see the setting in `vibe-math-vmu/docs/`), not an installable directory; copying it into the installer would create a second copy that drifts. **The installer installs the framework seat only; the member seat exists only as a composition row, so it is available only on DSH ≥ 0.1.7** — DSH ≤ 0.1.6 has no composition-row mechanism and therefore no member seat. That is a known boundary, not a defect.
 - **Institutional differences are expressed by a pack**: `vibe-math-vmu` is the capability surface; institutions/policies live in `vibe-math-vmu/packs/<id>`. Swap the pack instead of copying the whole preset.
 - **To add more presets (customization / secondary development)**: (1) copy `vibe-math-vmu/` into a bundle under a new id (`agent.cordis.yml` / `preset.yml` / `<id>.js` / `host-*.js` / `kernel/**` / `settings/**`); (2) DSH ≥ 0.1.7: add a `preset-declaration` row to `cordis.patch.yml` (copy the `preset-vibe-math-vmu` row and change the `id` and plugin list); (3) DSH ≤ 0.1.6: place the directory in `~/.dsh/.agent-presets/<id>/`; (4) restart DSH and the new preset appears in the picker. When the same id is already declared by this package, the package skips registration and logs one line — your declaration wins.
 - **The old presets (v2–v5 / v5r) are retired and no longer shipped**: historical reference only — see [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md); the "Historical architectures and division of labour" section below keeps their architecture description.

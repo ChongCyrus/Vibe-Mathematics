@@ -24,7 +24,11 @@ console.log('### RUN 79 / TB-2741 — the ten prompt corrections, asserted on as
 test('§1 item 1 the proof path example uses a real seat id and the library root; proof_ref resolves against the root', () => {
   for (const [slot, text] of Object.entries(normal)) {
     assert.ok(text.includes('<roots.libraryRoot>/Members/<你的 id>/Proofs/…'), slot + ': the path example starts at the library root')
-    assert.ok(text.includes('<roots.libraryRoot>/Members/r-acad/Proofs/p-1.md'), slot + ': the example uses the real roster id r-acad')
+    // ROUND-3 audit P2: the hardcoded `r-acad` example is unclear for a member (copying it would write into another
+    // seat's library). The example now uses the reader's own id; the pin follows that, with a lamp that the old
+    // hardcoded form would be caught.
+    assert.ok(text.includes('<roots.libraryRoot>/Members/<你的 id>/Proofs/p-1.md'), slot + ': the example uses the reader own id, not another seat')
+    assert.ok(!text.includes('Members/r-acad/Proofs/p-1.md'), slot + ': the hardcoded r-acad example is gone (audit P2)')
     assert.ok(text.includes('**`proof_ref` 的基准是库根**'), slot + ': proof_ref is said to resolve against the library root')
     assert.ok(!text.includes('Members/acad/Progress/progress.md'), slot + ': the old example with the non-roster id acad is gone')
     assert.ok(!text.includes('Members/acad/'), slot + ': no non-roster id survives in a path example')
@@ -129,8 +133,8 @@ const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
 // puts `final` back into the chair paper bullet, F80-12 derives attendance from `vmu.meetings.attendDeniedSeats` and
 // names `vmu.meetings.eligibleSeats` for the vote (the review rewrite: attendance never decided the vote), F80-4
 // restores the two legal spellings of an evidence pointer (paper phases are outside this water level). Per seat
-// + 52 / + 49 / + 30, sum + 131 (ROUND-2 + final17b).
-const TB2752_RUN80_FIXES = { chair: 52, member: 49, temp: 30, sum: 131 } // ROUND-1 P0/P1 prompt fixes
+// -826 / -803 / -822, sum -2451 (ROUND-3: legacy corrections deleted).
+const TB2752_RUN80_FIXES = { chair: -734, member: -764, temp: -783, sum: -2281 } // ROUND-1 P0/P1 prompt fixes
 test('§11 three-seat normal sum is the baseline plus the corrections plus the RUN 272 restore, and nothing else', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   assert.equal(normalSum, TB2741_BASELINE.sum + TB2741_CORRECTIONS_NET.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum,

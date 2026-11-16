@@ -6,16 +6,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/ChongCyrus/Vibe-Mathematics)](https://github.com/ChongCyrus/Vibe-Mathematics)
 
-> 运行在 **DeepSeek Harness** 内的**唯一发货 preset：`vibe-math-vmu`**（研究所体系）——
+> 运行在 **DeepSeek Harness** 内的 **vmu 研究所体系**：**1 个安装目录 `vibe-math-vmu` + 2 个 preset id**（框架席 `vibe-math-vmu`；成员席 `vibe-math-vmu-member`，composition-row 注册、无独立目录）——
 > 用多代理协作自动求解数学问题并对结论做多代理交叉验证；院士 + 常驻研究员 + 临时工，公共规章、群聊与会议、
 > compare-and-set 任务板、`Verified/` 门槛；状态存于研究所目录下的加固 JSON，**不写入宿主会话日志**（零 token 存储成本）。
 > **断点续跑 / 中途人工干预 / 进度汇报 / 自然语言驱动**是这个 preset 的底座能力；机构差异通过 `vibe-math-vmu/packs/<id>`（换 pack）表达。
 >
-> **发货面只有一个 preset**：安装本包后，DSH 预设选择器里出现的是 **`vibe-math-vmu`**。
-> `v2`/`v3`/`v4`/`v5` 等旧 preset **已弃用、不再随包发货**（`installer.js` 的 `PRESETS` 只有 `vibe-math-vmu`，`cordis.patch.yml` 也只声明这一行；`package.json#files` 里没有旧 preset 目录）。
+> **发货面（三份清单，一个 bundle）**：安装器 `installer.js` 的 `PRESETS` **只装 1 个目录 `vibe-math-vmu`**；生成物 `cordis.patch.yml` 在 DSH ≥ 0.1.7 上声明 **2 个 preset id**——`vibe-math-vmu`（框架席）与 `vibe-math-vmu-member`（**成员席**：同一套 bundle，按 `scripts/build-preset-rows.mjs` 的 `MEMBER_DROP` 去掉 shell/后台作业/自我分派/联网/直接问用户//goal 六类宿主出口，并带 `packToolAllow`）。成员席**不由安装器安装**（无独立目录/文件，只在组合行里注册）；DSH ≤ 0.1.6 的目录形态只有框架席。
+> `v2`/`v3`/`v4`/`v5` 等旧 preset **已弃用、不再随包发货**（`package.json#files` 里没有旧 preset 目录）。
 > 旧 preset 只作历史参考，见 [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md)；本 README 后续章节保留它们的架构描述（**已下线**），当前可用能力以 `vibe-math-vmu` 与 `vibe-math-vmu/docs/` 为准。
 >
-> **想增加更多 preset**：复制/新建一个 bundle，用自己的 id 在 `cordis.patch.yml` 里加一条 `preset-declaration` 行（DSH ≥ 0.1.7），或把目录放进 `~/.dsh/.agent-presets/<id>/`（DSH ≤ 0.1.6）；见「[发货面：唯一发货 preset 与如何加更多](#-发货面唯一发货-preset-与如何加更多)」。
+> **想增加更多 preset**：复制/新建一个 bundle，用自己的 id 在 `cordis.patch.yml` 里加一条 `preset-declaration` 行（DSH ≥ 0.1.7），或把目录放进 `~/.dsh/.agent-presets/<id>/`（DSH ≤ 0.1.6）；见「[发货面：两个 preset id、一个安装目录](#-发货面两个-preset-id一个安装目录与如何加更多)」。
 
 安装本插件包后，DSH 的预设选择器里会出现**一个** agent preset：`vibe-math-vmu`（显示名 **Vibe Math VMU**）。
 
@@ -176,7 +176,7 @@ flowchart TB
 
 两种安装方式，任选其一（也可并存）：
 
-### 方式 A：作为插件包一键安装（推荐，装出唯一发货 preset）
+### 方式 A：作为插件包一键安装（推荐，装出框架 preset `vibe-math-vmu`；成员席由组合行提供）
 
 桌面版在「设置 → 插件」里安装 `dsh-vibe-math`；命令行 profile 用（**务必带版本号**）：
 
@@ -194,11 +194,11 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 >
 > **为什么示例都带 `@<版本>`**：pnpm 优先按 profile 的 `package.json` 与 `pnpm-lock.yaml` 解析裸包名，**不带版本可能装到旧版**；本机实测 `@latest`、`@^2`、`pnpm update --latest`、`pnpm add …@latest` **四种写法都拿不到新版**，**只有显式版本**（如 `@2.8.5`）会真的升级。安装与升级都用 `add dsh-vibe-math@<版本>`（用 `add` 而非 `update`）。
 
-之后新建会话，在预设选择器里选择 **Vibe Math VMU**（唯一发货 preset）即可使用；`vibe-math-vmu` 的工具前缀是 `vibe_vmu_*`，输入框键入 `/vmu` 有自动补全。
+之后新建会话，在预设选择器里选择 **Vibe Math VMU**（框架席）即可使用；`vibe-math-vmu` 的工具前缀是 `vibe_vmu_*`，输入框键入 `/vmu` 有自动补全。DSH ≥ 0.1.7 上还会看到 **Vibe Math Unify · 成员席**（`vibe-math-vmu-member`，见「发货面」一节）。
 **两个 DSH 世代的落点不同，本包自动适配**：
 
-- **DSH ≥ 0.1.7（当前）**：agent preset 由组合行声明。本包在 `cordis.patch.yml` 里声明**唯一发货 preset** `vibe-math-vmu`
-- **DSH ≤ 0.1.6**：preset 仍是目录形式，安装器把**唯一发货 preset** 写入
+- **DSH ≥ 0.1.7（当前）**：agent preset 由组合行声明。本包在 `cordis.patch.yml`（`scripts/build-preset-rows.mjs` 生成）里声明**两个 preset id**：`vibe-math-vmu`（框架席）与 `vibe-math-vmu-member`（成员席）
+- **DSH ≤ 0.1.6**：preset 仍是目录形式，安装器把**框架 preset** 写入
 
 **升级包版本后重启 DSH，受管内容会被整体替换成新版本的字节——包括你手动改过的文件。** 这是有意的：一个"一半旧版、一半新版"的 preset 会挂不上或行为诡异，而你在外面看不出来。**被替换掉的手改内容不会丢**：目录形式下原文会先备份到 `~/.dsh/.agent-presets/.vibe-math-backup/<旧版本>/<preset>/`，文件名会在日志里列出。
 **要自定义 preset 就别改受管内容**——复制一份（预设选择器里的复制动作，或在自己的 bundle 里用新的 id 声明）。注意：在当前 DSH 里你若为**同名 id** 保存了自己的声明，本包会放弃注册并打印一行说明，以你的声明为准。
@@ -228,10 +228,17 @@ dsh plugin --profile <你的 profile> add github:ChongCyrus/Vibe-Mathematics
 
 ---
 
-## 🧭 发货面：唯一发货 preset 与如何加更多
+## 🧭 发货面：两个 preset id、一个安装目录（与如何加更多）
 
-> **发货面（shipped surface）= 1 个 preset：`vibe-math-vmu`。** `installer.js` 的 `PRESETS` 只有 `{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }`；`cordis.patch.yml` 只声明 `preset-vibe-math-vmu` 一行；`package.json#files` 里没有 `vibe-math-v2/`…`vibe-math-v5/` 目录。DSH 预设选择器里应只看到 **Vibe Math VMU**。
+> **三份清单说的是同一件事，粒度不同——这里一次写清（2026-11-17 round-3 审计）**：
 
+| 清单（真源） | 事实 |
+|---|---|
+| `installer.js` 的 `PRESETS` | **1 条**：`{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }`——安装器只装**一个目录**（DSH ≤ 0.1.6 的目录形态就是它） |
+| `cordis.patch.yml`（`scripts/build-preset-rows.mjs` 生成，勿手改） | **2 条** preset row：`preset-vibe-math-vmu`（框架席 `vibe-math-vmu`）+ `preset-vibe-math-vmu-member`（**成员席** `vibe-math-vmu-member`）；DSH ≥ 0.1.7 走 `agentPresets` 注册 ⇒ 选择器里会出现**两个** |
+| `package.json#files` | 含 `cordis.patch.yml` 与 `vibe-math-vmu/**`；**没有**成员席的独立目录/文件——成员席复用同一个 bundle（同一份 composition 去掉 `scripts/build-preset-rows.mjs` 的 `MEMBER_DROP` 九行/六类宿主出口，并带 `packToolAllow` 限包工具） |
+
+- **为什么不一致（有意）**：成员席是**按子会话声明的 preset**（`vmu.turn.childPreset` 决定成员子代理用哪个 preset，见 `vibe-math-vmu/docs/` 的设置表），不是一份可安装目录；把它复制进 installer 会多一份会漂移的副本。**安装器只装框架席；成员席只在组合行注册，因此只在 DSH ≥ 0.1.7 可用**——DSH ≤ 0.1.6 没有组合行机制，成员席不可得，这是已知边界（不是缺陷）。
 - **机构差异用 pack 表达**：`vibe-math-vmu` 是能力面，机构/政策在 `vibe-math-vmu/packs/<id>`；换 pack，而不是复制整个 preset。
 - **要加更多 preset（自定义 / 二次开发）**：① 复制 `vibe-math-vmu/` 为新 id 的 bundle（`agent.cordis.yml` / `preset.yml` / `<id>.js` / `host-*.js` / `kernel/**` / `settings/**`）；② DSH ≥ 0.1.7：在 `cordis.patch.yml` 加一条 `preset-declaration`（照抄 `preset-vibe-math-vmu` 行，改 `id` 与插件清单）；③ DSH ≤ 0.1.6：把目录放进 `~/.dsh/.agent-presets/<id>/`；④ 重启 DSH，选择器里出现新 preset。同名 id 已被本包声明时，本包会放弃注册并打印说明（以你的声明为准）。
 - **旧 preset（v2–v5 / v5r）已下线、不随包发货**：仅作历史参考，见 [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md)；下面「历史架构与分工」一节保留它们的架构说明。
@@ -641,7 +648,7 @@ v3 与 v2 同一开关、同一时序（严格收口；**在调度器停止之�
 **v2**：
 - **（DSH ≤ 0.1.6 的目录形式）** 安装器带**版本化自动更新**：每次 DSH 启动时对比包版本与 `<presetRoot>/.vibe-math-installed.json` 记录——**版本一变（或无记录的老安装首次运行）就整体替换受管文件，不看它是否被改过**；被替换的手改原文先备份到 `<presetRoot>/.vibe-math-backup/<旧版本>/<preset>/` 并在日志里列出。同一个版本内**不重写任何文件**（重启 DSH 不会改写 preset、也不会扰动它按 mtime 记的生成代际），缺失文件随时补回。想强制全量重装：删除受管 preset 目录后重启 DSH（当前发货面只有一个 `vibe-math-vmu`）。
   在 DSH ≥ 0.1.7 上安装器**不写这些目录**（预设由上文「安装」里的组合行提供），启动时只会提示旧副本可安全删除。
-- **在 DSH ≤ 0.1.6 上，这些受管 preset 目录由安装器负责**：删掉其中任一文件或整个目录，只会在下次启动 DSH 时被补回（这正是上面"强制全量重装"可行的原因）。DSH ≤ 0.1.6 的目录形态也只装**唯一发货 preset**（旧 v2–v5 目录不随包）；在 DSH ≥ 0.1.7 上它们不再被读取、也不再被写入，直接删掉即可；想彻底不要本包的预设，就卸载本包（`dsh plugin --profile <你的 profile> remove dsh-vibe-math`）。
+- **在 DSH ≤ 0.1.6 上，这些受管 preset 目录由安装器负责**：删掉其中任一文件或整个目录，只会在下次启动 DSH 时被补回（这正是上面"强制全量重装"可行的原因）。DSH ≤ 0.1.6 的目录形态只装**框架 preset**（成员席是 composition-row only，不提供目录形态；旧 v2–v5 目录不随包）；在 DSH ≥ 0.1.7 上它们不再被读取、也不再被写入，直接删掉即可；想彻底不要本包的预设，就卸载本包（`dsh plugin --profile <你的 profile> remove dsh-vibe-math`）。
 - `flat` 裁决在辩论不一致时取各验证者概率的**等权平均**（不再直接判 `0.5`；早期把高置信分歧 0.9 vs 1 误判为 0.5 的问题已在 v2/v3 修复）；`forced` 按历史准确率+严谨性加权，且准确率只在对象此后获得布尔裁决时计分。
 - `never` 优先级的问题/命题**永不调度**，且不阻塞严格终止（视为主动弃权）。
 - 受管 preset 文件互相独立、可共存；同一会话同时只能选一个 preset。

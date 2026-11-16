@@ -132,7 +132,15 @@ export const PACK_DECLARATION_KEYS = Object.freeze([
 // keys whose consumer exists at CONSTRUCTION time: phases/noticeBlock are entry-runtime assembly (PACK_RUNTIME folds
 // them before the kernel for a declared id, so they are refused only when a manifest declares them and the entry did
 // NOT fold it) and meetingTypeCatalog is folded into the settings snapshot.
-export const PACK_DECLARATION_TOO_LATE_KEYS = Object.freeze(['phases', 'noticeBlock', 'meetingTypeCatalog'])
+export const PACK_DECLARATION_TOO_LATE_KEYS = Object.freeze(['phases', 'noticeBlock', 'meetingTypeCatalog',
+  // ★★★ ROUND-3 P1 (C#2): `replyFields` WAS A DECLARATION WITH ZERO EFFECT ON THE ORDINARY apply() PATH. It was listed in
+  // PACK_DECLARATION_KEYS (and the entry folds it into the turn loop BEFORE construction), but it was NOT in this
+  // too-late gate — so `vibe_vmu_pack {action:"apply"}` ACCEPTED a manifest declaring it and the fields silently did
+  // nothing (the turn loop FIELD_OWNERS table is fixed at build time). Declared-but-not-folded is now refused by name
+  // with VMU_PACK_DECLARATION_TOO_LATE, exactly like phases/noticeBlock; a manifest the ENTRY folded is unaffected
+  // (the gate checks the folded ledger first).
+  'replyFields',
+])
 // ★ TB-2649 / RUN 258 - A DECLARATION NO CONSUMER CAN EVER CARRY. office and agendaStateMachine have no fold target
 // and no post-construction mechanism, so they can only be REFUSED - and they must be refused for the RIGHT reason
 // (unconsumable, not too late). The old fold ledger recorded every MENTIONED key, including these two, so the gate at

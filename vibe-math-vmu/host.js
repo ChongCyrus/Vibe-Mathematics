@@ -624,7 +624,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           // NOT charged when that is the case. detail:'full' carries the same object (one source, compacted once).
           const u = read || { usageWired: false, failure: { code: "VMU_ENGINE_UNAVAILABLE", message: "no model-usage tracker is attached to this kernel" } }
           const cov = u.coverage && typeof u.coverage === "object" ? u.coverage : {}
-          out.usage = { usageWired: u.usageWired === true, source: u.source === undefined ? null : u.source,
+          out.usage = { usageWired: u.usageWired === true, sessionStoreShape: u.sessionStoreShape === undefined ? null : u.sessionStoreShape, provenanceMeasured: u.provenanceMeasured === true,
             inputTokens: u.inputTokens === undefined ? null : u.inputTokens,
             outputTokens: u.outputTokens === undefined ? null : u.outputTokens, totalTokens: u.totalTokens === undefined ? null : u.totalTokens,
             chargedTokens: u.chargedTokens === undefined ? null : u.chargedTokens, tokensLimit: u.tokensLimit === undefined ? null : u.tokensLimit,
@@ -639,7 +639,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             failure: u.failure ? { code: u.failure.code || null, message: u.failure.message || null } : null,
             chargeFailure: u.chargeFailure ? { code: u.chargeFailure.code || null, message: u.chargeFailure.message || null } : null,
             means: u.usageWired === true
-              ? "provider meter over the root AND ALL DESCENDANTS (recursive; depth " + (cov.descendantDepthMax === undefined ? "?" : cov.descendantDepthMax) + ", " + (cov.attributedSessions === undefined ? "?" : cov.attributedSessions) + " attributed session(s)); unattributed sessions are named in coverage and NOT charged here (never 0); ledgerMode per-kernel = each kernel charges its own state budget, so a cross-kernel total is the SUM of chargedTokens (no single ledger); source real|fake says whether the meter is a real SessionStore shape or a list-only stub"
+              ? "provider meter over the root AND ALL DESCENDANTS (recursive; depth " + (cov.descendantDepthMax === undefined ? "?" : cov.descendantDepthMax) + ", " + (cov.attributedSessions === undefined ? "?" : cov.attributedSessions) + " attributed session(s)); unattributed sessions are named in coverage and NOT charged here (never 0); ledgerMode per-kernel = each kernel charges its own state budget, so a cross-kernel total is the SUM of chargedTokens (no single ledger); sessionStoreShape real|fake names the SERVICE SHAPE only (provenanceMeasured:false — shape is not provenance)"
               : "model token usage is NOT WIRED on this host (" + ((u.failure && u.failure.message) || "no readable token meter") + ") — usageWired:false, NOT a claim of 0 tokens spent" }
         } catch (e) {
           out.usage = { usageWired: false, inputTokens: null, outputTokens: null, totalTokens: null, chargedTokens: null, tokensLimit: null,
@@ -2081,7 +2081,8 @@ function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
   const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
   const usageOf = (row) => { try { const t = row && row.projections && row.projections.values ? row.projections.values.tokenUsage : null; return t && typeof t === "object" ? t : null } catch (e) { return null } }
   const rowIdOf = (row) => { const v = row && (row.sessionId !== undefined ? row.sessionId : row.id); return v === undefined || v === null ? null : String(v) }
-  /** Classify the SERVICE SHAPE. A list-only object is a test stub shape, not DSH's SessionStore. */
+  /** Classify the SERVICE SHAPE ONLY (no provenance inference). A list-only object is a test-stub shape, not DSH's
+   * SessionStore; three methods do not prove the rows came from real DSH either — the reading says so via measured:false. */
   const sourceOf = (store) => {
     const has = (n) => !!(store && typeof store[n] === "function")
     if (has("get") && has("list") && (has("create") || has("prepare"))) return "real"
@@ -2184,7 +2185,7 @@ function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
       const lim = scope && scope.limits ? Number(scope.limits.tokens) : NaN
       limit = Number.isFinite(lim) ? lim : null
     } catch (e) { limit = null }
-    return { usageWired: state.wired === true, source: state.source, usageSource: "sessions.projections.values.tokenUsage",
+    return { usageWired: state.wired === true, sessionStoreShape: state.source, provenanceMeasured: false, usageSource: "sessions.projections.values.tokenUsage",
       coverage: Object.assign({}, state.coverage),
       inputTokens: state.inputTokens, outputTokens: state.outputTokens, cacheTokens: state.cacheTokens,
       totalTokens: state.totalTokens, chargedTokens: state.chargedTokens, tokensLimit: limit, lastReadAt: state.lastReadAt,
@@ -2192,7 +2193,7 @@ function createModelUsageTracker({ ctx, kernel, log = () => {} }) {
       failure: state.failure, chargeFailure: state.chargeFailure,
       means: state.wired !== true
         ? "model token usage is NOT WIRED on this assembly: " + (state.failure && state.failure.message ? state.failure.message : "the host exposes no readable token meter") + " — the budget reports that absence (usageWired:false), it does not claim 0 tokens were spent"
-        : "model token usage is the HOST'S provider-reported meter, summed over the root session AND ALL ITS DESCENDANTS (recursive parent-children walk; depth " + state.coverage.descendantDepthMax + ", " + state.coverage.attributedSessions + " session(s)). Sessions that cannot be attributed to this root are NAMED in coverage.unattributedSessions/unattributedTokens and are NOT charged to this kernel (never counted as 0). Every new total is charged to the kernel budget scope model-usage as a DELTA; ledger.mode says per-kernel (no single institute ledger). source says whether the meter is a real SessionStore shape or a list-only test stub. A chargeFailure names the budget refusal (e.g. VMU_RESOURCE_BUDGET) instead of silently capping" }
+        : "model token usage is the HOST'S provider-reported meter, summed over the root session AND ALL ITS DESCENDANTS (recursive parent-children walk; depth " + state.coverage.descendantDepthMax + ", " + state.coverage.attributedSessions + " session(s)). Sessions that cannot be attributed to this root are NAMED in coverage.unattributedSessions/unattributedTokens and are NOT charged to this kernel (never counted as 0). Every new total is charged to the kernel budget scope model-usage as a DELTA; ledger.mode says per-kernel (no single institute ledger). sessionStoreShape says the SHAPE of the sessions service (real|fake|unknown) but provenanceMeasured:false says the rows themselves are not proven real DSH output (a three-method stub classifies as \"real\" by shape; no integration probe runs here). A chargeFailure names the budget refusal (e.g. VMU_RESOURCE_BUDGET) instead of silently capping" }
   }
   const refresh = async () => {
     if (state.lock) return state.lock

@@ -304,7 +304,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## C5 · 「更正·领头人」历史说明常驻 12/12
 
-> **状态（task-56，2026-11-06）：部分已修（降级）。** `v5r-fix-leader-id` 节内压缩，但**不能删**：`tests/vmu-prompt-corrections.test.mjs:63-69` 要求五节都在、`oldNeedles` 逐字含「没有在册院士」「vmu.turn.leaderId」「vibe_v5_configure」「leadership.code」，且每节 ≤400 字。本批五段更正合计 1 485→1 232（各节都保住 marker + needles）。要真正按相位裁剪得改更正段的装配策略（`v5r-corrections.js` 的 phase 门控 + 测试契约），属机制层。
+> **状态（ROUND-3，2026-11-17 更新：五节已按 Lead 裁定删除）。** 原 task-56（2026-11-06）的「部分已修（降级）」记录保留如下，但**那条「不能删」的契约已作废**：`tests/vmu-prompt-corrections.test.mjs` 现在断言的是**相反面**——`SECTIONS.length === 0`（更正台账为空）、五个旧名（`v5r-fix-formal` 等）与五个 `【更正·…】` marker **不出现在任何随包装配**里、且两条无家可归的事实（`release` 不是 `task_update` 动作；`end_verify`/`formal_proof` 不得调用）在删除前已折叠进 `reply-compact` 并有断言。本节以下内容降为**历史记录**（不再有测试要求这些 389 字常驻；行号引用随测试改写失效，故不再写行号）。
 - **位置**：`v5r-fix-leader-id`（12/12，389 字）
 - **原文（逐字）**：
   > `【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。`vibe_v5_start` 坐好院士席时会**自动**写入；手动 `hire` 到 chair 席位**不会**——那就自己 `vibe_v5_set { key:"vmu.turn.leaderId", value:"<同一代号>", why:"安置院士" }`…`
@@ -358,7 +358,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D3 · 五段「更正·」共 1 485 字，讲的是"旧措辞作废"
 
-> **状态（task-56，2026-11-06）：部分已修（降级）。** 合计 1 485→1 232（`v5r-fix-formal` 399、`v5r-fix-leader-id`、`v5r-fix-m-vote`、`v5r-fix-json-reply`、`v5r-fix-tool-help` 各自缩一到两档）。**不能按建议「合一/删节」**：`tests/vmu-prompt-corrections.test.mjs:63-69` 要求五节五 marker 全在、needles 逐字、每节 ≤400 字、order 890-894，`SUPERSEDES` 还要求四段所属 marker 在真实装配里。
+> **状态（ROUND-3，2026-11-17：五节已按 Lead 裁定全部删除）。** 原 task-56（2026-11-06）「不能按建议合一/删节」的记录保留如下，但**该契约已作废**：`tests/vmu-prompt-corrections.test.mjs` 已改写为断言**相反面**（`SECTIONS.length === 0`、五旧名/五 marker 不在任何随包装配、折叠事实存活），不再要求五节/needles/≤400 字/order 890-894。以下内容降为历史记录（行号引用随测试改写失效，故不再写行号）。
 - **位置（12/12 全部）**：`v5r-fix-leader-id`(389)、`v5r-fix-m-vote`(309)、`v5r-fix-formal`(308)、`v5r-fix-json-reply`(293)、`v5r-fix-tool-help`(186)
 - **原文（示例，逐字）**：
   > `【更正·m 票】旧说法「按 m 票布尔一致决定 / 凑够 m …`
@@ -607,7 +607,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 | --- | --- |
 | `node scripts/sim/audit/prompt-budget.mjs` | **PASS**（chair/normal 31 865，baseline 32 442，Δ −577） |
 | `node tests/vmu-run241-prompt-budget.test.mjs` | 24 passed / 0 failed |
-| `node tests/vmu-prompt-corrections.test.mjs` | 83 passed / 0 failed |
+| `node tests/vmu-prompt-corrections.test.mjs` | 83 passed / 0 failed（ROUND-3 改写前读数；现套件断言五节已删除） |
 | `node tests/vmu-turn.test.mjs` | 272 passed / 0 failed |
 | `tests/*prompt*.test.mjs` 全批 | 0 failed（含 `vmu-run239-prompts` 47/0、`type-coverage` 15/0、`no-holes` 28/0、`g7` 66/0、`retired-mechanisms` 68/0、`live-facts` 29/0、`policy-live` 25/0、`vmu-prompt` 70/0） |
 | 12 组合空节 | **0** |
@@ -665,7 +665,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 - `node scripts/sim/audit/prompt-budget.mjs --mutants` → `prompt-budget mutants: PASS (both injected failures were caught)`
 - `node tests/vmu-run241-prompt-budget.test.mjs` → 24 passed, 0 failed
 - `node tests/vmu-run239-prompts.test.mjs` → 47 passed, 0 failed
-- `node tests/vmu-prompt-corrections.test.mjs` → 83 passed, 0 failed
+- `node tests/vmu-prompt-corrections.test.mjs` → 83 passed, 0 failed（ROUND-3 改写前；现断言五节已删除）
 - `node tests/vmu-run242-feedback65.test.mjs` → 62 passed, 0 failed
 - `node tests/vmu-turn.test.mjs` → 272 passed, 0 failed
 - `node tests/sim-assembly-parity.test.mjs` → 20 passed, 0 failed
@@ -684,7 +684,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 - **D7（工具长清单瘦身）**：工具行由 `vibe-math-vmu/packs/v5r/middleware/seat-faces.js` 的 `seatBulletLines()` 渲染，`tests/vmu-v5r-tools.test.mjs:1929-1932`、`tests/vmu-run31-seat-faces.test.mjs` 双向比对，且 `prompt-sections.mjs:80-91` 的 13 条 PINNED_MARKERS 钉住若干句。要动必须同时改 `seat-faces.js` 与两侧测试，越出本批写域，故未做。
 - **C3 的 `v5r-formal-work-rendered`（469 字，仅 verify）**：正文含字面 `<VIBEMATH>` 且被 `tests/vmu-prompt-type-coverage.test.mjs` 的语料行正则认领，删行即红；根治方式是把该段并进 `v5r-verify-formal-addendum` 的渲染层，属机制层。
-- **D3 的「合一」**：五节更正受 `tests/vmu-prompt-corrections.test.mjs` 的节数/marker/needles/≤400 字契约约束，只能逐节瘦身，不能合并成一段。
+- **D3 的「合一」**：五节更正**曾**受 `tests/vmu-prompt-corrections.test.mjs` 的节数/marker/needles/≤400 字契约约束（ROUND-3 已删除该契约并删除五节，本节为历史记录）。
 
 ### 10.6 教训
 

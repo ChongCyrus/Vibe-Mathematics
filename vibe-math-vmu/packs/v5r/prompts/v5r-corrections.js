@@ -36,71 +36,11 @@ export const V5R_CORRECTION_BASE_ORDER = 890
 /** The maximum characters one correction may carry (see the house rule above). */
 export const V5R_CORRECTION_MAX_CHARS = 400
 
-export const V5R_CORRECTION_SECTIONS = Object.freeze([
-  Object.freeze({
-    name: 'v5r-fix-json-reply',
-    order: 890,
-    range: 'pack',
-    source: 'v5r-correction:reply-shape',
-    // Old wording: "每轮手写一段 json 代码围栏只适用于子代理交付" (the reply-spec/corpus passages).
-    // Real mechanism: kernel/turn/index.js:1958-2004 parse() tiers (fenced -> bare -> named refusal) is the member
-    //   channel under activation/one-shot delivery, where kernel/turn/index.js:1842-1843 refuses op:"reply" with
-    //   VMU_TURN_NO_PENDING_MEMBER and kernel/turn/index.js:445-450 appends the same delivery note.
-    //   ★ ROUND 35 inverted this correction's direction: it had told members the fence was only for subagents.
-    text: [
-      '【更正·回复形状】成员回合由宿主派发，没有待回回合；可用通道就是回复正文末尾那段 json 代码围栏（坏 ⇒ VMU_TURN_BAD_JSON），`op:"reply"` 只适用于所办代转；两通道同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议举手/邀请用 vibe_vmu_meeting。（「每轮手写一段 json 代码围栏」不再成立。）',
-    ].join('\n'),
-  }),
-  Object.freeze({
-    name: 'v5r-fix-tool-help',
-    order: 891,
-    range: 'pack',
-    source: 'v5r-correction:tool-help-signature',
-    // Old wording: `vibe_v5_tool_help({"tool":"工具名称"})` (v5r-blocks-b.js:235 and 46 generated fixtures).
-    // Real mechanism: packs/v5r/tools.js:243-265 — only `member`; the answer is kernel.toolsView for that seat.
-    text: [
-'【更正·工具查询】vibe_v5_tool_help 只收 {member}（必填）；只传 {"tool":"…"} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。',
-    ].join('\n'),
-  }),
-  Object.freeze({
-    name: 'v5r-fix-formal',
-    order: 892,
-    range: 'pack',
-    source: 'v5r-correction:formal-fields',
-    // Old wording: rule 10 in v5r-charter-hard-rules ("end_verify 的 formal_proof", v5r-blocks-a.js:196) and the
-    // persona capture. Real mechanism: kernel/turn/index.js:60 FIELD_OWNERS.formal -> vmu.formal op 'check'
-    // (kernel/formal.js:109-176, requires statement + proof); meetings open with kind 'verify-request'.
-    text: [
-      '【更正·形式化】end_verify 与 formal_proof 不存在。回执 `formal` **只收 {statement, proof}**（其它键＝formal-shape 跳过）；阻塞用 `vibe_v5_lean_archive { kind:"blocked", name }`、保真缺陷由**主席**用保真工具记录（形参见工具声明，note 必填；非主席把偏差写进 reason 请主席撤回）；`release` 不是 `vibe_v5_task_update` 动作（放回用 transition,to:open）。落盘唯一入口是 vibe_v5_verified_promote（warrant）。旧名不要调用 end_verify。',
-    ].join('\n'),
-  }),
-  Object.freeze({
-    name: 'v5r-fix-m-vote',
-    order: 893,
-    range: 'pack',
-    source: 'v5r-correction:m-vote',
-    // Old wording: "按 m 票布尔一致决定" wherever m reads like a count. Real mechanism:
-    // settings/schema.js:145 quorumRule (m-unanimous|all-unanimous) + :146 quorumCap doc (m = min(cap, voters));
-    // kernel/ballot.js defaultTally — not-every-voter => undecided, all-for => true, all-against => false, split => undecided.
-    text: [
-      '【更正·m 票】m 是法定票数（quorumCap 派生，由框架 quorumOf 计算并具名拒）。定论条件由 vmu.meetings.quorumRule 控制，默认 m-unanimous：kernel/ballot.js 的 defaultTally 要求全体都投出布尔值且一致——未投满或票分裂 ⇒ undecided。（「m 票布尔一致」不是规则。）',
-    ].join('\n'),
-  }),
-  Object.freeze({
-    name: 'v5r-fix-leader-id',
-    order: 894,
-    range: 'pack',
-    source: 'v5r-correction:leader-id',
-    // MEASURED on the full live run 2026-10-24 (_oneoff/vm-slv/full-1024-033834.jsonl): the office seated the
-    // academician with vibe_vmu_control {action:"hire", slot:"chair"} and every member prompt still said
-    // 「本所当前没有在册院士」, because vmu.turn.leaderId (settings/schema.js, default '') was never written and the
-    // pack's leader-pair policy may only name a leader it can PROVE is on staff. The charter texts cannot change
-    // (capture layer frozen by T71 parity), so the missing half is the OFFICE'S DUTY — stated here, read back by
-    // vibe_v5_overview.leadership (packs/v5r/leadership.js) so it cannot fail silently.
-    text: [
-      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空；没有在册院士写入前就是空）。`vibe_v5_start` 坐好院士席会**自动**写入；手动 `hire` 到 chair 席位**不会**——只有院士席能用 `vibe_v5_set` 写（等价：`vibe_v5_configure` 同 key），院士离开时清空；`vibe_v5_overview.leadership.code` 会具名说出情形（`chair-seated-but-leaderId-empty` 即席位有人但没写）。',
-    ].join('\n'),
-  }),
-])
+// ★ ROUND-3 (2026-11-17, Lead ruling): THE FIVE LEGACY LEDGER SECTIONS ARE DELETED. They were read by every seat in
+// every prompt (1,067 chars x 35) and all five restated rules that live in their own sections now (release/shape ->
+// reply-compact, m -> charter-voting, leaderId -> charter-division, tool_help -> tools-resource). The two facts that
+// had no other home (`release` is not a task_update action, `end_verify`/`formal_proof` must not be called) were folded
+// into reply-compact BEFORE deletion, and tests/vmu-prompt-corrections asserts the absence + those facts in the assembly.
+export const V5R_CORRECTION_SECTIONS = Object.freeze([])
 
 export default V5R_CORRECTION_SECTIONS

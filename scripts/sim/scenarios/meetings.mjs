@@ -49,6 +49,8 @@ export const settings = { 'vmu.meetings.lateAfterMs': 1 }
 export async function meetings(h, { log = () => {} } = {}) {
   const steps = []
   const highlights = {}
+  /** Hard contract checks (ROUND-3 E10/E16). A non-empty list fails the run BY NAME (run.mjs reads result.failures). */
+  const failures = []
   const NOW = 1_800_000_000_000 // the fixed clock harness.mjs boots with (its default `clock`)
   const as = (id) => ({ as: { agent: { id } } })
   const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -83,14 +85,32 @@ export async function meetings(h, { log = () => {} } = {}) {
   //      A type whose procedure is null is NOT a gap: ordinary has no recommended skeleton by decision (L45-46).
   const types = {}
   for (const type of ['ordinary', 'academic', 'closure', 'paper', 'planning']) {
-    const r = await step('types/' + type, () => h.call('vibe_v5_meeting', {
+    // ROUND-3 E10: the chair convene can SET the meeting's own wall-clock upper bound (`durationMs`, [300000,
+    // 7200000] ms). The mapped step `types/ordinary` is the one the rule map points at, so IT carries the chair-set
+    // bound; without it the receipt only ever reported the deployment default
+    // (`wallLimitMsSource:"vmu.meetings.hardLimitMs"`) and "the academician sets the bound" was never measured.
+    const r = await step('types/' + type, () => h.call('vibe_v5_meeting', Object.assign({
       agenda: type + ' 议程：只压机制，不做数学。',
       title: type + ' 会议',
       type,
       member: 'r-acad',
-    }))
+    }, type === 'ordinary' ? { durationMs: 3_600_000 } : {})))
     types[type] = pick(r, ['ok', 'meeting', 'type', 'state', 'procedureBinding', 'pendingSteps', 'kind', 'kindIsLabelOnly'])
     if (r && r.procedure && Array.isArray(r.procedure.steps)) types[type].procedureSteps = r.procedure.steps.map((s) => s.phase)
+    if (type === 'ordinary') {
+      types.ordinary.wallLimitMs = r && r.wallLimitMs
+      types.ordinary.wallLimitMsSource = r && r.wallLimitMsSource
+      types.ordinary.durationMs = 3_600_000
+      if (!(r && r.ok === true && r.wallLimitMsSource === 'convene' && r.wallLimitMs === 3_600_000)) {
+        failures.push({
+          code: 'E10-CONVENE-DURATION-NOT-EFFECTIVE',
+          step: 'types/ordinary',
+          message: 'the chair passed durationMs:3600000 but the receipt does not attribute the bound to the convene call: wallLimitMsSource=' + JSON.stringify(r && r.wallLimitMsSource) + ', wallLimitMs=' + JSON.stringify(r && r.wallLimitMs),
+          means: 'the rule "院士设会议时长上界" has no allow-side evidence unless the bound the convene set is READ BACK as source "convene"; a deployment-default bound (source "vmu.meetings.hardLimitMs") is a different fact',
+          receipt: pick(r, ['ok', 'wallLimitMs', 'wallLimitMsSource', 'wallLimitMsDefaultMs', 'code', 'message']),
+        })
+      }
+    }
   }
   // A DEBATE carries its own extra field (L55-56): the debate object. A one-line proposition has no addressable proof
   // carrier, so the only shape that passes the gate without a provenance row is a FILE reference with evidence
@@ -303,6 +323,56 @@ export async function meetings(h, { log = () => {} } = {}) {
   const floorSpeak1 = await step('floor/invitedspeak/r-1', () => h.call('vibe_vmu_meeting', { action: 'invitedspeak', id: floorId, member: 'r-1', text: '先给结论：机制可跑通，剩下的是读数。', ms: 30_000 }, as('r-1')))
   const floorSpeak2 = await step('floor/invitedspeak/r-2', () => h.call('vibe_vmu_meeting', { action: 'invitedspeak', id: floorId, member: 'r-2', text: '补充一条：队列按邀请顺序发放，不按身份。', ms: 30_000 }, as('r-2')))
   const floorOrder3 = await step('floor/order-after-speech', () => h.call('vibe_vmu_meeting', { action: 'order', id: floorId }))
+  // 7b E16 WRITE PATH (ROUND-3): the steps above only READ the queue (`mode:"fifo"`, no before/after). HEAD's
+  //    `order({meeting, members, by})` WRITES and names before/after/moved/dropped (pinned by
+  //    tests/vmu-run242-order-write.test.mjs), and the host face forwards `members` - so the rule "批量指定成员按顺序
+  //    发言" was mechanically reachable and simply untested. This block convenes its OWN meeting (the floor sequence
+  //    above depends on its arrival order) and pins the write on the public face.
+  const orderWriteMeeting = await step('orderwrite/open', () => h.call('vibe_v5_meeting', {
+    agenda: '发言序写路径：主席批量指定发言顺序（E16）。',
+    title: '发言序 · 批量写序会议',
+    member: 'r-acad',
+  }))
+  const orderWriteId = orderWriteMeeting && (orderWriteMeeting.meeting || orderWriteMeeting.id) || null
+  for (const seat of ['r-1', 'r-2']) {
+    await step('orderwrite/attend/' + seat, () => h.call('vibe_vmu_meeting', { action: 'attend', id: orderWriteId, member: seat }, as(seat)))
+  }
+  const orderWriteHand1 = await step('orderwrite/hand/r-1', () => h.call('vibe_vmu_meeting', { action: 'hand', id: orderWriteId, member: 'r-1' }, as('r-1')))
+  const orderWriteHand2 = await step('orderwrite/hand/r-2', () => h.call('vibe_vmu_meeting', { action: 'hand', id: orderWriteId, member: 'r-2' }, as('r-2')))
+  const orderWriteBefore = await step('orderwrite/read-before', () => h.call('vibe_vmu_meeting', { action: 'order', id: orderWriteId }))
+  const orderWrite = await step('orderwrite/write', () => h.call('vibe_vmu_meeting', {
+    action: 'order', id: orderWriteId, by: 'r-acad', members: ['r-2', 'r-1'], why: 'E16：主席批量指定 r-2 先讲、r-1 次之。',
+  }))
+  const orderWriteAfter = await step('orderwrite/read-after', () => h.call('vibe_vmu_meeting', { action: 'order', id: orderWriteId }))
+  const owBefore = orderWriteBefore && Array.isArray(orderWriteBefore.order) ? orderWriteBefore.order.map(String) : null
+  const owAfter = orderWrite && Array.isArray(orderWrite.after) ? orderWrite.after.map(String) : null
+  const owMoved = orderWrite && Array.isArray(orderWrite.moved) ? orderWrite.moved : null
+  const owDropped = orderWrite && Array.isArray(orderWrite.dropped) ? orderWrite.dropped : null
+  const owReadAfter = orderWriteAfter && Array.isArray(orderWriteAfter.order) ? orderWriteAfter.order.map(String) : null
+  const owMovedNamed = Array.isArray(owMoved)
+    && owMoved.some((mv) => mv && mv.member === 'r-2' && mv.from === 2 && mv.to === 1)
+    && owMoved.some((mv) => mv && mv.member === 'r-1' && mv.from === 1 && mv.to === 2)
+  if (!(owBefore && owBefore.join(',') === 'r-1,r-2'
+    && orderWrite && orderWrite.ok === true
+    && owAfter && owAfter.join(',') === 'r-2,r-1'
+    && owMovedNamed
+    && Array.isArray(owDropped) && owDropped.length === 0
+    && owReadAfter && owReadAfter.join(',') === 'r-2,r-1')) {
+    failures.push({
+      code: 'E16-ORDER-WRITE-NOT-MEASURED',
+      step: 'orderwrite/write',
+      message: 'the order WRITE path did not produce the measurable shape: before=' + JSON.stringify(owBefore) + ', ok=' + JSON.stringify(orderWrite && orderWrite.ok) + ', after=' + JSON.stringify(owAfter) + ', moved=' + JSON.stringify(owMoved) + ', dropped=' + JSON.stringify(owDropped) + ', read-back=' + JSON.stringify(owReadAfter),
+      means: 'the rule "批量指定成员按顺序发言" is only proved by the WRITE receipt (before/after/moved/dropped) AND a read-back that agrees with `after`; a read-only `order` call proves only that a queue exists',
+      receipt: pick(orderWrite, ['ok', 'action', 'members', 'before', 'after', 'moved', 'dropped', 'mode', 'queued', 'code', 'message', 'hint']),
+    })
+  }
+  highlights.orderWrite = {
+    hands: [pick(orderWriteHand1, ['ok', 'order', 'member']), pick(orderWriteHand2, ['ok', 'order', 'member'])],
+    readBefore: pick(orderWriteBefore, ['ok', 'mode', 'order', 'queueOpen']),
+    write: pick(orderWrite, ['ok', 'action', 'members', 'before', 'after', 'moved', 'dropped', 'mode', 'queued', 'code', 'message', 'hint']),
+    readAfter: pick(orderWriteAfter, ['ok', 'mode', 'order', 'queueOpen']),
+    means: 'E16 write path: the chair replaces the stored queue with an explicit order; before/after/moved/dropped are the receipt of the write, and readAfter is the store agreeing with `after` (a receipt nobody can read back is not a record)',
+  }
   // The seats that spoke are no longer "present but unheard": the wait block distinguishes present / spoke / absent.
   const floorStatus = await step('floor/status-after-speech', () => h.call('vibe_vmu_meeting', { action: 'status', id: floorId }))
   highlights.floor = {
@@ -405,6 +475,7 @@ export async function meetings(h, { log = () => {} } = {}) {
   return {
     steps,
     receipts: h.receipts,
+    failures,
     promptChars,
     tree: h.tree ? h.tree() : [],
     highlights,

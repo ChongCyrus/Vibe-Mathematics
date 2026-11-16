@@ -92,9 +92,9 @@ const RUN272_RUN79_RESTORE = { chair: 30, member: 30, temp: 30, sum: 90 }
 // mechanisms. The first wording said 「不表决」 as if attendance decided the vote, which the vote gate does not do.
 // F80-8 (0 here): the office identity is hostPrompt-only, so it enters no seat normal — not counted in these water
 // levels; its correction is pinned by the new judge against `assistant.json` directly.
-// Measured per seat after ROUND-2 + final17b (2026-11-17): chair 29 499→29 551 (+52), member 26 001→26 050 (+49), temp 22 668→22 698 (+30);
-// three-seat sum 78 168→78 299 (+131). ROUND-2 P0/P1 fixes net of the reply-channel merge; cap/ratchet untouched and the REAL end-to-end render is 36 253 ≤ 36 400 (margin 147).
-const TB2752_RUN80_FIXES = { chair: 52, member: 49, temp: 30, sum: 131 } // ROUND-2: P0/P1 fixes + reply-channel merge (net growth much smaller than R1: the merge removed historical lines) // ROUND-1 + B2 restores (scheduling facts, capture lines, formal required params, correction trims) // ROUND-1 P0/P1 prompt fixes (leaderless wording, formal shape, dangerous legacy lines removed, chair/meeting compression, warrant reading, release/phase/temp/roster teaching); measured on the same collect() ruler
+// Measured per seat after ROUND-3 (2026-11-17): chair 29 499→28 673 (-826), member 26 001→25 198 (-803), temp 22 668→21 846 (-822); ROUND-3 deleted the five legacy correction sections and applied P0-b/P1/P2;
+// three-seat sum 78 168→75 717 (-2 451); cap/ratchet untouched and the REAL end-to-end render is 35 325 ≤ 36 400 (margin 1 075).
+const TB2752_RUN80_FIXES = { chair: -734, member: -764, temp: -783, sum: -2281 } // ROUND-2: P0/P1 fixes + reply-channel merge (net growth much smaller than R1: the merge removed historical lines) // ROUND-1 + B2 restores (scheduling facts, capture lines, formal required params, correction trims) // ROUND-1 P0/P1 prompt fixes (leaderless wording, formal shape, dangerous legacy lines removed, chair/meeting compression, warrant reading, release/phase/temp/roster teaching); measured on the same collect() ruler
 // ★ TB-2765 (2026-11-13, prompt-lane text side): A-3 formula teaching in the paper-write prompt, plus A-1/A-2/D-7 read-face
 // notes in the OFFICE persona (hostPrompt). All three additions land OUTSIDE the phases this ruler measures
 // (paper-write is not in collect()'s normal/meeting set; the office persona enters no seat prompt), so the measured
@@ -104,12 +104,12 @@ const TB2752_RUN80_FIXES = { chair: 52, member: 49, temp: 30, sum: 131 } // ROUN
 // replacements (run 82 lost 23 glyphs), and the `part` prompt carries a self-check line. Both land in the paper-write
 // phase — outside collect()'s normal/meeting set and outside the budget gate's phases — so the measured water levels
 // are UNCHANGED again: TB2752_RUN80_FIXES stays { chair: 51, member: 45, temp: 0, sum: 96 }.
-const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair // 29551
-const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 297
-const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 29847
-const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum // 78299
+const CHAIR_NORMAL_MEASURED = 28529 + RUN2707_ARCHIVE_SENTENCE.chair + RUN260_CONSULT_TEACHING.chair + TB2711_FINAL_STEP.chair + TB2717_PHASE_STEP.chair + TB2725_CORRECTIONS.chair + RUN270_PROGRESS_SAMPLE.chair + TB2732_DEDUP.chair + RUN2730_D5.chair + RUN2730_REPLY_QUALIFIER.chair + TB2741_CORRECTIONS.chair + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair // 28673
+const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 287
+const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 28960
+const NORMAL_SUM_MEASURED = 75475 + RUN2707_ARCHIVE_SENTENCE.sum + RUN260_CONSULT_TEACHING.sum + TB2711_FINAL_STEP.sum + TB2717_PHASE_STEP.sum + TB2725_CORRECTIONS.sum + RUN270_PROGRESS_SAMPLE.sum + TB2732_DEDUP.sum + RUN2730_D5.sum + RUN2730_REPLY_QUALIFIER.sum + TB2741_CORRECTIONS.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum // 75717
 const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 783
-const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 79090
+const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 76474
 
 let passed = 0
 let failed = 0

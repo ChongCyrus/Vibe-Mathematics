@@ -68,6 +68,7 @@ try {
     eq(packModule.PACK_DECLARATION_NO_CONSUMER_KEYS && packModule.PACK_DECLARATION_NO_CONSUMER_KEYS.slice().sort(), ['agendaStateMachine', 'office'], '(2) 无消费者键表恰好是 office / agendaStateMachine')
     const tooLate = packModule.PACK_DECLARATION_TOO_LATE_KEYS || []
     ok(tooLate.includes('phases') && tooLate.includes('noticeBlock') && tooLate.includes('meetingTypeCatalog'), '(3) 太晚闸仍覆盖 phases/noticeBlock/meetingTypeCatalog', tooLate)
+    ok(tooLate.includes('replyFields'), '(3b) P1-a1/C#2: replyFields 也进太晚闸（声明后在普通 apply 路径不再零效果）', tooLate)
     ok(!tooLate.includes('office') && !tooLate.includes('agendaStateMachine'), '(4) 无消费者的两个键不再混在「太晚」里（错码换成具名的 UNCONSUMED）', tooLate)
     ok(PACK_SRC.includes("'VMU_PACK_DECLARATION_UNCONSUMED'"), '(5) 新增具名拒绝码 VMU_PACK_DECLARATION_UNCONSUMED')
     ok(PACK_SRC.includes('declaredKeysByManifest.set(id, foldedKeys)'), '(6) 折叠台账只收成功折叠的键（foldedKeys），不再收「提到过」的键')
@@ -124,6 +125,9 @@ try {
     const late = await receipt(bV5, 'vibe_vmu_pack', { action: 'apply', manifest: JSON.stringify({ id: 'late-pack', phases: ['late-phase'] }) })
     ok(late && late.ok === false && late.code === 'VMU_PACK_DECLARATION_TOO_LATE', '(24) 后声明的 phases 仍拒 VMU_PACK_DECLARATION_TOO_LATE（原语义未变）', late)
     ok(String(JSON.stringify(late)).includes('config.packManifests'), '(25) 太晚拒绝仍给出可达替代 config.packManifests', late)
+    const replyLate = await receipt(bV5, 'vibe_vmu_pack', { action: 'apply', manifest: JSON.stringify({ id: 'late-reply', replyFields: [{ field: 'x', face: 'vmu.tasks', op: 'list' }] }) })
+    ok(replyLate && replyLate.code === 'VMU_PACK_DECLARATION_TOO_LATE', '(24b) P1-a1/C#2: 后声明的 replyFields 普通 apply 被具名拒（不再「接受但零效果」）', replyLate && replyLate.code)
+    ok(String(JSON.stringify(replyLate)).includes('config.packManifests'), '(24c) P1-a1: 拒绝 hint 给可达替代 config.packManifests', replyLate && replyLate.hint)
     const officeLate = await receipt(bV5, 'vibe_vmu_pack', { action: 'apply', manifest: JSON.stringify({ id: 'office-late', office: ['chair'] }) })
     eq(officeLate && officeLate.code, 'VMU_PACK_DECLARATION_UNCONSUMED', '(26) 后声明的 office 换新码：VMU_PACK_DECLARATION_UNCONSUMED（「没消费者」不是「太晚」）')
     const hint = String((officeLate && officeLate.hint) || '')

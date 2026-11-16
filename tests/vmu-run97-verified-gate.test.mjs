@@ -191,8 +191,8 @@ try {
   ok(/warrantPolicy/.test(socialHint) && /lean-conformance/.test(socialHint),
     '⑦ the refusal hint names the machine/literature alternatives and the policy', socialHint)
   const st2 = json(await callJSON(b2, 'vibe_vmu_status', { detail: 'full' }))
-  ok(st2 && st2.verifiedWarrantPolicy && st2.verifiedWarrantPolicy.machineOrLiterature === true && st2.verifiedWarrantPolicy.machineCheckedOnly === false && st2.verifiedWarrantPolicy.literatureHumanReviewed === true && JSON.stringify(st2.verifiedWarrantPolicy.acceptedKinds) === JSON.stringify(['lean-conformance', 'literature']),
-    '⑦ C#26: the strict policy is honestly named machineOrLiterature:true / machineCheckedOnly:false (literature is HUMAN-reviewed, not a machine proof)', st2 && st2.verifiedWarrantPolicy)
+  ok(st2 && st2.verifiedWarrantPolicy && st2.verifiedWarrantPolicy.machineOrLiterature === true && st2.verifiedWarrantPolicy.machineCheckedOnly === false && st2.verifiedWarrantPolicy.literaturePolicy && st2.verifiedWarrantPolicy.literaturePolicy.measured === false && st2.verifiedWarrantPolicy.literaturePolicy.kind === 'human-reviewed-citation' && JSON.stringify(st2.verifiedWarrantPolicy.acceptedKinds) === JSON.stringify(['lean-conformance', 'literature']),
+    '⑦ C#26/P1-a3: the policy says literaturePolicy is a DECLARATION (measured:false, human-reviewed-citation) — not a hardcoded measurement', st2 && st2.verifiedWarrantPolicy)
   {
     const lampRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-p0f-lamp1-'))
     cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })

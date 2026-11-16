@@ -1,44 +1,27 @@
-// tests/audit-prompt-retired-mechanisms.test.mjs — F5: every RETIRED mechanism must have a NAMED declaration
-// inside the SAME assembled prompt the member reads.
+// tests/audit-prompt-retired-mechanisms.test.mjs — ROUND-3 rewrite (Lead ruling): the five legacy 【更正·】 ledger
+// sections are DELETED from every prompt. This suite now checks the property those sections existed for — an obsolete
+// mechanism must never be TAUGHT, and the real mechanism must be TAUGHT — instead of checking that a corrections block
+// names the obsolete wording (that made obsolete wording mandatory in shipped text, which the audit flagged three
+// rounds running: 1,067 chars × 35 prompts of history).
 //
-// THE CONTRACT THIS PINS (Lead ruling, F5 round). The generated corpus capture (`v5r-prompts.js` /
-// `v5r-persona.js`) still carries the OLD wording — it is a historical record, not live teaching, and the text
-// cannot be edited there (a capture that is rewritten is no longer a record; `regen-all --check` would also
-// overwrite it). The hand-written passages have been repaired, and the pack declares the repair in
-// `packs/v5r/prompts/v5r-corrections.js` — text the member actually receives (orders 890-894, inside the pack
-// band, after every section it corrects). So the judgement is NOT "the old words are gone" (they must stay in
-// the capture where they are evidence) but "for every retired mechanism the same assembly carries its named
-// correction".
+// The obsolete wordings and their replacements:
+//   · `vibe_v5_tool_help({"tool":…})`            -> the face takes `{member}` only
+//   · `end_verify` / `formal_proof` as a call    -> `formal` only accepts {statement, proof}; the names are retired
+//   · a hand-written ```json fence every round   -> the reply body's single fenced JSON (op:"reply" is for the office)
+//   · "m 票" read as a counting rule             -> m is the quorum size; agreement is unanimity via defaultTally
+//   · `formal:{decision,file,note}`              -> blocked/defect go to lean_archive/fidelity_conclude
 //
-// WHAT IS ASSERTED:
-//   ① the pairing table is non-empty and every retired mechanism maps to a correction section;
-//   ② each correction section NAMES the obsolete wording and the real mechanism (`declaredNeedles`);
-//   ③ each correction order stays inside `ORDER_RANGES.pack` = [600, 899] (outside it the kernel derives an
-//      `override` band, which is reserved and silently drops the pack section — measured this phase);
-//   ④ a REAL assembly (entry -> kernel -> prompt.assemble) contains every correction marker, and the obsolete
-//      wording appears **only inside a correction section** (`OBSOLETE`): a correction may name what it
-//      supersedes, a TEACHING section may not. (PHASE 12: this replaced an assertion that demanded the
-//      obsolete wording still be PRESENT in the assembly — that pinned the defect and went red exactly when
-//      the text was fixed, which is the wrong direction for a gate.)
-//   ⑤ every `vibe_*` name a correction teaches is a tool the REAL kernel declares, and the names the formal
-//      correction calls phantom are really absent from the tool table;
-//   ⑥ TEETH: removing one declaration makes the judge name exactly that mechanism; planting an invented tool
-//      name makes the tool judge catch it; a text carrying only the old wording satisfies NO mechanism.
+// RULE E: every list is non-empty and every absence assertion is paired with a presence assertion for the replacement,
+// so "the prompt says nothing" cannot pass as "the prompt says the right thing". Lamps prove the predicates bite.
 //
-// RULE E: every loop is preceded by an explicit non-empty assertion; the teeth prove each judge can go red.
-//
-// Run: node tests/audit-prompt-retired-mechanisms.test.mjs
-// Last line: === AUDIT PROMPT RETIRED MECHANISMS: N passed, M failed ===
+// Run: node tests/audit-prompt-retired-mechanisms.test.mjs   (last line: === RETIRED MECHANISMS: N passed, M failed ===)
 
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
-const CORRECTIONS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-corrections.js')
+const { collect } = await import(pathToFileURL(join(REPO, 'scripts', 'sim', 'audit', 'prompt-sections.mjs')).href)
 
 let passed = 0
 let failed = 0
@@ -47,201 +30,47 @@ const ok = (cond, label, detail) => {
   if (cond) { passed += 1; console.log('  ok   ' + label); return true }
   failed += 1
   failures.push(label + (detail === undefined ? '' : ' - ' + (typeof detail === 'string' ? detail : JSON.stringify(detail))))
-  console.log('  FAIL ' + label + (detail === undefined ? '' : ' [' + (typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 300) + ']'))
+  console.log('  FAIL ' + label + (detail === undefined ? '' : ' [' + (typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 260) + ']'))
   return false
 }
 
-const corr = await import(pathToFileURL(CORRECTIONS).href)
-const orderMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'prompt', 'index.js')).href)
+const got = await collect({ slots: ['chair', 'member', 'temp'], phases: ['normal', 'meeting', 'verify'] })
+const texts = got.sections.map((s) => s.text)
+const all = texts.join('\n')
+ok(got.sections.length > 0 && all.length > 10000, 'PRECONDITION: real assemblies were produced (non-vacuous subject)', { sections: got.sections.length, chars: all.length })
 
-const SECTIONS = corr.V5R_CORRECTION_SECTIONS
-const PACK_BAND = orderMod.ORDER_RANGES && orderMod.ORDER_RANGES.pack
+// The five legacy ledger names/markers are GONE from every assembly (the Lead ruled them redundant; facts live elsewhere).
+const LEGACY = ['v5r-fix-formal', 'v5r-fix-json-reply', 'v5r-fix-m-vote', 'v5r-fix-leader-id', 'v5r-fix-tool-help', '【更正·']
+ok(LEGACY.length === 6 && LEGACY.every((n) => !all.includes(n)), 'the five legacy 【更正·】 sections are deleted from the shipped prompts (names and markers absent)', LEGACY.filter((n) => all.includes(n)))
 
-// ── THE PAIRING TABLE: retired mechanism -> its declaration ───────────────────────────────────────────────────────
-// `section` is the correction that must speak for it. `declaredNeedles` are the pieces of the declaration that must
-// appear in that correction's TEXT: the obsolete wording must be NAMED (a correction that only restates the new
-// mechanism does not tell the reader what it supersedes) and the real mechanism must be named too. `captureNeedles`
-// are the pieces of OLD wording that must still occur in the ASSEMBLY (the capture is the evidence the mechanism was
-// retired, not erased); an empty list means the obsolete wording does not survive in the shipped capture text and is
-// therefore only required to be named by the correction.
-const RETIRED = Object.freeze([
-  Object.freeze({
-    id: 'reply-fence',
-    section: 'v5r-fix-json-reply',
-    declaredNeedles: ['每轮手写一段 json 代码围栏', 'op:"reply"', 'VMU_TURN_REPLY_CONFLICT', 'vibe_vmu_meeting'],
-  }),
-  Object.freeze({
-    id: 'm-vote-count',
-    section: 'v5r-fix-m-vote',
-    declaredNeedles: ['m 票布尔一致', 'quorumCap', 'quorumOf', 'quorumRule', 'defaultTally', 'm-unanimous'],
-  }),
-  Object.freeze({
-    id: 'phantom-formal-tools',
-    section: 'v5r-fix-formal',
-    declaredNeedles: ['end_verify', 'formal_proof', 'formal-shape', '保真工具', 'vibe_v5_verified_promote', 'warrant'],
-  }),
-  Object.freeze({
-    id: 'tool-help-param',
-    section: 'v5r-fix-tool-help',
-    declaredNeedles: ['vibe_v5_tool_help', '{member}', '{"tool":"…"}', 'tool_help needs the member id'],
-  }),
-  Object.freeze({
-    id: 'verified-writer',
-    section: 'v5r-fix-formal',
-    declaredNeedles: ['vibe_v5_verified_promote', 'warrant'],
-  }),
-])
+// (1) tool_help: no bare {"tool":…} signature; the real {member} form is taught.
+ok(!all.includes('tool_help({"tool"'), 'tool_help({"tool":…}) is never taught')
+ok(all.includes('vibe_v5_tool_help') && /tool_help\(\{"member"/.test(all), 'the real tool_help({member}) form is taught')
 
-const sectionByName = new Map(SECTIONS.map((s) => [s.name, s]))
-const markerOf = (s) => {
-  const t = String(s.text || '')
-  const at = t.indexOf('】')
-  return at === -1 ? '' : t.slice(0, at + 1)
-}
-const VIBE_NAMES = (text) => [...String(text).matchAll(/vibe_[A-Za-z0-9_]+/g)].map((m) => m[0])
+// (2) end_verify / formal_proof: never taught as a call; named ONLY as a "do not call" warning.
+ok(/不要调用/.test(all) && /end_verify/.test(all) && /formal_proof/.test(all), 'the retired names are named ONLY as a "do not call" warning')
+ok(!/end_verify\s*\{/.test(all) && !/formal_proof\s*[:=]/.test(all), 'neither retired name is taught as an argument')
+ok(all.includes('只收 {statement, proof}') && !all.includes('formal:{decision'), 'formal teaches ONLY {statement, proof}; the old card shape is gone')
 
-console.log('=== 1. the pairing table and the correction ledger are well-formed (RULE E) ===')
-ok(Array.isArray(SECTIONS) && SECTIONS.length > 0, 'the correction ledger is a non-empty array', Array.isArray(SECTIONS) ? SECTIONS.length : SECTIONS)
-ok(Array.isArray(RETIRED) && RETIRED.length > 0, 'there are retired mechanisms to pair against (RULE E)', Array.isArray(RETIRED) ? RETIRED.length : RETIRED)
-ok(SECTIONS.length === corr.V5R_CORRECTION_SECTIONS.length && SECTIONS.length > 0, 'the pack declares exactly the corrections the ledger module owns (count DERIVED from that module, never typed here)', SECTIONS.length)
-ok(RETIRED.length > 0 && RETIRED.every((r) => r.declaredNeedles.length > 0), 'every retired mechanism carries declaration needles (a pairing without needles is a wish)')
-ok(RETIRED.length > 0 && RETIRED.every((r) => sectionByName.has(r.section)), 'every retired mechanism maps to a real correction section', RETIRED.map((r) => r.section))
-const ids = RETIRED.map((r) => r.id)
-ok(ids.length > 0 && ids.length === new Set(ids).size, 'retired-mechanism ids are unique')
-const usedSections = new Set(RETIRED.map((r) => r.section))
-ok(usedSections.size > 0 && usedSections.size <= SECTIONS.length, 'the retired mechanisms are spread over the correction sections (derived, not counted here)', [...usedSections])
+// (3) reply transport: the single fenced JSON body is the channel; op:"reply" is office-only; no ```json template.
+ok(!all.includes('```json'), 'no hand-written ```json template is taught')
+ok(all.includes('json 围栏') || all.includes('JSON 的 "input"'), 'the fenced-JSON channel is still taught')
+ok(/op:"reply"/.test(all) && /所办代转/.test(all), 'op:"reply" is taught as the office relay path, not the member path')
 
-console.log('=== 2. each section NAMES the obsolete wording and the replacement mechanism ===')
-for (const r of RETIRED) {
-  const s = sectionByName.get(r.section)
-  if (!ok(!!s, 'correction section exists: ' + r.section)) continue
-  const text = String(s.text)
-  ok(markerOf(s).length > 4, 'section carries a stable correction marker: ' + r.section, markerOf(s))
-  ok(r.declaredNeedles.length > 0 && r.declaredNeedles.every((n) => text.includes(n)), 'section names the obsolete wording AND the mechanism: ' + r.id, r.declaredNeedles.filter((n) => !text.includes(n)))
-  ok(text.length > 0 && text.length <= corr.V5R_CORRECTION_MAX_CHARS, 'section respects the declared character cap: ' + r.section, { len: text.length, cap: corr.V5R_CORRECTION_MAX_CHARS })
-}
+// (4) m: it is the quorum size, never a vote count.
+ok(!all.includes('m 票布尔一致'), 'm 票 as a counting rule is never taught')
+ok(/法定票数 m/.test(all) && /在册有表决权人数/.test(all), 'm is taught as the quorum size (min of cap and eligible seats), not a vote count')
 
-console.log('=== 3. the four orders stay inside the PACK band (outside it the pipeline drops them) ===')
-const orders = SECTIONS.map((s) => s.order)
-ok(orders.length > 0, 'the ledger yields orders to measure (RULE E)', orders)
-ok(Array.isArray(PACK_BAND) && PACK_BAND.length === 2, 'the kernel really declares the pack band', PACK_BAND)
-ok(orders.length === SECTIONS.length && orders.every((o) => Number.isInteger(o)), 'every correction has an integer order', orders)
-ok(orders.length > 0 && orders.every((o) => o >= PACK_BAND[0] && o <= PACK_BAND[1]), 'every correction order is inside ORDER_RANGES.pack', { orders, band: PACK_BAND })
-ok(orders.length > 0 && new Set(orders).size === orders.length, 'the correction orders are distinct', orders)
+// (5) blocked/defect records: the real tools, with their required params.
+ok(/vibe_v5_lean_archive/.test(all) && /kind:\s*["']blocked["']/.test(all), 'lean_archive kind:"blocked" is the blocking-record channel')
+ok(/vibe_v5_fidelity_conclude|保真工具/.test(all), 'the fidelity defect channel is named (chair-only)')
+ok(!/decision:\s*["']?(used|blocked|defect)/.test(all), 'no formal decision shape is taught')
 
-console.log('=== 4. the REAL assembled prompt carries every declaration; obsolete wording lives ONLY in the corrections ===')
-const entry = await import(pathToFileURL(ENTRY).href)
-const root = await mkdtemp(join(tmpdir(), 'vmu-f5-retired-'))
-const specs = []
-const ctx = {
-  effect(fn) { return fn() },
-  on() { return () => {} },
-  tools: { register: async (spec) => { specs.push(spec); return () => {} } },
-}
-const assemblies = []
-const toolTable = new Map()
-const handle = entry.apply(ctx, { clock: () => 1000, root, packs: ['v5r'] })
-await handle.ready()
-ok(specs.length > 0, 'the pack really declares tools on the real entry', specs.length)
-const declared = handle.kernel.packTools()
-ok(Array.isArray(declared) && declared.length > 0, 'kernel.packTools() is non-empty on the real kernel', Array.isArray(declared) ? declared.length : declared)
-for (const t of declared) toolTable.set(t.name, new Set(Object.keys(t.parameters || {})))
-for (const spec of specs) if (spec && typeof spec.name === 'string') toolTable.set(spec.name, new Set(Object.keys(spec.parameters || {})))
-ok(toolTable.size > 0, 'there is a real tool table to judge declarations against (RULE E)', toolTable.size)
-const settings = handle.kernel.settingsSnapshot()
-const cases = [
-  { member: 'r-1', role: 'chair', roleLabel: '院士', phase: 'normal' },
-  { member: 'r-2', role: 'member', roleLabel: '常驻研究员', phase: 'verify' },
-]
-ok(cases.length > 0, 'there are assembly cases to run (RULE E)', cases.length)
-for (const c of cases) {
-  const asm = await handle.kernel.prompt.assemble(Object.assign({ settings }, c))
-  if (!ok(asm && typeof asm.text === 'string' && asm.text.length > 2000, 'assembly is non-trivial for ' + c.role + '/' + c.phase, asm && asm.text ? asm.text.length : 0)) continue
-  assemblies.push({ label: c.role + '/' + c.phase, text: asm.text })
-}
-ok(assemblies.length > 0, 'there is at least one real assembly to judge (RULE E)', assemblies.length)
-
-const judgeDeclarations = (text, list) => list.filter((r) => {
-  const s = sectionByName.get(r.section)
-  if (!s) return true
-  return !String(text).includes(markerOf(s))
-}).map((r) => r.id)
-
-// ★ PHASE 12 (F5 second half): the SHIPPED text no longer TEACHES the retired mechanisms. The hand-written
-// passages that carried them were rewritten (`v5r-blocks-a.js` / `v5r-blocks-b.js`), so the old wording must now
-// appear ONLY inside a correction section — a correction is allowed, and required, to name what it supersedes.
-// THIS IS A STRONGER ASSERTION THAN THE ONE IT REPLACES. The former block asserted that the obsolete wording was
-// STILL in the assembly ("the declaration supersedes something real, not a memory of it"); that made the defect a
-// pinned feature — it went red exactly when someone fixed the text, which is the wrong direction for a gate. The
-// corrected rule is: no teaching section may carry it, and the corrections must still name it (asserted above).
-const OBSOLETE = Object.freeze([
-  Object.freeze({ id: 'reply-fence', needles: ['只输出一个合法 JSON 对象', '```json'] }),
-  Object.freeze({ id: 'm-vote-count', needles: ['m 票布尔一致'] }),
-  Object.freeze({ id: 'phantom-formal-tools', needles: ['end_verify 的 formal_proof'] }),
-  Object.freeze({ id: 'reply-transport', needles: ['**只**输出一个 JSON', '最小合法样例（可直接照抄'] }),
-  // measured this round: `tool_help` REFUSES without a member (`vibe-math-vmu/packs/v5r/tools.js:380`),
-  // so the prompt's old one-argument call shape was a guaranteed refusal taught as advice
-  Object.freeze({ id: 'tool-help-old-shape', needles: ['vibe_v5_tool_help({"tool"'] }),
-])
-ok(OBSOLETE.length > 0, 'the obsolete-wording list is non-empty (RULE E)', OBSOLETE.length)
-ok(OBSOLETE.every((o) => o.needles.length > 0), 'every obsolete-wording entry carries needles (a list of ids with no needles asserts nothing)', OBSOLETE.filter((o) => !o.needles.length).map((o) => o.id))
-// the corrections' REAL text (not their marker) — a correction is ALLOWED to name what it supersedes, so the
-// count of obsolete wording inside the corrections is the budget the assembly may contain
-const correctionText = SECTIONS.map((s) => String(s.text || '')).join('\n')
-const countIn = (hay, needle) => hay.split(needle).length - 1
-
-for (const a of assemblies) {
-  ok(judgeDeclarations(a.text, RETIRED).length === 0, 'every retired mechanism has its declaration in the same prompt (' + a.label + ')', judgeDeclarations(a.text, RETIRED))
-  for (const o of OBSOLETE) {
-    for (const n of o.needles) {
-      const inAll = countIn(a.text, n)
-      const inCorrections = countIn(correctionText, n)
-      ok(inAll === inCorrections, 'obsolete wording of ' + o.id + ' appears ONLY inside a correction (' + a.label + ') ' + JSON.stringify(n), { inAssembly: inAll, inCorrections })
-    }
-  }
-}
-
-console.log('=== 5. no declaration may teach a tool the kernel does not declare ===')
-const taughtNames = [...new Set(SECTIONS.flatMap((s) => VIBE_NAMES(s.text)))]
-ok(taughtNames.length > 0, 'the corrections really name tools (RULE E)', taughtNames)
-const unknownTaught = taughtNames.filter((n) => !toolTable.has(n))
-ok(unknownTaught.length === 0, 'every tool named by a correction is declared by the real kernel', unknownTaught)
-const phantom = ['end_verify', 'formal_proof']
-ok(phantom.length > 0, 'the phantom names under test are enumerated (RULE E)', phantom)
-ok(phantom.every((n) => !toolTable.has(n)), 'the names the formal correction calls phantom really are absent from the tool table', phantom.filter((n) => toolTable.has(n)))
-
-console.log('=== 6. TEETH: each judge is proved able to go red ===')
-ok(assemblies.length > 0, 'there is a real assembly to plant failures into (RULE E)', assemblies.length)
-const realText = assemblies[0].text
-ok(judgeDeclarations(realText, RETIRED).length === 0, 'TEETH baseline: the real prompt passes the declaration judge')
-
-const removed = realText.replace('【更正·m 票】', '【已删除】')
-const missingOne = judgeDeclarations(removed, RETIRED)
-ok(missingOne.length === 1 && missingOne[0] === 'm-vote-count', 'TEETH: removing the m-vote declaration makes the judge name exactly that mechanism', missingOne)
-
-const ghost = realText.replace('vibe_v5_verified_promote', 'vibe_v5_ghost_writer')
-const ghostNames = [...new Set(VIBE_NAMES(ghost))].filter((n) => !toolTable.has(n))
-ok(ghostNames.includes('vibe_v5_ghost_writer'), 'TEETH: an invented tool named in a declaration is caught by the tool judge', ghostNames.filter((n) => n.includes('ghost')))
-
-const oldOnly = [
-  '只输出一个合法 JSON 对象（```json 围栏内）；按 m 票布尔一致决定；法定票数 m=5；',
-  'end_verify 的 formal_proof；vibe_v5_tool_help({"tool":"x"}) 查手册。',
-].join('\n')
-const missingAll = judgeDeclarations(oldOnly, RETIRED)
-ok(RETIRED.length > 0 && missingAll.length === RETIRED.length, 'TEETH: old wording alone satisfies ZERO mechanisms (it is the defect, not the declaration)', { missing: missingAll.length, total: RETIRED.length })
-ok(RETIRED.length > 0 && missingAll.length > 0, 'TEETH: the planted old-wording text really misses declarations (the check is not vacuous)')
-
-// ★ TEETH for the assertion that replaced the capture check: plant ONE teaching occurrence of an obsolete phrase
-// into the real prompt and prove the count-based judge notices it (it compares the assembly against the corrections'
-// own budget, so planting a teaching occurrence must break the equality).
-const plantedIn = realText + '\n' + OBSOLETE[0].needles[0]
-const plantedGap = OBSOLETE.flatMap((o) => o.needles.map((n) => ({ id: o.id, n, gap: countIn(plantedIn, n) - countIn(correctionText, n) }))).filter((x) => x.gap !== 0)
-ok(OBSOLETE.length > 0 && plantedGap.length > 0, 'TEETH: a teaching occurrence of obsolete wording is caught by the only-inside-corrections judge', plantedGap)
+// LAMPS: the predicates are not vacuous — a planted sentence would be seen.
+ok((all + '\nvibe_v5_tool_help({"tool":"x"})').includes('tool_help({"tool"'), 'LAMP: the tool-signature predicate would catch a planted bare {"tool":…} call')
+ok((all + '\n【更正·形式化】旧说法').includes('【更正·'), 'LAMP: the legacy-marker predicate would catch a planted 【更正·】 section')
 
 console.log('')
-console.log('=== AUDIT PROMPT RETIRED MECHANISMS: ' + passed + ' passed, ' + failed + ' failed ===')
-if (failed > 0) {
-  console.log('failures:')
-  for (const f of failures) console.log('  - ' + f)
-  process.exitCode = 1
-}
+if (failed > 0) { for (const f of failures) console.log('FAILED: ' + f) }
+console.log('=== RETIRED MECHANISMS: ' + passed + ' passed, ' + failed + ' failed ===')
+process.exit(failed > 0 ? 1 : 0)

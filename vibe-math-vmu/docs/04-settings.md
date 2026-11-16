@@ -1114,7 +1114,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.confidentialityDefault` | enum | `internal` | `public`∣`internal`∣`restricted` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同 |
 | `vmu.meetings.confidentialityQuotePolicy` | enum | `allow` | `allow`∣`redact`∣`deny` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同 |
 | `vmu.meetings.wakeFailurePolicy` | enum | `refuse` | `refuse`∣`skip`∣`retry` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 唤醒失败处置（refuse|skip|retry）；域与 meetings.js:188 逐字相同 |
-| `vmu.verified.requireMachineWarrant` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | verified 轨是否只收“机器核验/文献”warrant：false（默认）= 也接受社会性 debate-unanimous；true = 只收 lean-conformance 或 literature（★ 文献是人工核验，不是机器证明），社会性 warrant 具名拒 VMU_PACK_V5R_SOCIAL_WARRANT_REFUSED |
+| `vmu.verified.requireMachineWarrant` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | verified 轨是否只收“机器核验/文献”warrant：false（默认）= 也接受社会性 debate-unanimous；true = 只收 lean-conformance 或 literature（★ literaturePolicy 声明：文献按机构政策视为人工核验证据，measured:false——产品无法测量某条引用是否真被人核过，不得声称已测量），社会性 warrant 具名拒 VMU_PACK_V5R_SOCIAL_WARRANT_REFUSED |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |

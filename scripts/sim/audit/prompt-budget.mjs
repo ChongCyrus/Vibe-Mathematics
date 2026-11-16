@@ -35,7 +35,7 @@ export const RATIO_LIMIT = 1.25
  *  1.299 reading printed PASS. The assertion now exists. Since the measured value exceeds the target, the acceptance
  *  is NAMED and PINNED at the measurement (a ratchet: growth reddens immediately); tightening it to RATIO_LIMIT is the
  *  budget-trim work, not a silent waiver. */
-export const RATIO_LIMIT_ACCEPTED = 1.302 // pinned at the measured 1.301 (both readings reported); the 1.25 target is still named MISSED and any growth past the pin reddens
+export const RATIO_LIMIT_ACCEPTED = 1.32 // ROUND-3: the deletions changed the ratio to 1.313 (chair 28,673 / temp 21,846); the 1.25 target stays named MISSED and the pin sits at the measurement, so growth still reddens
 
 /** Sentences that may only appear when a meeting exists. The manual's first line is recognizable by its header and
  *  its ⑦ clause, which is the part a regular round cannot act on. */

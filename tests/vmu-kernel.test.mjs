@@ -768,6 +768,14 @@ if (SELF_PROBE) {
     "D4: the KERNEL defaults to the COMPLETE view - eliding keys at the source would make an absent key indistinguishable from an unset one")
   ok(sumStr.length < fullStr.length, "D4: the summary is strictly smaller than the full view")
   ok(sumStr.length < 12000, "D4: the summary fits the 12 KB limit the real machine reported (measured " + sumStr.length + " B)")
+  // ★ P1-a2/C#24: the summary coldStart headline carries the NUMBERS a reader needs (installed/registered/failed/configSource).
+  const sumObj = JSON.parse(sumStr)
+  ok(sumObj && sumObj.coldStart && typeof sumObj.coldStart === 'object', 'P1-a2: summary 仍含 coldStart 段（键集超集契约）', sumObj && sumObj.coldStart)
+  // ★ final18 E（窄化，不是削弱）：summary 只带**数字**（installed/registered/failed），不带 configSource/repair/
+  // unavailable 这类诊断载荷 —— 它们留在 detail:"full"（冷启动诊断面），并由 tests/vmu-cold-start 的 COLD_DIAG_KEYS
+  // 反向 pin。D4 的键集超集判据仍在（coldStart 键不能被删），所以「被 bounded」与「不支持」依旧可区分。
+  ok(sumObj && sumObj.coldStart && ('installed' in sumObj.coldStart) && ('registered' in sumObj.coldStart) && ('failed' in sumObj.coldStart) && !('configSource' in sumObj.coldStart),
+    'P1-a2/C#24 + final18 E: coldStart summary 只携带数字 headline（installed/registered/failed），诊断键 configSource 留在 full', sumObj && sumObj.coldStart)
   // ★ THE CONTRACT IS A SUPERSET, NOT AN EQUALITY: the summary may ADD a note explaining what it bounded, but it
   // may never REMOVE a section. Asserting equality would also forbid the receipt from saying what it did - which is
   // the honesty this change exists to provide.

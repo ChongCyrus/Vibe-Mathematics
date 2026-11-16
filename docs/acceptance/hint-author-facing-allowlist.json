@@ -11,7 +11,7 @@
     },
     {
       "file": "vibe-math-vmu/kernel/pack.js",
-      "line": 979,
+      "line": 987,
       "name": "declarePackTools",
       "why": "host author: declaring pack tools requires a host bridge capability. The refusal is raised while the HOST wires a pack declaration, not in a seat receipt.",
       "owner": "host-integration"

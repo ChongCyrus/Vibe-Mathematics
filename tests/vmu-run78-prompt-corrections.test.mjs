@@ -104,9 +104,9 @@ const TB2732_BASELINE = { chair: 29500, sum: 78171 }
 // ★ TB-2752 / RUN 80 (prompt-lane review + audit): four prompt corrections measured on the SAME collect() ruler as the
 // RUN 78 baseline. RUN 78's ceiling is a net-zero measurement and RUN 80's batch is not net-zero, so its growth enters
 // this suite as a NAMED line item — never by editing 78 171 into the measured number (that would erase the baseline).
-// Per seat after ROUND-2 + final17b: chair +52, member +49, temp +30; sum +131 (P0/P1 fixes net of the reply-channel merge);
+// Per seat after ROUND-3: chair -826, member -803, temp -822; sum -2451 (five legacy correction sections deleted);
 // the taskbook's +120 envelope. No cap / ratchet was raised.
-const TB2752_RUN80_FIXES = { chair: 52, member: 49, temp: 30, sum: 131 } // ROUND-1 audit P0/P1 fixes
+const TB2752_RUN80_FIXES = { chair: -734, member: -764, temp: -783, sum: -2281 } // ROUND-1 audit P0/P1 fixes
 test('§8 the RUN 78 corrections are net-zero, plus the NAMED RUN 80 batch (+96): three-seat normal sum ≤ baseline + TB-2752', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   const sumCeiling = TB2732_BASELINE.sum + TB2752_RUN80_FIXES.sum

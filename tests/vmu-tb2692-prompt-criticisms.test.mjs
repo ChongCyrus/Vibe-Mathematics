@@ -94,7 +94,9 @@ ok(chairNormal.includes('render') && chairNormal.includes('compile') && chairNor
 // ── §6 VMU_NO_SUCH_OBJECT hint is not copyable: teach the reachable ids instead ─────────────────────────────
 has(chairNormal, 'REACHABLE INSTEAD', '§6 no-such-object: the hint is labelled REACHABLE INSTEAD')
 has(chairNormal, 'vibe_v5_overview {member:"<你的 id>"}', '§6 no-such-object: step 1 reads the roster for your own id')
-has(chairNormal, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§6 no-such-object: step 2 uses a roster id')
+has(chairNormal, 'vibe_v5_inbox {action:"list", member:"<roster id>"}', '§6 no-such-object: step 2 names the roster id (the pinned spelling)')
+has(chairNormal, '（＝上一步 id）', '§6b no-such-object: <roster id> has an ANTECEDENT — it is the id step 1 just read from the roster')
+ok(chairNormal.indexOf('vibe_v5_overview {member:"<你的 id>"}') >= 0 && chairNormal.indexOf('vibe_v5_overview {member:"<你的 id>"}') < chairNormal.indexOf('vibe_v5_inbox {action:"list", member:"<roster id>"}'), '§6c no-such-object: step 1 (read roster[]) comes BEFORE step 2 (use that id) — the semantic order is kept, not just the substring')
 has(chairNormal, 'VMU_NO_SUCH_OBJECT', '§6 no-such-object: the code itself is still named')
 
 // ── §7 V7 shape codes: all four, each with a fix, and shape != engine ───────────────────────────────────────
@@ -147,10 +149,12 @@ import { readFileSync } from 'node:fs'
 const turnSrc = readFileSync(join(VMU, 'kernel', 'turn', 'index.js'), 'utf8')
 ok(turnSrc.includes('(noticeText ? noticeText + "\\n" : "") + out.text'), '§14 item 9 is a KERNEL defect: the turn loop prepends the notice text to the assembled prompt', 'kernel/turn/index.js')
 
-// ── §15 item 12 REJECTED: the corrections sections quote old AND new on purpose (tests/vmu-prompt-corrections) ─
+// ── §15 item 12: ROUND-3 Lead ruling DELETED the five legacy 【更正·】 ledger sections (history noise, 1,067 chars ×
+// 35). The two facts that had no other home were folded into reply-compact first, so the SHIPPED text still names them.
 const corrections = readFileSync(join(VMU, 'packs', 'v5r', 'prompts', 'v5r-corrections.js'), 'utf8')
-ok(corrections.includes('json 代码围栏') && corrections.includes('VMU_TURN_REPLY_CONFLICT'), '§15 item 12: the correction names the obsolete wording and the current one on purpose (declared device, not stale text)')
-ok((chairNormal.match(/【更正·/g) || []).length >= 3, '§15 item 12: the corrections render in the assembled chair prompt as 【更正·…】 sections')
+ok(corrections.includes('export const V5R_CORRECTION_SECTIONS = Object.freeze([])'), '§15 item 12: the correction ledger is EMPTY (the five legacy sections were deleted by Lead ruling)')
+ok((chairNormal.match(/【更正·/g) || []).length === 0, '§15 item 12: no 【更正·…】 section renders in the assembled chair prompt (deletion is real, not renamed)')
+ok(chairNormal.includes('VMU_TURN_REPLY_CONFLICT') && chairNormal.includes('旧名 `end_verify`/`formal_proof` 不存在，不要调用'), '§15 item 12b: the reply-conflict fact and the retired-name warning fold into reply-compact (no fact was lost with the sections)')
 
 // ── §17 F75-16 / TB-2707: the archive sentence is CONDITIONAL + CHECKABLE + NAMED FAILURE ──────────────────
 // The old sentence said unconditionally 「全文落 `Members/<你>/Turns/<turn>.md`」, which reads as "the file is

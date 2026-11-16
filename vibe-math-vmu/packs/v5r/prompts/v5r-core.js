@@ -617,7 +617,7 @@ const V5R_PROSE_CHAIR = Object.freeze([
     "★ 动手前先探环境：跑 python／Lean／LaTeX 前先 vibe_vmu_env {action:'probe', need:'…'}，探通了再跑。",
     "★★ 探不通不要硬试：探测失败是正常结果（ok:false），不要反复重试或改系统——框架不会替你安装，也不会静默假装成功。",
     "★★ 探不通就上报：vibe_vmu_env {action:'report', need:'…', why:'为什么这轮需要它'} 记一条 environment-missing 的 finding ⇒ 主代理会读到。",
-    "★★★ 主代理（所办，不是院士席）职责：读到 environment-missing 的 finding 时，向用户报告缺什么、给出 installCommand（取自 probe 回执）、请求授权。",
+    "★★★ **主代理（所办，不是院士席）职责**：environment-missing **由主代理读到并向用户请求授权**（installCommand）；**未获授权前不要尝试安装**、不要改用户的系统——你只上报。",
     "★★★★ 未获授权前不要尝试安装、不要改用户的系统——这条优先于「把任务做完」。",
 ])
 

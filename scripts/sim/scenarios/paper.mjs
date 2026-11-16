@@ -54,35 +54,37 @@ export async function paper(h, { log = () => {} } = {}) {
   const member = (id) => ({ agent: { id } })
   const recordIdOf = (r) => (r && (r.recordId || r.id)) || null
 
-  // The tool spec and the EXACT execute() the harness uses — but this helper does NOT append to h.receipts, so an
-  // expected refusal can be captured with the fields a reader needs (`final.blockedBy`, `requestId`, `hint`).
-  const execAs = (as) => (as === null ? { kernel: h.kernel } : { kernel: h.kernel, agent: as.agent })
+  // ★ ROUND-3 F3/F5/G5: an expected refusal goes through the NORMAL call path so its receipt LANDS in
+  // receipts.jsonl (the frozen layer read 19 steps / 17 receipts and the audit could not verify `hint` verbatim).
+  // The declaration below pins the seq that was just written, which is what keeps the audit's A1 census from reading a
+  // PREDICTED refusal as a mechanism defect; the harness persists the refusal's own fields (hint/final/requestId/…) so
+  // the checks below still read the same facts.
+  const expectedRefusals = []
+  /** Call a face that MUST refuse, and return its receipt with the matched-refusal view the case checks read. */
   const expectRefusal = async (name, args, { as = null, code = null } = {}) => {
-    const spec = h.specOf(name)
-    if (!spec) return { ok: false, code: 'NO-SUCH-TOOL', message: name }
-    let receipt = null
-    let thrown = null
-    try {
-      const raw = await spec.execute(args, execAs(as))
-      receipt = typeof raw === 'string' ? JSON.parse(raw) : raw
-    } catch (e) { thrown = e }
-    const got = thrown ? { ok: false, code: (thrown && thrown.code) || null, message: String((thrown && thrown.message) || thrown), hint: (thrown && thrown.hint) || null } : receipt
-    const actual = got && got.code ? String(got.code) : null
-    const matched = got && got.ok === false && (code === null || actual === code)
+    const got = (await call(name, args, as)) || { ok: false, code: 'NO-SUCH-TOOL', message: name }
+    const actual = got.code ? String(got.code) : null
+    const matched = got.ok === false && (code === null || actual === code)
+    const last = h.receipts.length > 0 ? h.receipts[h.receipts.length - 1] : null
+    expectedRefusals.push({
+      seq: last && Number.isInteger(last.seq) ? last.seq : undefined,
+      tool: name,
+      code: actual,
+      why: 'paper scenario predicts ' + String(code) + ' (recorded through the normal call path so the code+hint are in the corpus; ROUND-3 F3/F5/G5)',
+    })
     if (!matched) {
-      log('MISMATCH  expected refusal ' + String(code) + ' from ' + name + ', got ' + String(actual) + ' (ok=' + String(got && got.ok) + ')')
+      log('MISMATCH  expected refusal ' + String(code) + ' from ' + name + ', got ' + String(actual) + ' (ok=' + String(got.ok) + ')')
     }
-    return {
+    return Object.assign({}, got, {
       ok: matched, refused: true, expectedCode: code, code: actual,
-      message: got && got.message ? String(got.message) : null,
-      hint: got && got.hint ? String(got.hint) : null,
-      // Fields the host's flattened `h.call` receipt would drop (they live on the refusal body).
-      final: got && got.final ? got.final : null,
-      requestId: got && got.requestId ? String(got.requestId) : null,
-      settingValues: got && got.settingValues ? got.settingValues : null,
-      answerRoles: got && Array.isArray(got.answerRoles) ? got.answerRoles.slice() : null,
-      thrown: thrown !== null,
-    }
+      message: got.message === undefined || got.message === null ? null : String(got.message),
+      hint: got.hint === undefined || got.hint === null ? null : String(got.hint),
+      final: got.final || null,
+      requestId: got.requestId ? String(got.requestId) : null,
+      settingValues: got.settingValues || null,
+      answerRoles: Array.isArray(got.answerRoles) ? got.answerRoles.slice() : null,
+      thrown: false,
+    })
   }
 
   // ── ① the institute exists (and the roster paper.start validates participants against) ─────────────────────────
@@ -274,6 +276,9 @@ export async function paper(h, { log = () => {} } = {}) {
       stateRecord: statusEnd && statusEnd.paper ? statusEnd.paper.stateRecordId || null : null,
     },
     receipts: h.receipts,
+    // ROUND-3 F3/F5/G5: the refusals this scenario predicts are DECLARED by seq, because they now land in
+    // receipts.jsonl through the normal call path — an undeclared one would be an A1 STEP_REFUSED mechanism defect.
+    expectedRefusals,
     promptChars,
     tree: h.tree ? h.tree() : [],
     highlights: {

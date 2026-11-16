@@ -2171,8 +2171,11 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   // ── C#10b: the PRODUCTION path really uses the CAS token (not only tests) ──────────────────────────────────
   const src = readFileSync(join(REPO_DIR, 'vibe-math-vmu', 'kernel', 'idempotency.js'), 'utf8')
+  const storeSrcPin = readFileSync(join(REPO_DIR, 'vibe-math-vmu', 'kernel', 'store.js'), 'utf8')
   ok(/expectFingerprint/.test(src) && /cas-conflict/.test(src) && /baseFingerprint/.test(src),
     'C10-3 ★ C#10 生产路径真实使用 CAS：idempotency ledger 的 persist() 传 expectFingerprint，冲突时 reload+重试（不覆盖别人的条目）')
+  ok(/patch\(key, fn, opts = \{\}\)/.test(storeSrcPin) && /const casCheck = \(key, opts\) =>/.test(storeSrcPin) && /casCheck\(key, opts\)/.test(storeSrcPin),
+    'C10-3b ★ ROUND-3 回归：patch 真的接收第三参，并与 write 共用同一个 casCheck（令牌不再被静默丢弃）')
 }
 
 {
@@ -2217,6 +2220,95 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'C16 lamp RED-worthy: 撤掉持久 ledger 分支 ⇒ 重启重放又写第二次（C#16 的原状）', { calls: lampCalls.length, replayed: lout && lout.replayedDispatches })
   rmSync(kroot, { recursive: true, force: true })
   rmSync(lampDir, { recursive: true, force: true })
+}
+
+
+{
+  // ★★★ C#10 / ROUND-3 cross audit (P0 regression): the CAS token must ACTUALLY reach the check, on BOTH doors, and a
+  // lock-skipped write must not silently overwrite a newer value. Two kernels over one root are simulated with two stores.
+  const croot = mkdtempSync(join(tmpdir(), 'vmu-c10x-'))
+  const s1 = createStore({ root: croot, clock: () => 1000 })
+  const s2 = createStore({ root: croot, clock: () => 1000 })
+  await s1.open()
+  await s2.open()
+  await s1.write('phase', 'base')                       // both stores now hold the same value
+  const staleFp = s2.fingerprintOf('phase')
+  await s1.write('phase', 'from-kernel-A')              // A lands first
+  const bWrite = await s2.write('phase', 'from-kernel-B', { expectFingerprint: staleFp }).then(() => null, (e) => e)
+  ok(bWrite && bWrite.code === 'VMU_STORE_CONFLICT' && bWrite.expectedFingerprint === staleFp,
+    'C10-4 ★★★ 两内核交错写：B 用旧指纹写 ⇒ 具名 VMU_STORE_CONFLICT（不是 last-writer-wins）', bWrite && { code: bWrite.code, expected: bWrite.expectedFingerprint })
+  ok(s1.read('phase') === 'from-kernel-A',
+    'C10-5 ★ B 的写没有落盘：A 的值仍是磁盘上的值', { disk: s1.read('phase') })
+  // the regression itself: `patch` used to drop the third argument, so the token never reached any check
+  const s3 = createStore({ root: croot, clock: () => 1000 })
+  await s3.open()
+  const stalePatchFp = s3.fingerprintOf('phase')
+  await s1.write('phase', 'from-kernel-A2')
+  const bPatch = await s3.patch('phase', () => 'from-kernel-B2', { expectFingerprint: stalePatchFp }).then(() => null, (e) => e)
+  ok(bPatch && bPatch.code === 'VMU_STORE_CONFLICT',
+    'C10-6 ★★★ `patch(key, fn, opts)` 第三参不再被静默丢弃：模板同 `write` 的 CAS 判定触发（idempotency.persist 的生产路径）', bPatch && { code: bPatch.code })
+  // lock-skip + changed fingerprint: the write proceeds WITHOUT the file lock by contract, but it must still conflict
+  const s4 = createStore({ root: croot, clock: () => 1000, lockRetries: 1, lockBackoffMs: 1, lockTimeoutMs: 1 })
+  await s4.open()
+  const staleLockFp = s4.fingerprintOf('phase')
+  await s1.write('phase', 'from-kernel-A3')
+  writeFileSync(join(croot, 'vmu', 'state.json.lock'), '{"pid":0,"at":0}')   // s4 cannot take the lock
+  const bLocked = await s4.write('phase', 'from-unlocked-B', { expectFingerprint: staleLockFp }).then(() => null, (e) => e)
+  ok(bLocked && bLocked.code === 'VMU_STORE_CONFLICT',
+    'C10-7 ★ C#10 无锁 + 指纹已变 ⇒ 具名 VMU_STORE_CONFLICT（forced freshness read，不许静默覆盖）', bLocked && { code: bLocked.code })
+  rmSync(join(croot, 'vmu', 'state.json.lock'), { force: true })
+  // ★ lamp: copy tree, make the CAS check a no-op -> the stale writer silently overwrites (last-writer-wins returns)
+  const lampDir = mkdtempSync(join(tmpdir(), 'vmu-c10x-lamp-'))
+  cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+  const storePath = join(lampDir, 'vibe-math-vmu', 'kernel', 'store.js')
+  let storeSrc = readFileSync(storePath, 'utf8')
+  const fromCas = 'if (opts.expectFingerprint !== undefined && opts.expectFingerprint !== fingerprint(fold.keys[key])) {'
+  ok(storeSrc.indexOf(fromCas) !== -1, 'C10x lamp-setup: the CAS judgement exists in one place')
+  storeSrc = storeSrc.replace(fromCas, 'if (false) {')
+  writeFileSync(storePath, storeSrc)
+  const lampMod = await import(pathToFileURL(storePath).href + '?c10xlamp=1')
+  const lroot = mkdtempSync(join(tmpdir(), 'vmu-c10x-lamp-ws-'))
+  const l1 = lampMod.createStore({ root: lroot, clock: () => 1000 })
+  const l2 = lampMod.createStore({ root: lroot, clock: () => 1000 })
+  await l1.open(); await l2.open()
+  await l1.write('phase', 'base')
+  const lFp = l2.fingerprintOf('phase')
+  await l1.write('phase', 'from-kernel-A')
+  const lOut = await l2.write('phase', 'from-kernel-B', { expectFingerprint: lFp }).then(() => 'ok', (e) => e)
+  ok(lOut === 'ok' && l1.read('phase') === 'from-kernel-B',
+    'C10x lamp RED-worthy: 撤掉 CAS 判定 ⇒ B 静默覆盖 A（last-writer-wins 复现，A 的已提交值丢失）', { write: lOut, disk: l1.read('phase') })
+  rmSync(lroot, { recursive: true, force: true })
+  rmSync(lampDir, { recursive: true, force: true })
+  rmSync(croot, { recursive: true, force: true })
+}
+
+
+{
+  // ★★★ C#10 / ROUND-3 (the concrete loss the audit named): two kernels over one store must not LOSE a committed
+  // idempotency entry. B loads the (empty) ledger, A commits a key, then B commits its own key from the STALE base; with
+  // the dropped CAS token B's projection overwrote A's entry (last-writer-wins). Now B's persist conflicts, reloads,
+  // re-projects and retries — both committed keys survive and a third kernel deduplicates BOTH.
+  const iroot = mkdtempSync(join(tmpdir(), 'vmu-c10-ledger-'))
+  const kA = createKernel({ clock: () => 1000, root: iroot })
+  const kB = createKernel({ clock: () => 1000, root: iroot })
+  await kA.store.open()
+  await kB.store.open()
+  kB.idempotency.begin({ key: 'kernel-b-first', scope: 'round3', payload: { x: 1 } })   // loads the EMPTY ledger (B's base)
+  kA.idempotency.begin({ key: 'kernel-a-key', scope: 'round3', payload: { a: 1 } })
+  kA.idempotency.commit({ key: 'kernel-a-key', scope: 'round3', result: { ok: 'A' } })
+  await kA.idempotency.whenDurable()
+  kB.idempotency.commit({ key: 'kernel-b-first', scope: 'round3', result: { ok: 'B' } })
+  await kB.idempotency.whenDurable()
+  const kC = createKernel({ clock: () => 1000, root: iroot })
+  await kC.store.open()
+  const seenA = kC.idempotency.begin({ key: 'kernel-a-key', scope: 'round3', payload: { a: 1 } })
+  const seenB = kC.idempotency.begin({ key: 'kernel-b-first', scope: 'round3', payload: { x: 1 } })
+  ok(seenA && seenA.deduplicated === true && seenB && seenB.deduplicated === true,
+    'C10-8 ★★★ C#10 生产台账：两内核交错提交后，A 的已提交 key 没有被 B 的旧投影覆盖（第三个内核两条都去重命中）',
+    { a: seenA && { deduplicated: seenA.deduplicated, result: seenA.result }, b: seenB && { deduplicated: seenB.deduplicated, result: seenB.result } })
+  ok(seenA && seenA.result && seenA.result.ok === 'A',
+    'C10-9 ★ A 的结果原文仍可读回（丢了 key 就会变成一次新的 pending）', seenA && seenA.result)
+  rmSync(iroot, { recursive: true, force: true })
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -300,7 +300,19 @@ export async function boot({ root, packs = ['v5r'], clock = () => 1_800_000_000_
       raw = await spec.execute(args, exec)
       receipt = typeof raw === 'string' ? JSON.parse(raw) : raw
     } catch (e) {
-      receipt = { ok: false, code: (e && e.code) || null, message: String((e && e.message) || e) }
+      // ★ ROUND-3 F3/F5/G5: a KERNEL REFUSAL IS A RECEIPT TOO. `refuse()` throws an Error carrying `code`, `hint`
+      // and (on some doors) the fields a reader needs to act — `final`, `requestId`, `settingValues`, `enforced`,
+      // `declared`, `answerRoles` … The old catch kept only code+message, so a scenario that wanted the hint had to
+      // bypass `h.call` and the refusal never reached receipts.jsonl (the frozen layer read 19 steps / 17 receipts and
+      // the audit could not verify the hint). The host flattens those fields onto the refusal body; the simulator now
+      // keeps the SAME own-enumerable fields, so a normal call is enough to record a verifiable refusal.
+      const err = e !== null && typeof e === 'object' ? e : {}
+      receipt = { ok: false, code: err.code === undefined || err.code === null ? null : err.code, message: String((err.message === undefined || err.message === null ? err : err.message)) }
+      for (const key of Object.keys(err)) {
+        if (key === 'stack' || key === 'code' || key === 'message' || key === 'ok') continue
+        if (err[key] === undefined) continue
+        receipt[key] = err[key]
+      }
     }
     const endedAt = since()
     receipts.push({ seq, tool: name, as: as && as.agent ? as.agent.id : 'office', args, receipt })

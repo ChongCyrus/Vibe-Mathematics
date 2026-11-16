@@ -355,6 +355,26 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
    * before the file lock and never re-entered, the lock is released in `withFileLock`'s finally, and a lock that cannot
    * be taken degrades to its bounded "proceed without it" path (stats.lockSkips) rather than waiting forever.
    */
+  // ★★★ C#10 (ROUND-3 cross audit): ONE compare-and-set judgement for BOTH mutation doors (`write` and `patch`).
+  // It reads the CURRENT durable value (after the reload below) and refuses a stale expectation by name; it is the only
+  // place the rule lives, so a new door cannot silently diverge. `expect` (the store's schema version) is kept for
+  // compatibility; `expectFingerprint` is the value token production uses.
+  const casCheck = (key, opts) => {
+    if (!opts || typeof opts !== 'object') return
+    if (opts.expectFingerprint !== undefined && opts.expectFingerprint !== fingerprint(fold.keys[key])) {
+      throw refuse('VMU_STORE_CONFLICT',
+        'concurrent write refused: the durable value of "' + key + '" changed since this writer read it (expected fingerprint ' + JSON.stringify(opts.expectFingerprint) + ', current ' + JSON.stringify(fingerprint(fold.keys[key])) + ')',
+        'this write did NOT land. Re-read the row (read/fingerprintOf) and retry against the NEW value; two writers on one row is a conflict, not a corrupt store',
+        { key, expectedFingerprint: opts.expectFingerprint, currentFingerprint: fingerprint(fold.keys[key]) })
+    }
+    if (opts.expect !== undefined && opts.expect !== fold.version) {
+      throw refuse('VMU_STORE_CONFLICT',
+        'concurrent write refused: this writer expected durable version v' + opts.expect + ', the store is at v' + fold.version + ' (another writer landed in between)',
+        'this write did NOT land. Re-read the row (read/patch) and retry against the NEW version; two writers on one row is a conflict, not a corrupt store',
+        { key, expectedVersion: opts.expect, currentVersion: fold.version })
+    }
+  }
+
   const mutate = (key, where, compute, before, landed) => runExclusive(() => { lockSkipSeen = false; return withFileLock(async () => {
     let attempt = 0
     for (;;) {
@@ -363,6 +383,12 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       // first attempt: the ordinary staleness check (honours coherence:'off'); a RETRY must forget the value that never
       // landed and read the file as it is now — that is recovery of a failed write, not a coherence inference.
       reloadIfStale(where, attempt > 1)
+      // ★★★ C#10 (ROUND-3 cross audit): A WRITE THAT COULD NOT TAKE THE LOCK MUST NOT SILENTLY OVERWRITE A NEWER VALUE.
+      // The file lock is what normally keeps the read-merge-write atomic; when it was skipped, force a freshness read so the
+      // CAS compares against what is REALLY on disk, and a stale `expectFingerprint` still refuses by name below. (An
+      // unconditional write with no token keeps last-writer-wins by contract — the token is what makes the conflict
+      // detectable, and production now always passes one.)
+      if (lockSkipSeen) reloadIfStale(where + '+unlocked', true)
       assertKey(key)
       if (before) before()
       const prev = fold.keys[key]
@@ -548,36 +574,29 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
      * losing write lands (the check runs inside the exclusive section, before the merge).
      */
     write(key, value, opts = {}) {
-      return mutate(key, 'write', () => clone(value), () => {
-        if (opts.expectFingerprint !== undefined && opts.expectFingerprint !== fingerprint(fold.keys[key])) {
-          throw refuse('VMU_STORE_CONFLICT',
-            'concurrent write refused: the durable value of "' + key + '" changed since this writer read it (expected fingerprint ' + JSON.stringify(opts.expectFingerprint) + ', current ' + JSON.stringify(fingerprint(fold.keys[key])) + ')',
-            'this write did NOT land. Re-read the row (read/fingerprintOf) and retry against the NEW value; two writers on one row is a conflict, not a corrupt store',
-            { key, expectedFingerprint: opts.expectFingerprint, currentFingerprint: fingerprint(fold.keys[key]) })
-        }
-        if (opts.expect !== undefined && opts.expect !== fold.version) {
-          throw refuse('VMU_STORE_CONFLICT',
-            'concurrent write refused: this writer expected durable version v' + opts.expect + ', the store is at v' + fold.version + ' (another writer landed in between)',
-            'this write did NOT land. Re-read the row (read/patch) and retry against the NEW version; two writers on one row is a conflict, not a corrupt store',
-            { key, expectedVersion: opts.expect, currentVersion: fold.version })
-        }
-      })
+      return mutate(key, 'write', () => clone(value), () => casCheck(key, opts))
     },
 
     /**
      * The preferred mutation: `current => next`, computed INSIDE the exclusive section, so two changes
      * in the same tick both survive. `fn` returning undefined leaves the value untouched.
      *
+     * ★★★ ROUND-3 cross audit (C#10 P0 regression): `patch` used to take only `(key, fn)`, so a caller passing
+     * `{expectFingerprint}` as the third argument had the token SILENTLY DROPPED — `idempotency.persist()` did exactly
+     * that, so the CAS never ran and two kernels were still last-writer-wins (a committed dispatch key could be lost).
+     * `opts` is now a real parameter and runs the SAME casCheck as `write` (one implementation, not a copy); a stale
+     * expectation refuses with `VMU_STORE_CONFLICT` before the functional change is merged.
+     *
      * R31 / task-20: this returns MUTATE's promise directly. The old shape (`mutate(...).then(...)`) created a DERIVED
      * promise for the caller that no one handled when the call was fire-and-forget, so a refusal raised after teardown
      * crashed the process as an unhandled rejection (the chain that `runExclusive` keeps is a handler for mutate's own
      * promise, not for the derived one). The retry/root-gone counters live in `stats`, not in a side promise.
      */
-    patch(key, fn) {
+    patch(key, fn, opts = {}) {
       return mutate(key, 'patch', (prev) => {
         if (typeof fn !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'patch needs a function: (current) => next')
         return fn(prev)
-      }, undefined, (receipt) => {
+      }, () => casCheck(key, opts), (receipt) => {
         if (receipt.changed) stats.patches++
       })
     },

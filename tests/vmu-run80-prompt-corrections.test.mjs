@@ -118,15 +118,15 @@ test('§2 the two sides do not contradict each other', async () => {
 
 test('§3 the water levels move with the text, not behind it', () => {
   console.log('=== 3. ACCOUNTING (run256 / run77) AND THE DOC WATERMARK ===')
-  ok(run256.includes('const TB2752_RUN80_FIXES = { chair: 52, member: 49, temp: 30, sum: 131 }'), '§3a run256 records the corrections as one constant (per seat + 52 / + 49 / + 30, sum + 131)')
+  ok(run256.includes('const TB2752_RUN80_FIXES = { chair: -734, member: -764, temp: -783, sum: -2281 }'), '§3a run256 records the corrections as one constant (per seat -734 / -764 / -783, sum -2281)')
   ok(run256.includes('+ RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair'), '§3b run256 chair ceiling is derived from the constant')
   ok(run256.includes('+ RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum'), '§3c run256 sum ceiling is derived from the constant')
-  ok(run77.includes('const TB2752_RUN80_FIXES = { chair: 52, member: 49, temp: 30, sum: 131 }') && run77.includes('+ TB2752_RUN80_FIXES.sum') && run77.includes('+ TB2752_RUN80_FIXES.chair'), '§3d run77 §7 ceilings include the same constant')
+  ok(run77.includes('const TB2752_RUN80_FIXES = { chair: -734, member: -764, temp: -783, sum: -2281 }') && run77.includes('+ TB2752_RUN80_FIXES.sum') && run77.includes('+ TB2752_RUN80_FIXES.chair'), '§3d run77 §7 ceilings include the same constant')
   ok(says(receiptsDoc, 'TB-2752') && says(receiptsDoc, 'F80-3') && says(receiptsDoc, 'F80-4') && says(receiptsDoc, 'F80-8') && says(receiptsDoc, 'F80-12'), '§3e docs/acceptance/prompt-vs-receipts.md carries the four corrections')
   // The constant is not a wish: the live measurement equals baseline + constant.
   const chairLive = got.combos.filter((c) => c.slot === 'chair' && c.phase === 'normal')[0].chars
-  ok(chairLive === 29499 + 52, '§3f chair normal live length = the RUN 272 water level + the recorded delta', { live: chairLive, expected: 29499 + 52 })
-  ok(sum === 78168 + 131, '§3g three-seat normal sum = the RUN 272 water level + the recorded delta', { live: sum, expected: 78168 + 131 })
+  ok(chairLive === 29499 - 734, '§3f chair normal live length = the RUN 272 water level + the recorded delta', { live: chairLive, expected: 29499 - 734 })
+  ok(sum === 78168 - 2281, '§3g three-seat normal sum = the RUN 272 water level + the recorded delta', { live: sum, expected: 78168 - 2281 })
 })
 
 test('§5 TB-2765 teaching: formulas are `$…$`/`$$…$$` in the assembled paper prompt, and the A-1/A-2/D-7 read-face notes are in the office prompt', async () => {
@@ -179,7 +179,7 @@ test('§4 anti-lamps: mutating the prompt or the accounting turns this suite red
   ok(denies(mutant, ACCURATE), '§4b lamp 1: the two-spelling predicate is false on the mutant (the suite would red)')
   // Lamp 2 — the accounting constant is an exact equality, so a +1 edit is visible. Parse it back out of run256 and
   // recreate the arithmetic on the live numbers: recorded + 1 must NOT equal the live delta.
-  const m = run256.match(new RegExp('TB2752_RUN80_FIXES = \\{ chair: (\\d+), member: (\\d+), temp: (\\d+), sum: (\\d+) \\}'))
+  const m = run256.match(new RegExp('TB2752_RUN80_FIXES = \\{ chair: (-?\\d+), member: (-?\\d+), temp: (-?\\d+), sum: (-?\\d+) \\}'))
   ok(m !== null, '§4c lamp 2 (accounting): the constant is machine-readable')
   const rec = { chair: Number(m[1]), member: Number(m[2]), temp: Number(m[3]), sum: Number(m[4]) }
   const chairLive = got.combos.filter((c) => c.slot === 'chair' && c.phase === 'normal')[0].chars

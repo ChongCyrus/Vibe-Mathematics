@@ -2019,6 +2019,41 @@ try {
     })
 }
 
+
+// ── ★★★ ROUND-3 P0-c: THE "archive blocked ⇒ the ruling gate lets it through" ROAD MUST BE REACHABLE ──────────
+{
+  const fRoot = await mkScratch('vmu-v5r-formal-blocked-')
+  const b = await boot({ root: fRoot, packs: ['v5r'], 'vmu.math.formalVerify': 'require' })
+  const k = b.handle.kernel
+  for (const [id, slot] of [['r-acad', 'chair'], ['r-1', 'member']]) await k.members.hire({ id, slot })
+  const STMT = '对任意 n，1+3+…+(2n-1)=n²。';
+  const card = (await receipt(b, 'vibe_v5_record_proposition', { statement: STMT, value: '平方和', motive: 'P0-c 可达性', p: 0.5, member: 'r-1' })).parsed
+  const cardId = card && card.recordId
+  ok(!!cardId, 'P0-c 前置：命题卡落库', card)
+  const conv = (await receipt(b, 'vibe_v5_meeting', { action: 'convene', agenda: 'P0-c 可达性', type: 'ordinary', member: 'r-acad', members: ['r-1'] })).parsed
+  const meeting = conv && conv.meeting
+  ok(!!meeting, 'P0-c 前置：会议已开（主席签裁定）', conv)
+  const before = (await receipt(b, 'vibe_v5_verdict_final', { meeting, proposition_id: cardId, verdicts: [{ member: 'r-1', p: 0.5, reason: 'x' }] })).parsed
+  ok(before && before.code === 'VMU_PACK_V5R_FORMAL_REQUIRED', 'P0-c ★ 无 blocked 记录时，require 档按原语义具名拒 VMU_PACK_V5R_FORMAL_REQUIRED（门禁仍在，未放宽）', before && before.code)
+  const noNote = (await receipt(b, 'vibe_v5_lean_archive', { kind: 'blocked', name: 'p0c-no-note', file: 'Formal/p0c.lean', statement: STMT })).parsed
+  ok(noNote && noNote.code === 'VMU_LEAN_BLOCKED_NOTE_REQUIRED', 'P0-c 反灯①：blocked 缺 note ⇒ 具名拒（阻塞记录必须带原因，不是静默写入）', noNote && noNote.code)
+  const arch = (await receipt(b, 'vibe_v5_lean_archive', { kind: 'blocked', name: 'p0c-blocker', file: 'Formal/p0c.lean', statement: STMT, note: '宿主无 Lean 工具链；定义 X 的语法未解决' })).parsed
+  ok(arch && arch.ok === true && arch.blockedRecorded === true && typeof arch.blockedRecordId === 'string' && arch.noteStored === true,
+    'P0-c ★★ 无 Lean face 也能记录 blocked（producer 存在）：blockedRecorded + blockedRecordId + note 留存', arch && { code: arch.code, id: arch.blockedRecordId, engine: arch.engine })
+  ok(arch && arch.engine === 'blocked-record-only', 'P0-c ★ 说明这份记录是从 records 走的（无 Lean 工具链时的唯一可达路径）', arch && arch.engine)
+  const after = (await receipt(b, 'vibe_v5_verdict_final', { meeting, proposition_id: cardId, verdicts: [{ member: 'r-1', p: 0.5, reason: 'x' }] })).parsed
+  ok(after && after.ok === true, 'P0-c ★★★ archive blocked 之后同一 require 档裁定放行（可达）', after && (after.code || after.ok))
+  ok(after && after.formalDecision === 'blocked' && after.formalDecisionSource === 'lean-archive',
+    'P0-c ★★★ 回执具名来源 formalDecisionSource:"lean-archive" + formalDecision:"blocked"', after && { d: after.formalDecision, s: after.formalDecisionSource })
+  ok(after && after.formalBlockedDecision && typeof after.formalBlockedDecision.recordId === 'string' && /语法未解决/.test(String(after.formalBlockedDecision.note)),
+    'P0-c ★★ 回执带回阻塞记录（recordId + 原始 note）', after && after.formalBlockedDecision)
+  // 反灯②：另一张毫无 blocked 记录的卡在同一 require 档下仍然被拒（记录匹配不是「有任意 blocked 行就放行」）
+  const card2 = (await receipt(b, 'vibe_v5_record_proposition', { statement: '另一条无法形式化的命题。', value: 'x', motive: '反灯', p: 0.5, member: 'r-1' })).parsed
+  const still = (await receipt(b, 'vibe_v5_verdict_final', { meeting, proposition_id: card2 && card2.recordId, verdicts: [{ member: 'r-1', p: 0.5, reason: 'x' }] })).parsed
+  ok(still && still.code === 'VMU_PACK_V5R_FORMAL_REQUIRED', 'P0-c 反灯②：blocked 记录按 statement/file 匹配到「这一张」卡；无关卡仍拒（不是恒真）', still && still.code)
+  await rm(fRoot, { recursive: true, force: true, maxRetries: 10 }).catch(() => {})
+}
+
 console.log('\n=== VMU V5R TOOLS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f) }
 process.exit(failed > 0 ? 1 : 0)

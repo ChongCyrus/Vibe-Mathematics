@@ -36,6 +36,7 @@
 
 - `installer.js#PRESETS` 只有 **1** 项：`{ src: 'vibe-math-vmu', dst: 'vibe-math-vmu' }`。
 - `package.json#files` 里没有任何 `vibe-math-v2/`…`vibe-math-v5/` 条目（只有 `vibe-math-vmu/**`）。
+- **另一个 preset id 不是旧 preset**：`cordis.patch.yml`（`scripts/build-preset-rows.mjs` 生成）在 DSH ≥ 0.1.7 上声明 **2 条** preset row——框架席 `vibe-math-vmu` 与**成员席** `vibe-math-vmu-member`（同一 bundle，去掉 shell/后台作业/自我分派/联网/直接问用户//goal 六类宿主出口）。**成员席不归本文件的旧 preset，也不由 installer 安装**（composition-row only、无独立目录）；完整口径见 `README.md` 的「发货面」一节。
 - 仓库 HEAD 的目录树里没有旧 preset 目录（`git ls-tree HEAD --name-only | grep '^vibe-math-v[0-9]'` 为空）。
 - ⇒ **旧 preset 不再随包发货、不再被安装器安装**；它们只保留在 git 历史里（需要旧行为时按历史 tag 检出）。
 - 本文件早期版本写着「仍在仓内 / 尚未从发货面移除 / 仍出现在 package/installer 声明中」——那描述的是移除之前的状态，现已更正。

@@ -1791,13 +1791,14 @@ if (SELF_PROBE) {
       "★★★ C#14: coverage says THREE attributed sessions and depth 2 (the grandchild is reached recursively)", out && out.usage && out.usage.coverage)
     ok(out && out.usage && out.usage.coverage && out.usage.coverage.unattributedSessions === 1 && out.usage.coverage.unattributedTokens === 7,
       "★★★ C#14: the foreign-root session is NAMED in unattributed (1 session / 7 tokens), not silently 0 and not charged here", out && out.usage && out.usage.coverage)
-    ok(out && out.usage && out.usage.source === "fake",
-      "★★ C#14: a list-only sessions service is labelled source:\"fake\" (a test stub cannot be mistaken for the real DSH meter)", out && out.usage && out.usage.source)
+    ok(out && out.usage && out.usage.sessionStoreShape === "fake" && out.usage.provenanceMeasured === false,
+      "★★ C#14/P1-a4: list-only sessions service ⇒ sessionStoreShape:\"fake\" + provenanceMeasured:false (shape is not provenance)", out && out.usage && { shape: out.usage.sessionStoreShape, measured: out.usage.provenanceMeasured })
     ok(out && out.usage && out.usage.ledgerMode === "per-kernel",
       "★★ C#14: ledgerMode names the per-kernel ledger (no single institute ledger claimed)", out && out.usage && out.usage.ledgerMode)
   }
-  // ★ ROUND-2 C#14: a SessionStore-SHAPED service (get/create/list) is labelled source:"real" — the marker exists so a
-  // list-only test stub (above, source:"fake") can never be read as a real DSH meter.
+  // ★ ROUND-2/P1-a4 C#14: a SessionStore-SHAPED service (get/create/list) is labelled sessionStoreShape:"real" — the
+  // SHAPE marker exists so a list-only stub (above, "fake") cannot be read as a real meter; provenanceMeasured stays false
+  // because no integration probe proves the rows came from real DSH.
   {
     const realStore = { list: async () => [{ sessionId: "s1", projections: { values: { tokenUsage: { uncachedInputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 } } } }],
       get: () => null, create: () => null }
@@ -1809,7 +1810,8 @@ if (SELF_PROBE) {
     await adapter.install()
     const spec = st.specs.find((x) => x.name === "vibe_vmu_status")
     const out = JSON.parse(await spec.execute({ detail: "full" }, {}))
-    ok(out && out.usage && out.usage.source === "real", "★★ C#14: a SessionStore-shaped service is labelled source:\"real\" (get/list/create)", out && out.usage && out.usage.source)
+    ok(out && out.usage && out.usage.sessionStoreShape === "real" && out.usage.provenanceMeasured === false,
+      "★★ C#14/P1-a4: SessionStore-SHAPED service ⇒ sessionStoreShape:\"real\" but provenanceMeasured stays false (three-method stub ≠ real DSH rows)", out && out.usage && { shape: out.usage.sessionStoreShape, measured: out.usage.provenanceMeasured })
   }
   // ★ ROUND-2 C#14: no root session id AND several sessions ⇒ nothing is attributed: totalTokens is NULL (not 0) and
   // every usage-bearing session is NAMED unattributed — never silently charged to a guessed budget.

@@ -1,19 +1,22 @@
 // dsh-vibe-math merged bundle installer — VERSIONED AUTO-UPDATE.
 // When this bundle is installed (e.g. `dsh plugin --profile <name> add dsh-vibe-math`, or from the
-// dsh-market), this plugin copies ALL FOUR agent presets out of the package into
-// the DSH preset root, so the user immediately gets four presets in the picker:
-//   vibe-math-v2/  (probability-driven architecture)
-//   vibe-math-v3/  (THIRD-generation: paper-style Markdown knowledge base +
-//                   planner-agent scheduling + universal theory/method library)
-//   vibe-math-v4/  (FOURTH-generation: persistent self-organizing resident
-//                   subagents — message bus / meetings / unanimous-consensus
-//                   verification / per-resident libraries)
-//   vibe-math-v5/  (FIFTH-generation: research institute — academician who
-//                   assigns work, permanent researchers who vote, temp workers,
-//                   group chat + meetings + m-vote consensus)
+// dsh-market), this plugin copies the shipped preset directory (`vibe-math-vmu` — the
+// vibe-math-unify framework preset) out of the package into the DSH preset root, so the user
+// immediately gets it in the picker. The legacy v2–v5 presets are ARCHIVED and not shipped.
 //
-// (vibe-math-v1 — the classic pipeline — was removed at v2.0.0; this bundle now
-//  ships v2/v3/v4/v5.)
+// ONE PRESET DIRECTORY, TWO PRESETS ON THE COMPOSITION LINE (round-3 audit C#27 — the truth, named):
+//   · DIRECTORY LINE (DSH <= 0.1.6, where an agent preset IS a directory): only `vibe-math-vmu` is
+//     copied here (`PRESETS` below is the single source of that list).
+//   · COMPOSITION-ROW LINE (DSH >= 0.1.7, where an agent preset is a row): `cordis.patch.yml` declares
+//     TWO presets — `vibe-math-vmu` (office) and `vibe-math-vmu-member` (the member seat: the same
+//     framework with the host-escape rows removed by scripts/build-preset-rows.mjs#MEMBER_DROP).
+//     The member seat is a PRODUCT FEATURE, not legacy compatibility: `vmu.turn.childPreset` names the
+//     preset a member's child session is created with (empty default = inherit the caller).
+//     It is COMPOSITION-ROW-ONLY because there is no directory-form source for it to copy (its
+//     composition is generated from the office one); DSH <= 0.1.6 therefore cannot offer it — a known
+//     boundary, not a packaging bug. Nothing in this installer needs to change for that.
+//
+// (vibe-math-v1 — the classic pipeline — was removed at v2.0.0; the v2–v5 presets were archived later.)
 //
 // UPDATE POLICY (state recorded in <presetRoot>/.vibe-math-installed.json):
 //   - FORCE-REPLACE ON VERSION CHANGE. When the recorded version differs from this package's

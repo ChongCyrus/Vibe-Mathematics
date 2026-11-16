@@ -350,7 +350,10 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const dir = await mkdtemp(join(tmpdir(), 'vmu-entry-work-'))
   const h = fakeCtx()
   const handle = entry.apply(h.ctx, { clock, root: dir })
-  await new Promise((r) => setTimeout(r, 60))
+  // ★ F-GROUP（final18）：固定 60ms 只是「赌 open 已完成」。T1 并行跑时两个 entry 的 open/rename 会互相拉长，
+  // 赌输时 recovered 读到空账（随后另一写入才落盘），断言就红。这里改成等它公开的 readiness seam（其它 § 也用
+  // `await handle.ready()`），语义仍是「新入口恢复在 store open 之后跑」，只是不再用墙钟赌。
+  await handle.ready()
   const rec = await handle.workRecovered()
   ok(rec && rec.ok === true && typeof rec.recovered === 'number',
     'the entry recovers the in-flight ledger right after the store opens', JSON.stringify(rec))
@@ -359,7 +362,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   // A SECOND entry on the same root is the restart: the unfinished item is reported as interrupted.
   const h2 = fakeCtx()
   const handle2 = entry.apply(h2.ctx, { clock, root: dir })
-  await new Promise((r) => setTimeout(r, 60))
+  await handle2.ready()
   const rec2 = await handle2.workRecovered()
   ok(rec2 && rec2.recovered === 1 && handle2.kernel.work.interrupted()[0].owner === 'r-1',
     'a fresh entry marks the unfinished work INTERRUPTED (the "resume knows what is pending" promise)',
