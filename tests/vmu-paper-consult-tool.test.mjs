@@ -27,6 +27,7 @@
 // receipt is not evidence that a mechanism ran.
 // Run: node tests/vmu-paper-consult-tool.test.mjs   Last line: === VMU PAPER CONSULT TOOL: N passed, M failed ===
 import { mkdtemp, rm } from 'node:fs/promises'
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -48,14 +49,15 @@ const eq = (actual, expected, label) => ok(actual === expected, label, actual)
 
 const entry = await import(pathToFileURL(ENTRY).href)
 
-const boot = async (config = {}) => {
+const boot = async (config = {}, entryUrl = null) => {
   const state = { specs: [], effects: [] }
   const ctx = {
     effect(fn, label) { state.effects.push(label); return fn() },
     on() { return () => {} },
     tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
   }
-  const handle = entry.apply(ctx, Object.assign({ clock: () => 1000 }, config))
+  const activeEntry = entryUrl === null ? entry : await import(entryUrl)
+  const handle = activeEntry.apply(ctx, Object.assign({ clock: () => 1000 }, config))
   await handle.ready()
   return { handle, state, names: state.specs.map((s) => s.name), specOf: (n) => state.specs.find((s) => s.name === n) }
 }
@@ -250,6 +252,11 @@ try {
   ok(answered.parsed && answered.parsed.ok === true, '★★★ 正：所办经工具面答复成功', answered.parsed)
   eq(ans && ans.requestId, reqId, '★ 读回：答复的正是那条在等的问询')
   eq(ans && ans.cleared, true, '★★ 正：cleared=true（它关掉了一条真的开着的问题）')
+  // ★ F-4（RUN 86）：答复“真的在等”的那条 ⇒ openedByThisCall:false + requestSource 可判
+  eq(ans && ans.openedByThisCall, false, '★★ F-4：答复在等的那条 ⇒ openedByThisCall:false（不是凭空新开的）')
+  eq(ans && ans.requestSource, 'awaiting-request', '★★ F-4：requestSource=awaiting-request')
+  ok(ans && String(ans.clearedMeans || '').includes(reqId) && /moved it out of `awaiting`/.test(String(ans.clearedMeans || '')),
+    '★★ F-4：clearedMeans 说清 cleared 的是什么（被答复的那条 id + 移出 awaiting）', ans && ans.clearedMeans)
   eq(ans && ans.answeredBy, OFFICE, '★ 读回：答复人＝office')
   eq(ans && ans.answeredRole, 'office', '★ 读回：命中的答复角色＝office（按 id 命中的，不是 slot）')
   eq(ans && ans.armed, true, '★ 读回：闸仍 armed')
@@ -306,6 +313,11 @@ try {
   const early = earlyAnswer.parsed && earlyAnswer.parsed.consult
   ok(earlyAnswer.parsed && earlyAnswer.parsed.ok === true, '★ 正：没有在等的问询时，答复仍然被记录（所办可以预先表态）', earlyAnswer.parsed)
   eq(early && early.cleared, false, '★★★ 正：cleared=false —— 它没有关掉任何在等的问题，回执如实说')
+  // ★ F-4（RUN 86）：凭空答复 = 本调用开了一条立即答复的请求，必须具名
+  eq(early && early.openedByThisCall, true, '★★★ F-4：没有在等的请求时 ⇒ openedByThisCall:true（不是静默新开）')
+  eq(early && early.requestSource, 'opened-by-this-call', '★★ F-4：requestSource=opened-by-this-call')
+  ok(early && String(early.clearedMeans || '').includes('NO awaiting request') && String(early.clearedMeans || '').includes('openedByThisCall:true'),
+    '★★ F-4：clearedMeans 说明「没有在等的请求 + 本调用开并答了一条」，不再只给一个孤零零的 cleared:false', early && early.clearedMeans)
   eq(early && early.awaiting, null, '★ 读回：答复之后没有在等的')
   ok(early && typeof early.requestId === 'string' && /^consult-/.test(early.requestId),
     '★ 读回：kit 仍开了一条并立刻答复（id 可读，不是空字符串）', early && early.requestId)
@@ -314,6 +326,43 @@ try {
   eq(stateT2 && stateT2.counters && stateT2.counters.answered, 1, '★ 读回(pc2)：answered=1')
   ok(stateT2 && stateT2.answered && stateT2.answered.by === OFFICE,
     '★ 读回(pc2)：answered.by === office', stateT2 && stateT2.answered)
+
+  // ── 11. F-5（RUN 86 / FEEDBACK86）：advance 的席位栏杆 —— 成员不能替主席推状态机 ─────────────────────────────
+  console.log('=== 11. F-5：advance 的调用者会被带进内核；成员席位被具名拒、chair 放行 ===')
+  const T3 = 'pc-f5'
+  const started3 = await receipt(v5rBoot, 'vibe_v5_paper', { action: 'start', target: T3, participants: [ACAD, R1] })
+  ok(started3.parsed && started3.parsed.ok === true, '前置(F-5)：第三篇论文进入 writing', started3.parsed && started3.parsed.started)
+  const memberAdvance = await receipt(v5rBoot, 'vibe_v5_paper', { action: 'advance', target: T3, member: R1 })
+  eq(codeOf(memberAdvance.parsed), 'VMU_NOT_PERMITTED',
+    '★★★ F-5：成员席位调 advance ⇒ 具名拒（状态机的推进是主席的裁决，不是作者的动作）')
+  ok(/主席|chair/.test(String((memberAdvance.parsed && memberAdvance.parsed.hint) || '')),
+    '★★ F-5：hint 点名「由主席 advance」', memberAdvance.parsed && memberAdvance.parsed.hint)
+  const chairAdvance = await receipt(v5rBoot, 'vibe_v5_paper', { action: 'advance', target: T3, member: ACAD })
+  ok(chairAdvance.parsed && chairAdvance.parsed.advance && chairAdvance.parsed.advance.to === 'reviewing',
+    '★★ 正：chair 自己 advance 成功（栏杆只挡非主席席位，不挡主席）', chairAdvance.parsed && chairAdvance.parsed.advance)
+
+  // ── 12. F-4 反灯：整树副本把 openedByThisCall 写死 false ⇒ 凭空答复又退回「只有 cleared:false」的旧形状 ────────
+  console.log('=== 12. F-4 反灯：撤掉 openedByThisCall ⇒ 凭空答复的语义又不可判 ===')
+  {
+    const lampDir = join(base, 'f4-lamp')
+    cpSync(join(REPO, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+    const kitPath = join(lampDir, 'vibe-math-vmu', 'kit', 'paper.js')
+    const src = readFileSync(kitPath, 'utf8')
+    const from = 'const openedByThisCall = awaiting === null'
+    ok(src.indexOf(from) !== -1, 'F-4 lamp-setup：openedByThisCall 的判定点存在')
+    writeFileSync(kitPath, src.replace(from, 'const openedByThisCall = false'))
+    const lampBoot = await boot({ root: join(base, 'f4-lamp-ws'), packs: ['v5r'] },
+      pathToFileURL(join(lampDir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?f4lamp=1')
+    const lk = lampBoot.handle.kernel
+    await lk.members.hire({ id: ACAD, slot: 'chair' })
+    await lk.members.hire({ id: OFFICE, slot: 'member' })
+    await lk.members.hire({ id: R1, slot: 'member' })
+    await receipt(lampBoot, 'vibe_v5_paper', { action: 'start', target: 'pc-lamp', participants: [ACAD] })
+    const lamp = (await receipt(lampBoot, 'vibe_v5_paper', { action: 'consult', target: 'pc-lamp', member: OFFICE, answer: '凭空答复' })).parsed
+    const lc = lamp && lamp.consult
+    ok(lc && lc.openedByThisCall === false && lc.cleared === false,
+      'F-4 lamp RED-worthy：撤掉 openedByThisCall ⇒ 凭空答复只剩 cleared:false（run 86 F-4 的原状）', lc && { openedByThisCall: lc.openedByThisCall, cleared: lc.cleared })
+  }
 } finally {
   // The store writes atomically through temp+rename, so a removal can race one in-flight file: retry, and never let a
   // cleanup failure turn a green run red (the assertions above already reported the truth).

@@ -1644,14 +1644,65 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // head fields, so injecting it earlier would be silently dropped (the very defect class: a fact measured and
       // then not said). Every row says which KIND of act wrote it; `withWriter:false` says nothing per row and names
       // the omission on the receipt instead.
+      // ★★★ FEEDBACK86 F-2 (RUN 86, MEASURED): REPLACED PART ROWS WERE INDISTINGUISHABLE FROM LIVE SECTIONS. A part
+      // rewrite writes a NEW row with the same title (`…|part|<member>`), so the list showed every edition as
+      // status:"live" — a reader counting sections by the track list counted 6 for 3 members. The list now NAMES the
+      // superseded editions: among the page's paper-part rows sharing one title, the newest (updatedAt, then id) stays
+      // live and every older row is status:"superseded" + supersededBy:<newest id>. This is a READING of rows the page
+      // already holds; no write path changes and the total row count is unchanged (statusCounts separates them).
+      const supersededBy = new Map()
+      if (track === 'paper') {
+        const groups = new Map()
+        for (const r of kept) {
+          if (!r || String(r.kind) !== 'paper-part') continue
+          const key = String(r.title)
+          if (!groups.has(key)) groups.set(key, [])
+          groups.get(key).push(r)
+        }
+        const idNum = (v) => Number(String(v || '').split('-').pop() || 0)
+        for (const rowsOfTitle of groups.values()) {
+          if (rowsOfTitle.length < 2) continue
+          const sorted = rowsOfTitle.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))
+          const newest = sorted[0]
+          for (const older of sorted.slice(1)) supersededBy.set(String(older.id), String(newest.id))
+        }
+      }
       const items = kept.map((r) => {
         const projected = projectView(r, chosen, at)
+        const superseded = supersededBy.get(String(r.id)) || null
+        if (superseded !== null) {
+          projected.status = 'superseded'
+          projected.superseded = true
+          projected.supersededBy = superseded
+          projected.supersededMeans = 'this paper-part row is an EARLIER edition of the same section title: a later row of the same title is the live section (supersededBy). The page still counts both rows; read statusCounts to count SECTIONS, not editions'
+        }
         if (!withWriterOn) return projected
         return Object.assign(projected, {
           writtenFrom: writtenFromOf(r),
           writtenFromMeans: WRITTEN_FROM_MEANS,
         })
       })
+      const partSectionCounts = (() => {
+        // ★ FEEDBACK86 F-2: sections vs editions. Counting the track's rows as "how many parts were written" is exactly the
+        // defect (3 members produced 6 live-looking rows). This block answers in SECTIONS for paper-part rows only.
+        const counts = { rows: 0, live: 0, superseded: 0 }
+        for (const r of kept) {
+          if (!r || String(r.kind) !== 'paper-part') continue
+          counts.rows += 1
+          if (supersededBy.has(String(r.id))) counts.superseded += 1
+          else counts.live += 1
+        }
+        return counts
+      })()
+      const statusCounts = (() => {
+        const counts = { live: 0, superseded: 0, other: 0 }
+        for (const item of items) {
+          if (item.status === 'superseded') counts.superseded += 1
+          else if (item.status === 'live') counts.live += 1
+          else counts.other += 1
+        }
+        return counts
+      })()
       // ★★ RUN 240: the head row names BOTH facts now — `owner` (whose row) and `writer` (who wrote this revision) —
       // and the list result carries the same three-name glossary the write receipt does, so `list` and `expand` teach
       // the same vocabulary.
@@ -1661,6 +1712,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // the reading was not readable). Position in the object is not the semantics — the window is.
       return { ok: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at,
         items, heads: items.map((x) => x.id), count: items.length, available: live.length, total: live.length,
+        // ★ FEEDBACK86 F-2: rows (editions) vs SECTIONS. `statusCounts.superseded` names the replaced editions; a reader
+        // counting live sections by this list must read statusCounts.live (or the paper status parts), never count rows.
+        statusCounts,
+        partSectionCounts,
+        partSectionCountsMeans: 'paper-part EDITIONS vs SECTIONS: `rows` counts the paper-part rows on this page, `superseded` the replaced editions, `live` the sections that are current for their title. A reader asking "how many sections were written" reads partSectionCounts.live (or paper status parts), never count/rows',
+        statusCountsMeans: 'live/superseded over THIS page\'s rows: a replaced paper-part row is status:"superseded" with `supersededBy` naming the live edition of the same section title, so "how many sections are there" is statusCounts.live (or paper status parts), not count',
         // ★★★ RUN 256 / TB-2617: the universe this page covers, plus the RUN 259 identity that CAN be falsified:
         // one side is the page arithmetic, the other is an independent traversal of the index ids + external rows.
         totalUniverse, mutedDropped: 0,

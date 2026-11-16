@@ -6912,7 +6912,7 @@ function evidenceGradesOf (kernel, state, paper) {
     means: EVIDENCE_GRADES_MEANS }
 }
 
-async function toolPaper(args = {}, { kernel } = {}) {
+async function toolPaper(args = {}, { kernel, exec = null } = {}) {
   const action = str(args.action || 'status')
   if (!kernel || !kernel.records) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the paper subsystem needs the records face, and this assembly has none',
@@ -7032,6 +7032,36 @@ async function toolPaper(args = {}, { kernel } = {}) {
         }
         return Object.assign({}, st, { parts })
       })()
+      // ★★★ FEEDBACK86 F-1 (RUN 86, MEASURED): THE PROOF THAT THIS PAPER PROJECTION IS A SNAPSHOT, NOT "NOW". The office kernel
+      // read parts:{} / round:1 while a member kernel (and a later office read) saw three sections — and nothing on the
+      // receipt said the snapshot was old, so "no parts written yet" and "this kernel has not folded them" looked alike.
+      // Three readings, none of which changes the projection: the row own instant + age, and a NAMED disclosure when the
+      // track holds paper-part rows for this target that the projection does not show (the stale-snapshot case measured).
+      const stateRowRead = got && got.row ? got.row : null
+      const stateReadAt = stateRowRead && stateRowRead.updatedAt !== undefined && stateRowRead.updatedAt !== null ? stateRowRead.updatedAt : null
+      const stateReadAtMs = (() => { try { const n = Number(stateReadAt); return Number.isFinite(n) ? n : (Date.parse(String(stateReadAt)) || null) } catch (e) { return null } })()
+      // ★★ T1 final15 / clock purity: the age is measured against the INJECTED kernel clock (the same guarded accessor
+      // the blueprint reading uses), never the wall clock — a receipt that mixes the two cannot be replayed with a fixed
+      // clock. `null` = no injected clock in this deployment, and the means below names that absence (null, not 0).
+      const stateNowMs = kernelClockMsOf(kernel)
+      const stateStaleMs = (stateReadAtMs === null || stateNowMs === null) ? null : Math.max(0, stateNowMs - stateReadAtMs)
+      const staleParts = (() => {
+        const sv = got && got.state ? got.state : null
+        const target = sv && sv.target !== undefined && sv.target !== null ? String(sv.target) : null
+        const projected = sv && sv.parts && typeof sv.parts === "object" ? Object.keys(sv.parts) : []
+        let trackPartRows = []
+        try { const listed = kernel.records.list({ track: "paper", limit: 0 }); trackPartRows = (Array.isArray(listed && listed.items) ? listed.items : []).filter((h) => h && String(h.kind || "") === "paper-part") } catch (e) { trackPartRows = [] }
+        const mine = target === null ? [] : trackPartRows.filter((h) => String(h.title || "").includes("|" + target + "|part|"))
+        const trackMembers = []
+        for (const h of mine) {
+          const at = String(h.title || "").lastIndexOf("|part|")
+          const member = at < 0 ? null : String(h.title).slice(at + "|part|".length)
+          if (member !== null && !trackMembers.includes(member)) trackMembers.push(member)
+        }
+        const missing = trackMembers.filter((m) => !projected.includes(m))
+        return { target, projectedMembers: projected, trackPartMembers: trackMembers, missingFromProjection: missing,
+          staleProjection: target !== null && missing.length > 0 }
+      })()
       // ★★★ RUN 252 (run 72 / F72-7, MEASURED): status printed `missing: ["tex"]` beside `pdfCompiled.produced: true` —
       // the same self-contradiction as the compile receipt, one question asked twice. ONE ledger read now answers both
       // halves: `compiledProduced` decides `missing` (a compiled paper needed no artifact ROW to exist), and the rows
@@ -7078,6 +7108,20 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ...envLedgerRead,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
+        // ★ FEEDBACK86 F-1: the snapshot own instant/age and the named stale-projection disclosure.
+        stateRecordId: stateRowRead && stateRowRead.id !== undefined ? String(stateRowRead.id) : null,
+        stateReadAt,
+        stateReadAtMeans: "the updatedAt of the paper-state ROW this projection was parsed from — a kernel keeps its own folded projection, so this is when the bytes this receipt read last changed, not 'now'; compare it (or stateStaleMs) before treating an empty part list as 'nothing was written'",
+        stateStaleMs,
+        stateStaleMsMeans: stateStaleMs === null
+          ? "the age of this projection is NOT MEASURED (null, not 0): either the state row carries no readable instant, or this face has no injected kernel clock to measure against (a wall clock would make the reading unreplayable, so it is not used)"
+          : "age of the state row this receipt parsed, measured on the INJECTED kernel clock: a large value means the kernel is serving a folded snapshot that has not seen newer writes",
+        partsFromStaleProjection: staleParts.staleProjection,
+        partsFromStaleProjectionMeans: staleParts.staleProjection
+          ? "NAMED STALE PROJECTION: the paper track holds paper-part row(s) for member(s) " + JSON.stringify(staleParts.missingFromProjection) + " that this state projection does NOT contain — do NOT read the empty/older parts as 'no sections were written'; this kernel has not folded those rows (read records list / another kernel, or re-read later)"
+          : "no stale-projection evidence: every member with a paper-part row on the track is present in this state projection (or the track holds no part rows for this target)",
+        trackPartMembers: staleParts.trackPartMembers,
+        partsMissingFromProjection: staleParts.missingFromProjection,
         // ★★★ TB-2788 (RUN 85 attempt-1, audit8 D2): the CAP and the legal NEXT MOVES are readings, not deductions.
         ...(exists && typeof paper.capReadingOf === 'function' ? paper.capReadingOf(got.state) : {}),
         nextMoves: exists && typeof paper.nextMovesOf === 'function' ? paper.nextMovesOf(got.state) : [],        // ★★★ TB-2782 (RUN 83 attempt-1): the evidence grades a reader like r-acad asked for, projected from the existing ledger
@@ -7503,8 +7547,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
       })
       return { ok: true, tool, action, review }
     }
-    case 'advance':
-      return { ok: true, tool, action, advance: paper.advance({ target }) }
+    case 'advance': {
+      // ★★★ F-5（RUN 86 / FEEDBACK86）：把调用者名（参数优先，其次当前回合的席位）交给内核；chair 栏杆在 kit 里。
+      const advanceCaller = has(args.member) ? str(args.member) : callerFromTurn(kernel, exec)
+      return { ok: true, tool, action, advance: paper.advance({ target, member: advanceCaller || null }) }
+    }
     case 'final': {
       const finalized = await paper.recordFinal({
         target,
@@ -7889,6 +7936,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
           ? 'the office answered by its DECLARED ROLE (PAPER_CONSULT_ROLES), not by a roster seat: the office is the session running the work, so it has no seat id to match'
           : 'a live roster seat answered (matched by id or slot against PAPER_CONSULT_ROLES)',
         cleared: answered.cleared === true, answeredTotal: answered.answered, note: answered.note || null,
+        // ★★★ F-4（RUN 86 / FEEDBACK86）：没有在等的请求时这次答复会新开并立即答复一条 —— 这个侧写必须可读。
+        openedByThisCall: answered.openedByThisCall === true,
+        requestSource: answered.requestSource || null,
+        answeredRequestId: answered.requestId || null,
+        clearedMeans: answered.clearedMeans || null,
         // Read back through the READER, not from the write receipt: "the write said ok" is not "the gate sees an answer".
         armed: after.armed === true, awaiting: after.awaiting, latestAnswer: after.answered,
         declaredAnswerRoles: after.policy && Array.isArray(after.policy.answerRoles) ? after.policy.answerRoles.slice() : [],
@@ -8377,7 +8429,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_paper',
-    description: '论文子系统（真入口）：action=start|part|review|advance|final|render|status|compile|sections|consult|consult_state。只做参数映射——阶段合法性、互审规则、「只有 chair 席能定稿」都由内核的 paper flow 判并具名拒；本面不自己判政策、不造阶段、不编结论。render 如实报 wrote/missing/complete；compile 无 LaTeX 面即具名拒。★ 所办问询（vmu.paper.officeConsult="required"）：定稿被拦时会给出 requestId，由所办用 action:"consult" 答复（member=答复人所办，answer/note 写核对结论），答完重试 action:"final" 才放行；谁能答复由本 pack 的 PAPER_CONSULT_ROLES 声明（不是内核猜的），普通成员答会被具名拒（VMU_NOT_PERMITTED）。★ action:"consult" 与 "consult_state" 一次只对一篇论文说话，都必须带 `target`（论文 id 或标题），省了会被具名拒。★ action:"part" 是「每参与者一节」——同一成员第二次 part 会**替换**他自己上一节（回执 `replaced` 写明被替换的 recordId）；`review` 的 `part` 是 `of` 的别名（被审成员的 id），把章节名传进去不报错也不绑定章节。★ 定稿的正文门：正文里必须出现**每一张 Verified 结论的 `requiredLine`**（逐字）；被拦时回执的 `missing[]` 给出每条的 `requiredLine`，照抄进正文再定稿即可。render 把 md/tex/meta 写进记录区（record track），磁盘上的 .tex/.pdf 由 compile 产生：阅读回执时两者不是同一件事。★ `advance` 不接受 `to`：目标阶段由当前状态和评审结果决定（writing→reviewing、reviewing→awaiting-editor 或回 writing），回执的 `from`/`to`/`stageMoved` 就是答案；传了未声明的 `to` 会被具名拒（RUN 212 / FEEDBACK48 2.3）。',
+    description: '论文子系统（真入口）：action=start|part|review|advance|final|render|status|compile|sections|consult|consult_state。只做参数映射——阶段合法性、互审规则、「只有 chair 席能定稿」都由内核的 paper flow 判并具名拒；本面不自己判政策、不造阶段、不编结论。render 如实报 wrote/missing/complete；compile 无 LaTeX 面即具名拒。★ 所办问询（vmu.paper.officeConsult="required"）：定稿被拦时会给出 requestId，由所办用 action:"consult" 答复（member=答复人所办，answer/note 写核对结论），答完重试 action:"final" 才放行；谁能答复由本 pack 的 PAPER_CONSULT_ROLES 声明（不是内核猜的），普通成员答会被具名拒（VMU_NOT_PERMITTED）。★ action:"consult" 与 "consult_state" 一次只对一篇论文说话，都必须带 `target`（论文 id 或标题），省了会被具名拒。★ action:"part" 是「每参与者一节」——同一成员第二次 part 会**替换**他自己上一节（回执 `replaced` 写明被替换的 recordId）；`review` 的 `part` 是 `of` 的别名（被审成员的 id），把章节名传进去不报错也不绑定章节。★ 定稿的正文门：正文里必须出现**每一张 Verified 结论的 `requiredLine`**（逐字）；被拦时回执的 `missing[]` 给出每条的 `requiredLine`，照抄进正文再定稿即可。render 把 md/tex/meta 写进记录区（record track），磁盘上的 .tex/.pdf 由 compile 产生：阅读回执时两者不是同一件事。★ `advance` 不接受 `to`：目标阶段由当前状态和评审结果决定（writing→reviewing、reviewing→awaiting-editor 或回 writing），回执的 `from`/`to`/`stageMoved` 就是答案；传了未声明的 `to` 会被具名拒（RUN 212 / FEEDBACK48 2.3）。★ F-4（RUN 86）：没有在等的 consult 请求时答复仍然成功（所办可预先表态），但回执必须读 `openedByThisCall`（true＝这次开并立即答了一条，配合 `requestSource`/`clearedMeans`）—— `cleared:false` 的意思只是「这次没有关掉任何**在等**的问题」。★ F-5（RUN 86）：`advance` 对状态机的推进是**主席的裁决**——调用者若是非 chair 席位（member/temp）会被具名拒 `VMU_NOT_PERMITTED`，hint 指向「由主席 advance」；所办/root 不署名调用不受影响。',
     parameters: {
       action: { type: 'string', required: true, description: 'start｜part｜review｜advance｜final｜render｜status｜compile｜sections｜consult｜consult_state' },
       target: { type: 'string', description: '论文对象（对象名；start 时可用 title/track 别名）' },

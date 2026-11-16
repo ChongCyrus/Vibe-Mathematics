@@ -14,7 +14,8 @@
 // Run: node tests/vmu-paper-office-consult.test.mjs
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { isReachableRel } from '../scripts/lib/reachability.mjs'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
@@ -72,8 +73,8 @@ const ROSTER = [{ id: 'acad', slot: 'chair' }, { id: 'office', slot: 'office' },
 const BASE = { 'vmu.records.tracks': ['paper'] }
 
 /** Boot the LIVE path: `createPaperSubsystem` (the pack shell) over the double, with a movable clock. */
-async function boot({ settings = {}, roster = ROSTER } = {}) {
-  const pack = await import(pathToFileURL(PACK).href)
+async function boot({ settings = {}, roster = ROSTER, packUrl = null } = {}) {
+  const pack = await import(packUrl || pathToFileURL(PACK).href)
   const clock = { now: 1000 }
   const { kernel, rows } = makeKernel({ ...BASE, ...settings }, roster)
   const flow = pack.createPaperSubsystem({ kernel, clock: () => clock.now })
@@ -337,6 +338,52 @@ console.log('=== ⑫ 可达性：闸所在的模块真的从插件入口可达�
   ok(/consultRoles: PAPER_CONSULT_ROLES/.test(packSrc) && /OFFICE_CONSULT_REQUIRED: 'VMU_OFFICE_CONSULT_REQUIRED'/.test(packSrc),
     '★ pack 声明答复角色与本闸的登记码（政策在 pack、机制在 kit）')
   ok(/recordConsult, consultState,/.test(kitSrc), '★ 两个面都在 kit 的返回面上（调用方拿得到）')
+}
+
+console.log('=== ⑬ F-5（RUN 86 / FEEDBACK86）：revise→writing 后，成员不能替主席 advance ===')
+{
+  const { flow } = await boot()
+  const T = 'P-F5'
+  const moved = toEditor(flow, T)
+  ok(moved.to === 'awaiting-editor', '前提(F-5)：论文走到 awaiting-editor', moved)
+  const revised = await flow.recordFinal({ target: T, member: 'acad', decision: 'revise', note: '作者重写自己的节' })
+  ok(revised && revised.officeConsultPending !== undefined ? true : revised !== undefined, '前提(F-5)：主席 revise 打回 writing', revised && revised.from)
+  const st = flow.state(T).state
+  eq(st.status, 'writing', '前提(F-5)：论文真的回到 writing 阶段')
+  // member r-1 试图替主席推进 state machine ⇒ 具名拒 + hint 指主席
+  let memberErr = null
+  try { flow.advance({ target: T, member: 'r-1' }) } catch (e) { memberErr = e }
+  eq(memberErr && memberErr.code, 'VMU_NOT_PERMITTED', '★★★ F-5：成员（非 chair 席）advance 被具名拒')
+  ok(memberErr && /主席|chair/.test(String(memberErr.hint || '')),
+    '★★ F-5：hint 点名「由主席 advance」（连同 drive 主席回合的出路）', memberErr && memberErr.hint)
+  eq(flow.state(T).state.status, 'writing', '★ F-5：被拒之后状态机原地不动（拒绝在 mutation 之前）')
+  // chair 自己推进 ⇒ 成功；office（非作者、声明角色）在一篇新论文 writing→reviewing 也放行
+  const chairMoved = flow.advance({ target: T, member: 'acad' })
+  ok(chairMoved && chairMoved.to === 'reviewing', '★★ 正：chair 自己 advance 成功（writing→reviewing）', chairMoved && { to: chairMoved.to })
+  const officeBoot = await boot()
+  const O = 'P-F5-OFFICE'
+  officeBoot.flow.start({ target: O, participants: ['r-1', 'r-2'] })
+  const officeMoved = officeBoot.flow.advance({ target: O, member: 'office' })
+  ok(officeMoved && officeMoved.to === 'reviewing', '★★ 正：所办（slot office）advance 仍放行（编排不是席位动作）', officeMoved && { to: officeMoved.to })
+  // ★ 反灯：整树副本撤掉 chair 栏杆 ⇒ 成员 advance 又静默成功（run 86 F-5 的原状）
+  const dir = mkdtempSync(join(tmpdir(), 'office-consult-f5-lamp-'))
+  try {
+    cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+    const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+    const src = readFileSync(kitPath, 'utf8')
+    const from = "if (row !== null && slot !== 'chair' && slot !== 'office') {"
+    ok(src.indexOf(from) !== -1, 'F-5 lamp-setup：chair 栏杆的判定点存在')
+    writeFileSync(kitPath, src.replace(from, 'if (false) {'))
+    const lamp = await boot({ packUrl: pathToFileURL(join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href + '?f5lamp=1' })
+    const LT = 'P-F5-LAMP'
+    toEditor(lamp.flow, LT)
+    await lamp.flow.recordFinal({ target: LT, member: 'acad', decision: 'revise', note: 'lamp' })
+    let lampErr = null
+    let lampMoved = null
+    try { lampMoved = lamp.flow.advance({ target: LT, member: 'r-1' }) } catch (e) { lampErr = e }
+    ok(!lampErr && lampMoved && lampMoved.to === 'reviewing',
+      'F-5 lamp RED-worthy：撤掉栏杆 ⇒ 成员 advance 又静默成功（run 86 F-5 的原状）', lampErr ? { code: lampErr.code } : { to: lampMoved && lampMoved.to })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 }
 
 console.log('')

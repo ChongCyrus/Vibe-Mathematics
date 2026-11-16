@@ -2930,7 +2930,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return rows
     })
     trackFoldWrite(pending, 'vmu closure_votes write')
-    return true
+    // ★ FEEDBACK86 F-3: the window this vote was stamped with travels back to the caller (the turn loop stamps its local
+    // row with it, so the VOTE receipt can say which window the vote belongs to before the fold patch is acknowledged).
+    return { ok: true, window: closureWindowValue() }
   }
   // ★★★ RUN 244 — THE FACES MAP IS ONE OBJECT WITH ONE NAME. It was built inline inside the orchestrator options, so a
   // measurement harness (scripts/sim/harness.mjs, scripts/audit-prompt-budget.mjs, tests/sim-assembly-parity.mjs) could
@@ -3294,7 +3296,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           at: Number.isFinite(atNew) ? atNew : (prev && Number.isFinite(atOld) ? atOld : null),
           session: row.session === undefined || row.session === null ? null : String(row.session),
           voterSession: row.voterSession === undefined || row.voterSession === null ? null : String(row.voterSession),
-          window: prev && prev.window !== undefined ? prev.window : undefined })
+          window: row.window !== undefined && row.window !== null ? row.window : (prev && prev.window !== undefined ? prev.window : undefined) })
       }
       return Array.from(byMember.values())
     })(),

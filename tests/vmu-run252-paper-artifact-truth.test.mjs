@@ -1222,6 +1222,169 @@ console.log('=== 15. TB-2788：status 披露 roundsCap/atCap/forcedAfterCapAvail
   await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
 }
 
+// ── §16. FEEDBACK86 F-1: a stale paper projection NAMES itself (stateReadAt / staleMs / partsFromStaleProjection) ──
+console.log('=== 16. F-1：过期论文投影必须自曝（stateReadAt/staleMs/partsFromStaleProjection）===')
+{
+  const NL = String.fromCharCode(10)
+  const body = '正文。' + NL + '证据等级：draft'
+  let t16 = 1000
+  const A16 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'f86-f1-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off', clock: () => t16 })
+  const k16 = A16.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k16.members.hire({ id, slot })
+  const c16 = await receipt(A16, 'vibe_v5_record_proposition', { id: 'f86-f1', statement: 'F-1 证据（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  ok(c16.parsed && c16.parsed.ok === true, '前置：证据卡落库', c16.parsed && c16.parsed.code)
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const ev16 = ['Members/' + ACAD + '/Propos/f86-f1.md']
+  await receipt(A16, 'vibe_v5_paper', { action: 'start', target: 'p-f1', participants: [ACAD, R1], format: 'md' })
+  await receipt(A16, 'vibe_v5_paper', { action: 'part', target: 'p-f1', member: ACAD, part: 'A 节', solution: body, evidence: ev16 })
+  await receipt(A16, 'vibe_v5_paper', { action: 'part', target: 'p-f1', member: R1, part: 'B 节', solution: body, evidence: ev16 })
+  const fresh16 = (await receipt(A16, 'vibe_v5_paper', { action: 'status', target: 'p-f1' })).parsed
+  ok(fresh16 && fresh16.partsFromStaleProjection === false, '★★ 正：投影与 track 一致时 partsFromStaleProjection:false（不是恒真）', fresh16 && fresh16.partsFromStaleProjection)
+  ok(fresh16 && fresh16.stateReadAt !== null && fresh16.stateReadAt !== undefined, '★★ 正：status 带 stateReadAt（状态行自己的时刻）', fresh16 && fresh16.stateReadAt)
+  eq(typeof (fresh16 && fresh16.stateStaleMs), 'number', '★ 正：stateStaleMs 是可度量数字（含 0）')
+  // simulate the MEASURED stale kernel: the state row on disk is re-put with the old projection (parts {}, round 1) while the
+  // paper track still carries the two part rows. This is exactly "this kernel has not folded newer writes".
+  const heads16 = k16.records.list({ track: 'paper', limit: 0 }).items || []
+  const stateRow16 = heads16.filter((h) => h && String(h.kind) === 'paper-state' && String(h.title || '').endsWith('|p-f1|state'))[0]
+  ok(!!stateRow16, '前置：paper-state 行在账上', !!stateRow16)
+  const got16 = k16.records.get({ id: stateRow16.id })
+  const full16 = got16 && got16.record ? got16.record : got16
+  const staleBody = JSON.parse(String(full16.body || '{}'))
+  staleBody.parts = {}; staleBody.round = 1; staleBody.updatedRound = 1
+  t16 += 5000 // a newer instant so this row is the one readState picks (a same-instant tie keeps the older projection)
+  k16.records.put({ track: 'paper', kind: 'paper-state', title: stateRow16.title, body: JSON.stringify(staleBody) })
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  const stale16 = (await receipt(A16, 'vibe_v5_paper', { action: 'status', target: 'p-f1' })).parsed
+  eq(stale16 && stale16.partsFromStaleProjection, true, '★★★ 正(F-1)：状态投影缺 parts 而 track 有 paper-part 行 ⇒ partsFromStaleProjection:true（不静默）')
+  ok(Array.isArray(stale16 && stale16.partsMissingFromProjection) && stale16.partsMissingFromProjection.includes(ACAD) && stale16.partsMissingFromProjection.includes(R1),
+    '★★ 正：点名投影里缺的 member（不是只给布尔）', stale16 && stale16.partsMissingFromProjection)
+  ok(/NAMED STALE PROJECTION/.test(String(stale16 && stale16.partsFromStaleProjectionMeans)),
+    '★★ 正：means 明说「不要把这个空 parts 读成没写过节」', stale16 && stale16.partsFromStaleProjectionMeans)
+  ok(stale16 && stale16.stateReadAt !== null && typeof stale16.stateStaleMs === 'number',
+    '★ 正：过期投影同样带 stateReadAt/stateStaleMs（读者能自己看新旧）', stale16 && { at: stale16.stateReadAt, age: stale16.stateStaleMs })
+
+  // ★ LAMP(RED-worthy): neutralise the disclosure in a COPY ⇒ the same stale projection answers false/absent (the measured
+  // F-1 shape), so the assertions above are load-bearing.
+  const lampRoot = await mkdtemp(join(__tmpRoot(), 'f86-f1-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+  const tp = join(lampRoot, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
+  const ts = await readFile(tp, 'utf8')
+  const mut = 'partsFromStaleProjection: staleParts.staleProjection,'
+  ok(ts.includes(mut), 'lamp-setup：F-1 披露字段可定位')
+  await writeFile(tp, ts.split(mut).join('partsFromStaleProjection: false,'), 'utf8')
+  const L16 = await bootOf(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lampRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const lk = L16.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await lk.members.hire({ id, slot })
+  const cL = await receipt(L16, 'vibe_v5_record_proposition', { id: 'f86-f1-l', statement: 'F-1 lamp（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const evL = ['Members/' + ACAD + '/Propos/f86-f1-l.md']
+  await receipt(L16, 'vibe_v5_paper', { action: 'start', target: 'p-f1l', participants: [ACAD, R1], format: 'md' })
+  await receipt(L16, 'vibe_v5_paper', { action: 'part', target: 'p-f1l', member: ACAD, part: 'A 节', solution: body, evidence: evL })
+  await receipt(L16, 'vibe_v5_paper', { action: 'part', target: 'p-f1l', member: R1, part: 'B 节', solution: body, evidence: evL })
+  const hL = lk.records.list({ track: 'paper', limit: 0 }).items || []
+  const sL = hL.filter((h) => h && String(h.kind) === 'paper-state' && String(h.title || '').endsWith('|p-f1l|state'))[0]
+  const gL = lk.records.get({ id: sL.id }); const fL = gL && gL.record ? gL.record : gL
+  const bL = JSON.parse(String(fL.body || '{}')); bL.parts = {}; bL.round = 1
+  lk.records.put({ track: 'paper', kind: 'paper-state', title: sL.title, body: JSON.stringify(bL) })
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  const staleL = (await receipt(L16, 'vibe_v5_paper', { action: 'status', target: 'p-f1l' })).parsed
+  eq(staleL && staleL.partsFromStaleProjection, false,
+    '★★★ LAMP(RED-worthy)：去掉披露后，同一份过期投影回答 false（F-1 原状）—— 上面 true 的断言因此有牙')
+  await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+}
+
+// ── §17. FEEDBACK86 F-2: replaced paper-part rows are LISTED as superseded, not as fresh sections ───────────────
+console.log('=== 17. F-2：records list 把被替换的 part 行标 superseded + supersededBy ===')
+{
+  const NL = String.fromCharCode(10)
+  const body = '正文。' + NL + '证据等级：draft'
+  const A17 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'f86-f2-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k17 = A17.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k17.members.hire({ id, slot })
+  const c17 = await receipt(A17, 'vibe_v5_record_proposition', { id: 'f86-f2', statement: 'F-2 证据（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const ev17 = ['Members/' + ACAD + '/Propos/f86-f2.md']
+  await receipt(A17, 'vibe_v5_paper', { action: 'start', target: 'p-f2', participants: [ACAD, R1], format: 'md' })
+  await receipt(A17, 'vibe_v5_paper', { action: 'part', target: 'p-f2', member: ACAD, part: 'A 节', solution: body, evidence: ev17 })
+  await receipt(A17, 'vibe_v5_paper', { action: 'part', target: 'p-f2', member: R1, part: 'B 节', solution: body, evidence: ev17 })
+  const p2 = await receipt(A17, 'vibe_v5_paper', { action: 'part', target: 'p-f2', member: ACAD, part: 'A 节', solution: '第二版。' + NL + '证据等级：draft', evidence: ev17 })
+  ok(p2.parsed && p2.parsed.ok === true && p2.parsed.part && p2.parsed.part.replaced, '前置：ACAD 的 part 被替换（回执有 replaced）', p2.parsed && p2.parsed.part && p2.parsed.part.replaced)
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  const list17 = k17.records.list({ track: 'paper', limit: 0 })
+  const partRows = (list17.items || []).filter((h) => h && String(h.kind) === 'paper-part')
+  eq(partRows.length, 3, '★ 前置：track 上有三版（两条人数 + ACAD 的第二版）')
+  const supersededRows = partRows.filter((h) => h.status === 'superseded')
+  const liveRows = partRows.filter((h) => h.status === 'live')
+  eq(supersededRows.length, 1, '★★★ 正(F-2)：同一节标题的旧版 status:"superseded"（不再两者都 live）')
+  eq(liveRows.length, 2, '★★ 正：两节各剩一版 live（statusCounts.live 才是节数）')
+  ok(supersededRows[0] && typeof supersededRows[0].supersededBy === 'string' && supersededRows[0].supersededBy.startsWith('rec-'),
+    '★★ 正：旧行带 supersededBy 指向新版行 id', supersededRows[0] && supersededRows[0].supersededBy)
+  ok(list17.partSectionCounts && list17.partSectionCounts.live === 2 && list17.partSectionCounts.superseded === 1 && list17.partSectionCounts.rows === 3,
+    '★★ 正：回执 partSectionCounts 把「editions(rows)」与「sections(live)」分开（rows=3/live=2/superseded=1）', list17.partSectionCounts)
+  ok(/statusCounts\.live/.test(String(list17.statusCountsMeans)), '★ 正：means 明说按 statusCounts.live 数节，不是 count', list17.statusCountsMeans)
+  // ★ LAMP(RED-worthy): with the superseded projection neutralised on a COPY, the same list answers every row live and
+  // statusCounts.superseded 0 (the F-2 shape: a reader counts editions as sections).
+  const lampRoot = await mkdtemp(join(__tmpRoot(), 'f86-f2-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+  const rp = join(lampRoot, 'vibe-math-vmu', 'kernel', 'records.js')
+  const rs = await readFile(rp, 'utf8')
+  const mut = "      if (track === 'paper') {"
+  ok(rs.includes(mut), 'lamp-setup：F-2 分组可定位')
+  await writeFile(rp, rs.split(mut).join('      if (false) {'), 'utf8')
+  const L17 = await bootOf(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lampRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const lk2 = L17.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await lk2.members.hire({ id, slot })
+  const cL2 = await receipt(L17, 'vibe_v5_record_proposition', { id: 'f86-f2-l', statement: 'F-2 lamp（独立正文）', value: 0.5, motive: 'm', p: 0.5 })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const evL2 = ['Members/' + ACAD + '/Propos/f86-f2-l.md']
+  await receipt(L17, 'vibe_v5_paper', { action: 'start', target: 'p-f2l', participants: [ACAD, R1], format: 'md' })
+  await receipt(L17, 'vibe_v5_paper', { action: 'part', target: 'p-f2l', member: ACAD, part: 'A 节', solution: body, evidence: evL2 })
+  await receipt(L17, 'vibe_v5_paper', { action: 'part', target: 'p-f2l', member: R1, part: 'B 节', solution: body, evidence: evL2 })
+  await receipt(L17, 'vibe_v5_paper', { action: 'part', target: 'p-f2l', member: ACAD, part: 'A 节', solution: '第二版。' + NL + '证据等级：draft', evidence: evL2 })
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  const listL = lk2.records.list({ track: 'paper', limit: 0 })
+  eq(listL.partSectionCounts && listL.partSectionCounts.superseded, 0,
+    '★★★ LAMP(RED-worthy)：去掉 superseded 投影后同一 list 的所有版本都是 live（F-2 原状：把 3 行数成 3 节）')
+  await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+}
+
+// ── §18. FEEDBACK86 F-3: the reopened closure window is readable on the VOTE receipt ─────────────────────────────
+console.log('=== 18. F-3：reopen-closure 之后，票面 closureVote.window 读回 fold 窗口号 + windowSource:"fold" ===')
+{
+  const A18 = await bootOf(pathToFileURL(ENTRY).href, { root: await mkdtemp(join(__tmpRoot(), 'f86-f3-')), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const k18 = A18.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await k18.members.hire({ id, slot })
+  // before any reopen: a vote reads the honest session scope
+  const v0 = (await receipt(A18, 'vibe_vmu_vote', { member: R1, solved: true })).parsed
+  eq(v0 && v0.closureVote && v0.closureVote.window, 'session', '★★ 正(F-3)：未开窗的票面 window:"session"')
+  eq(v0 && v0.closureVote && v0.closureVote.windowSource, 'session-scope', '★ 正：windowSource:"session-scope" 具名来源')
+  const re = (await receipt(A18, 'vibe_vmu_turn', { op: 'reopen-closure' })).parsed
+  eq(re && re.ok, true, '前置：所办 reopen-closure 成功（窗口 2）', re && { code: re.code, window: re.window })
+  eq(re && re.window, 2, '前置：回执 window:2')
+  const v2 = (await receipt(A18, 'vibe_vmu_vote', { member: R1, solved: true })).parsed
+  eq(v2 && v2.closureVote && v2.closureVote.window, 2, '★★★ 正(F-3)：开窗后的票面 closureVote.window 读回 2（不再是 "session"）')
+  eq(v2 && v2.closureVote && v2.closureVote.windowSource, 'fold', '★★★ 正：windowSource:"fold"（来源是 durable closure_window 折入值）')
+  ok(/fold/.test(String(v2 && v2.closureVote && v2.closureVote.windowSourceMeans)),
+    '★★ 正：windowSourceMeans 说明 fold 的含义', v2 && v2.closureVote && v2.closureVote.windowSourceMeans)
+  // ★ LAMP(RED-worthy): with the fold-window inference removed on a COPY, the post-reopen vote falls back to "session" —
+  // the measured F-3 shape — so the window/source assertions are load-bearing.
+  const lampRoot = await mkdtemp(join(__tmpRoot(), 'f86-f3-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+  const tp = join(lampRoot, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
+  const ts = await readFile(tp, 'utf8')
+  const mut = 'const foldWindow = rowWindows.length > 0 ? Math.max.apply(null, rowWindows) : null'
+  ok(ts.includes(mut), 'lamp-setup：F-3 折入窗口推断可定位')
+  await writeFile(tp, ts.split(mut).join('const foldWindow = null'), 'utf8')
+  const L18 = await bootOf(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lampRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
+  const lk3 = L18.handle.kernel
+  for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await lk3.members.hire({ id, slot })
+  await receipt(L18, 'vibe_vmu_turn', { op: 'reopen-closure' })
+  const vL = (await receipt(L18, 'vibe_vmu_vote', { member: R1, solved: true })).parsed
+  eq(vL && vL.closureVote && vL.closureVote.window, 'session',
+    '★★★ LAMP(RED-worthy)：去掉 fold 推断后，开窗后的票面又读成 "session"（F-3 原状）')
+  await rm(lampRoot, { recursive: true, force: true }).catch(() => {})
+}
+
 // A Windows kernel keeps a handle on the member tree for a moment after a claim, so cleanup is
 // best-effort: the temp root is under D:/_tmp and the assertions above already read every byte they need.
 try { process.chdir(prevCwd) } catch { /* the temp tree is what matters */ }

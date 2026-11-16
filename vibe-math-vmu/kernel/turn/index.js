@@ -228,7 +228,17 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // "meeting window" meant, which is what a misleading label does. The window now states the scope it really has (the
     // SESSION = this orchestrator), a caller that DOES know the meeting may pass meetingId, and the field says so when
     // it is null instead of implying one.
-    window: meetingId === null ? 'session' : 'meeting',
+    // ★★★ FEEDBACK86 F-3 (RUN 86, MEASURED): reopen-closure advanced the fold's closure_window to 2, and every vote
+    // receipt still read window:"session". The fold stamps each vote row with the window it was cast in, so the reading
+    // can now return THAT number (windowSource:"fold"): after a reopen the vote says "window 2", and before any reopen
+    // (the default window is 1) it keeps the honest session scope. This is a projection of the rows this reading already
+    // received; no state machine change.
+    ...(() => {
+      const rowWindows = (Array.isArray(rows) ? rows : []).map((row) => Number(row && row.window)).filter((n) => Number.isFinite(n) && n > 1)
+      const foldWindow = rowWindows.length > 0 ? Math.max.apply(null, rowWindows) : null
+      if (foldWindow !== null) return { window: foldWindow, windowSource: 'fold', windowSourceMeans: 'fold = the durable closure_window stamp this vote row carries (reopen-closure advanced it)' }
+      return { window: meetingId === null ? 'session' : 'meeting', windowSource: meetingId === null ? 'session-scope' : 'meeting' }
+    })(),
     meetingId: meetingId === null ? null : String(meetingId),
     // ★ PHASE 12 / run 34 item 3: the sentence used to promise "a caller that knows the meeting passes { meetingId }" —
     // and NO face ever did. A promise with no caller is the same class of lie as a mechanism with no consumer, so the
@@ -352,8 +362,8 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
         // purpose and still answer the reader's question (missing fact / order), while the ISO instants carry the detail.
         means: finalisedAt === null
           ? (castAt === null
-            ? 'staleness NOT JUDGEABLE: no finalized paper and no dated vote on file (not "fresh")'
-            : 'staleness NOT JUDGEABLE: votes dated (' + iso(castAt) + ') but no finalized paper on file (not "fresh")')
+            ? 'staleness NOT JUDGEABLE: no finalized paper / no dated vote (not "fresh")'
+            : 'staleness NOT JUDGEABLE: vote dated (' + iso(castAt) + ') / no finalized paper')
           : (castAt === null
             ? 'staleness NOT JUDGEABLE: finalized (' + iso(finalisedAt) + ') but no dated vote on file'
             : (after
@@ -4421,9 +4431,15 @@ export function createTurnOrchestrator({
       // gets it: `voterSession` names where the voter ran, `session` stays the writer.
       let voterSession = null
       try { voterSession = memberSessions.get(id) || null } catch { voterSession = null }
-      closureVoteLocal.set(id, { member: id, solved: value, at: voteAt, session: voteSession,
-        voterSession: voterSession === null || voterSession === undefined ? null : String(voterSession), source })
-      try { persistClosureVote({ member: id, solved: value, source, voterSession }) } catch (e) {
+      try {
+        const persisted = persistClosureVote({ member: id, solved: value, source, voterSession })
+        // ★ FEEDBACK86 F-3: the durable writer knows the closure_window it stamped this vote with; the LOCAL row carries it
+        // too, so the vote receipt (which merges local rows before the fold lands) reports the same window.
+        const foldWindow = persisted && typeof persisted === 'object' && Number.isFinite(Number(persisted.window)) ? Number(persisted.window) : null
+        closureVoteLocal.set(id, { member: id, solved: value, at: voteAt, session: voteSession,
+          voterSession: voterSession === null || voterSession === undefined ? null : String(voterSession), source,
+          window: foldWindow === null ? undefined : foldWindow })
+      } catch (e) {
         turnEffects.push({ kind: 'closure-vote-persist-refused', member: id, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) })
       }
     }

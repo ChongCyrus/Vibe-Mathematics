@@ -737,6 +737,10 @@ export function createPaperFlow({
     const ledger = consultOf(state)
     const awaiting = consultAwaiting(ledger)
     const now = Number(clock())
+    // ★★★ F-4（RUN 86 / FEEDBACK86）: 「没有在等的请求时答复」原来是静默新开一条再立刻答复，回执只给
+    // `cleared:false`，读者无法判断「所办答复了谁的请求」。语义不变（预先表态仍然是合法的成功路径），但把这次
+    // 侧写变成回执上的具名事实：`openedByThisCall:true` + `requestSource` + `clearedMeans`。
+    const openedByThisCall = awaiting === null
     let request = awaiting
     if (!request) {
       ledger.opened += 1
@@ -753,7 +757,13 @@ export function createPaperFlow({
     ledger.answered += 1
     writeState(state)
     return { ok: true, target: state.target, requestId: request.id, answeredBy: request.answeredBy, answeredRole: okRole,
-      answeredAt: now, answered: ledger.answered, cleared: Boolean(awaiting), note: request.note }
+      answeredAt: now, answered: ledger.answered, cleared: Boolean(awaiting), note: request.note,
+      // F-4: the two facts a reader needs to tell "answered the question on the table" from "opened and answered one myself".
+      openedByThisCall,
+      requestSource: openedByThisCall ? 'opened-by-this-call' : 'awaiting-request',
+      clearedMeans: openedByThisCall
+        ? 'cleared:false — there was NO awaiting request; this call opened ' + request.id + ' and answered it immediately (openedByThisCall:true, and both `opened` and `answered` moved by this call). The ledger now carries an answered consult, so a later `final` sees the gate satisfied; that is a recorded decision of this call, not a question that was waiting'
+        : 'cleared:true means exactly one thing: request ' + request.id + ' was awaiting and this answer moved it out of `awaiting` (it was answered by ' + str(by) + ') — no other request was touched' }
   }
   /** Read side: the gate's own state, so a caller (or a test) can answer "was the office asked, and what did it say?" */
   function consultState({ target } = {}) {
@@ -1699,6 +1709,20 @@ export function createPaperFlow({
    * move keeps the move receipt unchanged: the coverage is a reading, never a precondition of the move itself.
    */
   function advance(args = {}) {
+    // ★★★ F-5（RUN 86 / FEEDBACK86）: `final` 有主席栏杆（editorReading），`advance` 没有 ⇒ `final{revise}` 打回 writing 后，
+    // 任何成员都能（且必须）替主席把状态机推回 reviewing（run 86：r-2 先 advance 才投出 rec-42）。推进状态机是主席的裁决，
+    // 所以调用者被具名为**非主席席位**时（member 是 roster 上的非 chair 席）这里具名拒并指路；不署名（所办/root）保持原语义。
+    const caller = args && args.member !== undefined && args.member !== null && str(args.member).trim() !== '' ? str(args.member).trim() : null
+    if (caller !== null) {
+      const row = rosterOf().filter((m) => m && String(m.id) === caller)[0] || null
+      const slot = row ? str(row.slot) : ''
+      if (row !== null && slot !== 'chair' && slot !== 'office') {
+        throw refuse('VMU_NOT_PERMITTED',
+          '只有主席（chair 席）可以推进论文状态机："' + caller + '" 的席位是 "' + slot + '" —— advance 决定 writing→reviewing 与 reviewing→awaiting-editor 的裁决，这一步不是作者的动作',
+          '由主席自己调 vibe_v5_paper { action: "advance", target: "' + str(args.target || '') + '" }（所办可以把这一回合派给主席：vibe_vmu_turn { op: "drive", member: "<主席 id>" }）；作者重写完自己的章节后不要替主席推进——那一步的裁决属于主席',
+          { target: str(args.target || ''), member: caller, memberSlot: slot, requiredSlot: 'chair' })
+      }
+    }
     const out = advanceMove(args)
     try {
       const found = readState(args && args.target)
