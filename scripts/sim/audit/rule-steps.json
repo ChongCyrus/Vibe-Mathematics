@@ -1351,11 +1351,11 @@
           "promptProbe": {
             "seat": "chair",
             "phase": "normal",
-            "text": "**在册各席逐字一致**（三类同文，可抄回比对）"
+            "text": "**共享正文**＝本段这 4 条（**在册各席逐字一致**）"
           }
         }
       ],
-      "notes": ""
+      "notes": "ROUND-4 G7: the old probe tail 「（三类同文，可抄回比对）」 is no longer rendered (prompt-lane rewrote the mainline block). The probe now follows the CURRENT rendered sentence verbatim — 「版本：mainline-v2（**共享正文**＝本段这 4 条（**在册各席逐字一致**）；「你的担子」按席不同，【蓝图】一节按席位能力不同）」 — 1/1 hit in chair/normal; the scope claim (which paragraphs are shared vs per-seat) is what the sentence actually says, so this is not a widened probe."
     },
     "A8": {
       "rule": "院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列",

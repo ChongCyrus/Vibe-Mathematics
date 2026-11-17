@@ -25,7 +25,7 @@ import { CHARTER_SECTIONS, CHARTER_BLOCKS, CHARTER_ROLE_BINDINGS, CHARTER_BINDIN
 import { v5rRoleSection as V5R_ROLE_SECTION } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 const V5R_ROLE_SECTION_VARS = V5R_ROLE_SECTION.vars
 import { createHash } from 'node:crypto'
-import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync, statSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -934,7 +934,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   const pipeFm = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
   const SET = { 'vmu.turn.formalProof': 'Formal/p-9.lean', 'vmu.turn.formalBlockedNote': '缺一个引理', 'vmu.turn.formalRootRel': 'Formal', 'vmu.turn.formalModeLabel': '强制' }
-  const asmFm = await pipeFm.assemble({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 5, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: SET })
+  const asmFm = await pipeFm.assemble({ member: 'r-1', role: 'member', roleLabel: '常驻研究员', phase: 'normal', round: 5, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: SET })
   ok(asmFm.ok === true && asmFm.text.includes('忠实性审查') && asmFm.text.includes('你不需要重新检查推导'),
     'T89. **** THE FAITHFULNESS REVIEW: once a Lean proof has passed, the reviewer job CHANGES - they check faithfulness instead of redoing the mathematics',
     { chars: asmFm.text.length })
@@ -2262,9 +2262,15 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
   const storePath = join(lampDir, 'vibe-math-vmu', 'kernel', 'store.js')
   let storeSrc = readFileSync(storePath, 'utf8')
-  const fromCas = 'if (opts.expectFingerprint !== undefined && opts.expectFingerprint !== fingerprint(fold.keys[key])) {'
-  ok(storeSrc.indexOf(fromCas) !== -1, 'C10x lamp-setup: the CAS judgement exists in one place')
-  storeSrc = storeSrc.replace(fromCas, 'if (false) {')
+  // ★ TB-2791 §0 / ROUND-4：content-resync 之后「只撤掉 CAS 判定」不再是 last-writer-wins（写变成基于磁盘真值的
+  // RMW），所以旧灯测不到缺陷。本灯的变异点是**退回纯 mtime+size 路径**：同时撤掉 content-resync 块 与
+  // expectFingerprint 比对，再配合同尺寸 + 固定 mtime 触发审计的 20/25 静默覆盖形态。
+  const fromCas = 'if (opts.expectFingerprint !== undefined) {\n      const memoryValue = fold.keys[key]'
+  ok(storeSrc.indexOf(fromCas) !== -1, 'C10x lamp-setup: the content-resync judgement exists')
+  storeSrc = storeSrc.replace(fromCas, 'if (false) {\n      const memoryValue = fold.keys[key]')
+  const fromMem = 'if (memFp !== opts.expectFingerprint) {'
+  ok(storeSrc.indexOf(fromMem) !== -1, 'C10x lamp-setup: the second expectFingerprint comparison exists')
+  storeSrc = storeSrc.replace(fromMem, 'if (false) {')
   writeFileSync(storePath, storeSrc)
   const lampMod = await import(pathToFileURL(storePath).href + '?c10xlamp=1')
   const lroot = mkdtempSync(join(tmpdir(), 'vmu-c10x-lamp-ws-'))
@@ -2272,11 +2278,22 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const l2 = lampMod.createStore({ root: lroot, clock: () => 1000 })
   await l1.open(); await l2.open()
   await l1.write('phase', 'base')
+  const lfile = join(lroot, 'vmu', 'state.json')
+  const FIXED = new Date(1000000)                    // a FIXED mtime: the stamp is exactly this value on both sides
+  utimesSync(lfile, FIXED, FIXED)
+  l2.refresh()                                       // B adopts fold=base + stamp=FIXED (stale fold, matching stamp)
   const lFp = l2.fingerprintOf('phase')
-  await l1.write('phase', 'from-kernel-A')
-  const lOut = await l2.write('phase', 'from-kernel-B', { expectFingerprint: lFp }).then(() => 'ok', (e) => e)
-  ok(lOut === 'ok' && l1.read('phase') === 'from-kernel-B',
-    'C10x lamp RED-worthy: 撤掉 CAS 判定 ⇒ B 静默覆盖 A（last-writer-wins 复现，A 的已提交值丢失）', { write: lOut, disk: l1.read('phase') })
+  await l1.write('phase', 'AAAB')   // 4 chars: same size as 'base'/'BBBB' so the stamp cannot tell them apart
+  // ★ 灯也必须复现「同尺寸 + 同一 stamp」：否则 stamp 更新会替 CAS 兜底，灯就测不到被撤掉的内容重读。
+  utimesSync(lfile, FIXED, FIXED)
+  const lOut = await l2.write('phase', 'BBBB', { expectFingerprint: lFp }).then(() => 'ok', (e) => e)
+  // read through a FRESH store: l1's stamp is pinned to FIXED, so l1.read() would answer its own cached fold (final19
+  // measured `write:"ok", disk:"AAAB"` exactly because the reader was stale, not because the write had failed).
+  const lfresh = lampMod.createStore({ root: lroot, clock: () => 1000 })
+  await lfresh.open()
+  const ldisk = lfresh.read('phase')
+  ok(lOut === 'ok' && ldisk === 'BBBB',
+    'C10x lamp RED-worthy: 撤掉 CAS 判定 ⇒ B 静默覆盖 A（last-writer-wins 复现，A 的已提交值丢失）', { write: lOut, disk: ldisk })
   rmSync(lroot, { recursive: true, force: true })
   rmSync(lampDir, { recursive: true, force: true })
   rmSync(croot, { recursive: true, force: true })

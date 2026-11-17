@@ -20,7 +20,7 @@ const MAINLINE_CORE = [
   // block also appends a PER-SEAT duty line and a per-seat 【蓝图】 paragraph — so a member quoting the block back verbatim
   // could not match the next seat's text, and run 46 reported the promise as false. The promise now names exactly what is
   // shared (this 主线段) and what is not (the dot line that follows, and the 蓝图 section below).
-  '  · 版本：' + MAINLINE_VERSION + '（**共享正文**＝本段这 4 条（**在册各席逐字一致**）；「你的担子」**按席不同**，【蓝图】一节**按席位能力不同**）',
+  '  · 版本：' + MAINLINE_VERSION + '（**共享正文**＝本段这 4 条（**在册各席逐字一致**）；「你的担子」**按席不同**，【蓝图】**按席位能力不同**）',
   '  · 一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**；不是零散任务清单，每一步都要能说清在蓝图上推进了什么。',
   '  · **每回合三问**：①这回合推进或扩张蓝图的哪个节点？②该节点的信息更新了没有（当下评价 / 初始计划与启发 / 相关计划 / 可行性及原因 / 价值性及原因 / 结论与经验 / 障碍与方案 / 过去经验）？③**以前是否处理过类似问题**——先查蓝图与归档，能迁移复用就复用，别重复探索。',
   '  · 持续积累与主线推进、改进、调整相关的认知与有价值反馈；据实践反馈调整、细化蓝图并更新节点信息；吸取经验持续改进，把经验一般化、迁移到新问题。',
@@ -130,7 +130,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · 引用他人结论**必须**带 id；上下文里没有正文时**不得**凭记忆叙述它。',
         '  · 论文阶段必须按 `id` + 指纹重建正文；指纹与磁盘正文不一致 ⇒ **具名阻塞并上报**，绝不静默用旧文。',
         '  · **禁止**自行猜测、改写、拼写对象 id；查不到就**具名停下并上报**。',
-        '  · Lean 归档正文不在头部列表里，也不参与压缩：用 `vibe_v5_lean_lib` / `vibe_v5_lean_read` 按名取原文。',
+        '  · Lean 归档正文不在头部列表里，也不参与压缩：按名向对应的 Lean 读面取原文（若你的席位有该面）。',
       ].join('\n'),
     },
   },
@@ -199,6 +199,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 748,
     range: 'pack',
     kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']) }),
     texts: {
       shared: [
         '  · 该对象已被记录为**形式化阻塞**；原因见 `vibe_v5_lean_lib` 的 blocked 记录。',
@@ -211,6 +212,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 749,
     range: 'pack',
     kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']) }),
     texts: {
       shared: [
         '  · 工具：vibe_v5_lean_run（执行）· vibe_v5_lean_archive（归档）· vibe_v5_lean_lib（查已有可复用库）',
@@ -229,6 +231,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 750,
     range: 'pack',
     kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']) }),
     texts: {
       shared: [
         '【顺手形式化（{{ setting:vmu.turn.formalModeLabel }}）】只对**长期复用**的对象/定义/引理开 Lean：先 `vibe_v5_lean_lib` 查重，',
@@ -352,7 +355,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
     // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
-    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']), phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         '若你本轮做了形式化，用 `vibe_v5_lean_archive` 归档那份 .lean 文件：`kind` 取 def | lemma | proof | blocked（定理用 proof），`name` 必填，`file` 给文件路径，',
@@ -368,7 +371,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
     // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
-    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']), phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         '【Lean 形式化验证（鼓励模式）】',
@@ -478,7 +481,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
     // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
-    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']), phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         'vibe_v5_lean_run hint (green): 通过。若是某个对象的证明，请用 vibe_v5_lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。',
@@ -498,7 +501,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
     // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
-    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']), phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         '· **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用',
@@ -735,7 +738,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '**计票规则（不得误解）**：只有投票通道产生票；**表决期内的发言不改变任何票**；',
         '**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。',
         '',
-        '结束时请用 `vibe_v5_verdict` 交票：`target` = **本轮票箱的 id**（所办用 `vibe_vmu_meeting {action:"ballot", …}` 回执里的 `ballotId`，形如 `b-…`；**不是**命题卡/记录 id，填错会 `VMU_NO_SUCH_OBJECT`）、`verdict` = 一个概率值、`reason` = 理由、`member` = 你；没有票箱就请所办开票。**临时工**：`vibe_v5_verdict` 不在你的工具面（会 `VMU_NOT_PERMITTED`），只读给意见；',
+        '结束时请用 `vibe_v5_verdict` 交票：`verdict` = 一个概率值、`reason` = 理由、`member` = 你。**`target` 只在「你已收到开票回执」时填其 `ballotId`**（回执里的活票箱 id）；**还没收到开票回执就不要编 id**——在 `reason`/群聊写「我这一票的对象是 <本轮命题/卡 id>」，并请主席开票（主席在会议里用 `vibe_vmu_meeting {action:"ballot"}` 开票后把 `ballotId` 给你）。**临时工没有表决权**：本工具不在你的工具面，只读并给意见；',
         '**这张 verdict 就是表决票**；`vibe_v5_poll_vote` 只用于院士另开的选项投票板（辩论本身不用投票板）。回执里的 `verdict` 没有可用形状、投递前就被具名跳过——所以投票只有一个入口：工具。',
       ].join('\n'),
     },
@@ -1058,6 +1061,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 835,
     range: 'pack',
     kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']) }),
     texts: {
       shared: [
 "【形式化开关 `vmu.math.formalVerify` 三档】`off`＝零策略（默认）｜`encourage`＝鼓励（做了就归档；没做就用 `vibe_v5_lean_archive { kind:\"blocked\", name, note:\"<难点>\" }` 登记，回执 `formal` **只收 {statement, proof}**，不要用来写难度判断）｜`require`＝强制（缺 Lean 结果或 blocked 记录则裁定**不生效**，对象留原轨进待办）。这个键由**所办**改；`leanInitiative` 只是回显。",
@@ -1073,7 +1077,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       shared: [
         "【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（尝试过的路线）｜`obstacles`（阻塞与原因）｜`rejected`（已证伪的路）｜`state`（状态板）。`track:\"state\"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。",
 "**派回合的 `phase` 取内核相位与 pack 声明的并集（11 个）**：`founding`／`normal`／`checkpoint`／`verify`／`verify-debate`／`meeting`／`resume`／`heartbeat`／`paper-write`／`paper-review`／`paper-final`——裸 `review`／`write`／`final` 是流程词不是 phase（旧任务书简写），写成它们会得到 `VMU_INVALID_ARGUMENT unknown phase`（派回合面；`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面）；`paper-review` 回合的产物是**评审票**，结题票 `vote_solved` 不用于评审。",
-        "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库 `lean_lib`（编译过≠命题真）；论文 = `vibe_v5_paper` 的 part 阶段；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法库卡：`vibe_v5_record_method`。",
+        "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = 执行→作业→归档（仅当席位有 Lean 面；编译过≠真）；论文 = `vibe_v5_paper` 的 part 阶段；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法库卡：`vibe_v5_record_method`。",
         "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数）；**不在名册**的 id 具名拒。**归属口径**：`memberWorkShare = memberActs/(memberActs+officeRelayedActs)`（`unknownActs` 不进分母）；**代笔回执**带 `memberActed:false`、`actedForMember`、`ranInOwnTurn:false`，落盘行带 `writtenFrom`（`own-turn`｜`relayed`｜`unknown`，问的是「这次写是怎么到这个席位的」）。`[结题]` 票数读 `closureVote.votesCast`/`votesTotal`（分母=有表决权席，不含 temp），别自己数人头。**`[蓝图]` 行由内核注入**：有就读（无现行版写「无现行版（rev 0，md 未落盘）」）；读不到用 `vibe_vmu_turn{op:\"status\",detail:\"board\"}` 的 `liveReadings.blueprint`，**不会因为**缺块当没有。",
         "  · 读别人的板：`vibe_v5_read_library`（`member`、`track`）；走不通的路写 `rejected`（别把证伪当进展）。",
         "  · **临时工不进成果库**：卡片面对临时工**具名拒**，产出由临时工自己写进回执（指派者只核对、不代写）；过程记录写在回执的 `progress` 字段。",
@@ -1107,7 +1111,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       normal: [
         '【回合循环卡住了怎么办】读 `vibe_vmu_turn { op:"status" }.turnLoop`：`inFlight` 是本内核的**单轮锁**、不是账本承诺（`turnInFlightMeans`：`human.recover` 读耐久账，可与锁并存）；`inFlightTurn`/`inFlightMember`/`inFlightOpenedBy`/`inFlightForMs`＝哪轮/谁开/锁时，`abandonAfterMs`＝上限，`wakeQueue`/`recentAbandonments`＝排队/最近关的轮。',
-'  · 连续两次 `VMU_TURN_REENTRANT` 就**不要第三次重试**：交回所办/主席，由他们用 `vibe_vmu_turn { op:"abandon", turn:"<inFlightTurn>", why:"…" }` 按名关闭——**你自己不要调**：你的 `vibe_vmu_turn` 只有 `op:"status"` 有意义（step/drive/abandon 归所办/主席）。该行会变 `status:"abandoned"` + `VMU_TURN_ABANDONED`、释放锁、报告**不应用**。',
+        '  · 连续两次 `VMU_TURN_REENTRANT` 就**不要第三次重试**：**主席/所办可以调** `vibe_vmu_turn { op:"abandon", turn, why }` 按名关闭；**成员/临时工不要调**（你只有 `op:"status"`）——写入 progress 并请所办/主席关。',
         '  · 只关抱锁那一轮；关完读 status 确认 `inFlight:false`。',
         '  · parked 时再派同席＝`VMU_TURN_ALREADY_PARKED`（先答）；reply 无 parked＝`VMU_TURN_PARKED_NEEDS_OWNER`（丢弃）。先答→abandon→再派。解析失败会释放 park（下条 `step` 开新回合）',
       ].join('\n'),

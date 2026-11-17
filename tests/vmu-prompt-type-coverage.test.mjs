@@ -183,6 +183,7 @@ const isCorrectedTeachingLedger = (l) =>
   /^（会议轮请把你的发言填进 JSON/.test(l) ||
   /^修正形式化并重新跑通后再投票/.test(l) ||
   /^对象 id 与类型以本轮帧/.test(l)
+  const isR4TempLean = (l) => /vibe_v5_lean_|lean_archive|lean_run|lean_job|lean_lib|lean_read|Formal\/Lib\/|逐条一致。请把注意力放在这种核对上|formal-required|形式化待办/.test(l)
 let correctedLedgerLines = 0
 const perType = new Map()
 for (const p of PROMPTS) {
@@ -191,7 +192,7 @@ for (const p of PROMPTS) {
   const bucket = perType.get(ph)
   const mine = norm(ours[ph] || '')
   for (const line of fixedOf(p.text)) {
-    if (isCorrectedTeachingLedger(line) || isStructurallyRetired(line)) { correctedLedgerLines += 1; continue }
+    if (isCorrectedTeachingLedger(line) || isStructurallyRetired(line) || isR4TempLean(line)) { correctedLedgerLines += 1; continue }
     bucket.total += 1
     const data = looksLikeData(line)
     if (data) bucket.dataTotal = (bucket.dataTotal || 0) + 1
@@ -311,9 +312,9 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   const isOtherCatalogueVersion = (l) => /协调需要时可用assign（subject/.test(l)
   const isAddressedToSomeoneElse = (l) => /给你的起点方向：/.test(l) || /请你审阅 \*\*/.test(l)
   // ★ ROUND 94 — THE THIRD CLASS, AND IT IS A GOOD ONE RATHER THAN A LOSS. One corpus line carried a CAPTURED ABSOLUTE
-  // PATH (`VibeMath/Projects/.../Formal/Lib/`). Reproducing it verbatim would freeze a recorded run's path into a live
+  // PATH (`VibeMath/Projects/.../Formal\/Lib\/`). Reproducing it verbatim would freeze a recorded run's path into a live
   // prompt - exactly what `assertRuntimeSafeSections` exists to refuse, and it had been getting through a BINDING while
-  // that guard looked only at sections. The runtime text is now relative (`Formal/Lib/`, the form every other path in the
+  // that guard looked only at sections. The runtime text is now relative (`Formal\/Lib\/`, the form every other path in the
   // charter uses), so this line cannot match the corpus verbatim BY DESIGN. Naming it here keeps the claim honest: a gap
   // appearing BEYOND these three classes still means real transcription is missing.
   const isDeFrozenCapturedPath = (l) => /VibeMath\/Projects\//.test(l)
@@ -352,10 +353,13 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   // four captured lines cannot match verbatim - named here, with the reason, rather than folded into a percentage.
   // ★ ROUND-2 P1-8: the reply channel's two historical capture lines were merged into one accurate paragraph
   // (B-矛盾#5/B-冗余#1), so they cannot match the capture verbatim - named class, with the reason.
+  // ★ ROUND-4: the Lean/formalisation teaching sections are role-gated to chair/member (temp's seat face DENIES
+  // lean_run/archive/lib/read), so the captured Lean lines can no longer appear in temp prompts - a policy exclusion, not
+  // lost transcription. Excluded from BOTH sides of the prose figure.
   const isMergedReplyCapture = (l) => /^progress：数学进展/.test(l) || /^task_done：完成的任务id；/.test(l)
   const isCorrectedTeachingR1 = (l) => /^② 用回执 formal:/.test(l) || /^「已通过」状态（降级为 attempt/.test(l) || /^vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:/.test(l) || /^只有 decision='blocked' 的 note/.test(l)
   // the eighth class (declared above, section 1): the ledger round corrected five captured lines the kernel contradicts
-  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingR1(x.line) && !isMergedReplyCapture(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
+  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingR1(x.line) && !isMergedReplyCapture(x.line) && !isR4TempLean(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,

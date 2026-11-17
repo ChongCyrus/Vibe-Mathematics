@@ -327,7 +327,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · 用 `vibe_v5_verdict` 给出你的判断：一个 [0,1] 的数值概率与理由。1 = 绝对为真；0 = 绝对为假；介于之间 = 不确定；裁决规则是**全体一致时取该值，否则取全组平均概率**。",
         "  · 进入 Verified/ 的门：概率必须为 **1**，且这个 1 必须有**具名凭据**——你一个人在初评里写下的 1 不算数；凭据是三项之一：辩论裁决集合全体一致为 1；该命题已在 verified 轨有 conclusion:true 行；Lean 通过**且**辩论已裁定代码与所需一致。缺凭据的 1 会被具名拒绝（`VMU_PACK_V5R_P1_NEEDS_DEBATE`），Verified/ 的写入只有 `vibe_v5_verified_promote` 一个入口（`VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`）。",
         "  · 规则还允许**参考文献中的命题**直接进 Verified（不经辩论）：写卡时带 `literature_ref:\"<作者, 出处, 定理/页码>\"` 且 `p:1`，再用 `vibe_v5_verified_promote`（`warrant_kind:\"literature\"`、`literature_ref` 填同一句引用）入轨；warrant 就是那句引用，引用要具体到定理/页码，不要写「见文献」。",
-"  · **表决**（议题办不办、会议能不能开）用法定票数 m = min(所办上限, 在册有表决权人数)，读状态块的 `[表决] 法定票数 m = N` 行。",
+"  · **表决**（议题办不办、会议能不能开）用法定票数 m = min(所办上限, 在册有表决权人数)，读状态块的 `[表决] 法定票数 m = N` 行。`quorumRule` 默认 m-unanimous（defaultTally 一致）；未投满或票分裂 ⇒ undecided。",
         "  · 表决分两段：先【独立初评】——独立给票与理由；若未定论再进入【公开辩论】——意见公开，可引用、反驳、修改后重投。辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）：它定这场会议最多被提几次动议（**任何 kind 的动议都计入**，程序动议会吃掉一轮辩论），默认 3，到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。",
         "  · 仍未定论的对象**留在原库**，附裁决读数与完整辩论记录，不强判真假；条件成熟可再次提议验证。",
         "  · **永远不要为了让流程往前走而投出你不相信的 1 或 0。** 诚实的「不确定」远好过虚假的「一致」。本所宁可留下未定论，也不要一个骗人的 Verified。",
@@ -538,6 +538,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     order: 796,
     range: 'pack',
     kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']) }),
     texts: {
       shared: [
 '  "formal": {"statement":"<命题原文>","proof":"<Lean 证明脚本正文>"}',

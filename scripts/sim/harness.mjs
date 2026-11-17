@@ -417,12 +417,29 @@ export async function boot({ root, packs = ['v5r'], clock = () => 1_800_000_000_
     // agenda line on `scope.meetingId === 'required'`, because a meeting-PHASE turn with no meeting bound was being fed
     // the manual for a floor that does not exist (FEEDBACK65 / sim-audit-prompts A7). So a measurement of what a
     // chair/member actually reads IN a meeting has to pass the id - `phase:'meeting'` alone no longer implies one.
-    prompts.assembleFor = async ({ seat = 'chair', roleLabel = null, phase = 'normal', round = 1, roster = null, statusBlock = null, member = null, meeting = null }) => {
+    prompts.assembleFor = async ({ seat = 'chair', roleLabel = null, phase = 'normal', round = 1, roster = null, statusBlock = null, member = null, meeting = null, quorum = null, facts = null }) => {
       const label = roleLabel === null ? (seat === 'chair' ? '院士' : seat === 'temp' ? '临时工' : '常驻研究员') : roleLabel
       const holder = member === null ? (seat === 'chair' ? 'r-acad' : 'r-1') : member
+      // ★ ROUND-4: a REAL turn always carries the roster and the vote floor (`turn.roster` / `turn.quorum`); an
+      // assembly that passes neither renders a status block missing `[在册]` and `[表决]`, so a seat-read measurement
+      // would describe a block no seat ever reads. Default them from the LIVE kernel state (never a literal), and let
+      // the caller override (the turns matrix does, with its fixed 3-seat roster).
+      let effRoster = roster
+      let effQuorum = quorum
+      try {
+        const rows = handle.kernel && handle.kernel.members && typeof handle.kernel.members.roster === 'function' ? handle.kernel.members.roster() : null
+        if (Array.isArray(rows) && rows.length > 0) {
+          if (effRoster === null) effRoster = rows.map((m) => String(m && m.id)).join('、')
+          if (effQuorum === null) effQuorum = rows.filter((m) => String((m && m.slot) || '') !== 'temp').length
+        }
+      } catch { /* no live roster yet (assembly before start): leave both null, the composer names the absence */ }
       noticeCapture = null
       const assembledAt = since()
-      const asm = await loop.assemble(loop.open({ member: holder, role: seat, roleLabel: label, phase, round, roster, statusBlock, meeting, settings: layer }).turn)
+      // ★ ROUND-4: `quorum`/`facts` are turn DATA a real loop passes to `loop.open`. With NO `statusBlock` the kernel
+      // composes the real `[状态]/[在册]/[表决]/[状态板]` block itself (composeStatusBlock); without these parameters a
+      // scenario that wants that block had to invent a fixture string, and 12/35 rendered prompts then carried
+      // 「[状态] 模拟器」 instead of the readings a seat actually reads.
+      const asm = await loop.assemble(loop.open({ member: holder, role: seat, roleLabel: label, phase, round, roster: effRoster, statusBlock, meeting, quorum: effQuorum, facts, settings: layer }).turn)
       const text = String(asm.text || '')
       // ★ TB-2602: an assembly is ORDERED EVIDENCE, not just text. `assembly` is the global assembly number, and
       // `afterReceipts` is how many tool calls had already happened when this prompt was built — so a pair can prove

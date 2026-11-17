@@ -361,11 +361,48 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   // compatibility; `expectFingerprint` is the value token production uses.
   const casCheck = (key, opts) => {
     if (!opts || typeof opts !== 'object') return
-    if (opts.expectFingerprint !== undefined && opts.expectFingerprint !== fingerprint(fold.keys[key])) {
-      throw refuse('VMU_STORE_CONFLICT',
-        'concurrent write refused: the durable value of "' + key + '" changed since this writer read it (expected fingerprint ' + JSON.stringify(opts.expectFingerprint) + ', current ' + JSON.stringify(fingerprint(fold.keys[key])) + ')',
-        'this write did NOT land. Re-read the row (read/fingerprintOf) and retry against the NEW value; two writers on one row is a conflict, not a corrupt store',
-        { key, expectedFingerprint: opts.expectFingerprint, currentFingerprint: fingerprint(fold.keys[key]) })
+    // ★★★ C#10 (ROUND-4 cross audit, P0): MTIME+SIZE IS NOT FRESHNESS. The stamp (`mtimeMs:size`) cannot tell a write
+    // that changed the file WITHIN THE SAME MTIME TICK and kept the same size — the cached fold then still matches the
+    // caller's stale fingerprint, so the CAS passed and the newer value was silently overwritten (measured: 20/25 rapid
+    // interleaved writes). A compare-and-set therefore NEVER trusts the stamp: it re-reads the durable FILE and compares
+    // CONTENT fingerprints. The read is unconditional (lock-skip included: a write that could not take the lock has no
+    // other way to know), and an unreadable file refuses by name instead of proceeding on a stale fold.
+    if (opts.expectFingerprint !== undefined) {
+      const memoryValue = fold.keys[key]
+      let diskValue
+      try {
+        const disk = parseFold(readFileSync(file, 'utf8'), file)
+        diskValue = disk.keys[key]
+        // adopt the file's view AFTER a successful read, so the compare below and the following compute() both build on
+        // the real durable value (not on a projection that may be one same-tick write behind).
+        fold = disk
+        adoptStamp()
+      } catch (e) {
+        if (memoryValue === undefined && opts.expectFingerprint === null) { diskValue = undefined } else {
+          throw refuse('VMU_STORE_FAILED',
+            'compare-and-set cannot verify the durable value of "' + key + '": the store file could not be re-read (' + String((e && e.message) || e) + ')',
+            'this write did NOT land. The file is unreadable or the workspace is gone; repair the store before retrying — proceeding on a cached fold could silently overwrite a newer value',
+            { key, expectedFingerprint: opts.expectFingerprint, reason: 'content-resync-failed' })
+        }
+      }
+      const diskFp = diskValue === undefined ? null : fingerprint(diskValue)
+      if (diskFp !== opts.expectFingerprint) {
+        throw refuse('VMU_STORE_CONFLICT',
+          'concurrent write refused (content check, not mtime): the durable value of "' + key + '" is not the value this writer expected (expected fingerprint ' + JSON.stringify(opts.expectFingerprint) + ', durable ' + JSON.stringify(diskFp) + ')',
+          'this write did NOT land. Re-read the row (read/fingerprintOf) and retry against the NEW value; same-size same-tick writes are exactly the case mtime+size cannot see, so this comparison is on CONTENT',
+          { key, expectedFingerprint: opts.expectFingerprint, currentFingerprint: diskFp, freshness: 'content-resync' })
+      }
+    }
+    // (second line of defence for callers that passed `expectFingerprint` AFTER the content check above adopted the
+    // durable fold; identical rule, and it also covers a key that is absent from the file: null is the absent-token.)
+    if (opts.expectFingerprint !== undefined) {
+      const memFp = fold.keys[key] === undefined ? null : fingerprint(fold.keys[key])
+      if (memFp !== opts.expectFingerprint) {
+        throw refuse('VMU_STORE_CONFLICT',
+          'concurrent write refused: the durable value of "' + key + '" changed since this writer read it (expected fingerprint ' + JSON.stringify(opts.expectFingerprint) + ', current ' + JSON.stringify(memFp) + ')',
+          'this write did NOT land. Re-read the row (read/fingerprintOf) and retry against the NEW value; two writers on one row is a conflict, not a corrupt store',
+          { key, expectedFingerprint: opts.expectFingerprint, currentFingerprint: memFp })
+      }
     }
     if (opts.expect !== undefined && opts.expect !== fold.version) {
       throw refuse('VMU_STORE_CONFLICT',

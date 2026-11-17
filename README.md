@@ -17,7 +17,7 @@
 >
 > **想增加更多 preset**：复制/新建一个 bundle，用自己的 id 在 `cordis.patch.yml` 里加一条 `preset-declaration` 行（DSH ≥ 0.1.7），或把目录放进 `~/.dsh/.agent-presets/<id>/`（DSH ≤ 0.1.6）；见「[发货面：两个 preset id、一个安装目录](#-发货面两个-preset-id一个安装目录与如何加更多)」。
 
-安装本插件包后，DSH 的预设选择器里会出现**一个** agent preset：`vibe-math-vmu`（显示名 **Vibe Math VMU**）。
+安装本插件包后，DSH 的预设选择器里会出现**框架席** preset `vibe-math-vmu`（显示名 **Vibe Math VMU**）；DSH ≥ 0.1.7 还会看到**成员席** `vibe-math-vmu-member`（由 `cordis.patch.yml` 的组合行声明、**不由安装器安装**，三源口径见下面「发货面」一节）。
 
 > **⚠️ 旧 preset 已下线（v2 / v3 / v4 / v5 / v5r）**：它们**不随包发货**，只保留在本仓库历史与
 > [`docs/DEPRECATED-LEGACY-PRESETS.md`](docs/DEPRECATED-LEGACY-PRESETS.md) 中作参考；新机构请用 `vibe-math-vmu` ＋ pack。

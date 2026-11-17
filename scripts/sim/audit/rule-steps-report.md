@@ -64,7 +64,7 @@
 | `E25` | member/normal | `表决分两段：先【独立初评】（看不到别人意见）`（ROUND-2：旧 probe 在 chair/normal 已 0 命中，现文 chair 写法是「——独立给票与理由」、member 写法带「（看不到别人意见）」） |
 | `E29` | chair/normal | `辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）` |
 | `G6` | chair/normal | `工具是主路，围栏不能替代工具`（ROUND-2：旧句「回执正文里【不要】粘贴 JSON…」在 35/35 渲染提示词中 0 命中，现行教学是「工具做事，回执汇报」） |
-| `G7` | chair/normal | `**在册各席逐字一致**（三类同文，可抄回比对）` |
+| `G7` | chair/normal | `**共享正文**＝本段这 4 条（**在册各席逐字一致**）`（ROUND-4：旧 tail「（三类同文，可抄回比对）」已不在渲染文本；现句逐字取自 `v5r-blocks-b.js` 主线节，1/1 命中） |
 | `E36` | chair/normal | `**单次发言版群聊**两法：`（ROUND-2：不再复用 E25 的失效 probe；这句是规则原文「先各成员同时「单次发言版群聊」」的逐字教学；轮数半边由 E29 的 `vmu.meetings.verdictMaxRounds` probe 覆盖） |
 | `G8` | chair/normal | `一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**` |
 | `G9` | chair/normal | `持续积累与主线推进、改进、调整相关的认知与有价值反馈` |

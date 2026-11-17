@@ -144,7 +144,11 @@ export async function turns(h, { log = () => {} } = {}) {
   // harness), so a simulated prompt is only evidence when it is assembled the way a real turn assembles it.
   for (const seat of SEATS) {
     for (const phase of PHASES) {
-      const text = await h.prompts.assembleFor({ seat, phase, round: 1, roster: 'r-acad、r-1、r-2', statusBlock: '[状态] 模拟器' })
+      // ★ ROUND-4 (sim fixture debt): this loop used to inject `statusBlock: '[状态] 模拟器'`, so 12/35 rendered prompts
+      // showed a fixture tag instead of the block a seat really reads — no `[状态板]`/`[在册]`/`[表决]` line at all.
+      // With NO statusBlock the kernel composes the real block (composeStatusBlock) from the turn data, which is why
+      // the roster and the vote floor are passed as TURN DATA here: 3 seats × 4 phases now carry the real lines.
+      const text = await h.prompts.assembleFor({ seat, phase, round: 1, roster: 'r-acad、r-1、r-2', quorum: 3 })
       promptChars[seat + '/' + phase] = text.length
     }
   }
@@ -167,7 +171,7 @@ export async function turns(h, { log = () => {} } = {}) {
 
   // ── 3. Open the institute ────────────────────────────────────────────────────────────────────────────────────
   await step('open-institute', 'setup', async () => {
-    const r = await record('vibe_v5_start', { problem: '模拟器回合剧本：谁被派回合、谁回答、跑不动时回执说什么', researcherCount: 2 })
+    const r = await record('vibe_v5_start', { problem: '仿真回合剧本：谁被派回合、谁回答、跑不动时回执说什么', researcherCount: 2 })
     ledger.started = { ok: r.ok === true, hired: r.hired || null, turnEngine: r.turnEngine || null }
     return r
   })

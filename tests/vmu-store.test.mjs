@@ -13,7 +13,8 @@
 // `--self-probe` swaps `patch` for a naive read-modify-write and REQUIRES the concurrency assertion to
 // fail: that proves the check can actually catch a lost update instead of passing by construction.
 
-import { mkdtemp, rm, readFile, readdir, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, readdir, writeFile, mkdir, stat, utimes } from 'node:fs/promises'
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -151,6 +152,77 @@ const openStore = async (opts = {}) => {
     'a durable file carrying an undeclared key is refused on load')
 
   await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+}
+
+
+// ---- 8. C#10 (ROUND-4 cross audit, P0): same-size + same-mtime-tick writes must still conflict ---------------
+// The freshness stamp is `mtimeMs:size`. A write that keeps the size and lands within the same mtime tick is INVISIBLE
+// to it, so a stale fold matched the caller's stale fingerprint and the CAS passed — audited: 20/25 rapid interleaved
+// writes were silently overwritten. The CAS now re-reads the FILE and compares CONTENT fingerprints, so this test makes
+// the defective condition DETERMINISTIC (same-size values + the file's mtime restored to the pre-write instant) and
+// demands 25/25 conflicts.
+{
+  const cdir = await mkdtemp(join(tmpdir(), 'vmu-store-cas-stamp-'))
+  const cfile = join(cdir, 'vmu', 'state.json')
+  try {
+    const A = m.createStore({ root: cdir, clock: () => 1000 })
+    const B = m.createStore({ root: cdir, clock: () => 1000 })
+    await A.open(); await B.open()
+    await A.write('phase', 'base')                       // 4 chars: every token below is also 4 chars
+    const T = new Date(1000000)                       // a FIXED mtime: the stamp the two stores compare is this exact value
+    await utimes(cfile, T, T)
+    B.refresh()                                        // B adopts fold=base + stamp=T (a genuinely stale fold with a matching stamp)
+    let conflicts = 0
+    let silent = 0
+    for (let i = 0; i < 25; i += 1) {
+      const tokenA = 'A' + String(i).padStart(3, '0')
+      const tokenB = 'B' + String(i).padStart(3, '0')
+      const staleFp = B.fingerprintOf('phase')           // B's view, one write behind
+      await A.write('phase', tokenA)
+      await utimes(cfile, T, T)                          // SAME SIZE + SAME STAMP: the stamp cannot see A's write
+      const outcome = await B.write('phase', tokenB, { expectFingerprint: staleFp }).then(() => null, (e) => e)
+      if (outcome && outcome.code === 'VMU_STORE_CONFLICT') conflicts += 1
+      else silent += 1
+    }
+    ok(conflicts === 25 && silent === 0,
+      'C10-10 ★★★ 同尺寸 + 同一 mtime tick 的 25 次紧邻交错写 ⇒ 25/25 VMU_STORE_CONFLICT、0 静默覆盖（freshness 不再靠 mtime+size）',
+      { conflicts, silent })
+    ok((await A.read('phase')) === 'A024',
+      'C10-11 ★ loser 一次都没有落盘：磁盘上始终是 A 的最新值', { disk: await A.read('phase') })
+    // ★ lamp: copy tree, make the content re-read a no-op -> the stamp-only path silently overwrites again (the audited
+    // 20/25 shape). Deterministic here: same-size + restored mtime means the stale fold matches the stale token.
+    const lampRootDir = await mkdtemp(join(tmpdir(), 'vmu-store-cas-lamp-'))
+    try {
+      const lampTree = join(lampRootDir, 'vibe-math-vmu')
+      cpSync(join(REPO, 'vibe-math-vmu'), lampTree, { recursive: true })
+      const storePath = join(lampTree, 'kernel', 'store.js')
+      const src = readFileSync(storePath, 'utf8')
+      const from = 'if (opts.expectFingerprint !== undefined) {\n      const memoryValue = fold.keys[key]'
+      ok(src.indexOf(from) !== -1, 'C10 lamp-setup: the content-resync branch exists')
+      writeFileSync(storePath, src.replace(from, 'if (false) {\n      const memoryValue = fold.keys[key]'))
+      const lampStoreMod = await import(pathToFileURL(storePath).href + '?c10round4lamp=1')
+      const ldir = await mkdtemp(join(tmpdir(), 'vmu-store-cas-lamp-ws-'))
+      try {
+        const lA = lampStoreMod.createStore({ root: ldir, clock: () => 1000 })
+        const lB = lampStoreMod.createStore({ root: ldir, clock: () => 1000 })
+        await lA.open(); await lB.open()
+        await lA.write('phase', 'base')
+        const lfile = join(ldir, 'vmu', 'state.json')
+        const lst = await stat(lfile)
+        let lampSilent = 0
+        for (let i = 0; i < 5; i += 1) {
+          const stale = lB.fingerprintOf('phase')
+          await lA.write('phase', 'A' + String(i).padStart(3, '0'))
+          await utimes(lfile, lst.atime, lst.mtime)
+          const out = await lB.write('phase', 'B' + String(i).padStart(3, '0'), { expectFingerprint: stale }).then(() => 'ok', (e) => e)
+          if (out === 'ok') lampSilent += 1
+        }
+        ok(lampSilent > 0,
+          'C10 lamp RED-worthy: 撤掉内容重读、只靠 mtime+size ⇒ 同尺寸同 tick 的写又被静默覆盖（audit 的 20/25 原状）',
+          { silent: lampSilent, disk: await lA.read('phase') })
+      } finally { await rm(ldir, { recursive: true, force: true }) }
+    } finally { await rm(lampRootDir, { recursive: true, force: true }) }
+  } finally { await rm(cdir, { recursive: true, force: true }) }
 }
 
 // ---- 9. self-probe ----------------------------------------------------------------------------
