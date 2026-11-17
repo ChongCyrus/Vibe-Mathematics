@@ -1225,14 +1225,14 @@
 4. **复跑清单（等 core 修复＋A/B dump 后执行）**：① 用**修好的** overlay（只按 id 深合并进 `config.plugins[]`，保 preset 身份；未匹配只告警不改动）；② 起服务时**同时**带 provider/model 补丁（opencode-go／`deepseek-v4.1-flash`，经操作者授权）；③ 驱动显式 `--max-tokens` ＋首行"模拟测试"并记 `user/message` 的 `seq`＋行号（§2）；④ dump 落 `_oneoff/vmu/live/**`；⑤ 结论按 §7/§8 四段写；⑥ 跑完删凭据副本、停服务 ✓。
 5. **纪律**：全程**未使用**任何未授权凭据（我复制的临时凭据副本按纪律删除；verify 那份由其收尾）；**同一时刻只起一个服务**；未改任何仓内别人文件 ✓。
 
-### 19.11 C-30 所办定稿咨询门（`kernel/paper.js`；**读者已落**）
+### 19.11 C-30 所办定稿咨询门（通用流程 `packs/research-core/paper-flow.js`；**读者已落，TB-2794 Step 1 迁出内核**）
 
 > 为什么在本卷：这是**运营侧的定稿闸**——稿件可以定稿之前，必须按声明完成"所办咨询"。v5r 的原型在 `vibe-math-v5r.js:8349-8429`（`finalizePaperByOffice`／`notePaperConsult`：**消息与会议都要有**，且**按发生的动作计数**，意图不算；否则具名拒）。vmu 侧 5 个键先落进 schema，**一直没有读者**——本卷要点名的正是"声明了没人读"这一类 ✗✓。
 
-- **读者**：`kernel/paper.js` 的定稿路径（`createPaper` 的 `finalize`）按序过 ①finalizer 规则 ②完整性 ③**C-30 咨询门** ④`register` 缝；`WIRED_KEYS` 因此 3→8 ✓。**导出面**（本卷点名，供 `02` 的模块面核对 ✓）：`createPaper`（工厂）／`refuse`（具名拒）／`apiVersion`／`ENFORCED_SCOPE`（D3 作用域标记）／`WIRED_KEYS`／`PLANNED_KEYS`／`FINALIZERS`／`CONSULT_POINTS`／`CONSULT_TIMEOUT_ACTIONS`（后两个是"何时必须咨询"与"超时怎么办"的**声明式词表** ✓）。
+- **读者**：定稿路径的**在册执行点**＝`packs/v5r/paper.js` → `packs/research-core/paper-flow.js` 的 `recordFinal({decision:'deliverable'})`，按序过 ①finalizer 规则 ②完整性 ③**C-30 咨询门** ④`register` 缝；五个 `vmu.paper.officeConsult*` 键由流程在**调用期**活读（`consultPolicy()`），`consultRoles`（谁答复）与豁免由 pack 作为参数传入 —— 通用流程不发明机构语义。★ **迁移更正**：旧实现 `kernel/paper.js` 是**无构造者的死面**（`createPaper(` 只被测试/脚本调用，装配时不被加载），TB-2794 Step 1 已删除；其导出面（`createPaper`／`WIRED_KEYS`／`FINALIZERS`／`CONSULT_POINTS`／`CONSULT_TIMEOUT_ACTIONS` 等）随文件一并退役，**不再作为核对对象**。
 - **台账记的是动作**：`consult({paperId, kind, by, ref})` 追加一条（`kind` 是自由词表：`message`／`meeting`／机构自定 ✓）；`requestConsult()` 可显式开请求（幂等 ✓）；`consultState()` **只读**（`auto:false`，不改变稿件 ✓）。**意图不算数** ✗✓（对齐 v5r）✓。
 - **拒法**：未咨询即定稿 ⇒ **`VMU_OFFICE_CONSULT_REQUIRED`**（已登记 `03-§8` ✓），带 `enforced[]`（5 键）＋ `enforcedScope='evaluated-so-far'` ＋ 算术细节（`reason`／`timeoutMs`／`elapsedMs`／`remainingMs`／`heldOnTimeout`／`timedOut`／`requestCleared`）；`hint` 给三条出路（先 `consult`／声明豁免／`officeConsult=off`）✓。
-- **留痕**：审计行 `what:'auth'`（`subject:'paper:<id>'`，带 `enforced`＋scope ✓）＋ 总线事件 `paper/office-consult-required`（经 `bus.declareTopic` 的扩展点 ✓）＋ 模块内 trail；**接缝缺失时具名上报**（`trace.audit.code`／`trace.bus.note` ✓），绝不假装写过 ✓。
+- **留痕（按现状写）**：通用流程的拒绝回执带 `enforced[]`（5 键）＋ `settingValues`（当前生效值）＋ 咨询台账（`consultState()` 只读）；★ **旧的审计行 `what:'auth'` 与总线事件 `paper/office-consult-required` 属于已删除的死面**（Step 1 一并删除，`kernel/bus.js` 里已无该钩子）——**现在不声称有它们**；需要审计的部署应走记录/审计面（`vibe_vmu_records`／审计环）而不是引用一个不存在的钩子。
 - **超时**：`hold`（默认）保持请求且**仍然拒**；`refuse` 清请求且**仍然拒**；`0`＝无限等；**无法识别的值按 `hold`** ⇒ **没有 `default-allow` 这一档，连拼写都进不来** ✗✓。
 - **豁免（F4）**：**默认 `[]`（不豁免）** ✓；`consult({...})` 记录一次咨询即可开门；**没有任何/关掉** ⇒ `officeConsult='off'` 是零机制 ✓。
 - **验收（机器可判定）**：① **具名**：未咨询定稿 ⇒ `VMU_OFFICE_CONSULT_REQUIRED` ＋ `enforced` 是 5 元数组 ＋ `enforcedScope` 存在 ✓；② **断言**：空豁免名单下 `office` 定稿被拒、声明 `['office']` 后同一路径通过 ✓；③ **场景**：`hold` 超时后**任意久**都不放行，`consult` 后才通过 ✓；④ **红**：把 `default-allow` 写进 `OnTimeout` ⇒ 回执 `onTimeout:'hold'` 且**仍拒** ✓；⑤ 与 `22-§19` 的汇报面同一条纪律：**只提示/只记账，绝不越权驱动** ✓。

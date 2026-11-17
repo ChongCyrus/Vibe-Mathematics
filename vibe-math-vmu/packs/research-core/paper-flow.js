@@ -529,12 +529,12 @@ export function createPaperFlow({
 
   /** ① start: writing/round 1, participants = the writing members. */
   // ── ★ E4 / OFFICE CONSULT — "最后讨论、检查无误后定稿：定稿前必须问所办" ──────────────────────────────────────
-  // WHY THE GATE IS HERE. `kernel/paper.js` also carries a consult gate, but NOTHING constructs it in the live assembly
-  // (only tests and scripts call `createPaper(`), so a guard there is a comment: the rule never ran. The path that
-  // ACTUALLY finalises a paper is `packs/v5r/paper.js` → this kit (`vibe_v5_paper` → `recordFinal`), so the gate lives
-  // here, on the registered path. POLICY STAYS IN THE PACK: who answers (`consultRoles`) and which roles are exempt come
-  // in as parameters; the kit owns only the state transition, the durable ledger, and the named refusals (the CODES are
-  // passed in — the kit invents none).
+  // WHY THE GATE IS HERE. The path that ACTUALLY finalises a paper is `packs/v5r/paper.js` → this flow
+  // (`vibe_v5_paper` → `recordFinal`), so the gate lives here, on the registered path. (TB-2794 Step 1 deleted the
+  // former duplicate face `kernel/paper.js`; its consult gate was never constructed in the live assembly, so it was a
+  // comment rather than a guard — there is no "other gate" to point at now.) POLICY STAYS IN THE PACK: who answers
+  // (`consultRoles`) and which roles are exempt come in as parameters; the flow owns only the state transition, the
+  // durable ledger, and the named refusals (the CODES are passed in — the flow invents none).
   const CONSULT_ROLES = Array.isArray(consultRoles) ? consultRoles.map(String).filter(has) : []
   const CONSULT_KEYS = Object.freeze([
     'vmu.paper.officeConsult',

@@ -300,6 +300,15 @@ export function validatePack(manifest) {
   if (typeof manifest.id !== 'string' || !ID.test(manifest.id)) problems.push('id must be a kebab-case identifier')
   if (manifest.version !== undefined && !/^\d+\.\d+\.\d+/.test(String(manifest.version))) problems.push('version must look like semver')
   if (manifest.requires !== undefined && !Array.isArray(manifest.requires)) problems.push('requires must be a list of { service, minVersion }')
+  // ★ TB-2794 Step 2: reply-field ADAPTERS a pack supplies (a field declares adapter:"<name>"; the pack supplies the
+  // function here). Shape-checked at plan time: a name must be lower-case words joined by "-" and the adapter a function.
+  if (manifest.replyFieldAdapters !== undefined) {
+    if (!Array.isArray(manifest.replyFieldAdapters)) problems.push('replyFieldAdapters must be an array of { name, adapt }')
+    else for (const a of manifest.replyFieldAdapters) {
+      if (!a || typeof a.name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(a.name)) problems.push('a reply-field adapter needs a lower-case dashed name: ' + JSON.stringify(a && a.name))
+      if (typeof (a && a.adapt) !== 'function') problems.push('reply-field adapter ' + String(a && a.name) + ': adapt must be a function(payload, ctx)')
+    }
+  }
   // ★ TB-2794 Step 0: a manifest may CONTRIBUTE services (the research faces are moving out of the kernel one at a time).
   // Shape is checked here (create must be a function, version an int) so a typo is a PLAN problem, not a half-applied pack.
   if (manifest.services !== undefined) {
@@ -715,6 +724,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     for (const mm of m.middleware || []) actions.push({ kind: 'middleware', id: mm.id, form: mm.kind || 'module' })
     for (const pp of m.promptPolicies || []) actions.push({ kind: 'prompt-policy', id: pp.id, form: 'pipeline', consumer: typeof onPromptPolicy === 'function' ? 'onPromptPolicy' : null })
     for (const svc of m.services || []) actions.push({ kind: 'service', name: svc.name, apiVersion: svc.apiVersion })
+    for (const a of m.replyFieldAdapters || []) actions.push({ kind: 'reply-field-adapter', name: a.name })
     for (const a of m.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
     for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
     // PHASE 6 / P0-10: a declared tool is an ACTION of this pack, so plan() shows it before apply publishes it.
@@ -805,6 +815,10 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       // below), so a malformed manifest is refused for its SHAPE and a well-formed one for the real declaration
       // fact. Both runs before a single side effect, so "accepted" always means "in effect or named refused".
       let toolFaceReceipt = null
+      // ★ TB-2794 Step 2: registry names BEFORE this apply, so unload can prove it left no residue — including an
+      // entry that was never attributed to providedServices (the round-8 bypass).
+      const registryNamesBefore = (() => { try { return new Set((registry && typeof registry.status === 'function' ? registry.status().services : []).map((x) => x.name)) } catch { return new Set() } })()
+      // ★ TB-2794 Step 2: registry names BEFORE this apply, so unload can prove it left no residue (including an
       // ROUND 496: pack/loading and pack/loaded were frozen WITH default policies and nothing emitted them, so "pack-loading
       // intervention" was a paper capability. loading fires before any change is made and MAY refuse; loaded fires after.
       const busOf = () => (kernel && kernel.bus && typeof kernel.bus.emit === 'function' ? kernel.bus : null)
@@ -1051,7 +1065,20 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares services but this assembly has no service-contribution seam',
             'construct the kernel through kernel/index.js (it exposes provideService/retractService)')
         }
-        const impl = svc.create({ kernel, settings: settingsNow(), log: (msg) => { try { if (kernel && typeof kernel.noteLog === 'function') kernel.noteLog(String(msg)) } catch { /* best effort */ } } })
+        // ★ TB-2794 Step 2 (round-8 audit, P2): a pack's create() gets a RESTRICTED FACADE, not the kernel itself.
+        // Handing it the kernel let a pack call kernel.registry.register(...) directly — publishing a service that never
+        // enters servicesProvided and SURVIVES unload, while the unload receipt still claimed residueFree:true. The facade
+        // exposes only the seams a contributed service legitimately needs; registry/raw kernel are NOT among them.
+        const facade = Object.freeze({
+          service: (name) => (typeof kernel.service === 'function' ? kernel.service(name) : null),
+          settingsSnapshot: () => settingsNow(),
+          log: (msg) => { try { if (kernel && typeof kernel.noteLog === 'function') kernel.noteLog(String(msg)) } catch { /* best effort */ } },
+          provideService: (entry) => kernel.provideService(Object.assign({ by: manifest.id }, entry)),
+          retractService: (entry) => kernel.retractService(Object.assign({ by: manifest.id }, entry)),
+          registerReplyFieldAdapter: (entry) => (typeof kernel.registerReplyFieldAdapter === 'function' ? kernel.registerReplyFieldAdapter(Object.assign({ by: manifest.id }, entry)) : null),
+          retractReplyFieldAdapter: (entry) => (typeof kernel.retractReplyFieldAdapter === 'function' ? kernel.retractReplyFieldAdapter(Object.assign({ by: manifest.id }, entry)) : null),
+        })
+        const impl = svc.create({ facade, settings: settingsNow(), log: facade.log })
         if (!impl || typeof impl !== 'object') {
           throw refuse('VMU_INVALID_ARGUMENT', 'pack ' + manifest.id + ' service ' + svc.name + ' create() did not return an implementation object',
             'create({kernel, settings, log}) must return the service instance (an object of methods)')
@@ -1060,6 +1087,16 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         undo.push(() => { try { return kernel.retractService({ name: svc.name, by: manifest.id }) } catch { /* unload must still proceed; the failure is not silent because the next status shows it */ } })
         if (toolFaceReceipt === null) toolFaceReceipt = null
         void provided
+      }
+      // ★ TB-2794 Step 2: REPLY-FIELD ADAPTERS the pack supplies. Registered before aliases; each undo retracts exactly
+      // its own adapter, and a name collision is refused by the kernel (one name, one owner).
+      for (const a of manifest.replyFieldAdapters || []) {
+        if (!kernel || typeof kernel.registerReplyFieldAdapter !== 'function') {
+          throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares reply-field adapters but this assembly has no adapter seam',
+            'construct the kernel through kernel/index.js (it exposes registerReplyFieldAdapter/retractReplyFieldAdapter)')
+        }
+        kernel.registerReplyFieldAdapter({ name: a.name, adapt: a.adapt, by: manifest.id })
+        undo.push(() => { try { return kernel.retractReplyFieldAdapter({ name: a.name, by: manifest.id }) } catch { /* unload continues; status reports the residue if it survives */ } })
       }
       // Aliases LAST: a pack may alias a service that its own slot/track declarations bring into
       // existence, and publication follows declaration (kernel/index.js declareSlots).
@@ -1080,7 +1117,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         throw e
       }
       const resolution = settingsResolution.get(manifest.id) || { applied: [], shadowed: [] }
-      const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo, priority: priorityOf(manifest), resolution }
+      const record = { id: manifest.id, version: manifest.version || null, appliedAt: clock(), actions: plan.actions, undo, priority: priorityOf(manifest), resolution, registryNamesBefore }
       applied.set(manifest.id, record)
       appliedExcludes.set(manifest.id, Array.isArray(manifest.excludes) ? manifest.excludes.map(String) : [])
       if (kernel.notePackApplied) kernel.notePackApplied(manifest.id)
@@ -1090,6 +1127,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         // TB-2649: what the fold DID for this manifest (folded keys) and what it could not (named unsupported keys).
         declarations: declarationFacts,
         services: (manifest.services || []).map((svc) => ({ name: svc.name, apiVersion: svc.apiVersion })),
+        replyFieldAdapters: (manifest.replyFieldAdapters || []).map((a) => a.name),
         ...(toolFaceReceipt ? { toolFaces: toolFaceReceipt } : {}) }
     },
 
@@ -1108,7 +1146,13 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       appliedExcludes.delete(id)
       settingsResolution.delete(id)
       if (kernel.notePackUnloaded) kernel.notePackUnloaded(id)
-      return { ok: failures.length === 0, id, reversed: record.actions.length, settingsRetraction, failures, residueFree: failures.length === 0 && (settingsRetraction === null || settingsRetraction.ok !== false) }
+      // ★ TB-2794 Step 2: residueFree is a FULL-TABLE claim, not a providedServices-only claim. Any service name still
+      // published after the undo that was NOT there before this pack applied is NAMED residue (including a registration
+      // made behind the seam); the receipt can no longer claim residueFree while the assembly changed.
+      const registryNamesAfter = (() => { try { return new Set((registry && typeof registry.status === 'function' ? registry.status().services : []).map((x) => x.name)) } catch { return new Set() } })()
+      const before = record.registryNamesBefore instanceof Set ? record.registryNamesBefore : new Set()
+      const residue = [...registryNamesAfter].filter((n) => !before.has(n)).sort()
+      return { ok: failures.length === 0, id, reversed: record.actions.length, settingsRetraction, failures, residueFree: failures.length === 0 && (settingsRetraction === null || settingsRetraction.ok !== false) && residue.length === 0, residue, residueMeans: 'residue = published service names present AFTER unload that were NOT present BEFORE apply (full-table scan; an unattributed registration counts, which is why providedServices alone could not answer this)' }
     },
 
     /** Observability (R11): what is applied, what each pack changed, and every key's SOURCE LAYER (D-02). */

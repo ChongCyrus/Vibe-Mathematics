@@ -14,7 +14,7 @@
  *
  * Run: node tests/audit-installer-assertions.mutants.mjs
  */
-import { mkdtempSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, copyFileSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -50,6 +50,9 @@ for (const c of CASES) {
   if (!anchorOk) continue
   const dir = mkdtempSync(join(tmpdir(), 'installer-assert-mut-'))
   copyFileSync(SRC, join(dir, 'installer.js'))
+  // ★ C#6: the installer reads its roster from the package root; the mutant copy needs the same layout to load at all.
+  mkdirSync(join(dir, 'vibe-math-vmu'), { recursive: true })
+  copyFileSync(join(REPO, 'vibe-math-vmu', 'roster.json'), join(dir, 'vibe-math-vmu', 'roster.json'))
   writeFileSync(join(dir, 'installer.js'), mutated)
   const r = spawnSync(process.execPath, [c.guard], { cwd: REPO, encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { INSTALLER_JS: join(dir, 'installer.js') }) })
   const o = String(r.stdout || '') + String(r.stderr || '')

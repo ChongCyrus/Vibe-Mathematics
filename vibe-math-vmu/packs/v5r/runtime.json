@@ -2,7 +2,12 @@
   "schema": 1,
   "id": "v5r",
   "means": "THE v5r PACK'S PRE-KERNEL DECLARATIONS, as DATA. The framework entry scans this file synchronously (config.packs id -> packs/<id>/runtime.json) BEFORE createKernel, because the turn loop's reply-field table is a construction-time snapshot. Code hooks (sectionPolicy / noticeBlock) cannot live in JSON; the pack module exports them as PACK_CONTRIBUTION and the entry collects them when the module is loaded (the existing async pack-apply path) — so the entry names no pack and a third-party pack needs no entry edit.",
-  "phases": ["heartbeat", "paper-write", "paper-review", "paper-final"],
+  "phases": [
+    "heartbeat",
+    "paper-write",
+    "paper-review",
+    "paper-final"
+  ],
   "phasesMeans": "institution vocabulary: these are the phases the v5r pack ADDS to the framework's own set (the loop accepts `extraPhases`); the framework names none of them",
   "replyFields": [
     {
@@ -12,7 +17,29 @@
       "shape": "string",
       "textCoercion": "string",
       "text": "a member claiming which paper section it is taking this turn (v5r vocabulary, dispatched through the meeting speak face)"
+    },
+    {
+      "field": "formal",
+      "face": "vmu.formal",
+      "op": "check",
+      "shape": "object",
+      "adapter": "v5r-formal-check",
+      "text": "a formalisation attempt as {statement,proof} — dispatched through the pack adapter that enforces that shape (v5r vocabulary)"
+    },
+    {
+      "field": "lean_archive",
+      "face": "vmu.mathjobs",
+      "op": "submit",
+      "shape": "object",
+      "text": "a Lean job submission from a member reply (v5r vocabulary, dispatched through the math-jobs submit face)"
+    },
+    {
+      "field": "lean_run",
+      "face": "vmu.mathjobs",
+      "op": "submit",
+      "shape": "object",
+      "text": "a Lean run request from a member reply (v5r vocabulary, dispatched through the math-jobs submit face)"
     }
   ],
-  "replyFieldsMeans": "reply fields this pack ADDS to the turn loop's core table; folded by the entry from THIS data (kernel/pack.js#foldPackDeclarations), so no kernel source edit is needed"
+  "replyFieldsMeans": "reply fields this pack ADDS to the turn loop's core table; folded by the entry from THIS data (kernel/pack.js#foldPackDeclarations), so no kernel source edit is needed ★ TB-2794 Step 2: formal/lean_archive/lean_run are PACK reply fields now (the kernel core table keeps framework fields only); `formal` carries adapter:\"v5r-formal-check\", supplied by PACK.replyFieldAdapters."
 }

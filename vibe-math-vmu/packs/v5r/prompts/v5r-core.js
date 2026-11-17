@@ -38,6 +38,11 @@ import { V5R_MOTION_BOX } from '../middleware/motion-box.js'
 // ★ It is INTRA-turn (`tools/result`, plus the two `…/job-settled` events) on purpose: the report boundary listens on
 // `agent/turn-stopping` too, and an observation written at the reader's own instant may only be visible NEXT turn.
 import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
+// ★ TB-2794 Step 2: the verified-track POLICY reading is pack-owned now — the module registers a `vmu.status` section
+// and its dispose removes it; the kernel no longer reads `vmu.verified.*`.
+import { V5R_VERIFIED_POLICY } from '../middleware/verified-policy.js'
+// ★ TB-2794 Step 2: reply-field adapters (the research fields' taught shapes) are pack code, supplied to the kernel seam.
+import { V5R_REPLY_FIELD_ADAPTERS } from '../reply-field-adapters.js'
 // PHASE 7 / goal 2 (first batch): THE TOOL FACE. `packs/v5r` used to declare ZERO tools while its prompts taught
 // members to call `vibe_v5_record_* / say / message` (docs/acceptance/phase7-coverage-matrix.md §2: 17 names taught,
 // 0 declared). The six names live in `../tools.js` and are declared below as the manifest's `tools[]` - the SAME
@@ -100,6 +105,9 @@ export const PACK = Object.freeze({
   // declares slots, so a pack that BRINGS the roster must NOT list it as a requirement - that is a
   // chicken-and-egg the loader reports as "unmet requirements: vmu.members not published". A pack lists
   // what it CONSUMES from others, never the capability it is itself the first to introduce.
+  // ★ TB-2794 Step 2: adapters for the pack's own reply fields (formal shape); the kernel core table holds framework
+  // fields only, and a missing adapter is a NAMED skip at dispatch time.
+  replyFieldAdapters: V5R_REPLY_FIELD_ADAPTERS,
   requires: [
     { service: 'vmu.tasks', minVersion: 1 },
     { service: 'vmu.middleware', minVersion: 1 },
@@ -351,6 +359,12 @@ export const PACK = Object.freeze({
       capabilities: ['trigger-workflow', 'record'],
       module: V5R_ARTIFACT_COUNTER,
     },
+    {
+      id: 'v5r.verified-policy',
+      kind: 'module',
+      order: 245,
+      module: V5R_VERIFIED_POLICY,
+    },
   ],
 
   // Legacy names keep working through the alias layer (never by renaming a tool: D6/D14).
@@ -464,8 +478,7 @@ export const v5rTempDeliverySection = Object.freeze({
     '同一问题两轮没进展：停手，把已试路线、卡点、下一步建议写进 progress 上报；不要空转，也不要静默等待。',
     '版本冲突以卡片与记录本为准，并在回执点名冲突的文件与时刻；结论只署自己的名，不替别人下结论。',
     '对全所说话用 `vibe_v5_say` 一次即可，不刷屏；私事走私信；不占群聊与别人的任务。',
-    '每回合留一条 progress：读了什么、核对了什么、下一步做什么；交了「无法核对」要写缺什么、谁能补齐。',
-    '交付完成后留一句「可复用点」：同类核对可直接复用的检查步骤或模板，便于所内积累。',
+    '· 每回合留一条 progress：读了什么、核对了什么、下一步；交了「无法核对」写缺什么、谁能补齐。',
     '交付前自检三项：结论在第一行、证据可回查、未核对的假设已写明；缺一项先补，不要等追问。',
     '单次核对建议限在一回合内：做不完就交「已完成部分 + 剩余计划 + 预计时点」，不要把半成品说成完成。',
     '任务优先级冲突时问派活者要哪件先做，不要自己改顺序；改派或撤回先确认范围与影响。',
@@ -608,7 +621,6 @@ export const v5rFixtureTools = Object.freeze({
     // where the seat that writes it reads it. Restored here, in the shared block all three seats get, 80 chars.
     "★ 进展写成对象：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}。",
     "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**（tools 数组为准）。",
     "★★ 结题票**只走工具** `vibe_vmu_vote`（唯一入口，`vote_solved` 是**书账字段，永不单独计票**（回执 `{\"vote_solved\": true|false}` 只是书账）——被忽略时看回执 `fieldsIgnored` 原因（`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row`；可证空表 `tool-not-mounted` 才计票），**按原因改渠道**。`set_solved` 未登记。个人判断 `{\"solved\": false}`（**不计票**）。`say`：未绑→留 `notes`；错会→跳过。",
     "★★ 写卡片默认用 fs。",
   ].join('\n'),
@@ -649,9 +661,6 @@ export const v5rFixtureTools = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_CHAIR = Object.freeze([
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "★★ 回执里的 `progress` 必须是对象：`\"progress\":{\"track\":\"progress\",…}`（不是字符串，写成字符串会被拒）。",
     "★ 论文流程 start→part→advance→review→final→render：`final`（**仅 chair 席**）才 compile 并写 pdf 行（`pdfBytes` 只由 compile/final 写），`render` **永不编译**；`ok:true` 只表示请求接受（完成看 `complete`/`renderOk`，缺看 `missing`/`toolchainAbsent`）；**advance 后可能撞门**：被 `VMU_OFFICE_CONSULT_REQUIRED` 拦时先让所办 `vibe_v5_paper { action:\"consult\", … }` 答复再重试 `final`。",
     "★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认）。",
@@ -672,6 +681,7 @@ export const v5rToolSectionAcademician = Object.freeze({
   scope: Object.freeze({ role: 'chair' }),
   text: [
     '【本角色可用的工具｜院士】',
+    "★ 本角色清单（院士）是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     ...seatBulletLines('chair'),
     ...V5R_PROSE_CHAIR,
   ].join('\n'),
@@ -689,7 +699,6 @@ export const v5rToolSectionAcademician = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_MEMBER = Object.freeze([
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "转达所办口吻的消息不是你的职责（那是院士的）；所内全局视图也不是（仅院士）。",
     "★ 论文流程：start→part→advance→review→final→render；`final`（**仅 chair 席**）才编译并写 pdf 行（`pdfBytes` 只由 compile/final 写），`render` **永不编译**；`ok:true` 只表示请求被接受（完成看 `complete`/`renderOk`，缺看 `missing`／`toolchainAbsent`）。",
     "★ 留言（信箱）不需要立即阅读，有空再看。",
@@ -710,6 +719,7 @@ export const v5rToolSectionResearcher = Object.freeze({
   scope: Object.freeze({ role: 'member' }),
   text: [
     '【本角色可用的工具｜研究员】',
+    "★ 本角色清单（研究员）是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     ...seatBulletLines('member'),
     ...V5R_PROSE_MEMBER,
   ].join('\n'),
@@ -727,7 +737,6 @@ export const v5rToolSectionResearcher = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_TEMP = Object.freeze([
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。",
     "★ 论文流程：start→part→advance→review→final→render（`final` 才编译并写 pdf 行、`pdfBytes` 只由 compile/final 写，`render` 永不编译）；被拒照因处理。",
     "★ 你的结果落在分给你的那张任务与回执上，不另立研究卡。",
@@ -749,6 +758,7 @@ export const v5rToolSectionTemp = Object.freeze({
   scope: Object.freeze({ role: 'temp' }),
   text: [
     '【本角色可用的工具｜临时成员】',
+    "★ 本角色清单（临时成员）是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     ...seatBulletLines('temp'),
     ...V5R_PROSE_TEMP,
   ].join('\n'),

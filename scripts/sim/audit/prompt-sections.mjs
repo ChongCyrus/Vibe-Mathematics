@@ -129,20 +129,36 @@ export async function collect({ slots = SLOTS, phases = PHASES } = {}) {
 /** Analyse a set of slices (mutants too — that is why this is a pure function of the slice list). */
 export function analyzeSections(sections) {
   // ── per-assembly duplicates: the same sentence twice in ONE prompt ───────────────────────────────────────────────
-  const comboHits = new Map() // slot/phase -> Map(sentence -> Set(sectionId))
+  const comboHits = new Map() // slot/phase -> Map(normSentence -> { sentence, count, sectionIds:Set })
   for (const r of sections) {
     const ck = r.slot + '/' + r.phase
     const inner = comboHits.get(ck) ?? new Map()
     for (const s of sentencesOf(r.text)) {
       const k = norm(s)
-      if (!inner.has(k)) inner.set(k, new Set())
-      inner.get(k).add(r.sectionId)
+      const hit = inner.get(k) ?? { sentence: s.replace(/\s+/g, ' ').trim(), count: 0, sectionIds: new Set() }
+      hit.count += 1
+      hit.sectionIds.add(r.sectionId)
+      inner.set(k, hit)
     }
     comboHits.set(ck, inner)
   }
   const assemblyDups = []
+  // ★ ROUND-8 (lead gate improvement, measured): `assemblyDups` counted DISTINCT SECTIONS, so the pinned whitelist
+  // absorbed a sentence rendered FIVE times inside one chair prompt (fixture-tools ×2 + tools-academician ×3) and the
+  // composite gate still read `assemblyUnexplained 0`. `assemblyRepeats` counts OCCURRENCES of the same rendered
+  // sentence inside one prompt, INCLUDING the pinned ones, and tiers them: `duplicate-pinned` (a fact out-of-scope tests
+  // still require per seat — counted, never called zero) vs `duplicate-unpinned` (the old hard class).
+  const assemblyRepeats = []
   for (const [combo, inner] of comboHits) {
-    for (const [sentence, ids] of inner) {
+    for (const [sentence, hit] of inner) {
+      if (hit.count >= 2) {
+        const pinnedSentence = normMarkers.some((m) => sentence.includes(m))
+        assemblyRepeats.push({
+          combo, sentence: hit.sentence, count: hit.count, sections: [...hit.sectionIds].sort(),
+          pinned: pinnedSentence, tier: pinnedSentence ? 'duplicate-pinned' : 'duplicate-unpinned',
+        })
+      }
+      const ids = hit.sectionIds
       if (ids.size < 2) continue
       const sections = [...ids].sort()
       // Round 241-A: the sentinel `★上表是职责说明…` is pinned PER SEAT by tests/vmu-v5r-tools.test.mjs (③q demands it in
@@ -154,6 +170,7 @@ export function analyzeSections(sections) {
     }
   }
   assemblyDups.sort((a, b) => a.combo.localeCompare(b.combo) || b.sections.length - a.sections.length)
+  assemblyRepeats.sort((a, b) => b.count - a.count || a.combo.localeCompare(b.combo))
 
   // ── cross-section duplicates over canonical section copies (one per sectionId + text) ────────────────────────────
   const canonical = new Map() // sectionId+text -> row
@@ -291,7 +308,7 @@ export function analyzeSections(sections) {
     if (r.text.replace(/\s/g, '') === '') row.empty += 1
     row.chars += r.chars
   }
-  return { combos, assemblyDups, exactDups, nearDups, timing }
+  return { combos, assemblyDups, assemblyRepeats, exactDups, nearDups, timing }
 }
 
 function firstLine(text) {
@@ -310,7 +327,7 @@ async function main() {
   writeFileSync(join(OUT, 'prompt-sections-dups.json'), JSON.stringify(analysis, null, 2) + '\n')
   const kinds = (list) => [...new Set(list.map((d) => d.kind))].map((k) => `${k} ${list.filter((d) => d.kind === k).length}`).join(' · ') || '∅'
   process.stdout.write(`\nwrote ${join(OUT, 'prompt-sections.json')}, ${join(OUT, 'prompt-sections-index.md')}, ${join(OUT, 'prompt-sections-dups.json')}\n`)
-  process.stdout.write(`assembly duplicates: ${analysis.assemblyDups.filter((d) => d.kind === 'unexplained').length} unexplained (pinned by an out-of-scope test: ${analysis.assemblyDups.filter((d) => d.kind !== 'unexplained').length}) · exact duplicate sentences: ${analysis.exactDups.length} (${kinds(analysis.exactDups)}) · near-duplicate 25-char windows: ${analysis.nearDups.length} · timing candidates: ${analysis.timing.length} (always-empty ${analysis.timing.filter((t) => t.kind === 'always-empty').length})\n`)
+  process.stdout.write(`assembly duplicates: ${analysis.assemblyDups.filter((d) => d.kind === 'unexplained').length} unexplained (pinned by an out-of-scope test: ${analysis.assemblyDups.filter((d) => d.kind !== 'unexplained').length}) · assembly repeats (>1 occurrence in ONE prompt): ${(analysis.assemblyRepeats || []).length} (duplicate-pinned ${(analysis.assemblyRepeats || []).filter((r) => r.tier === 'duplicate-pinned').length}, duplicate-unpinned ${(analysis.assemblyRepeats || []).filter((r) => r.tier !== 'duplicate-pinned').length}) · exact duplicate sentences: ${analysis.exactDups.length} (${kinds(analysis.exactDups)}) · near-duplicate 25-char windows: ${analysis.nearDups.length} · timing candidates: ${analysis.timing.length} (always-empty ${analysis.timing.filter((t) => t.kind === 'always-empty').length})\n`)
 }
 
 function buildIndex({ combos, sections, assemblyDups, exactDups, nearDups, timing }) {

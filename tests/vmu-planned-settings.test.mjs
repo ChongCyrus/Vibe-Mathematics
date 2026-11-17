@@ -177,6 +177,12 @@ const PACK_KEYS = new Set((typeof schemaMod.registeredPackNamespaces === 'functi
   const isNamespaceRoot = (k) => [...knownKeys].some((o) => o !== k && o.startsWith(k + '.'))
   const classify = (vol, into = buckets) => {
     for (const m of vol.text.matchAll(genMod.BROAD_RE)) {
+      // ★ ROUND 260 的退役行规则必须在这里镜像：靠近「已删除/已退役/已移除/retired/deleted」的行是在**记录删除**，
+      // 不是声明一个 family wildcard。generator 已跳过；本测试的重算此前没跳，于是同一份文档（迁移期改写后的一行
+      // 「…grant 那条已裁定删除」+ `vmu.grant.*`）被它多数成一个 wildcard（gen 154 vs test 155）。这是**测试重算口径
+      // 落后于生成器**，不是生成器误排；修法是镜像同一条规则（不是放宽）。
+      const lineOfKey = genMod.lineAt(vol.text, m.index || 0)
+      if (genMod.isRetirementLine(lineOfKey)) continue
       const k = m[0]
       const afterWide2 = vol.text.slice(m.index + k.length, m.index + k.length + 3)
       const after = (/^\.\s*[*…]/.test(afterWide2) ? '*' : vol.text.slice(m.index + k.length, m.index + k.length + 1))

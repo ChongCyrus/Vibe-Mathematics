@@ -1154,13 +1154,13 @@
           "step": "prompt-matrix",
           "side": "prose",
           "promptProbe": {
-            "seat": "chair",
+            "seat": "member",
             "phase": "normal",
             "text": "辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）"
           }
         }
       ],
-      "notes": ""
+      "notes": "ROUND-8 E29: the probe declared chair/normal, but that phase now renders the COMPRESSED variant 「轮数由院士定（`vmu.meetings.verdictMaxRounds` 默认 3，到限新增动议拒 `VMU_RESOURCE_BUDGET`）」 and the declared text is 0/10 there. The full rule sentence moved to member/normal (「辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）：它定这场会议最多被提几次动议（任何 kind 的动议都计入，程序动议会吃掉一轮辩论），默认 3，到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`」). The probe TEXT is unchanged (it is verbatim in member/normal, 10/10 exactly once) — only seat/phase follow the current rendering; this is a relocation, not a widening."
     },
     "F1": {
       "rule": "把原问题与所有有价值产物系统梳理",

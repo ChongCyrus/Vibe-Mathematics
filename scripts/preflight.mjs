@@ -136,7 +136,10 @@ for (const [label, rel] of [
     const shipped = [...listed].filter((f) => !managed.has(f) && !f.startsWith('vibe-math-vmu/docs/'))
     const missingDocs = [...listed].filter((f) => f.startsWith('vibe-math-vmu/docs/')).filter((f) => !managed.has(f))
     // Runtime modules and tests must be managed by the installer OR be tests (which are not copied).
-    const unmanaged = shipped.filter((f) => !/\/tests\//.test(f) && !f.endsWith('preset.yml') && !f.endsWith('agent.cordis.yml'))
+    // ★ C#6 (TB-2792 Step 6): `roster.json` is the installer's ONE data source (shipped so the installer can read it
+    // from the package root), NOT a file copied into the preset directory - it is named here for the same reason
+    // preset.yml/agent.cordis.yml are: it is a shipped file this row deliberately does not manage.
+    const unmanaged = shipped.filter((f) => !/\/tests\//.test(f) && !f.endsWith('preset.yml') && !f.endsWith('agent.cordis.yml') && f !== 'vibe-math-vmu/roster.json')
     record('installer manages every shipped vmu runtime file', unmanaged.length === 0 && missingDocs.length === 0,
       unmanaged.concat(missingDocs).join(', ') || (listed.size + ' listed / ' + managed.size + ' managed'))
   } catch (e) {

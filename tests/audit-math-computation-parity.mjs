@@ -197,21 +197,19 @@ for (const p of PRESETS) {
 
 // ---- 3. only the SHIPPED preset (vmu) is shipped by both install lines; the five archived copies are not ----
 {
-  const installer = read('installer.js')
-  // Parse each preset block: src + dst + (optional comment lines) + files[...]. Windows are not
-  // good enough here (the explanatory comment between dst and files pushes the module names past a
-  // fixed slice), so the files list is captured explicitly.
-  const blocks = {}
-  const re = /src:\s*'([^']+)',\s*dst:\s*'[^']+',\s*(?:\/\/[^\n]*\n\s*)*files:\s*\[([^\]]*)\]/g
+  // ★ C#6 (TB-2792 Step 6): the managed list is DATA now (`vibe-math-vmu/roster.json`, derived into PRESETS).
+  // Parsing installer SOURCE for a literal `files: [...]` array would look for the second copy this refactor removed -
+  // and a source-shape assertion would bless that second copy if anyone put it back. Assert the DERIVED consequence.
+  const INSTALLER_PRESETS = (await import(pathToFileURL(join(REPO, 'installer.js')).href)).PRESETS
+  const blocks = Object.fromEntries(INSTALLER_PRESETS.map((p) => [p.src, p.files.slice()]))
   let m
-  while ((m = re.exec(installer)) !== null) blocks[m[1]] = m[2]
   ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty')
   ok(MODULES.length > 0, 'non-vacuous: MODULES must not be empty before the shipping loops')
   // G4: only vmu ships. Its managed list must carry both modules (vmu imports them relatively).
   {
     const list = blocks['vibe-math-vmu']
-    ok(!!list, 'installer.js has the shipped vmu PRESETS entry')
-    for (const f of MODULES) ok(!!list && list.indexOf("'" + f + "'") !== -1, 'installer.js vibe-math-vmu files[] ships ' + f)
+    ok(Array.isArray(list) && list.length > 0, 'installer.js has the shipped vmu PRESETS entry')
+    for (const f of MODULES) ok(Array.isArray(list) && list.includes(f), 'installer.js vibe-math-vmu files[] ships ' + f)
   }
   // The five archived presets must NOT look shipped: a stray PRESETS entry would copy a missing dir at install.
   ok(PRESETS.length > 0, 'non-vacuous: PRESETS must not be empty before the installer-shipping loop')

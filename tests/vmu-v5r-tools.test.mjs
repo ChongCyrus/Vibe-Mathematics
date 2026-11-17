@@ -1973,12 +1973,21 @@ try {
     String(phByRole[r].text).includes('【本轮你实际能调用的工具')),
     '★★★ 正：每个占位段的 order 都晚于该角色的静态清单（★ 否则"替换块"会跑到清单前面），且文本带宿主要找的标题标记',
     ['chair', 'member', 'temp'].map((r) => ({ role: r, listOrder: corner[r] && corner[r].order, phOrder: phByRole[r] && phByRole[r].order })))
-  const sentinel = '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。'
+  // ROUND-8 (audit prompts P1-2): the clarification may appear ONCE per rendered prompt. The three role lists therefore
+  // carry per-role variants ("上表是职责说明（院士）…"), and fixture-tools carries the "本表" variant; every list still names
+  // the authoritative host section, and no two lists share the identical sentence.
+  const authoritative = '以【本轮你实际能调用的工具】为准'
   const listSections = [...roleSecs, PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0]]
-  const sentenceHits = listSections.map((s) => ({ name: s && s.name, has: String((s && s.text) || '').includes(sentinel) }))
+  const sentenceHits = listSections.map((s) => ({ name: s && s.name, has: String((s && s.text) || '').includes(authoritative), text: String((s && s.text) || '') }))
   ok(sentenceHits.length === 4 && sentenceHits.filter((h) => h.has).length === 4,
-    '★★★ 正：三段角色清单 ＋ 研究回合清单（v5r-fixture-tools）都写了"以【本轮你实际能调用的工具】为准"那句', sentenceHits)
+    '★★★ 正：三段角色清单 ＋ 研究回合清单（v5r-fixture-tools）都写了"以【本轮你实际能调用的工具】为准"那句', sentenceHits.map((h) => ({ name: h.name, has: h.has })))
+  const roleSents = roleSecs.map((s) => String((s && s.text) || '').split(String.fromCharCode(10)).filter((l) => l.includes('职责说明')))
+  ok(new Set(roleSents.map((x) => JSON.stringify(x))).size === 3,
+    '★★★ 反（ROUND-8）：角色清单的职责说明句是逐席变体（同一渲染里不重复同一句，审计 P1-2）', roleSents)
+  ok(String((PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0] || {}).text || '').includes('上表是职责说明'),
+    '★★★ 反（ROUND-8）：fixture-tools 用「本表」变体，不复制角色清单的同一句')
   // ★ 反：no tool NAME may enter through the new text (a name here would silently widen/narrow the derived bullet face).
+  const sentinel = '★ 上表是职责说明（院士）；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。'
   const newTexts = [...phs.map((s) => String(s.text)), sentinel]
   const nameReM = /vibe_v5_[a-z0-9_]+/g
   const plantedM = '· vibe_v5_say —— 控制组，应当被检测到'

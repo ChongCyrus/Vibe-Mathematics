@@ -183,16 +183,20 @@ const isCorrectedTeachingLedger = (l) =>
   /^（会议轮请把你的发言填进 JSON/.test(l) ||
   /^修正形式化并重新跑通后再投票/.test(l) ||
   /^对象 id 与类型以本轮帧/.test(l)
-  const isR4TempLean = (l) => /vibe_v5_lean_|lean_archive|lean_run|lean_job|lean_lib|lean_read|Formal\/Lib\/|逐条一致。请把注意力放在这种核对上|formal-required|形式化待办/.test(l)
+    // ROUND-8: the authority sentence is once-per-render with per-role variants, and the two protocol pointers now name
+  // the setting instead of ending in an empty placeholder; both are the same facts reworded, excluded from BOTH sides.
+  const isR8Reworded = (l) => /完整说明[：:]/.test(l) || /详细操作按需读/.test(l)
+const isR4TempLean = (l) => /vibe_v5_lean_|lean_archive|lean_run|lean_job|lean_lib|lean_read|Formal\/Lib\/|逐条一致。请把注意力放在这种核对上|formal-required|形式化待办/.test(l)
 let correctedLedgerLines = 0
 const perType = new Map()
 for (const p of PROMPTS) {
   const ph = phaseOf(String(p.kind), String(p.text))
+  const tempPrompt = /temp/i.test(String(p.kind))
   if (!perType.has(ph)) perType.set(ph, { total: 0, hit: 0, dataTotal: 0, dataHit: 0 })
   const bucket = perType.get(ph)
   const mine = norm(ours[ph] || '')
   for (const line of fixedOf(p.text)) {
-    if (isCorrectedTeachingLedger(line) || isStructurallyRetired(line) || isR4TempLean(line)) { correctedLedgerLines += 1; continue }
+    if (isCorrectedTeachingLedger(line) || isStructurallyRetired(line) || (isR4TempLean(line) && tempPrompt) || isR8Reworded(line)) { correctedLedgerLines += 1; continue }
     bucket.total += 1
     const data = looksLikeData(line)
     if (data) bucket.dataTotal = (bucket.dataTotal || 0) + 1
@@ -303,10 +307,11 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   const left = []
   for (const p of PROMPTS) {
     const ph = phaseOf(String(p.kind), String(p.text))
+    const tempPrompt = /temp/i.test(String(p.kind))
     const mine = norm(ours[ph] || "")
     for (const line of fixedOf(p.text)) {
       if (looksLikeData(line)) continue
-      if (!mine.includes(norm(line))) left.push({ ph, line })
+      if (!mine.includes(norm(line))) left.push({ ph, line, tempPrompt })
     }
   }
   const isOtherCatalogueVersion = (l) => /协调需要时可用assign（subject/.test(l)
@@ -359,7 +364,7 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   const isMergedReplyCapture = (l) => /^progress：数学进展/.test(l) || /^task_done：完成的任务id；/.test(l)
   const isCorrectedTeachingR1 = (l) => /^② 用回执 formal:/.test(l) || /^「已通过」状态（降级为 attempt/.test(l) || /^vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:/.test(l) || /^只有 decision='blocked' 的 note/.test(l)
   // the eighth class (declared above, section 1): the ledger round corrected five captured lines the kernel contradicts
-  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingR1(x.line) && !isMergedReplyCapture(x.line) && !isR4TempLean(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
+  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingR1(x.line) && !isMergedReplyCapture(x.line) && (!isR4TempLean(x.line) || !x.tempPrompt) && !isR8Reworded(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,

@@ -174,8 +174,10 @@ try {
   ok(lit && lit.warrantPolicy && lit.warrantPolicy.machineOrLiterature === false && lit.warrantPolicy.requireMachineWarrant === false && lit.warrantPolicy.machineCheckedOnly === false,
     '⑦ C#26: the promotion receipt carries warrantPolicy.machineOrLiterature:false (the default accepts a social/debate warrant) and does NOT claim machine-checked-only', lit && lit.warrantPolicy)
   const statusFull = json(await callJSON(b, 'vibe_vmu_status', { detail: 'full' }))
-  ok(statusFull && statusFull.verifiedWarrantPolicy && statusFull.verifiedWarrantPolicy.machineOrLiterature === false && statusFull.verifiedWarrantPolicy.machineCheckedOnly === false,
-    '⑦ C#26: kernel status exposes verifiedWarrantPolicy (machineOrLiterature:false, machineCheckedOnly:false by default)', statusFull && statusFull.verifiedWarrantPolicy)
+  // ★ TB-2794 Step 2: the policy reading is PACK-OWNED — it arrives as a v5r status SECTION, not a kernel top-level key.
+  const warn = statusFull && statusFull.sections && statusFull.sections.verifiedWarrantPolicy && statusFull.sections.verifiedWarrantPolicy.ok === true ? statusFull.sections.verifiedWarrantPolicy.value : null
+  ok(warn && warn.machineOrLiterature === false && warn.machineCheckedOnly === false,
+    '⑦ C#26: the v5r PACK status section exposes verifiedWarrantPolicy (machineOrLiterature:false, machineCheckedOnly:false by default)', warn || (statusFull && statusFull.sections && statusFull.sections.verifiedWarrantPolicy))
   // machine-only deployment: a social (debate-unanimous) warrant is refused BY NAME; literature still admitted
   const moRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-machine-'))
   const b2 = await boot({ root: moRoot, 'vmu.verified.requireMachineWarrant': true })
@@ -191,8 +193,17 @@ try {
   ok(/warrantPolicy/.test(socialHint) && /lean-conformance/.test(socialHint),
     '⑦ the refusal hint names the machine/literature alternatives and the policy', socialHint)
   const st2 = json(await callJSON(b2, 'vibe_vmu_status', { detail: 'full' }))
-  ok(st2 && st2.verifiedWarrantPolicy && st2.verifiedWarrantPolicy.machineOrLiterature === true && st2.verifiedWarrantPolicy.machineCheckedOnly === false && st2.verifiedWarrantPolicy.literaturePolicy && st2.verifiedWarrantPolicy.literaturePolicy.measured === false && st2.verifiedWarrantPolicy.literaturePolicy.kind === 'human-reviewed-citation' && JSON.stringify(st2.verifiedWarrantPolicy.acceptedKinds) === JSON.stringify(['lean-conformance', 'literature']),
-    '⑦ C#26/P1-a3: the policy says literaturePolicy is a DECLARATION (measured:false, human-reviewed-citation) — not a hardcoded measurement', st2 && st2.verifiedWarrantPolicy)
+  const warn2 = st2 && st2.sections && st2.sections.verifiedWarrantPolicy && st2.sections.verifiedWarrantPolicy.ok === true ? st2.sections.verifiedWarrantPolicy.value : null
+  ok(warn2 && warn2.machineOrLiterature === true && warn2.machineCheckedOnly === false && warn2.literaturePolicy && warn2.literaturePolicy.measured === false && warn2.literaturePolicy.kind === 'human-reviewed-citation' && JSON.stringify(warn2.acceptedKinds) === JSON.stringify(['lean-conformance', 'literature']),
+    '⑦ C#26/P1-a3: the pack section says literaturePolicy is a DECLARATION (measured:false, human-reviewed-citation) — not a hardcoded measurement', warn2 || (st2 && st2.sections && st2.sections.verifiedWarrantPolicy))
+  // ★ TB-2794 Step 2: WITHOUT the pack there is no verified-track policy section at all (absent, not a fake empty object).
+  {
+    const noPackRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-nopack-'))
+    const b0 = await boot({ root: noPackRoot, packs: [] })
+    const st0 = json(await callJSON(b0, 'vibe_vmu_status', { detail: 'full' }))
+    ok(st0 && (!st0.sections || st0.sections.verifiedWarrantPolicy === undefined),
+      '⑦ Step 2: a kernel with NO pack has NO verifiedWarrantPolicy section (the policy is pack-owned; absent is honest)', st0 && st0.sections && Object.keys(st0.sections))
+  }
   {
     const lampRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-p0f-lamp1-'))
     cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
@@ -236,6 +247,41 @@ try {
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 10 })
 }
+
+  // ── Step 2 LAMPS: the pack-owned verified policy is load-bearing ──────────────────────────────────────────
+  {
+    const lampRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-verified-lamp-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+      const vp = join(lampRoot, 'vibe-math-vmu', 'packs', 'v5r', 'middleware', 'verified-policy.js')
+      const fsp = await import('node:fs/promises')
+      const src = await fsp.readFile(vp, 'utf8')
+      const marker = "    disposer = statusService.registerSection('verifiedWarrantPolicy', () => verifiedWarrantPolicyOf(setting))"
+      ok(src.includes(marker), 'lamp-setup: the section registration is locatable')
+      await fsp.writeFile(vp, src.split(marker).join('    disposer = null  // lamp: never register'), 'utf8')
+      const Lb = await bootWith(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: await mkdtemp(join(__tmpRoot(), 'vmu-run97-vlamp-root-')) })
+      const st = json(await callJSON(Lb, 'vibe_vmu_status', { detail: 'full' }))
+      ok(st && (!st.sections || st.sections.verifiedWarrantPolicy === undefined),
+        '★★ LAMP(RED-worthy): without the pack registration the policy section DISAPPEARS — the real assertion depends on it', st && st.sections && Object.keys(st.sections))
+    } finally { await rm(lampRoot, { recursive: true, force: true }).catch(() => {}) }
+  }
+  {
+    const lampRoot = await mkdtemp(join(__tmpRoot(), 'vmu-run97-verified-lamp2-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
+      const vp = join(lampRoot, 'vibe-math-vmu', 'packs', 'v5r', 'middleware', 'verified-policy.js')
+      const fsp = await import('node:fs/promises')
+      const src = await fsp.readFile(vp, 'utf8')
+      const marker = "  const req = read('vmu.verified.requireMachineWarrant') === true"
+      ok(src.includes(marker), 'lamp2-setup: the setting read is locatable')
+      await fsp.writeFile(vp, src.split(marker).join('  const req = false  // lamp: constant'), 'utf8')
+      const Lb = await bootWith(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: await mkdtemp(join(__tmpRoot(), 'vmu-run97-vlamp2-root-')), 'vmu.verified.requireMachineWarrant': true })
+      const st = json(await callJSON(Lb, 'vibe_vmu_status', { detail: 'full' }))
+      const v = st && st.sections && st.sections.verifiedWarrantPolicy && st.sections.verifiedWarrantPolicy.value
+      ok(v && v.machineOrLiterature === false,
+        '★★ LAMP(RED-worthy): a CONSTANT reader reports false even with the setting true — the real assertion depends on a measured read', v)
+    } finally { await rm(lampRoot, { recursive: true, force: true }).catch(() => {}) }
+  }
 
 console.log('\n=== RUN 97 VERIFIED GATE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { for (const f of failures) console.error('FAILED: ' + f); process.exit(1) }

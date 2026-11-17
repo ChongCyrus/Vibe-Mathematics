@@ -59,6 +59,35 @@ export function evaluate(combos, sections, analysis) {
     detail: `${assemblyUnexplained.length} sentence(s) appear twice in the SAME prompt with no exemption (pinned per seat by an out-of-scope test: ${assemblyPinned})`,
     offenders: assemblyUnexplained.slice(0, 5),
   })
+  // ★ ROUND-8 (lead gate improvement, MEASURED on the frozen round-8 layer): the per-seat pinned whitelist is about
+  // WHO must read a sentence, never about how many times ONE prompt renders it. A chair prompt carried the pinned
+  // sentinel `★ 上表是职责说明…` FIVE times (fixture-tools ×2 + tools-academician ×3) and the composite still read
+  // `assemblyUnexplained 0`. Repeats are now counted at the OCCURRENCE level and tiered: `duplicate-pinned` (a fact
+  // out-of-scope tests still require — counted, NEVER called zero, and not silently waived) vs `duplicate-unpinned`.
+  // They are WARNINGS, not failures: the repetition may be a required duplicate, but it is now visible in every run.
+  const repeats = Array.isArray(analysis.assemblyRepeats) ? analysis.assemblyRepeats : []
+  const dupPinned = repeats.filter((r) => r.tier === 'duplicate-pinned')
+  const dupUnpinned = repeats.filter((r) => r.tier !== 'duplicate-pinned')
+  const topRepeat = repeats.slice().sort((a, b) => b.count - a.count)[0] || null
+  const warnings = []
+  if (dupPinned.length) {
+    warnings.push({
+      id: 'duplicate-pinned-sentences',
+      tier: 'duplicate-pinned',
+      count: dupPinned.length,
+      detail: `${dupPinned.length} pinned sentence(s) render MORE THAN ONCE inside one prompt (tier duplicate-pinned: required per seat by out-of-scope tests, so not a failure — the repetition is COUNTED, not waived)` + (topRepeat && topRepeat.tier === 'duplicate-pinned' ? `; max ${topRepeat.count}× in ${topRepeat.combo}: ${topRepeat.sentence.slice(0, 70)}` : ''),
+      offenders: dupPinned.slice(0, 5).map((r) => ({ combo: r.combo, count: r.count, sections: r.sections, sentence: r.sentence.slice(0, 120) })),
+    })
+  }
+  if (dupUnpinned.length) {
+    warnings.push({
+      id: 'duplicate-unpinned-sentences',
+      tier: 'duplicate-unpinned',
+      count: dupUnpinned.length,
+      detail: `${dupUnpinned.length} sentence(s) render MORE THAN ONCE inside one prompt with no pinned marker` + (topRepeat && topRepeat.tier !== 'duplicate-pinned' ? `; max ${topRepeat.count}× in ${topRepeat.combo}: ${topRepeat.sentence.slice(0, 70)}` : ''),
+      offenders: dupUnpinned.slice(0, 5).map((r) => ({ combo: r.combo, count: r.count, sections: r.sections, sentence: r.sentence.slice(0, 120) })),
+    })
+  }
   const avoidable = analysis.exactDups.filter((d) => d.kind === 'avoidable')
   checks.push({
     id: 'avoidable-cross-section-duplicates',
@@ -120,16 +149,28 @@ export function evaluate(combos, sections, analysis) {
     'timing': analysis.timing.length,
     'assemblyUnexplained': assemblyUnexplained.length,
     'assemblyPinned': assemblyPinned,
+    'duplicatePinned': dupPinned.length,
+    'duplicateUnpinned': dupUnpinned.length,
+    'maxDuplicateRepeat': topRepeat ? topRepeat.count : 0,
+    'maxDuplicateRepeatCombo': topRepeat ? topRepeat.combo : null,
   }
   const failedCount = checks.filter((c) => !c.ok).length
-  return { ok: failedCount === 0, checks, metrics, failedCount }
+  return { ok: failedCount === 0, checks, warnings, metrics, failedCount }
 }
 
 const MUTANT_SENTENCE = '★★ 这段是用来验证判据会红的注入重复句：同一句在同一个 prompt 里出现两次。'
 const MUTANT_MANUAL = '⑦ 一次连排多场（注入）'
 
-/** Two mutants, each must be CAUGHT. Returns [{name, detected, detail}]. */
-export function mutants(sections) {
+const MUTANT_PINNED = '★★ 注入了两次的重复句：上表是职责说明（反灯用，检查 duplicate-pinned 计数会加一）。'
+
+/** Count of the duplicate-pinned warning tiers for a slice list (the anti-lamp's measuring stick). */
+const duplicatePinnedCount = (sections) => {
+  const a = analyzeSections(sections)
+  return (a.assemblyRepeats || []).filter((r) => r.tier === 'duplicate-pinned').length
+}
+
+/** Mutants, each must be CAUGHT (or, for the counter lamp, must MOVE the number). Returns [{name, detected, detail}]. */
+export function mutants(sections, baselineAnalysis = null) {
   const out = []
   {
     const mutated = sections.map((r) => ({ ...r }))
@@ -155,6 +196,26 @@ export function mutants(sections) {
       out.push({ name: 'manual-in-normal', detected: caught ? !caught.ok : false, detail: caught ? caught.detail : 'criterion missing' })
     }
   }
+  {
+    // ★ ROUND-8 anti-lamp (lead item ④): inject ONE pinned sentence TWICE into ONE section and the
+    // duplicate-pinned count must go up by exactly one record (occurrence counting, not distinct-section counting).
+    const mutated = sections.map((r) => ({ ...r }))
+    const chair = mutated.find((r) => r.slot === 'chair' && r.phase === 'normal' && r.chars > 80)
+    if (!chair) {
+      out.push({ name: 'duplicate-pinned-counter', detected: false, detail: 'could not find a chair/normal section to inject into' })
+    } else {
+      const before = baselineAnalysis !== null
+        ? (baselineAnalysis.assemblyRepeats || []).filter((r) => r.tier === 'duplicate-pinned').length
+        : duplicatePinnedCount(sections)
+      chair.text += '\n' + MUTANT_PINNED + '\n' + MUTANT_PINNED
+      const after = duplicatePinnedCount(mutated)
+      out.push({
+        name: 'duplicate-pinned-counter',
+        detected: after === before + 1,
+        detail: 'duplicate-pinned count ' + before + ' -> ' + after + ' after injecting the SAME pinned sentence twice into one chair/normal section',
+      })
+    }
+  }
   return out
 }
 
@@ -177,10 +238,10 @@ async function main() {
   const { combos, sections } = await collect()
   const analysis = analyzeSections(sections)
   if (wantMutants) {
-    const results = mutants(sections)
+    const results = mutants(sections, analysis)
     for (const m of results) process.stdout.write(`${m.detected ? 'DETECTED' : 'MISSED  '} ${m.name}: ${m.detail}\n`)
     const all = results.every((m) => m.detected)
-    process.stdout.write(all ? 'prompt-budget mutants: PASS (both injected failures were caught)\n' : 'prompt-budget mutants: FAIL (a criterion stayed green on an injected failure)\n')
+    process.stdout.write(all ? 'prompt-budget mutants: PASS (all ' + results.length + ' injected failures were caught)\n' : 'prompt-budget mutants: FAIL (a criterion stayed green on an injected failure)\n')
     process.exitCode = all ? 0 : 1
     return
   }
@@ -188,6 +249,10 @@ async function main() {
   for (const c of res.checks) {
     process.stdout.write(`${c.ok ? 'PASS' : 'FAIL'} ${c.id}: ${c.detail}\n`)
     if (!c.ok && c.offenders && c.offenders.length) for (const o of c.offenders) process.stdout.write('     - ' + JSON.stringify(o).slice(0, 300) + '\n')
+  }
+  for (const w of (res.warnings || [])) {
+    process.stdout.write(`WARN ${w.id} [${w.tier}] x${w.count}: ${w.detail}\n`)
+    for (const o of (w.offenders || [])) process.stdout.write('     - ' + JSON.stringify(o).slice(0, 300) + '\n')
   }
   process.stdout.write(`metrics: ${JSON.stringify(res.metrics)}\n`)
   process.stdout.write(res.ok ? 'prompt-budget: PASS\n' : `prompt-budget: FAIL (${res.failedCount} criterion/criteria)\n`)

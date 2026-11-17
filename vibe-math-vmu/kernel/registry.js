@@ -183,15 +183,15 @@ export function createRegistry({ services = {}, tools = {}, clock = () => new Da
      * may be removed — a kernel-local service is not a pack's to delete, and an alias that still targets the name makes
      * removal a refusal (remove the alias first), never a dangling published name (O4: no silent shadowing).
      */
-    unregister(name) {
+    unregister(name, opts = {}) {
       const key = String(name)
       const entry = entries.get(key)
       if (!entry) throw refuse('VMU_NO_SUCH_OBJECT', 'no service is published under that name: ' + key,
         'retract only a CONTRIBUTED service; the published names are: ' + ([...entries.keys()].join(', ') || '(none)'))
-      if (entry.providedBy === null) throw refuse('VMU_NOT_PERMITTED', 'service ' + key + ' is published by the KERNEL, not by a pack: a pack unload may not remove it',
+      if (entry.providedBy === null && !(opts && opts.declaration === true)) throw refuse('VMU_NOT_PERMITTED', 'service ' + key + ' is published by the KERNEL, not by a pack: a pack unload may not remove it',
         'retract only entries whose providedBy is a pack/module id (status().services[].providedBy says which)')
       const aliasesOnIt = [...aliases.values()].filter((a) => a.to === key)
-      if (aliasesOnIt.length > 0) throw refuse('VMU_MIDDLEWARE_FAILED', 'service ' + key + ' is still the target of alias(es): ' + aliasesOnIt.map((a) => a.from).join(', '),
+      if (aliasesOnIt.length > 0) throw refuse('VMU_ENGINE_UNAVAILABLE', 'service ' + key + ' is still the target of alias(es): ' + aliasesOnIt.map((a) => a.from).join(', '),
         'remove those aliases first (unload does it in reverse order), so a published name never dangles')
       entries.delete(key)
       return { ok: true, name: key, removed: true, providedBy: entry.providedBy }

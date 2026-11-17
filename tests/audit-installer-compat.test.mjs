@@ -153,6 +153,9 @@ console.log('=== 4. a pluginManager that never answers must not hold the row ===
   const pkg = join(tmp, 'pkg')
   mkdirSync(pkg, { recursive: true })
   cpSync(INSTALLER_SRC, join(pkg, 'installer.js'))
+  // ★ C#6: PRESETS[].files is derived from this data file; the fixture package must mirror the real tarball layout.
+  mkdirSync(join(pkg, 'vibe-math-vmu'), { recursive: true })
+  cpSync(join(HERE, 'vibe-math-vmu', 'roster.json'), join(pkg, 'vibe-math-vmu', 'roster.json'))
   writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'dsh-vibe-math', version: '9.9.9', type: 'module' }, null, 2))
   for (const p of PRESETS) {
     mkdirSync(join(pkg, p.src), { recursive: true })

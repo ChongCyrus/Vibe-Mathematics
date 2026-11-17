@@ -24,16 +24,16 @@
 | 1 | chair/normal | `vibe_v5_start` | **E** | `prompts/01-chair.txt:58`（`vibe_v5_start`） | `receipts.jsonl:1`（seq 1，`hiredNow`） | 开所回执 hired/hiredNow/rosterBefore 与提示词「开所」段一致（started.already 另有含义，提示词已写明） |
 | 2 | chair/normal | `vibe_v5_hire` | **E** | `prompts/01-chair.txt:32`（`vibe_v5_hire`） | `receipts.jsonl:2`（seq 2，`hired`） | hire 回执 roster/hiredNow 与提示词「用 vibe_v5_hire」一致 |
 | 3 | chair/normal | `vibe_v5_record_proposition` | **E** | `prompts/01-chair.txt:25`（`vibe_v5_record_proposition`） | `receipts.jsonl:3`（seq 3，`proofState`） | proof_state 入参 / proofState 回执的别名对照提示词已明文写出 |
-| 4 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/01-chair.txt:355`（`mdChangedSinceIndex`） | `receipts.jsonl:4`（seq 4，`mdWritten`） | 回执同屏给顶层 mdWritten:true 与嵌套 md.written:false（本次调用写没写 vs 文件在不在），提示词只说「md 是唯一真相」，没教两形 |
-| 5 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/03-chair.txt:351`（`mdChangedSinceIndex`） | `receipts.jsonl:5`（seq 5，`formatSwitched`） | 同 P4 的两形，另加 formatSwitched:true（落盘形态被改写）无教学 |
-| 6 | chair/normal | `vibe_v5_blueprint adopt` | **D** | `prompts/03-chair.txt:351`（`materialize:true`） | `receipts.jsonl:6`（seq 6，`mdOwner`） | adopt 回执 mdWrite.written:true + mdOwner.writtenBy:"kernel-materialized"，而提示词把 kernel-materialized 只挂在「显式 materialize:true」下 |
-| 7 | chair/normal | `vibe_v5_blueprint read` | **E** | `prompts/03-chair.txt:351`（`mdChangedSinceIndex`） | `receipts.jsonl:7`（seq 7，`mdChangedSinceIndex`） | read 回执 mdChangedSinceIndex/md.written 与提示词 fs-first 段一致 |
+| 4 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/01-chair.txt:352`（`mdChangedSinceIndex`） | `receipts.jsonl:4`（seq 4，`mdWritten`） | 回执同屏给顶层 mdWritten:true 与嵌套 md.written:false（本次调用写没写 vs 文件在不在），提示词只说「md 是唯一真相」，没教两形 |
+| 5 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/03-chair.txt:348`（`mdChangedSinceIndex`） | `receipts.jsonl:5`（seq 5，`formatSwitched`） | 同 P4 的两形，另加 formatSwitched:true（落盘形态被改写）无教学 |
+| 6 | chair/normal | `vibe_v5_blueprint adopt` | **D** | `prompts/03-chair.txt:348`（`materialize:true`） | `receipts.jsonl:6`（seq 6，`mdOwner`） | adopt 回执 mdWrite.written:true + mdOwner.writtenBy:"kernel-materialized"，而提示词把 kernel-materialized 只挂在「显式 materialize:true」下 |
+| 7 | chair/normal | `vibe_v5_blueprint read` | **E** | `prompts/03-chair.txt:348`（`mdChangedSinceIndex`） | `receipts.jsonl:7`（seq 7，`mdChangedSinceIndex`） | read 回执 mdChangedSinceIndex/md.written 与提示词 fs-first 段一致 |
 | 8 | member/normal | `vibe_vmu_records list` | **A** | `prompts/04-member.txt:35`（`vibe_v5_read_library`） | `receipts.jsonl:8`（seq 8，`truncated`） | 读记录本真要 vibe_vmu_records list，但 12 份提示词 0 命中该工具名；成员只被教 read_library/inbox |
 | 9 | member/normal | `vibe_v5_meeting` | **E** | `prompts/04-member.txt:2`（`vibe_v5_meeting`） | `receipts.jsonl:9`（seq 9，`notified`） | convene(at) 回执 notified:[r-1,r-2] 与提示词「预约=给被邀者下一回合的通知块」一致（notifyRows 未教，见 B 注） |
 | 10 | member/normal | `vibe_v5_meeting` | **B** | `prompts/07-member.txt:3`（`vibe_v5_meeting`） | `receipts.jsonl:9`（seq 9，`notifyRows`） | 被预约者提示词首行出现会议预约块，但 notifyRows/notifyFailed/noticesMeans 读数无教学 |
-| 11 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:363`（`waitingFor`） | `receipts.jsonl:10`（seq 10，`waitingFor`） | attend 回执 waitingFor/lateAdmission 与提示词「到点不自开、等 quorum/chair-proceed」一致 |
-| 12 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:363`（`waitingFor`） | `receipts.jsonl:11`（seq 11，`lateAdmission`） | 同 P11（第二个迟到者 lateAdmission 口径一致） |
-| 13 | member/meeting | `vibe_vmu_meeting status` | **B** | `prompts/05-member.txt:311`（`vibe_vmu_meeting`） | `receipts.jsonl:12`（seq 12，`speechUsed`） | status 板几十个读数（speechUsed/speechExtendMs/waiters/eligible…）提示词未教怎么用 |
+| 11 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:362`（`waitingFor`） | `receipts.jsonl:10`（seq 10，`waitingFor`） | attend 回执 waitingFor/lateAdmission 与提示词「到点不自开、等 quorum/chair-proceed」一致 |
+| 12 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:362`（`waitingFor`） | `receipts.jsonl:11`（seq 11，`lateAdmission`） | 同 P11（第二个迟到者 lateAdmission 口径一致） |
+| 13 | member/meeting | `vibe_vmu_meeting status` | **B** | `prompts/05-member.txt:310`（`vibe_vmu_meeting`） | `receipts.jsonl:12`（seq 12，`speechUsed`） | status 板几十个读数（speechUsed/speechExtendMs/waiters/eligible…）提示词未教怎么用 |
 | 14 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:28`（`vibe_v5_say`） | `receipts.jsonl:13`（seq 13，`memberActed`） | 提示词说「发言只能你自己在本回合做完，别请所办代办」，回执却是所办代 r-1 发言：memberActed:true（动作记在 r-1 名下）+actedForMember:"r-1"+via:"meeting"——做的人不是 r-1，承诺与现行形状相反 |
 | 15 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:28`（`vibe_v5_say`） | `receipts.jsonl:14`（seq 14，`actedForMember`） | 同 P14（代 r-2 发言；memberActed:true + actedForMember:"r-2" + via:"meeting"） |
 | 16 | chair/meeting | `vibe_v5_motion` | **E** | `prompts/06-chair.txt:52`（`vibe_v5_motion`） | `receipts.jsonl:15`（seq 15，`motion`） | motion 回执与提示词会议动议段一致 |
@@ -836,3 +836,20 @@ final16b 的 6 套件红 + E1 同根失败，根因是 ROUND-1 的 P0-4 压缩�
 - **`audit-doc-line-refs`（12 越界/8 记录 → 9/0）**：`source-prompt-coverage.md:43/53` 里指向 `v5r-blocks-a.js` 旧行（当时第 604 行）的引用与两份 conformance 的 `:596-607` 随 blocks-a 压缩越界；按现行真行重锚到 `v5r-blocks-b.js:1130`（形式化开关）/`:408`（Lean 形式化验证正文）。gate 未放宽：agent.cordis.yml 的 8 条外部越界仍按原记录保留。
 - 记账同步：`TB2752_RUN80_FIXES = { chair: -3588, member: -1116, temp: -2376, sum: -7080 }`（collect 25,911/24,885/20,292 = 71,088）；`chair-temp-ratio = 1.277 ≤1.28`（target 1.25 仍具名 MISSED）；真实最大 **chair/meeting 32,686 ≤36,400（余 3,714）**。
 - 复跑：`run256-prompts-facts` 107/0、`vmu-ledger-teaching-pins` 61/0、`audit-doc-line-refs` 9/0、`vmu-v5r-tools` 372/0、`audit-prompt-budget` PASS、`regen 17/17`；其余 pin 套件（run256-compress 34/0、run80 61/0、run77 7/0、run79 11/0、run78 8/0、run247 74/0、run144 64/0、run239 166/0、run150 73/0、vmu-turn 326/0、run257 134/0、type 15/0、AB 0、run209 6/0、doc-sync 11/0、run251 三套、g7 66/0）全绿。
+
+### §20.13 ROUND-8（2026-11-18，in-place 改文的三条新 P1 + P2）
+
+- **P1-1 数组字面量泄漏**：chair 的 `v5r-charter-voting` 有一行被包成了 JSON 字符串（渲染出 `"  · **表决**…undecided。",`）。修：还原为普通字符串元素；反灯：渲染里行首 `"` / 行尾 `",` = **0**（三席实测）。
+- **P1-2 「上表是职责说明」重复**：chair 单份曾 5 次、member/temp 各 3 次。修：**每份渲染只保留 1 处捕获句**（fixture-tools 用原句），三个角色清单改用逐席变体「★ 本角色清单（院士/研究员/临时成员）是职责说明；…以【本轮你实际能调用的工具】为准」。判据：任何单份渲染该句 **≤1**；run247 §2/§5d 与 tools 的权威句断言按新措辞同步（判据语义不变）。
+- **P1-3 断句**：回复协议的「完整说明：」与 math-push 的「详细操作按需读」都补成完整句（指向设置 `vmu.turn.protocolPath`，缺失就向主席/所办索取）。反灯：`完整说明：$`、`按需读$` = 0。
+- **P2**：chair 补「**final 只能由主席签**（代投被拒 `VMU_RULING_CHAIR_SIGNS`）」；formal-review 补「formal-status 的「未尝试」只指**本席**未尝试；该对象的历史证明以记录为准」；temp-delivery 压到 **1,447 ≤1,450**；chair 补「**一次回复至少一个字段**」；「真机走激活」改为「宿主以投递回合的方式激活」；非主席 overview 读面现文已正确（主席读 roster、非主席读 [在册]），无 leaderless 残留。
+- **判据**：真实最大 **chair/meeting 32,700 ≤36,400（余 3,700）**；`chair-temp-ratio = 1.278 ≤1.28`（target 1.25 仍具名 MISSED，余量 0.022）；budget 主闸/sim 闸 PASS；prompt 相关 pin 套件全绿（facts 107/0、ledger 61/0、doc-line-refs 9/0、tools 374/0、run247 74/0、compress 34/0、run80 61/0、run77 7/0、run79 11/0、run78 8/0、run144 64/0、run239 166/0、run150 73/0、type 15/0、AB exit0、run257 134/0、run209 6/0、doc-sync 11/0、run251 三套、g7 66/0、corrections 13/0、retired 17/0）。
+- **记账**：`TB2752_RUN80_FIXES = { chair: -3581, member: -1080, temp: -2382, sum: -7043 }`（collect 25,918/24,921/20,286 = 71,125）；run256 的 ceiling 常量同步为 live（25,918 / 71,125，并保留 run80 交叉校验的推导子串）。
+- **外部红（不在 prompts 域）**：`vmu-turn` 323/3 由 `vibe-math-vmu/kernel/turn/index.js` 的未提交改动（T16/T16g/T104 的 reply dispatcher 计数）引起；新增 `packs/v5r/middleware/verified-policy.js` 未登记使 zero-mechanism 一项 regen 红（17/18）。两项均属其它车道在飞工作。
+
+### §20.14 ROUND-8 G3（AB 验证基线：两个指针族登记为 declared replacement）
+
+- **判定**：不是「基线需重锚」，而是 **ROUND-8 P1-3 的指针句重写属 declared replacement**：捕获句把 `Shared/Protocol.md` 的**捕获绝对路径**直接钉进正文（`计算证据…详细操作按需读 <path>` 61×、`contextPct…完整说明：<path>` 46×），现行文本改为「指向设置 `vmu.turn.protocolPath`、没有就向主席/所办索取」——既补全断句，也避免把录制路径冻结进提示词（runtime-safety）。语料未变，故按既有 AB 机制**登记 divergences**，**15 行硬门槛不动**。
+- **before → after**：largest unmatched family **61 行 → 9 行**（现在最大族为「若你本轮做了形式化或给出难度判断…」9×，其次是「▸ 我的任务 t-1：核验模 9 情」8×、「[形式化] 鼓励 Lean｜已通过」8×、「对象：p-lemma-a」6×）；declared occurrences **+107**（61 + 46 离开两侧）；pool **549 → 442**、hits **401 → 286**、pct **73% → 65%**（比例下降正好等于被声明的原命中行，属策略选择而非转录丢失）。
+- **机制**：`DECLARED_DIVERGENCES_AB` 新增两行（prefix = 两条捕获句开头，why = ROUND-8 P1-3 指针重写 + 不冻结捕获路径）；floor 按实测重钉：`AB_POOL_FLOOR 549 → 442`、`PCTAB_FLOOR 67 → 65`（算术写在注释里）；**V70 的 15 行门槛保持原值**。
+- **判据**：`vmu-ab-v5r-verification` **exit 0**（V67/V70 绿）；不回退：tools **374/0**、run256-facts **107/0**、run247 **74/0**、run256-compress 34/0、run80 61/0、run144 64/0、run239 166/0、type 15/0、run257 134/0；budget 主闸/sim 闸 PASS；`regen 18/18`、`check-docs` PASS。

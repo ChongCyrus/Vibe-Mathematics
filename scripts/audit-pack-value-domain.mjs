@@ -1,10 +1,10 @@
 // scripts/audit-pack-value-domain.mjs — PACK VALUE-DOMAIN GATE (round 8's general guard, round 9 made permanent).
 //
 // WHY THIS EXISTS. `vmu.paper.finalizer` was declared `type:'string'` while its reader kept a CLOSED value list
-// (`kernel/paper.js`'s `FINALIZERS`), so a declaration outside that list - v5r's `paperEditor:'academician'` - was
-// silently downgraded to 'editor': the declaration had no effect and no complaint. That is the "declared but not
-// in effect" class this repository refuses. Round 8 fixed that instance (schema enum + a named refusal in the
-// reader); THIS gate is the general guard, so the next instance cannot appear unnoticed.
+// (historical: the now-DELETED `kernel/paper.js`'s `FINALIZERS`; TB-2794 Step 1 removed that file), so a declaration
+// outside that list - v5r's `paperEditor:'academician'` - was silently downgraded to 'editor': the declaration had no
+// effect and no complaint. That is the "declared but not in effect" class this repository refuses. Round 8 fixed that
+// instance (schema enum + a named refusal; the file is gone now); THIS gate is the general guard.
 //
 // WHAT IT CHECKS (exit non-zero on any):
 //   §1 STATIC  every value a pack declares for an `enum`-typed schema key is INSIDE that enum's domain, and every
@@ -42,15 +42,12 @@ for (const m of schema.matchAll(/\{\s*key:\s*'([^']+)'[^}]*?type:\s*'enum'([^}]*
   const dom = m[2].match(/domain:\s*(\[[^\]]*\])/)
   if (dom) enumDomains.set(m[1], JSON.parse(dom[1].replace(/'/g, '"')))
 }
-// Keys the schema types as a free `string` but whose READER keeps a closed list. Measured, never guessed:
-//   vmu.paper.finalizer -> kernel/paper.js's `FINALIZERS`
-const paperPath = join(VMU, 'kernel', 'paper.js')
-const paperSrc = existsSync(paperPath) ? readFileSync(paperPath, 'utf8') : ''
+// Keys the schema types as a free `string` but whose READER keeps a closed list. Measured, never guessed.
+// ★ TB-2794 Step 1 (migration truth): the ONLY such reader was `kernel/paper.js` (`FINALIZERS`) and it has been DELETED;
+// `vmu.paper.finalizer` is an `enum` now, so its closed set IS the declared domain and §1's enum half already covers it.
+// No free-string-with-reader-closed-list key survives ⇒ `closedReaders` is empty as a NAMED fact (§2 reports the 0
+// instead of silently looping zero times; §3 proves the checker itself is not vacuous).
 const closedReaders = new Map()
-{
-  const m = paperSrc.match(/export const FINALIZERS = Object\.freeze\((\[[^\]]*\])\)/)
-  if (m) closedReaders.set('vmu.paper.finalizer', { domain: JSON.parse(m[1].replace(/'/g, '"')), reader: 'kernel/paper.js FINALIZERS' })
-}
 
 // ── every value the packs declare (read from the real modules, not by parsing text) ─────────────────────────
 async function declaredValues() {
@@ -100,21 +97,10 @@ if (!onlySelftest) {
   ok(bad.length === 0, 'no pack declares a value outside its key\'s domain', bad)
 
   console.log('=== §2 LIVE: an out-of-domain value must be REFUSED BY NAME (not silently downgraded) ===')
-  // ★ TB-2794 Step 1: no closed-list reader survives (finalizer is enum-typed now); §2 is vacuous ONLY if that map is empty,
-  // which this line states by name instead of silently looping zero times.
-  ok(closedReaders.size === 0 || true, 'closed-list readers measured: ' + closedReaders.size + ' (0 = the enum half is the only closed-domain path left)')
-  for (const [key, info] of closedReaders) {
-    if (key !== 'vmu.paper.finalizer') continue
-    const values = { [key]: '__out-of-domain__', 'vmu.paper.requireAllSections': false, 'vmu.paper.officeConsult': 'off' }
-    const paper = createPaper({ settings: { get: (k) => values[k] }, register: async () => ({ ok: true }), clock: () => 1000 })
-    let code = null
-    let message = ''
-    try {
-      paper.start({ title: 'probe', editor: 'e1', sections: ['intro'], contributors: { intro: 'e1' } })
-    } catch (e) { code = e && e.code; message = String((e && e.message) || '') }
-    ok(code === 'VMU_INVALID_ARGUMENT' && message.includes(info.domain.join('|')),
-      key + ': an out-of-domain value is refused BY NAME and the domain is stated', { code, message: message.slice(0, 90), domain: info.domain })
-  }
+  // ★ TB-2794 Step 1 (migration truth): no free-string key with a reader-side closed list survives (`kernel/paper.js` is
+  // deleted; finalizer is enum-typed), so there is no live probe to run here. The 0 is stated BY NAME (with §3 proving the
+  // checker still has teeth) instead of a silently-empty loop.
+  ok(closedReaders.size === 0, 'no live closed-list reader survives: 0 free-string keys with a reader-side closed list (the enum half is the only closed-domain path left)', { closedReaders: [...closedReaders.keys()] })
 
   console.log('=== §3 SELFTEST: the checker is not vacuous (a seeded violation must be reported) ===')
 }

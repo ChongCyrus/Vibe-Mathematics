@@ -91,6 +91,9 @@ console.log('=== 2. the real apply(): both lines get what they need ===')
 function buildPackage(dir) {
   mkdirSync(dir, { recursive: true })
   cpSync(INSTALLER_SRC, join(dir, 'installer.js'))
+  // ★ C#6: PRESETS[].files comes from `vibe-math-vmu/roster.json`; the fixture package mirrors the tarball layout.
+  mkdirSync(join(dir, 'vibe-math-vmu'), { recursive: true })
+  cpSync(join(REPO, 'vibe-math-vmu', 'roster.json'), join(dir, 'vibe-math-vmu', 'roster.json'))
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'dsh-vibe-math', version: '9.9.9', type: 'module' }, null, 2))
   for (const p of PRESETS) {
     mkdirSync(join(dir, p.src), { recursive: true })

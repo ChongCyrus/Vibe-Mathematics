@@ -205,7 +205,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // is now `noReplyShape` (it has no usable shape: a ballot box needs `boxId` and `by`), so it is skipped BEFORE the face
   // lookup and never reaches the "face-not-wired" branch this pin is about. `formal` is owned by `vmu.formal.check` — a
   // face this orchestrator does not wire, and a field with no shape gate — so it still exercises the branch honestly.
-  const half = await t.apply({ formal: { target: 'p-x' } })
+  // ★ TB-2794 Step 2: `formal` is a PACK field now (not core), so the face-not-wired probe uses a CORE field whose face
+  // this orchestrator does not wire: `record` (vmu.library.record).
+  const half = await t.apply({ record: { track: 'progress', text: 'x' } })
   ok(half.skipped.length === 1 && half.skipped[0].reason === 'face-not-wired' && t.status().counts.notExecuted === 1,
     'T16. ★★★ a field whose face is NOT wired is reported and COUNTED - a half-installed host is visible, never silent',
     { skipped: half.skipped, counts: t.status().counts })
@@ -1062,9 +1064,15 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // while being counted as dispatched. The PROMPT settles which field closes the institute: its own words make
   // `vote_solved` the closure vote (unanimity required) and `solved` merely the per-round judgement. So the closure
   // vote is recorded and counted, and 22 fields are dispatched while 7 are bookkept.
-  ok(FIELDS.length + RECORDED_FIELDS.length === 29 && FIELDS.length === 22,
-    'T104. **** the reply surface now covers all 29 fields the original parses - 22 dispatched to real operations and 7 bookkept',
-    { dispatched: FIELDS.length, bookkept: RECORDED_FIELDS.length, total: FIELDS.length + RECORDED_FIELDS.length })
+  // ★ TB-2794 Step 2: the three research reply fields moved to the v5r PACK (runtime.json replyFields); the framework
+  // core table is framework-only. The 29-field surface is covered by CORE + PACK declarations together, and the pack
+  // fields are asserted ABSENT from the core table (the migration's point), not silently counted twice.
+  const PACK_REPLY_FIELDS = JSON.parse(readFileSync(new URL('../vibe-math-vmu/packs/v5r/runtime.json', import.meta.url), 'utf8')).replyFields.map((f) => f.field)
+  const STEP2_PACK_FIELDS = PACK_REPLY_FIELDS.filter((f) => f !== 'paper_claim')
+  ok(FIELDS.length + RECORDED_FIELDS.length + STEP2_PACK_FIELDS.length === 29 && FIELDS.length === 19 && STEP2_PACK_FIELDS.length === 3 &&
+    ['formal', 'lean_archive', 'lean_run'].every((f) => FIELDS.indexOf(f) < 0 && PACK_REPLY_FIELDS.indexOf(f) >= 0),
+    'T104. **** the reply surface covers all 29 fields: 19 core dispatched + 7 bookkept + 3 PACK-declared (absent from the core table)',
+    { dispatched: FIELDS.length, bookkept: RECORDED_FIELDS.length, packStep2: STEP2_PACK_FIELDS.length, packAll: PACK_REPLY_FIELDS.length, total: FIELDS.length + RECORDED_FIELDS.length + STEP2_PACK_FIELDS.length })
   ok(FIELD_OWNERS.vote_solved === undefined && FIELD_OWNERS.meeting_hand.op === 'queue' && FIELD_OWNERS.convene_meeting.op === 'open' && FIELD_OWNERS.assign.op === 'assign',
     'T105. **** and each new owner names an operation the kernel really exposes - nothing is invented (and `vote_solved` is BOOKKEPT, not dispatched to a face that cannot accept it)',
     { sample: FIELD_OWNERS.meeting_hand.face + '.' + FIELD_OWNERS.meeting_hand.op + ' ' + FIELD_OWNERS.convene_meeting.face + '.' + FIELD_OWNERS.convene_meeting.op + ' (and vote_solved is absent from FIELD_OWNERS: it is bookkept, not dispatched)' })

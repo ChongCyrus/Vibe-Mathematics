@@ -570,6 +570,12 @@ const phaseOf = (kind, text) => {
     { prefix: '「已通过」状态（降级为 attempt', why: 'ROUND-1 P0-2: the defect now goes through vibe_v5_fidelity_conclude, not the non-existent formal shape' },
     { prefix: "vibe_v5_lean_archive kind='blocked' note=… 记录，或用回执 formal:", why: 'ROUND-1 P0-2: the blocking record is lean_archive kind=blocked; the formal alternative is refused' },
     { prefix: "只有 decision='blocked' 的 note", why: 'ROUND-1 P0-2: decision semantics were retired with the formal shape; lean_archive kind=blocked is the record' },
+    // ★★★ ROUND-8 (2026-11-18, prompt-lane): the two PROTOCOL POINTER sentences were rewritten so they no longer end in a
+    // bare colon / empty object naming a captured absolute path. The live text now names the setting (vmu.turn.protocolPath)
+    // and says to ask the chair when it is unset; the captured absolute-path form must not be reproduced (runtime safety).
+    // Declared like the families above: they leave BOTH sides, so the ratio stays a fidelity number. arithmetic below.
+    { prefix: '计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。', why: 'ROUND-8 P1-3: the math protocol pointer names vmu.turn.protocolPath and asks the chair instead of pasting a captured path' },
+    { prefix: 'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：', why: 'ROUND-8 P1-3: the reply protocol pointer names vmu.turn.protocolPath and asks the chair instead of pasting a captured path' },
   ]
   const matchedDeclared = Object.fromEntries(DECLARED_DIVERGENCES_AB.map((d) => [d.prefix, 0]))
   let declaredAB = 0
@@ -627,10 +633,12 @@ const phaseOf = (kind, text) => {
   // ROUND-2 re-base (P1-8 reply-channel merge): the two historical reply capture families (88 reproduced occurrences) were
   // merged into one accurate paragraph, and their lines are DECLARED; both sides drop by exactly those occurrences, so the
   // pool is 549 and the hits 401 (401/549 = 73%). Floors pinned AT the measurement again: a further loss reddens.
-  const AB_POOL_FLOOR = 549
+  // ROUND-8 re-base (pointer sentences): the two protocol-pointer captures were declared (61 + 46 occurrences) so they leave
+  // BOTH sides; measured pool 549 -> 442, hits 401 -> 286 (286/442 = 64.7% -> 65%). Floors pinned AT the measurement.
+  const AB_POOL_FLOOR = 442
   // ROUND-4 re-base: the Lean/formalisation sections are role-gated to chair/member (temp seat-face denies the tools), so
   // captured lines that were reproduced in temp prompts leave BOTH sides by policy; the measured ratio is pinned below.
-  const PCTAB_FLOOR = 67
+  const PCTAB_FLOOR = 65
   ok(totalAB >= AB_POOL_FLOOR && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
     { hit: hitAB, total: totalAB, percent: pctAB, declared: declaredAB })

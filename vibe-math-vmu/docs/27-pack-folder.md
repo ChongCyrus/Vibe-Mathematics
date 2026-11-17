@@ -9,7 +9,7 @@
 ## 1. 一句话
 
 ★★ **vmu 的实际运行机制 ＝ `kernel/`（框架）＋ `packs/<名字>/`（整合包文件夹）** ✓。
-★★★ **框架只提供【机制】，整合包提供【机构】** ✓ —— ★ **凡是"换一家研究所就不对"的东西，都不许待在 `kernel/`** ✗，**必须待在整合包里** ✓。
+★★★ **框架只提供【机制】，整合包提供【机构】** ✓ —— ★ **凡是"换一家研究所就不对"的东西，都不许待在 `kernel/`** ✗，**必须待在整合包里** ✓。★★ **现状（TB-2794 Step 0/1/2 之后）**：这是**目标态**，不是完成态 —— paper 流程**已迁出**（`packs/research-core/paper-flow.js`）；reply fields 与 verified warrant 政策也已迁 pack（Step 2）；reviewers／publication／formal／fidelity／mathjobs 五个研究面**仍由 `kernel/index.js` 本地构造（待迁，后续步）**；Lean 引擎留 kernel 作通用原语、其面/归档策略待迁。逐面「已迁 / 待迁」清单见 `02-architecture.md` §1.1（C#7 口径）。
 ★★★ **轮 1（D-03/D-06）**：**pack 是 L4，自成一档；它不是中间件四形态里的 M4** —— M4 是**消费 vmu 已发布服务的 DSH 外部插件**；总线只跑 M1（`rules`）与 M2（`module`），`kind:'script'|'plugin'` 由 `bus.add` **具名拒** `VMU_MIDDLEWARE_KIND_UNSUPPORTED`。pack 的机构策略（段开关、通知措辞、相位）**由 `config.packs` 声明驱动注入**（见 §4.1），不再由入口无条件带上。
 
 ---
@@ -105,7 +105,7 @@ vibe-math-vmu/
 - **分级会议（GAP-MTG-02）**：`vmu.meetings.tier`（`formal|light`）与 `vmu.meetings.allowLight` 由 pack 声明；v5r 取 `formal` ＋ **`allowLight:false`**（v5r 只有完整协议 ⇒ light 会议被**具名拒** `VMU_MEETING_TIER_CONFLICT`，不是静默产出）。内核只提供 tier＋派生谓词（`light` 不得产出实体定论），唯一判定点在 `kernel/meetings.js` 的收束路径。
 - **投票板重开（GAP-MTG-10）**：`vmu.ballot.reopenFloor=0`（v5r 的"门槛只升不降"⇒ 不额外加门槛），读者 `kernel/ballotbox.js` 的 `reopen()`。
 - **耐久投影（D-15）**：`vmu.resume.projections` 由 **7 面扩到 10 面**（＋`chat`/`panel`/`human`），`vmu.resume.writeThrough=true`（状态型投影每次变更后写穿 ⇒ "未批动作重启后仍在排队"）。**审批队列、群聊、自述面板的跨重启**由 `kernel/human.js`/`chat.js`/`panel.js` 的 `snapshot()/restore()` ＋ `attachProjection` 承担，**不引入 settings 键**（`store.js` 白名单＋投影接线而已）。
-- **office 定稿咨询门（C-30，已闭合）**：`vmu.paper.officeConsult='required'`／`On='finalize'`／`TimeoutMs=0`／`OnTimeout='hold'`／**`ExemptRoles=[]`** 由 pack 声明；判定点在 `kernel/paper.js:45-49,111-114`（WIRED_KEYS 3→8，`cfg()` 无条件读全五键）——未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`＋审计 `what:'auth'`＋总线事件 `paper/office-consult-required`（经 `declareTopic` 扩展点）。★ **豁免默认空**（Lead F4）：本门存在的场景正是"office 自己定稿"，默认豁免 `office` 会恰好豁免掉它。
+- **office 定稿咨询门（C-30，已闭合）**：`vmu.paper.officeConsult='required'`／`On='finalize'`／`TimeoutMs=0`／`OnTimeout='hold'`／**`ExemptRoles=[]`** 由 pack 声明；判定点在**通用流程** `packs/research-core/paper-flow.js` 的 `recordFinal`（五键由流程 `cfg()` 无条件读全；`kernel/paper.js` 那个同名门是**无构造者的死面，已随 TB-2794 Step 1 删除**）——未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`（回执带 `enforced[]`／`settingValues`；旧实现的审计行 `what:'auth'` 与总线事件 `paper/office-consult-required` 随死面一并删除，不再声称有）。★ **豁免默认空**（Lead F4）：本门存在的场景正是"office 自己定稿"，默认豁免 `office` 会恰好豁免掉它。
 - **不归 pack 的一条**：**C-45（忠实性缺陷强制弃权）**＝内核谓词、**强制且不可配置**（reader-b：不忠实者的 0/1 被改写为 0.5 弃权并留耐久 marker）⇒ pack **不提供**关闭开关。
 
 ### 4.4 轮 4：**面解析与两个声明层的最终口径**（写一次，别再当 workaround 用）
@@ -208,7 +208,52 @@ node scripts/preflight.mjs && node scripts/regen-all.mjs --check
 | 名册 | 位置 | 管的那条边 | 谁读它 | 漏了会怎样 |
 |---|---|---|---|---|
 | **shipped 名册** | `package.json` 的 `files` | ★ **磁盘上的文件 → 进 npm tarball** ✓ | npm 打包；`tests/audit-package-membership.mjs` | ★ **相对导入的目标必须在包里** ✓（否则装完 **MODULE_NOT_FOUND** ✓）；读者**无法复现证明** ✗ |
-| **托管名册** | `installer.js` 的 `PRESETS[].files` | ★ **tarball 里的预设文件 → 复制进 `<presetRoot>/vibe-math-vmu/`** ✓（路径**不带** `vibe-math-vmu/` 前缀 ✓） | `installer.js` 的复制循环；`tests/audit-installer-policy.test.mjs` §8 | ★ **文件在包里、却永远不进预设目录** ✗ ⇒ ★ **`<=0.1.6` 的目录式预设挂不起来** ✗（理由见 `installer.js` 里 v2 条目上方的注释 ✓） |
+| **托管名册** | **`vibe-math-vmu/roster.json`**（★ 唯一真源 ✓；`installer.js` **启动时读入**并派生 `PRESETS[].files`，**不再手写第二份** ✓） | ★ **tarball 里的预设文件 → 复制进 `<presetRoot>/vibe-math-vmu/`** ✓（路径**不带** `vibe-math-vmu/` 前缀 ✓） | `installer.js` 的复制循环；`tests/audit-installer-policy.test.mjs` §8；`scripts/generate-preset-roster.mjs` | ★ **文件在包里、却永远不进预设目录** ✗ ⇒ ★ **`<=0.1.6` 的目录式预设挂不起来** ✗（理由见 `installer.js` 里 v2 条目上方的注释 ✓）；★★ **本轮前它还有第二个手写副本（`PRESETS[].files` 与本节表格）** ✗ ⇒ **C#6 已收敛为 `roster.json` 一处真源** ✓ |
+
+<!-- BEGIN GENERATED: preset-roster -->
+
+### 6.6 ★★★ 唯一真源：`vibe-math-vmu/roster.json`（**生成表，禁手改** ✓）
+
+★★ **本表由 `scripts/generate-preset-roster.mjs` 从真源 `vibe-math-vmu/roster.json` 生成** ✓（★ `regen-all --check` 的硬门之一 ✓）。
+★★★ **改一处真源 ⇒ 两条边同时变** ✓：`installer.js` 的 `PRESETS[].files` **不再手写第二份**，启动时**直接读这份数据** ✓；本表与它同源 ✓。
+★★ **两条边仍然分开** ✓：**shipped 边**＝`package.json#files`（进 tarball ✓）；**托管边**＝本表（`installer.js` 复制进 `.agent-presets/<id>/` ✓）。生成器校验**托管 ⊆ shipped、每个托管文件在磁盘上存在、无重复、不越出 src 根** ⇒ ★ **旧缺陷（加一个文件只改一处）现在是具名红灯** ✓，不是靠人记得改两处 ✓。
+
+| preset | src → dst | 托管文件数 | `.js` | `.json` | `.md` | `.yml` | 其他 |
+|---|---|---|---|---|---|---|---|
+| `vibe-math-vmu` | `vibe-math-vmu` → `vibe-math-vmu` | **278** | 236 | 8 | 32 | 2 | 0 |
+
+#### `vibe-math-vmu` 文件清单（按目录分组，组内按名排序 ✓）
+
+| 目录 | 文件 |
+|---|---|
+| （根） | `agent.cordis.yml`、`glossary.json`、`host-children.js`、`host-deliver.js`、`host-hooks.js`、`host-math.js`、`host-pack-tools.js`、`host-spawn.js`、`host.js`、`math-computation.js`、`math-engines.js`、`preset.yml`、`vibe-math-vmu.js` |
+| `docs/` | `00-README.md`、`01-philosophy.md`、`02-architecture.md`、`03-interface-contract.md`、`04-settings.md`、`05-middleware.md`、`06-prompt-pipeline.md`、`07-durability-library.md`、`08-primitives-meeting-ballot-workflow.md`、`09-math-formalization.md`、`10-packs.md`、`11-gates-and-development.md`、`12-user-guide.md`、`13-migration.md`、`14-open-items-and-roadmap.md`、`15-math-computation-toolbox.md`、`16-research-lifecycle.md`、`17-agent-society-and-delegation.md`、`18-command-and-protocol-reference.md`、`19-plugin-and-extension-development.md`、`20-security-privacy-and-compliance.md`、`21-observability-and-operations.md`、`22-academic-operations.md`、`23-extensions-and-deferred.md`、`24-v5r-containment.md`、`25-demoted-domains.md`、`26-turn-orchestration.md`、`27-pack-folder.md`、`28-decision-history.md`、`29-build-your-own-preset.md` |
+| `extensions/domain-compliance/` | `gate.js`、`index.js` |
+| `kernel/` | `activity.js`、`alerts.js`、`arbitration.js`、`audit.js`、`auditchain.js`、`ballot.js`、`ballotbox.js`、`bidding.js`、`board.js`、`budget.js`、`bus.js`、`capacity.js`、`charter.js`、`chat.js`、`citations.js`、`clockguard.js`、`collab.js`、`compliance.js`、`conference.js`、`contentvalue.js`、`control.js`、`course.js`、`crypto.js`、`custody.js`、`delegation.js`、`directions.js`、`discipline.js`、`env.js`、`explain.js`、`external.js`、`fairness.js`、`fidelity.js`、`formal.js`、`funding.js`、`governance.js`、`guard.js`、`handover.js`、`human.js`、`idempotency.js`、`identity.js`、`ids.js`、`index.js`、`ip.js`、`latex.js`、`lean.js`、`library-policy.js`、`library.js`、`lifecycle.js`、`loader.js`、`mailbox.js`、`math.js`、`mathadapters.js`、`mathjobs.js`、`mathtools.js`、`meeting.js`、`meetingdomain.js`、`meetinglapse.js`、`meetingleave.js`、`meetingmarker.js`、`meetings-defaults.js`、`meetings.js`、`meetingverdict.js`、`memberface.js`、`members.js`、`memory.js`、`metrics.js`、`migration.js`、`minutes.js`、`notices.js`、`notify.js`、`pack.js`、`panel.js`、`partnership.js`、`projmigrate.js`、`publication.js`、`ratelimit.js`、`receiptbounds.js`、`records.js`、`recruit.js`、`registry.js`、`replay.js`、`report.js`、`reportfeedback.js`、`reportfeedbackdelivery.js`、`reporttransport.js`、`repropack.js`、`resource.js`、`resume.js`、`resumeflush.js`、`retention.js`、`reviewers.js`、`rules.js`、`scheduler.js`、`script-bridge.js`、`settings-defaults.js`、`skills.js`、`stateversion.js`、`store.js`、`storepolicy.js`、`tasks.js`、`tenure.js`、`timevalue.js`、`topology.js`、`transaction.js`、`trust.js`、`work.js`、`workflow.js` |
+| `kernel/prompt/` | `index.js` |
+| `kernel/turn/` | `index.js` |
+| `kit/` | `extras.js`、`handlers.js`、`tools.js` |
+| `packs/example-data/` | `README.md` |
+| `packs/example-data/prompts/` | `sections.json` |
+| `packs/institute-min/` | `index.js` |
+| `packs/research-core/` | `index.js`、`paper-flow.js` |
+| `packs/v3-core/` | `index.js` |
+| `packs/v3-core/settings/` | `declarations.js` |
+| `packs/v3/` | `README.md`、`index.js`、`tools.js` |
+| `packs/v3/middleware/` | `dataplane.js`、`defects.js`、`gates.js`、`lean-gate.js`、`methods.js`、`paper-close.js`、`planner.js`、`reports.js`、`subquestions.js`、`tick.js`、`toolfilter.js`、`verify.js` |
+| `packs/v3/prompts/` | `assistant.json`、`briefs.js`、`index.js`、`knowledge.js`、`paper.js`、`planner.js`、`roles.js`、`sections.json` |
+| `packs/v3/settings/` | `declarations.js`、`defaults.json` |
+| `packs/v5r/` | `blueprint.js`、`index.js`、`leadership.js`、`meeting-procedures.js`、`meeting-tool-face.js`、`member-scope.js`、`notices.js`、`paper-quality.js`、`paper.js`、`reply-field-adapters.js`、`runtime.json`、`seat-faces.js`、`tools.js`、`verification-gates.js`、`verified.js` |
+| `packs/v5r/middleware/` | `artifact-counter.js`、`motion-box.js`、`paper-dispatch.js`、`prompt-switches.js`、`stall-meeting.js`、`verified-policy.js` |
+| `packs/v5r/prompts/` | `assistant.json`、`v5r-assistant.js`、`v5r-blocks-a.js`、`v5r-blocks-b.js`、`v5r-charter.js`、`v5r-core.js`、`v5r-corrections.js`、`v5r-paper-prompts.js`、`v5r-persona.js`、`v5r-prompts.js`、`v5r-reply-channel.js` |
+| `packs/v5r/settings/` | `declarations.js`、`defaults.js`、`defaults.json` |
+| `settings/` | `env-needs.js`、`planned.js`、`schema.js` |
+| `tools/` | `activity.js`、`admission.js`、`arbitration.js`、`audit.js`、`auditchain.js`、`bidding.js`、`board.js`、`bridge.js`、`budget.js`、`capacity.js`、`charter.js`、`chat.js`、`citations.js`、`clockguard.js`、`collab.js`、`conference.js`、`control.js`、`custody.js`、`discipline.js`、`env.js`、`explain.js`、`external.js`、`fairness.js`、`fidelity.js`、`formal.js`、`governance.js`、`handover.js`、`human.js`、`idempotency.js`、`ip.js`、`mailbox.js`、`mathadapters.js`、`mathjobs.js`、`mathtools.js`、`meeting.js`、`member-tools.js`、`minutes.js`、`notify.js`、`panel.js`、`projmigrate.js`、`publication.js`、`ratelimit.js`、`recruit.js`、`report.js`、`retention.js`、`reviewers.js`、`task.js`、`topology.js`、`transaction.js`、`turn.js`、`vote.js` |
+
+> ★★ **本块由生成器拥有**：`<!-- BEGIN GENERATED: preset-roster -->` 之间的内容**不许手改** ✓ —— 改真源后跑 `node scripts/generate-preset-roster.mjs --write` ✓；★ 门禁：`tests/audit-installer-policy.test.mjs §8`（PRESETS **等于** roster）与 `tests/audit-package-membership.mjs`（roster ⊆ shipped）✓。
+
+<!-- END GENERATED: preset-roster -->
+
 
 ### 6.1 ★★ 文件类型 → 必须进哪个清单（**权威表**）
 

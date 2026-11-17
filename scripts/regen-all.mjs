@@ -30,6 +30,10 @@ const STEP_FLAG = MODE === 'write' ? '--write' : '--check'
 const STEPS = [
   ['coverage debt (docs/acceptance/audit-coverage-debt.md)', 'scripts/generate-coverage-debt.mjs', '--write'],
   ['glossary table (docs/01-§7)', 'scripts/generate-glossary-table.mjs'],
+  // ★ C#6 (TB-2792 Step 6): the preset roster has ONE data source (`vibe-math-vmu/roster.json`) and the docs/27 tables
+  // are derived from it. This step makes a drifting roster a regen failure, exactly like every other generated artefact -
+  // before it, a new preset file could be added to one hand-written roster and forgotten in the other (rounds 4-8).
+  ['preset roster (docs/27-§6.6)', 'scripts/generate-preset-roster.mjs'],
   // ROUND 136: the pack prompt TEXT is generated from the corpus so the pack cannot become a second, drifting copy.
   // It is in the chain for the same reason every other generated artefact is: a difference between the module and
   // the corpus must be a CHECK FAILURE, not something a reader has to notice.

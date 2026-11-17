@@ -12,8 +12,21 @@
 // institution means, and a capability that is switched on without its seam is refused BY NAME
 // (VMU_ENGINE_UNAVAILABLE) instead of quietly behaving as if it were off.
 //
-// Ownership rule applied here (docs/04 搂11, P3): the kernel carries MECHANISM only. Nothing in this
-// file names a role, a stage, a paper or a policy - those arrive as settings values or pack content.
+// Ownership rule applied here (docs/04 §11, P3; C#7, docs/02 §1.1): this file carries GENERIC PRIMITIVES, not research
+// policy. What it really provides:
+//   · the assembly itself: store / bus / hook subscription / prompt pipeline / turn loop / pack loader / registry;
+//   · generic faces and seams: settings, records, library, meetings, ballot box, tasks, core status sections;
+//   · generic engines: the LaTeX compile primitive (engine order / absolute command / timeout are INJECTED by the
+//     caller — this file reads no `vmu.paper.*` key), the Lean engine primitive, and the service / reply-field-adapter
+//     contribution seams a pack uses to publish its own implementations.
+// What it no longer owns, and what is still being moved:
+//   · MOVED: the paper face (`kernel/paper.js` deleted; the flow lives in packs/research-core, the institution policy
+//     in packs/v5r), the verified-track status policy (a v5r `vmu.status` section now), and the reply fields
+//     formal/lean_archive/lean_run (v5r runtime.json + pack adapters).
+//   · STILL LOCAL, i.e. NOT YET TRUE: the reviewers, publication, formal, mathjobs and fidelity faces are still
+//     constructed in this file. Their construction/policy is the remaining Step 3-5 migration; this comment must not be
+//     read as "kernel names no research face" until those are gone. Each getter already goes through `resolveFace`, so a
+//     pack-provided implementation can replace a local one once the local construction is removed.
 
 /** Public-interface version of this module's surfaces (docs/03 搂7, D13-O3). */
 export const apiVersion = 1
@@ -3040,6 +3053,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     sectionPolicy: sectionPolicy || null,
     // ★★★ P0-b: the pack's own reply fields (empty ⇒ core table only).
     replyFields: Array.isArray(replyFields) && replyFields.length > 0 ? replyFields : null,
+    // ★ TB-2794 Step 2: adapters are resolved at dispatch time (pack apply happens after construction).
+    resolveReplyAdapter: (name) => replyAdapterOf(name),
     // ★★★ C#16 (ROUND-2 audit): the STORE-BACKED idempotency ledger. Handed to the turn loop so a dispatch replay after a
     // crash/restart consults the durable ledger (key turnId|field|callIndex) instead of writing the same act twice.
     idempotency,
@@ -3424,6 +3439,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
    * a disposer and unregister removes it. The kernel only merges names into status(); it never knows what they mean.
    */
   const statusSections = new Map()
+  // ★ TB-2794 Step 2 (G2#4, MEASURED): a pack's slots declaration makes `vmu.members` appear; unload called
+  // `declareSlots([])` but the registry entry survived, so the FULL-TABLE unload receipt correctly said residueFree:false.
+  // Track whether THIS declaration published the service, and retract it when the declaration is emptied.
+  let membersPublishedByDeclaration = false
   const statusService = Object.freeze({
     registerSection(name, fn) {
       const id = typeof name === 'string' ? name.trim() : ''
@@ -3559,6 +3578,27 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // Until a face's local construction is deleted, a pack may NOT shadow it (dual implementation is forbidden); the local
   // value keeps winning and provideService refuses with VMU_SERVICE_CONFLICT. Once the local construction is gone, the same
   // contribution becomes the face: every reader resolves through the ONE seam below, and status says WHO provides it.
+  // ★ TB-2794 Step 2: PACK REPLY-FIELD ADAPTERS. A reply field may declare `adapter:"<name>"`; the pack supplies the
+  // function through this seam (manifest replyFieldAdapters), so the kernel dispatches a shape it does not own — and a
+  // field whose adapter is missing is a NAMED skip (never raw dispatch, never "unknown field").
+  const replyFieldAdapters = new Map()
+  const registerReplyFieldAdapter = ({ name, adapt, by = null } = {}) => {
+    const key = typeof name === 'string' ? name.trim() : ''
+    if (!/^[a-z][a-z0-9-]*$/.test(key)) throw refuse('VMU_INVALID_ARGUMENT', 'reply-field adapter name must be lower-case words joined by "-": ' + JSON.stringify(name), 'e.g. registerReplyFieldAdapter({name:"v5r-formal-check", adapt})')
+    if (typeof adapt !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'reply-field adapter ' + key + ' needs a function', 'adapt(payload, ctx) must return {ok:true,args:[…]} or {ok:false,reason,code,message,hint}')
+    if (replyFieldAdapters.has(key)) throw refuse('VMU_SERVICE_CONFLICT', 'reply-field adapter ' + key + ' is already registered by ' + (replyFieldAdapters.get(key).by || 'the kernel'), 'one adapter name has one owner; unload/replace the previous contribution first')
+    replyFieldAdapters.set(key, { adapt, by: by === null || by === undefined ? '(unattributed)' : String(by) })
+    return { ok: true, name: key, providedBy: replyFieldAdapters.get(key).by }
+  }
+  const retractReplyFieldAdapter = ({ name, by = null } = {}) => {
+    const key = typeof name === 'string' ? name.trim() : ''
+    const row = replyFieldAdapters.get(key)
+    if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no reply-field adapter is registered under that name: ' + key, 'only a registered adapter can be retracted')
+    if (by !== null && by !== undefined && row.by !== String(by)) throw refuse('VMU_NOT_PERMITTED', 'adapter ' + key + ' belongs to "' + row.by + '", not "' + String(by) + '"', 'only its contributor may retract it')
+    replyFieldAdapters.delete(key)
+    return { ok: true, name: key, removed: true, providedBy: row.by }
+  }
+  const replyAdapterOf = (name) => { const row = replyFieldAdapters.get(String(name)); return row ? row.adapt : null }
   const providedServices = new Map()
   const providedCatalog = () => {
     const out = {}
@@ -4225,8 +4265,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // Publication follows DECLARATION: a service that did not exist a moment ago must appear in the
       // contract as soon as it does, otherwise a pack's alias to it is refused for the wrong reason.
       if (members) {
-        try { registry.register('vmu.members', { apiVersion: 1 }, { kind: 'service', description: 'role slots and roster' }) }
+        let registeredNow = false
+        try { registry.register('vmu.members', { apiVersion: 1 }, { kind: 'service', description: 'role slots and roster' }); registeredNow = true }
         catch (e) { if (!e || !/already registered/.test(String(e.message))) throw e }
+        if (registeredNow) membersPublishedByDeclaration = true
+      } else if (membersPublishedByDeclaration) {
+        // The declaration that published it is gone: the service must disappear with it, or unload leaves residue.
+        try { if (typeof registry.unregister === 'function') registry.unregister('vmu.members', { declaration: true }) } catch { /* already gone is the same end state */ }
+        membersPublishedByDeclaration = false
       }
       // ★ THE ORDER BUG THAT COST THE ROSTER ITS DURABILITY (measured on the real machine, run 13 → round 14):
       // `attachDeclaredProjections()` runs at the END OF THIS FACTORY, and at that moment `members` is null — the pack
@@ -5485,6 +5531,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // ★ TB-2794 Step 0: the service contribution seam (pack manifest services + module api.services.provide).
     provideService,
     retractService,
+    registerReplyFieldAdapter,
+    retractReplyFieldAdapter,
     service: serviceOf,
     providedServices,
     notePackUnloaded(id) { packNotesLog.push({ id, at: clock(), what: 'unloaded' }); return { ok: true } },
@@ -5576,20 +5624,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       const view = {
         enabled: true,
         active: started,
-        // ★★ P0-f: the verified-track warrant policy is a READING (which kinds may settle a conclusion), so a reader
-        // never has to infer it from the settings dump; default false = social warrants remain accepted.
-        verifiedWarrantPolicy: (() => {
-          const req = settings['vmu.verified.requireMachineWarrant'] === true
-          return { requireMachineWarrant: req, machineOrLiterature: req, machineCheckedOnly: false,
-            literaturePolicy: { kind: 'human-reviewed-citation', measured: false,
-              means: 'policy declaration, NOT a measurement: a literature warrant is human-reviewed evidence by this institute policy; the product cannot verify a human read the source' },
-            acceptedKinds: req ? ['lean-conformance', 'literature'] : ['debate-unanimous', 'lean-conformance', 'literature'],
-            setting: 'vmu.verified.requireMachineWarrant',
-            source: req
-              ? 'vmu.verified.requireMachineWarrant=true: machine-checked (lean-conformance) OR literature citations settle a conclusion — a citation is HUMAN-reviewed evidence, not a machine proof, so this policy is NOT machine-checked-only; a social vote is refused'
-              : 'the default (vmu.verified.requireMachineWarrant=false): a SOCIAL warrant (debate-unanimous) is accepted as a judge — agreement is not proof of correctness, so set the setting to true to require machine-checked/literature evidence',
-          }
-        })(),
+        // ★ TB-2794 Step 2: the verified-track warrant policy is PACK-OWNED now. A deployment that mounts v5r gets it
+        // from that pack's `vmu.status` section (`sections.verifiedWarrantPolicy`); a kernel with no pack has no such
+        // reading — absent, not an empty object — and this file no longer names `vmu.verified.*` at all.
         // ROUND 1 / K5: the ONE pack path, stated rather than implied. `loader` means `kernel/pack.js` via the injected
         // `packApplier` (the entry's path); `none` means `usePack()` refuses by name. There is no third value, because a
         // legacy in-kernel loader no longer exists (D-02).
@@ -5669,6 +5706,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // ★ TB-2794 Step 0: services CONTRIBUTED by packs/modules, with the provider named. Empty after an unload —
         // "absent because nobody provides it" and "absent because the unload removed it" are both readable here.
         servicesProvided: servicesProvided(),
+        // ★ TB-2794 Step 2: pack-supplied reply-field adapters, with their owner (empty after unload).
+        replyFieldAdaptersProvided: [...replyFieldAdapters.entries()].map(([name, row]) => ({ name, providedBy: row.by })),
         servicesProvidedMeans: 'servicesProvided = faces the KERNEL did not construct: each names the pack/module that contributed it (registry.status().services[].providedBy carries the same fact). Read this before concluding a face is missing from the assembly: a missing face with no entry here was never provided, not unloaded silently',
         // `packs` must reflect what is ACTUALLY applied - including packs applied through the pack loader,
         // which records itself in the notes; a status that only tracks usePack() would under-report.

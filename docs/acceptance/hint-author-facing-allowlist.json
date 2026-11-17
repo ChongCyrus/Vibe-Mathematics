@@ -11,7 +11,7 @@
     },
     {
       "file": "vibe-math-vmu/kernel/pack.js",
-      "line": 1009,
+      "line": 1023,
       "name": "declarePackTools",
       "why": "host author: declaring pack tools requires a host bridge capability. The refusal is raised while the HOST wires a pack declaration, not in a seat receipt.",
       "owner": "host-integration"
@@ -74,7 +74,7 @@
     },
     {
       "file": "vibe-math-vmu/kernel/index.js",
-      "line": 2327,
+      "line": 2340,
       "name": "open",
       "why": "kernel author: the ledger refuses outside a member-scoped turn; the hint cites kernel/turn/index.js open(), an internal constructor the kernel author calls.",
       "owner": "kernel-core"

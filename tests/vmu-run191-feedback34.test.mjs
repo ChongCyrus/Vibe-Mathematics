@@ -30,6 +30,8 @@ const TOOLS = read('vibe-math-vmu/packs/v5r/tools.js')
 const HANDLERS = read('vibe-math-vmu/kit/handlers.js')
 const TURN = read('vibe-math-vmu/kernel/turn/index.js')
 const REPLY_CHANNEL = read('vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js')
+// TB-2794 Step 2: the formal adapter is PACK code now (kernel core table keeps framework fields only).
+const REPLY_ADAPTERS = read('vibe-math-vmu/packs/v5r/reply-field-adapters.js')
 const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
 
 const ok = (cond, msg, extra) => assert.ok(cond, msg + (extra === undefined ? '' : '\n' + JSON.stringify(extra, null, 2)))
@@ -76,18 +78,18 @@ test('RUN 191 §0 — the five sentences are in the source, where a later edit w
   // 2.4 the route to a real check is named
   has(GATES, 'lean_job:"lean-<n>"', '§0m the declaration-only note names how to get a real check')
   // 2.6 the taught shape is the shape the face reads
-  has(TURN, 'export const formalCheckArgs', '§0n the formal field has an adapter')
-  has(TURN, "reason: 'formal-shape'", '§0o a wrong shape is a NAMED skip, not a dead turn')
+  has(REPLY_ADAPTERS, 'export function formalCheckPayload', '§0n the formal field has an adapter (pack-owned after Step 2)')
+  has(REPLY_ADAPTERS, "reason: 'formal-shape'", '§0o a wrong shape is a NAMED skip, not a dead turn')
   has(REPLY_CHANNEL, '{statement, proof}', '§0p the taught line is the face\'s real shape')
   hasNot(REPLY_CHANNEL, '形式化结论 {decision,file,note}', '§0q and the old, unaccepted shape is gone')
 })
 
 test('RUN 191 §1 — a formalisation CARD in the `formal` field is skipped BY NAME instead of killing the turn', async () => {
-  const turn = await import(pathToFileURL(join(ROOT, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')).href)
-  const good = turn.formalCheckArgs({ statement: '任意 n 个正整数的平方和等于 n(n+1)(2n+1)/6', proof: 'theorem foo : True := trivial' })
+  const adapters = await import(pathToFileURL(join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'reply-field-adapters.js')).href)
+  const good = adapters.formalCheckPayload({ statement: '任意 n 个正整数的平方和等于 n(n+1)(2n+1)/6', proof: 'theorem foo : True := trivial' })
   ok(good.ok === true, '§1a the real shape is dispatched', good)
   ok(Array.isArray(good.args) && good.args[0].statement && good.args[0].proof, '§1b with statement and proof in the face\'s own argument object', good.args)
-  const card = turn.formalCheckArgs({ decision: true, file: 'Formal/rec-1.lean', note: '已完成' })
+  const card = adapters.formalCheckPayload({ decision: true, file: 'Formal/rec-1.lean', note: '已完成' })
   ok(card.ok === false, '§1c ★ the shape run 35 actually wrote is NOT dispatched')
   ok(card.code === 'VMU_MATH_INVALID_INPUT', '§1d the code names the same condition the face would have raised', card.code)
   has(card.message, 'formalisation CARD', '§1e ★ and the message says it is a CARD, not a proof script')

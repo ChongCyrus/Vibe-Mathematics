@@ -76,10 +76,14 @@ try {
   console.log('=== 0. 源码口径：REPLY_FIELDS 里有 formal；新句说清「收敛口径」并把清单交给回执（RUN 257） ===')
   {
     const owners = Object.keys(kernelTurn.FIELD_OWNERS)
-    ok(owners.length === 22, '§0a FIELD_OWNERS 仍是 22 个（机制没有被这套修法改动）', owners.length)
+    // TB-2794 Step 2: the three research fields moved to the v5r pack; core is 19 + 7 bookkept and the pack runtime
+    // declares the other 3 (SOURCED, not silently added), so the total stays 29 and the layering is asserted.
+    const packFields = JSON.parse(readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'runtime.json'), 'utf8')).replyFields.map((f) => f.field).filter((f) => f !== 'paper_claim')
+    ok(owners.length === 19, '§0a FIELD_OWNERS 是 19 个框架字段（研究字段已迁 pack，不是被删）', { core: owners.length, pack: packFields.length })
     ok(kernelTurn.RECORDED_FIELDS.length === 7, '§0b RECORDED_FIELDS 仍是 7 个', kernelTurn.RECORDED_FIELDS.length)
-    ok(kernelTurn.REPLY_FIELDS.length === 29 && kernelTurn.REPLY_FIELDS.includes('formal'),
-      '§0c ★ REPLY_FIELDS=29 且其中真有 formal（「只允许四个」因此是假话）', kernelTurn.REPLY_FIELDS.length)
+    ok(kernelTurn.REPLY_FIELDS.length === 26 && kernelTurn.REPLY_FIELDS.includes('formal') === false && packFields.length === 3 && packFields.includes('formal'),
+      '§0c ★ 29 = kernel 26 (19+7) + pack 3（formal/lean_archive/lean_run 由 v5r runtime 声明；kernel 不再命名它们）',
+      { kernel: kernelTurn.REPLY_FIELDS.length, pack: packFields.length })
     // non-vacuous: the 29-name list is a literal union of two named sources, so the count cannot be 0 by accident.
     ok(kernelTurn.REPLY_FIELDS.length === new Set(kernelTurn.REPLY_FIELDS).size,
       '§0d 29 个名字无重复（计数不是被重复项撑起来的）')

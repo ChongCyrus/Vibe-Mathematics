@@ -134,9 +134,6 @@ export const FIELD_OWNERS = Object.freeze({
   task_update: Object.freeze({ face: 'vmu.tasks', op: 'transition', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.transition(id, to)', 'use the tool face vibe_v5_task_update { task_id, expected_revision, action } — it maps claim/reassign/assign/transition/complete/reopen/set_dependencies onto the real transition and requires the revision token') }),
   proposal: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
   motion: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
-  formal: Object.freeze({ face: 'vmu.formal', op: 'check' }),
-  lean_archive: Object.freeze({ face: 'vmu.mathjobs', op: 'submit' }),
-  lean_run: Object.freeze({ face: 'vmu.mathjobs', op: 'submit' }),
   // ROUND 378: the rest of the reply surface the original parses (an independent audit measured 12 of 29). Every pair
   // below was checked against what the kernel's services REALLY expose at runtime - the meeting service carries speak,
   // motion, queue, attend and open; tasks carries assign and transition; the ballot box carries cast - so nothing here
@@ -1497,6 +1494,9 @@ export function mergeReplyFieldOwners(extraFields = null, core = FIELD_OWNERS) {
       face: decl.face, op: decl.op, packDeclared: true, pack: packId,
       ...(decl.shape === undefined ? {} : { shape: decl.shape }),
       ...(decl.textCoercion === undefined ? {} : { textCoercion: decl.textCoercion }),
+      // ★ TB-2794 Step 2: which ADAPTER the pack supplies for this field (resolved at dispatch time through the kernel
+      // seam). Validated here so a malformed name is a named refusal, never a silent no-op.
+      ...(decl.adapter === undefined ? {} : { adapter: (() => { const a = String(decl.adapter).trim(); if (!/^[a-z][a-z0-9-]*$/.test(a)) throw refuse('VMU_INVALID_ARGUMENT', 'pack reply field "' + field + '" declares an invalid adapter name: ' + JSON.stringify(decl.adapter), 'an adapter name is lower-case words joined by "-" (e.g. "my-pack-adapter")'); return a })() }),
     })
   }
   return Object.freeze(merged)
@@ -2459,7 +2459,10 @@ export function createTurnOrchestrator({
   // office, for one institute). The loop cannot own durability (it has no store), so it calls this seam on EVERY recorded
   // vote, through BOTH input channels (reply field and `vibe_vmu_vote`), and the kernel writes the shared fold row.
   // Absent ⇒ the historical, honest behaviour: the vote lives in this session and the reading says so.
-  persistClosureVote = null } = {}) {
+  persistClosureVote = null,
+  // ★ TB-2794 Step 2: resolves a pack reply-field adapter by name (kernel seam). null ⇒ pack fields that need an
+  // adapter are skipped BY NAME (VMU_TURN_FIELD_ADAPTER_NOT_WIRED), never dispatched raw and never treated as unknown.
+  resolveReplyAdapter = null } = {}) {
   const owners = resolveOwners(bindings, replyFields)
   const known = Object.keys(owners)
   // ★★★ P0-d C#16: REPLAY DOES NOT DOUBLE-WRITE. A dispatch that is retried with the SAME (turn, member, reply) gets the
@@ -4244,7 +4247,7 @@ export function createTurnOrchestrator({
     const r = reply && typeof reply === 'object' ? reply : {}
     return Object.keys(r).filter((k) => Object.prototype.hasOwnProperty.call(owners, k)).map((k) => {
       const owner = owners[k]
-      const step = { field: k, face: owner.face, op: owner.op, payload: r[k] }
+      const step = { field: k, face: owner.face, op: owner.op, payload: r[k], adapter: owner.adapter === undefined ? null : owner.adapter }
       // ★ a field with no reply shape is reported as such BEFORE any face lookup, so the receipt cannot claim
       // `face-not-wired` (which would blame the host for a field the reply could never express).
       if (owner.noReplyShape) step.notApplicable = owner.noReplyShape
@@ -4892,18 +4895,28 @@ export function createTurnOrchestrator({
       const taskCreate = (d.face === FIELD_OWNERS.task_create.face && d.op === FIELD_OWNERS.task_create.op)
         ? taskCreateArgs(d.payload)
         : null
-      // ★★★ RUN 191 (run 35 / FEEDBACK34 2.6): `formal` was the last reply field whose wrong shape KILLED the turn — the
-      // face threw VMU_MATH_INVALID_INPUT and the throw travelled out of `apply()`. It gets the same adapter treatment as
-      // `record`/`task_create`: a named skip with the accepted keys, and the turn survives to be answered again.
-      const formalCheck = (d.face === FIELD_OWNERS.formal.face && d.op === FIELD_OWNERS.formal.op)
-        ? formalCheckArgs(d.payload)
-        : null
+      // ★★★ TB-2794 Step 2: PACK REPLY-FIELD ADAPTERS. A face/op can be installed without the kernel knowing what the
+      // field's taught shape is (the research fields moved to packs). The pack declares `adapter:"<name>"` and supplies the
+      // adapter through the kernel seam; a field whose adapter is NOT registered is skipped BY NAME — never dispatched raw
+      // (a wrong shape would kill or mis-write the turn) and never reported as "unknown field" (it IS declared).
+      let packAdapted = null
+      if (d.adapter) {
+        const fn = typeof resolveReplyAdapter === 'function' ? resolveReplyAdapter(d.adapter) : null
+        if (typeof fn !== 'function') {
+          counts.notExecuted += 1
+          skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'adapter-not-wired',
+            code: 'VMU_TURN_FIELD_ADAPTER_NOT_WIRED', adapter: d.adapter,
+            means: 'this reply field is DECLARED by a pack and binds an adapter that this kernel does not hold, so it was not dispatched. Wire the pack adapter (kernel.registerReplyFieldAdapter) or remove the field declaration; it is NOT an unknown field and it was NOT sent to the face raw.' })
+          continue
+        }
+        packAdapted = fn(d.payload, { memberId, declaredTracks, describeShape: describeReplyShape })
+      }
       // ★ RUN 229 / task-13: `progress` accepts the taught TEXT form (mapped to one complete row) and refuses an object
       // with no track by naming the shape it received - the refusal that used to leak "unknown record track: undefined".
       const progressField = (d.face === FIELD_OWNERS.progress.face && d.op === FIELD_OWNERS.progress.op)
         ? progressArgs(d.payload, memberId)
         : null
-      const adapted = progressField !== null ? progressField : (recordLog !== null ? recordLog : (taskCreate !== null ? taskCreate : formalCheck))
+      const adapted = progressField !== null ? progressField : (recordLog !== null ? recordLog : (taskCreate !== null ? taskCreate : (packAdapted !== null ? packAdapted : null)))
       if (adapted !== null && adapted.ok !== true) {
         counts.notExecuted += 1
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: adapted.reason, code: adapted.code,
@@ -7620,39 +7633,6 @@ export const taskCreateArgs = (payload) => {
  * Pure, so the promise is assertable without a live host. `{decision,file,note}` is a CARD, not a proof script: it is
  * refused with that sentence rather than dispatched into a compile that cannot run.
  */
-export const formalCheckArgs = (payload) => {
-  const hint = 'send { formal: { statement: "<命题原文>", proof: "<Lean 证明脚本正文>" } } — the field dispatches to the formal-check service, whose real arguments are statement and proof (allowSorry optional); {decision,file,note} is a CARD, not a proof script, and this field cannot carry it'
-  const missing = []
-  const problems = []
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    missing.push('statement', 'proof')
-    problems.push('the field holds ' + describeReplyShape(payload) + ' instead of an object')
-  } else {
-    if (typeof payload.statement !== 'string' || payload.statement.trim() === '') {
-      missing.push('statement')
-      problems.push('statement is ' + describeReplyShape(payload.statement))
-    }
-    if (typeof payload.proof !== 'string' || payload.proof.trim() === '') {
-      missing.push('proof')
-      problems.push('proof is ' + describeReplyShape(payload.proof))
-    }
-    const extra = Object.keys(payload).filter((k) => ['statement', 'proof', 'allowSorry'].indexOf(k) < 0)
-    if (extra.length) {
-      // A card written as the field's taught shape is the measured case: name it instead of listing keys as "unknown".
-      const cardish = extra.some((k) => ['decision', 'file', 'note'].indexOf(k) >= 0)
-      problems.push(cardish
-        ? 'it also carries ' + extra.join(', ') + ' — that is the shape of a formalisation CARD ({decision,file,note}), and a card is not a proof script: the face reads statement and proof'
-        : 'unknown key(s) ' + extra.join(', ') + ' (accepted: statement, proof, allowSorry)')
-    }
-  }
-  if (missing.length) {
-    return { ok: false, reason: 'formal-shape', code: 'VMU_MATH_INVALID_INPUT', missing,
-      message: 'the formal reply field cannot be dispatched: ' + problems.join('; '), hint }
-  }
-  const args = { statement: payload.statement, proof: payload.proof }
-  if (payload.allowSorry !== undefined) args.allowSorry = payload.allowSorry
-  return { ok: true, args: [args] }
-}
 
 /**
  * ★★★ RUN 229 / task-13 — THE `progress` REPLY FIELD: ONE TRUTH, AND A REFUSAL THAT NAMES WHAT ARRIVED.

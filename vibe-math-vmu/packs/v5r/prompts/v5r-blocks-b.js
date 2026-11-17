@@ -55,7 +55,7 @@ const REPLY_COMPACT_TEXT = [
         // this one appears in thirty-three entries across eighteen kinds, while the other (`协调需要时可用assign（…）、
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
-        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
+        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明见设置 `vmu.turn.protocolPath` 指向的协议文件；没有该设置就向主席索取。',
 ].join('\n')
 const REPLY_COMPACT_TEXT_TEMP = REPLY_COMPACT_TEXT.split('\n').filter((l) => !l.includes('vibe_v5_verdict') && !l.includes('vibe_v5_record_')).join('\n')
 
@@ -321,7 +321,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       academician: [
         '【回执最小形状】围栏写**字段本身**，不是工具参数：' + String.fromCharCode(96) + '{"say":"…","solved":false}' + String.fromCharCode(96) + '（一个字段也要成句）；**围栏不要写 ' + String.fromCharCode(96) + 'op' + String.fromCharCode(96) + '**；所办代转才用 ' + String.fromCharCode(96) + 'vibe_vmu_turn {op:"reply", member, report:{…}}' + String.fromCharCode(96) + '。',
-        '只有**所办代转**时才用工具调用参数 `vibe_vmu_turn {op:"reply", member, report:{…}}`——那是调用参数，不是围栏形状；成员/临时工永远写字段。',
+        '只有**所办代转**时才用工具调用参数 `vibe_vmu_turn {op:"reply", member, report:{…}}`——那是调用参数，不是围栏形状；成员/临时工永远写字段；**一次回复至少一个字段**。',
       ].join('\n'),
       researcher: [
         '【回执最小形状】回复正文围栏里写**字段本身**：最小合法形状 `{"say":"…","solved":false}`（一个已登记字段也要成句：键 + 值）；**围栏里不要写 `op`**（那是所办代转的工具参数，不是回复字段）。',
@@ -449,7 +449,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       academician: [
-        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。**注意**：Lean 通过只指**编译通过**，不代表命题为真，仍需保真收口。你可以维持、修改或反驳任何人的看法。',
+        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。**注意**：Lean 通过只指**编译通过**，不代表命题为真，仍需保真收口（formal-status 的「未尝试」只指**本席**未尝试；该对象的历史证明以记录为准）。你可以维持、修改或反驳任何人的看法。',
         '若你认为某条"已通过"的结论其实不成立（或代码与命题不符），**不要用弃权来卡住流程**——给 `vibe_v5_verdict` 一个你相信的概率并写清理由，框架会记为 pending、撤回该条证明并写入形式化待办。只有你确实无法判断时，才给一个严格介于 0 与 1 之间的值。',
       ].join('\n'),
       researcher: [
@@ -731,7 +731,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     texts: {
       normal: [
-        '计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。近似、替代与有限搜索的范围须声明，不得当成精确证明。详细操作按需读 {{ setting:vmu.turn.protocolPath }}',
+        '计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。近似、替代与有限搜索的范围须声明，不得当成精确证明。详细操作按需向主席/所办索取（设置键 `vmu.turn.protocolPath`）。',
       ].join('\n'),
     },
   },
@@ -1062,7 +1062,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // KERNEL face (the pack face `vibe_v5_meeting` only convenes). The words after `until:` are the kernel's own
         // WAIT_UNTIL_MODES, and a wake is a DELIVERED TURN (a real activation in a live deployment), never a
         // synchronous answer — a manual that promises "an answer" would be the next measured lie.
-        '  · 等待与唤醒：等会里的事用 `vibe_vmu_meeting { action:"wait", id:"<会 id>", member:"<你>", until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选毫秒>, reason:"<可选>" }`：登记是**耐久**的，不是挂起——本回合照样交回；事件发生（发言／动议或附议／投票／相位变更／点名／结会／到点）时内核**唤醒你＝投递一个回合**（真机走激活，回执可能先给 `pending:true`、之后原地结算 `woken`），不是随叫随到的解答。**一次只等一件事**（再登记会替换旧的），别轮询；改主意用 `vibe_vmu_meeting { action:"unwait", id, member }`。',
+        '  · 等待与唤醒：等会里的事用 `vibe_vmu_meeting { action:"wait", id:"<会 id>", member:"<你>", until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选毫秒>, reason:"<可选>" }`：登记是**耐久**的，不是挂起——本回合照样交回；事件发生（发言／动议或附议／投票／相位变更／点名／结会／到点）时内核**唤醒你＝投递一个回合**（宿主以投递回合的方式激活，回执可能先给 `pending:true`、之后原地结算 `woken`），不是随叫随到的解答。**一次只等一件事**（再登记会替换旧的），别轮询；改主意用 `vibe_vmu_meeting { action:"unwait", id, member }`。',
       ].join('\n'),
       researcher: [
         '【会议进行中：你的会中动作（只在会议回合出现）】在服务会议上发言前先 `vibe_vmu_meeting { action:"attend", id, member }`（签到是座位登记；★ RUN 239-D：`vibe_v5_meeting` 只召集、不派发动作，派发动作都在内核面 `vibe_vmu_meeting`）；想发言用 `hand` 自荐入队，被主席 `invite` 后按队列序；`vibe_v5_say` 回执的 `speechBound` 是你的发言界（`extend` 是主席动作，你自报身份会被拒；`silent`/`end` 在服务会议上具名拒）；等会里的事（发言／动议／投票／结会／到点）用 `vibe_vmu_meeting { action:"wait", id, member, until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选> }`——耐久登记，事件发生才唤醒并投递一个回合，别轮询；改主意用 `action:"unwait"`。等**信**才用 `vibe_v5_wait`。主席对全体发言会推送到你：不用轮询，下一回合提示最上方的 `[新到的消息]` 块里有一行【主席发言·<speaker> @ <会 id>】+ 摘要；全文用 `vibe_v5_meeting {op:"minutes", id:"<会 id>"}` 读纪要第 N 条，读完用 `vibe_vmu_mailbox {action:"ack", member:"<你>", ids:["<邮件 id>"]}` 结算才消失；普通成员的发言只进纪要、不推送。',

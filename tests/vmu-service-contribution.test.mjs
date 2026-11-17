@@ -154,6 +154,40 @@ const newTree = (tag) => {
   ok(k.service('vmu.probe.denied') === null, '★★ and nothing was published by the denied module', k.service('vmu.probe.denied'))
 }
 
+// ── 4b. TB-2794 Step 2 (round-8 audit, P2): the pack's create() CANNOT reach the registry, and residueFree is a
+// FULL-TABLE claim (an unattributed registration must make the unload receipt FALSE, not be invisible).
+{
+  const km = await importFrom(SRC, 'kernel/index.js')
+  const packm = await importFrom(SRC, 'kernel/pack.js')
+  const k = km.createKernel({ clock: () => 1000 })
+  const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+  let seen = null
+  await loader.apply({ id: 'facade-pack', version: '1.0.0', services: [{ name: 'vmu.probe.facade', apiVersion: 1,
+    create: (ctx) => { seen = ctx; return { ping: () => 1 } } }] })
+  ok(seen && typeof seen === 'object' && seen.kernel === undefined && seen.registry === undefined,
+    '★★★ P2: create() receives a RESTRICTED facade — no raw kernel, no registry (the bypass path is not reachable)',
+    seen && Object.keys(seen))
+  ok(seen && typeof seen.facade === 'object' && typeof seen.facade.service === 'function' && typeof seen.facade.settingsSnapshot === 'function' && typeof seen.facade.provideService === 'function',
+    '★★ P2: the facade exposes only the declared seams (service/settingsSnapshot/log/provide/retract/adapter)',
+    seen && seen.facade && Object.keys(seen.facade))
+  throwsCode(() => { throw Object.assign(new Error('x'), { code: 'VMU_ENGINE_UNAVAILABLE' }) }, 'VMU_ENGINE_UNAVAILABLE', 'sanity: throwsCode works')
+  // a registration made BETWEEN apply and unload is NOT attributed to the pack — residueFree must still be false
+  k.registry.register('vmu.tp.bypass', { ping: () => 'survives' }, { apiVersion: 1, providedBy: 'unattributed' })
+  const un = await loader.unload('facade-pack')
+  ok(un && un.residueFree === false && Array.isArray(un.residue) && un.residue.includes('vmu.tp.bypass'),
+    '★★★ P2: residueFree is computed from the FULL registry table — an unattributed registration makes it FALSE and is NAMED',
+    un && { residueFree: un.residueFree, residue: un.residue })
+  ok(k.service('vmu.tp.bypass') !== null,
+    '★★ P2: and the receipt did not silently remove the unattributed service (it names the residue; cleanup is its owner)')
+  k.registry.unregister('vmu.tp.bypass')
+  // aliases targeting a service make unregister a NAMED VMU_ENGINE_UNAVAILABLE (docs/03), and the hint says remove it first
+  k.provideService({ name: 'vmu.probe.aliastarget', apiVersion: 1, impl: { ping: () => 1 }, by: 'alias-pack' })
+  k.registry.alias('vmu.probe.legacy', 'vmu.probe.aliastarget', { reason: 'test' })
+  throwsCode(() => k.retractService({ name: 'vmu.probe.aliastarget', by: 'alias-pack' }), 'VMU_ENGINE_UNAVAILABLE',
+    '★★ P2: unregistering a service still targeted by an alias is VMU_ENGINE_UNAVAILABLE (docs/03), never VMU_MIDDLEWARE_FAILED')
+  k.registry.removeAlias('vmu.probe.legacy')
+}
+
 // ── 5. LAMPS: remove one ingredient in a COPY and require the matching assertion to go red ──────────────────────────
 for (const [tag, mutate, expectedRed] of [
   ['getter-fallback', (dir) => {

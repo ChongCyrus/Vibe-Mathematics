@@ -54,6 +54,10 @@ function buildPackage(version, dir, transform) {
   mkdirSync(dir, { recursive: true })
   if (typeof transform === 'function') writeFileSync(join(dir, 'installer.js'), transform(readFileSync(INSTALLER_SRC, 'utf8')))
   else cpSync(INSTALLER_SRC, join(dir, 'installer.js'))
+  // ★ C#6: installer.js DERIVES PRESETS[].files from `vibe-math-vmu/roster.json` (one source), so a throwaway package
+  // copy must carry that data file exactly like the real tarball does (package.json#files lists it).
+  mkdirSync(join(dir, 'vibe-math-vmu'), { recursive: true })
+  cpSync(join(REPO, 'vibe-math-vmu', 'roster.json'), join(dir, 'vibe-math-vmu', 'roster.json'))
   writeFileSync(join(dir, 'package.json'), JSON.stringify({
     name: 'dsh-vibe-math', version, type: 'module', dsh: { bundle: { patch: './cordis.patch.yml' } },
   }, null, 2))
@@ -255,9 +259,51 @@ for (const p of PRESETS) {
   const runtime = ['agent.cordis.yml', 'preset.yml', p.src + '.js']
   const unmanagedRuntime = runtime.filter((f) => !p.files.includes(f))
   ok(unmanagedRuntime.length === 0, `${p.dst}: every runtime file is in the installer's managed list`, unmanagedRuntime.join(', '))
-  const EXEMPT = ['v2的额外要求.txt'] // an author note, deliberately not installed next to the preset
+  // ★ C#6: `roster.json` is the INSTALLER'S data file (read from the package root to derive THIS list), not a preset
+  // asset - copying it into `.agent-presets/<id>/` would only manufacture a second copy of the data next to the product.
+  // It is still shipped (package.json#files), and `tests/audit-installer-policy §8` + the generator both require that.
+  const EXEMPT = ['v2的额外要求.txt', 'roster.json'] // author note + the installer's own roster data: shipped, not preset assets
   const unmanaged = shippedFiles.filter((f) => !p.files.includes(f) && !EXEMPT.includes(f))
   ok(unmanaged.length === 0, `${p.dst}: every shipped file is managed or explicitly exempt`, unmanaged.join(', '))
+}
+
+// ★★★ C#6 (TB-2792 Step 6): THE MANAGED LIST HAS ONE SOURCE. `installer.js` DERIVES PRESETS[].files from
+// `vibe-math-vmu/roster.json`; §8 above checks the SHIPPED edge (every shipped file managed). This block pins the
+// DERIVATION itself, so the second hand-written copy cannot come back:
+//   · PRESETS must EQUAL the roster (order included) — a stale array or an installer that ignores the data is a FAIL;
+//   · the roster ships and every managed file is shipped+on disk+listed once (the generator's edges, asserted here too
+//     because this suite is the one a reader runs when the installer misbehaves);
+//   · installer.js carries NO literal list any more (`files: ['…']` is the old shape).
+{
+  const ROSTER = join(REPO, 'vibe-math-vmu', 'roster.json')
+  const roster = JSON.parse(readFileSync(ROSTER, 'utf8'))
+  ok(roster && roster.schema === 1 && Array.isArray(roster.presets) && roster.presets.length > 0,
+    'C#6: the one roster exists and declares at least one preset', roster && Object.keys(roster))
+  const derived = PRESETS.map((p) => ({ id: p.dst, src: p.src, files: p.files }))
+  const declared = roster.presets.map((p) => ({ id: p.id, src: p.src, files: p.files }))
+  // ★ RULE E shape B fix (audit-declaration-criterion:284, TB-2792 C#6): "derived equals declared" is only EVIDENCE
+  // when there is something to compare - two empty arrays are stringify-equal, so a roster that declared nothing and
+  // an installer that derived nothing would pass this check vacuously. The precondition is asserted FIRST and for the
+  // SHIPPED package (not for an empty dropper fixture): the real bundle must ship at least one preset, so the equality
+  // below compares at least one fully-populated entry. This is a real check (a PRESETS that silently becomes [] fails
+  // here by name), not a whitelist entry.
+  ok(derived.length > 0 && declared.length > 0,
+    'C#6 非空前置：PRESETS 与 roster 都至少有一个 preset（否则下面的相等比较是空=空，不能当覆盖证据）',
+    { presets: derived.length, rosterPresets: declared.length })
+  ok(JSON.stringify(derived) === JSON.stringify(declared),
+    'C#6: PRESETS[].files EQUALS the roster (the installer derives from ONE source; a second list would differ here)',
+    JSON.stringify({ derivedPresets: derived.map((p) => p.files.length), rosterPresets: declared.map((p) => p.files.length) }))
+  ok((pkg.files || []).includes('vibe-math-vmu/roster.json'),
+    'C#6: the roster itself ships (it is the data the installer reads at startup)')
+  const notShipped = roster.presets.flatMap((p) => p.files.filter((f) => !(pkg.files || []).includes(p.src + '/' + f)).map((f) => p.src + '/' + f))
+  ok(notShipped.length === 0, 'C#6: every managed file is SHIPPED (managed ⊆ shipped)', notShipped.join(', '))
+  const missing = roster.presets.flatMap((p) => p.files.filter((f) => !existsSync(join(REPO, p.src, f))).map((f) => p.src + '/' + f))
+  ok(missing.length === 0, 'C#6: every managed file EXISTS on disk (the roster cannot outlive a deleted file)', missing.join(', '))
+  const dupes = roster.presets.flatMap((p) => { const seen = new Set(); const d = []; for (const f of p.files) { if (seen.has(f)) d.push(p.src + '/' + f); seen.add(f) } return d })
+  ok(dupes.length === 0, 'C#6: no file is listed twice (a duplicate is a silent double copy)', dupes.join(', '))
+  const installerSrc = readFileSync(INSTALLER_SRC, 'utf8')
+  ok(!/files:\s*\[\s*'/.test(installerSrc), 'C#6: installer.js holds NO hand-written file list any more')
+  ok(installerSrc.includes('readPresetRoster') && installerSrc.includes('roster.json'), 'C#6: installer.js reads the roster (derivation is the only path)')
 }
 
 console.log('=== 9. a recorded version NEWER than this package (a downgrade) says so ===')
@@ -414,10 +460,16 @@ console.log('=== 14. a user edit inside a preset a NEWER package drops is KEPT =
   const recorded = (readJson(H.state) || {}).files || {}
   ok(recorded[edited.p.src + '/' + edited.f] && recorded[edited.p.src + '/' + edited.f].provenance === 'user',
     'the same-version edit is recorded as user-owned before the preset is dropped')
-  // "a newer package no longer ships this preset": rename its src in the copied installer, so the copy
-  // loop cannot rebuild it and the old keys become stale — exactly what the cleanup must handle.
-  const dropper = buildPackage('2.0.0', join(tmp, 'pkg-dropper'),
-    (src) => src.replace("src: 'vibe-math-vmu',", "src: 'vibe-math-vmu-dropped',"))
+  // "a newer package no longer ships this preset": ★ C#6 - the managed list is DATA now (`vibe-math-vmu/roster.json`),
+  // so the dropper package expresses the drop THERE (an empty presets array, a legitimate roster), not by editing a code
+  // literal that no longer exists. The copy loop then has nothing to rebuild and the old keys become stale - exactly
+  // what the cleanup must handle.
+  const dropper = buildPackage('2.0.0', join(tmp, 'pkg-dropper'))
+  writeFileSync(join(dropper, 'vibe-math-vmu', 'roster.json'), JSON.stringify({
+    schema: 1,
+    means: 'dropper fixture: this package ships NO presets (C#6 - the list is data, so the drop is data too)',
+    presets: [],
+  }, null, 2) + String.fromCharCode(10))
   const logs = await applyFrom(dropper, H.home, [])
   ok(existsSync(H.at(edited.p, edited.f)), 'the edited file of the dropped preset SURVIVES')
   ok((readText(H.at(edited.p, edited.f)) || '').includes('MY EDIT'), '...with the user\'s bytes intact')

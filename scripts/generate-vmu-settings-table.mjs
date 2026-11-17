@@ -111,10 +111,12 @@ const SOURCE_FILES = SOURCES.map((f) => {
  * THE DEFECT THIS FIXES (measured, not suspected): the 接线 column credits the first file whose text reads a key. That
  * is a necessary condition, not a sufficient one — a key can be read by a module the running plugin never imports. Two
  * such modules were measured by `tests/vmu-kernel-reachability.test.mjs`:
- *   · `kernel/paper.js` — owns six `vmu.paper.*` keys; `createPaper(` exists only in tests/scripts. The live v5r paper
- *     runs through `packs/v5r/paper.js` → `packs/research-core/paper-flow.js`, which reads NONE of them ⇒ the table said ✅ 已接线
- *     ("现在改就有效") about `vmu.paper.officeConsult='required'` while changing it could not change anything.
- *   · `kernel/grant.js` — owns four `vmu.grant.*` keys; `createGrant(` exists only in one test file.
+ *   · `kernel/paper.js` — 历史实测：它拥有多个 `vmu.paper.*` 键而 `createPaper(` 只在 tests/scripts 里存在，于是表格曾对
+ *     `vmu.paper.officeConsult='required'` 写 ✅ 已接线（改了其实没有反应）。★ **TB-2794 Step 1 已删除该文件**；现行真值：
+ *     officeConsult 五键由装配后的通用流程 `packs/research-core/paper-flow.js` 读取（已接线），其余 `vmu.paper.*`
+ *     （finalPaper/format/language/compilePdf，另 finalizer）是 **declared-not-wired**，逐条裁定见
+ *     `docs/acceptance/paper-migration-inert-keys.md`（Step 4/5 由 v5r pack 政策读取者接管）。
+ *   · `kernel/grant.js` — 仍是当前实测的不可达模块：四个 `vmu.grant.*` 键，`createGrant(` 只在一个测试文件里出现。
  * That is exactly the failure this project keeps paying for (设了值 ≠ 生效了), and it sat on the DOC face: a reader of
  * the manual would believe a refusal existed that never runs.
  *
@@ -393,13 +395,14 @@ export const UNDETERMINED = '❓ 未判定（可能走动态读取，静态看�
 /**
  * ★ THE FOURTH TIER — 「未接线（读取者不可达）」, added together with `DEAD_KERNEL`.
  *
- * WHY IT EXISTS: the three tiers above assume every file in the source tree can run. Two kernel modules cannot:
- * `kernel/paper.js` (10 `vmu.paper.*` keys) and `kernel/grant.js` (4 `vmu.grant.*` keys) are imported by nothing the
- * plugin loads — measured by `tests/vmu-kernel-reachability.test.mjs` and by the same graph walk this generator imports.
- * Before this tier those keys fell to `❓ 未判定`, i.e. the table said "maybe a dynamic read" about the one situation
- * where the truth is the opposite: the only reader is a module that is never constructed. A reader of the manual would
- * still have believed `vmu.paper.officeConsult='required'` armed a refusal. This tier says what is true, and pairs with
- * a carrier column that still names the dead module, so the claim can be checked instead of trusted.
+ * WHY IT EXISTS: the three tiers above assume every file in the source tree can run. Some kernel modules cannot:
+ * `kernel/grant.js` (4 `vmu.grant.*` keys) is imported by nothing the plugin loads — measured by
+ * `tests/vmu-kernel-reachability.test.mjs` and by the same graph walk this generator imports. (The original measured case,
+ * `kernel/paper.js`, was DELETED in TB-2794 Step 1: the live flow is `packs/research-core/paper-flow.js`, and the paper
+ * keys it does not read are declared-not-wired per `docs/acceptance/paper-migration-inert-keys.md`.) Before this tier
+ * those keys fell to `❓ 未判定`, i.e. the table said "maybe a dynamic read" about the one situation where the truth is the
+ * opposite: the only reader is a module that is never constructed. This tier says what is true, and pairs with a carrier
+ * column that names the dead module, so the claim can be checked instead of trusted.
  */
 export const NOT_WIRED_UNREACHABLE = '⚠️ 未接线（读取者不可达：该模块装配时不加载）'
 /** A comment line can never be evidence: R32's rule (a key named in a comment is documentation, not a reader). */
@@ -615,9 +618,10 @@ export function listIterationEvidence(key) {
  *
  * WHY A FOURTH TIER RATHER THAN REUSING `未判定`: before this, a key whose only reader is an unloadable kernel module
  * reported `❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有）` — which is the OPPOSITE of the truth. Nothing reads it
- * dynamically; the one module that would read it is never constructed. Measured on `vmu.paper.*` (10 keys) and
- * `vmu.grant.*` (4 keys): the table stopped SAYING "wired", but it said "undetermined", and a reader would still have
- * believed a refusal was armed. The tier names the actual state, so the manual cannot be read as "live, maybe".
+ * dynamically; the one module that would read it is never constructed. 历史实测覆盖过已删除的 `vmu.paper.*`（当时 10 键）
+ * 与现存 `vmu.grant.*`（4 键）：the table stopped SAYING "wired", but it said "undetermined", and a reader would still
+ * have believed a refusal was armed. The tier names the actual state, so the manual cannot be read as "live, maybe".
+ * （TB-2794 Step 1 后 paper 的现行真值见 `docs/acceptance/paper-migration-inert-keys.md`。）
  */
 export function deadReaderOf(key) {
   const ev = listIterationEvidence(key)

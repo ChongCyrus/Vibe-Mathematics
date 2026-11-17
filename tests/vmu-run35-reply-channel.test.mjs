@@ -24,6 +24,7 @@
 //
 // Run: node tests/vmu-run35-reply-channel.test.mjs        Last line: === VMU RUN35 REPLY CHANNEL: N passed, M failed ===
 
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -56,13 +57,19 @@ console.log('=== 1. THE DECLARATION IS THE KERNEL FIELD TABLE, IN BOTH DIRECTION
   const kernelRecorded = [...kernelTurn.RECORDED_FIELDS]
   const declared = decl.REPLY_FIELD_ROWS.map((r) => r.field)
   const kernelAll = kernelDispatch.concat(kernelRecorded)
+  // TB-2794 Step 2: the three research fields are PACK reply fields now (v5r runtime.json), not kernel core. The
+  // declaration must cover kernel core + pack runtime; the SOURCE is recorded so "new field untaught" stays a red.
+  const packDeclared = JSON.parse(readFileSync(join(V5R, 'runtime.json'), 'utf8')).replyFields.map((f) => f.field).filter((f) => f !== 'paper_claim' && kernelAll.indexOf(f) < 0)
+  // `paper_claim` is v5r's pre-existing pack field and is taught by its own section, not this 29-row channel table;
+  // the three Step-2 fields are the ones that moved out of the kernel core table.
+  const expectedAll = kernelAll.concat(packDeclared)
 
-  ok(declared.length > 0 && kernelAll.length > 0 && declared.length === kernelAll.length && new Set(declared).size === declared.length,
+  ok(declared.length > 0 && expectedAll.length > 0 && declared.length === expectedAll.length && new Set(declared).size === declared.length,
     'R35a. every declared row is one distinct field, and no field is listed twice',
-    { declared: declared.length, kernel: kernelAll.length })
-  ok(declared.length > 0 && kernelAll.length > 0 && JSON.stringify([...declared].sort()) === JSON.stringify([...kernelAll].sort()),
-    'R35b. the declared field set EQUALS kernel `FIELD_OWNERS` + `RECORDED_FIELDS` — a field added to the kernel cannot go untaught, and a field taught here cannot be invented',
-    { missing: kernelAll.filter((f) => !declared.includes(f)), extra: declared.filter((f) => !kernelAll.includes(f)) })
+    { declared: declared.length, kernelCore: kernelAll.length, pack: packDeclared.length, expected: expectedAll.length })
+  ok(declared.length > 0 && JSON.stringify([...declared].sort()) === JSON.stringify([...expectedAll].sort()),
+    'R35b. the declared field set EQUALS kernel `FIELD_OWNERS` + `RECORDED_FIELDS` + the PACK runtime replyFields — a new field (kernel OR pack) cannot go untaught, and a field taught here cannot be invented',
+    { missing: expectedAll.filter((f) => !declared.includes(f)), extra: declared.filter((f) => !expectedAll.includes(f)), packDeclared })
 
   const rows = new Map(decl.REPLY_FIELD_ROWS.map((r) => [r.field, r]))
   const mismatched = []

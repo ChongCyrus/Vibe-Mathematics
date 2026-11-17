@@ -2,7 +2,7 @@
 
 > 状态：**草案 v0.2**（v0.1 的现状描述**全部保留**，本版只做扩充与校准）
 > 上位：`01-philosophy.md`（R2 能力齐备 / R1 零策略 / R11 具名拒绝 / R12 可复现）、`02-architecture.md`（内核 G 分区）
-> 立场：内核提供**计算/形式化能力与适配器接口**；**"何时要求形式化、什么算证明、要不要编译、超时多少"全部由 settings/中间件/pack 决定**。
+> 立场：内核提供**计算/形式化能力与适配器接口**；**"何时要求形式化、什么算证明、要不要编译、超时多少"全部由 settings/中间件/pack 决定**。★ **TB-2794 现状（按「已迁/待迁」写）**：**引擎/作业/归档原语在 kernel**（`kernel/lean.js`、`kernel/mathjobs.js`）；**形式化面的构造与 `formalVerify`／`leanInitiative` 等政策键的读者**仍在 kernel、正在迁 `packs/research-core/`（Step 2/3）——逐面清单见 `02-architecture.md` §1.1（C#7 口径）。
 > 复用：共享模块 `math-computation.js`（v2–v5r 共用，探测判决＝"原样复用"）＋ vmu 侧接线 `host-math.js` ✓。
 > **口径（本卷与 15 卷共用）**：正文对**已实现**的键按 04 卷登记如实引用 ✓；对**计划**中的设置一律只写**通配家族**（如 `vmu.math.<族>.*`）✗ 不写具体键名 —— 具体拟增键统一在任务回报中登记，由 04 卷落定 ✓。未实现的能力/工具/协议一律带标记词 **⛔**。
 
@@ -494,6 +494,8 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 | 安装/依赖 | 不装（只出安装计划；`user` 作用域默认 ✓） | 允许按需安装／离线白名单 | 包清单与安装作用域子族（通配；键名见 04 卷）✓ |
 
 > **R1 静态门**：内核里找不到"必须形式化""形式化权重"这类策略字样；上表右侧的**具体键名一律不在内核**。
+>
+> ★ **TB-2794 现状（本表的"策略外置"是设计口径，不是已完成态）**：**形式化引擎/作业/归档是 kernel 原语**（`kernel/lean.js`／`kernel/mathjobs.js`，Lead 裁决 2026-11-17 21:02）；**形式化面（`createFormal`）与 `vmu.math.formalVerify`／`leanInitiative` 政策键的读者**仍由 `kernel/index.js` 本地构造，**待迁** `packs/research-core/`（Step 2/3）。已迁的只有 paper 流程（`packs/research-core/paper-flow.js`）。
 
 ---
 
@@ -547,7 +549,7 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 |---|---|---|---|
 | **settings**（`vmu.math.*` 通配族） | 选引擎与优先级、超时、精度/容差策略、安装作用域、能力开关 | 不能改"判据"（哪些结论算证据由中间件/pack 定） | ✓ 已有 6＋8 个已实现键；⛔ 其余族待登记 |
 | **中间件**（`vmu.middleware.*`，通配） | 在作业前后插入检查（预算、策略、证据要求）、改写 job/result、拒绝 | 不能伪造引擎结果或哈希 | ✓ 机制已实现（05 卷）；⛔ 尚无"数学专用中间件"示例 |
-| **pack**（`vmu.pack.*`，通配） | 定义/替换/组合"某个阶段必须形式化""形式化权重"等组织级策略 | 不能越过内核闸门（预算/路径/身份） | ✓ 机制已实现（10 卷）；⛔ 数学族 pack 待写 |
+| **pack**（`vmu.pack.*`，通配） | 定义/替换/组合"某个阶段必须形式化""形式化权重"等组织级策略 | 不能越过内核闸门（预算/路径/身份） | ✓ 机制已实现（10 卷）；★ **TB-2794：通用研究原语已入 `packs/research-core/`（paper flow 已迁）**，形式化/Lean 政策的面迁移在 Step 2/3（见 02-§1.1）；⛔ 专用「数学族 pack」仍待写 |
 
 **必须内核实名强制（不可被 settings 关闭）**：内容身份规则、`isRefutation:false`、回执必须含实际 argv、越界路径拒、输出 cap、`settled` 的唯一规则、预算具名拒。**可扩展**：新引擎适配器、新助手适配器、脚本桥（`vibe_vmu_script` ✓ 已实现）调用外部工具。
 

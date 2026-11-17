@@ -50,20 +50,69 @@ import { fileURLToPath } from 'node:url'
 
 export const name = 'vibe-math-preset-installer'
 
-// Exported so the shipped policy suite can prove the managed list still covers what each preset
-// needs at runtime (a file present in the preset directory but missing here is copied by nobody,
-// and the installed preset then cannot mount).
-export const PRESETS = [
-  {
-    src: 'vibe-math-vmu',
-    dst: 'vibe-math-vmu',
-    // vmu is the framework-first preset (vibe-math-unify): the runtime files plus its complete
-    // design document set (docs/00..14), so every mechanism it can express is traceable to a
-    // shipped design decision, and every default is documented as "zero mechanism".
-    files: ['agent.cordis.yml', 'preset.yml', 'vibe-math-vmu.js', 'host-deliver.js', 'host-pack-tools.js', 'host-children.js', 'math-computation.js', 'math-engines.js', 'settings/schema.js', 'settings/env-needs.js', 'settings/planned.js', 'glossary.json', 'kernel/store.js', 'kernel/bus.js', 'kernel/prompt/index.js', 'kernel/turn/index.js', 'kernel/library.js', 'kernel/library-policy.js', 'kernel/math.js', 'kernel/members.js', 'kernel/memberface.js', 'kernel/ballot.js', 'kernel/meeting.js', 'kernel/tasks.js', 'kernel/rules.js', 'kernel/loader.js', 'kernel/script-bridge.js', 'kernel/registry.js', 'kernel/index.js', 'kernel/settings-defaults.js', 'kernel/pack.js', 'kernel/work.js', 'kernel/guard.js', 'kernel/lean.js', 'kernel/env.js', 'kernel/latex.js', 'kernel/governance.js', 'kernel/board.js', 'kernel/minutes.js', 'kernel/budget.js', 'kernel/metrics.js', 'kernel/audit.js', 'extensions/domain-compliance/index.js', 'kernel/partnership.js', 'kernel/resource.js', 'kernel/custody.js', 'kernel/reviewers.js', 'kernel/alerts.js', 'kernel/retention.js', 'kernel/delegation.js', 'kernel/directions.js', 'kernel/workflow.js', 'kernel/trust.js', 'kernel/handover.js', 'kernel/arbitration.js', 'kernel/recruit.js', 'kernel/topology.js', 'kernel/fairness.js', 'kernel/charter.js', 'kernel/repropack.js', 'kernel/memory.js', 'kernel/bidding.js', 'kernel/mathjobs.js', 'kernel/skills.js', 'kernel/publication.js', 'kernel/formal.js', 'kernel/external.js', 'extensions/domain-compliance/gate.js', 'kernel/scheduler.js', 'kernel/crypto.js', 'kernel/notify.js', 'kernel/notices.js', 'kernel/collab.js', 'kernel/identity.js', 'kernel/human.js', 'kernel/discipline.js', 'kernel/explain.js', 'kernel/control.js', 'kernel/citations.js', 'kernel/lifecycle.js', 'kernel/idempotency.js', 'kernel/replay.js', 'kernel/transaction.js', 'kernel/ratelimit.js', 'kernel/auditchain.js', 'kernel/stateversion.js', 'kernel/clockguard.js', 'kernel/mathtools.js', 'kernel/projmigrate.js', 'kernel/meetings.js', 'kernel/meetings-defaults.js', 'kernel/meetingverdict.js', 'kernel/meetinglapse.js', 'kernel/meetingleave.js', 'kernel/meetingmarker.js', 'kernel/meetingdomain.js', 'kernel/receiptbounds.js', 'kernel/reportfeedback.js', 'kernel/reportfeedbackdelivery.js',
-    'kernel/reporttransport.js', 'kernel/ballotbox.js', 'kernel/records.js', 'kernel/report.js', 'kernel/fidelity.js', 'kernel/activity.js', 'kernel/chat.js', 'kernel/ids.js', 'kernel/mailbox.js', 'kernel/mathadapters.js', 'kernel/panel.js', 'kernel/resume.js', 'kernel/resumeflush.js', 'kernel/contentvalue.js', 'kernel/course.js', 'kernel/conference.js', 'kernel/ip.js', 'kernel/funding.js', 'kernel/compliance.js', 'kernel/timevalue.js', 'kernel/storepolicy.js', 'kernel/capacity.js', 'kernel/tenure.js', 'kernel/migration.js', 'packs/institute-min/index.js', 'packs/research-core/index.js', 'packs/research-core/paper-flow.js', 'kit/tools.js', 'kit/handlers.js', 'kit/extras.js', 'packs/v5r/prompts/v5r-core.js', 'packs/v5r/prompts/v5r-prompts.js', 'packs/v5r/prompts/v5r-persona.js', 'packs/v5r/prompts/v5r-charter.js', 'packs/v5r/prompts/v5r-blocks-a.js', 'packs/v5r/prompts/v5r-blocks-b.js', 'packs/v5r/prompts/v5r-corrections.js', 'packs/v5r/prompts/v5r-reply-channel.js', 'packs/v5r/prompts/v5r-assistant.js', 'packs/v5r/prompts/assistant.json', 'packs/v5r/index.js', 'packs/v5r/runtime.json', 'packs/example-data/prompts/sections.json', 'packs/example-data/README.md', 'packs/v5r/notices.js', 'packs/v5r/settings/defaults.js', 'packs/v5r/settings/defaults.json', 'packs/v5r/settings/declarations.js', 'packs/v5r/middleware/prompt-switches.js', 'packs/v5r/middleware/stall-meeting.js', 'packs/v5r/middleware/motion-box.js', 'packs/v5r/middleware/artifact-counter.js', 'packs/v5r/tools.js', 'packs/v5r/meeting-procedures.js', 'packs/v5r/member-scope.js', 'packs/v5r/leadership.js', 'packs/v5r/meeting-tool-face.js', 'packs/v5r/blueprint.js', 'packs/v5r/paper.js', 'packs/v5r/seat-faces.js', 'packs/v5r/paper-quality.js', 'packs/v5r/verified.js', 'packs/v5r/verification-gates.js', 'packs/v5r/middleware/paper-dispatch.js', 'packs/v5r/prompts/v5r-paper-prompts.js', 'packs/v3-core/index.js', 'packs/v3-core/settings/declarations.js', 'packs/v3/index.js', 'packs/v3/README.md', 'packs/v3/settings/defaults.json', 'packs/v3/settings/declarations.js', 'packs/v3/middleware/tick.js', 'packs/v3/middleware/dataplane.js', 'packs/v3/prompts/assistant.json', 'packs/v3/prompts/index.js', 'packs/v3/prompts/paper.js', 'packs/v3/prompts/briefs.js', 'packs/v3/prompts/roles.js', 'packs/v3/prompts/knowledge.js', 'packs/v3/middleware/planner.js', 'packs/v3/middleware/subquestions.js', 'packs/v3/middleware/reports.js', 'packs/v3/middleware/lean-gate.js', 'packs/v3/middleware/toolfilter.js', 'packs/v3/middleware/defects.js', 'packs/v3/middleware/paper-close.js', 'packs/v3/middleware/methods.js', 'packs/v3/middleware/gates.js', 'packs/v3/tools.js', 'packs/v3/middleware/verify.js', 'packs/v3/prompts/sections.json', 'packs/v3/prompts/planner.js', 'host.js', 'host-hooks.js', 'host-spawn.js', 'host-math.js', 'docs/00-README.md', 'docs/01-philosophy.md', 'docs/02-architecture.md', 'docs/03-interface-contract.md', 'docs/04-settings.md', 'docs/05-middleware.md', 'docs/06-prompt-pipeline.md', 'docs/07-durability-library.md', 'docs/08-primitives-meeting-ballot-workflow.md', 'docs/09-math-formalization.md', 'docs/10-packs.md', 'docs/11-gates-and-development.md', 'docs/12-user-guide.md', 'docs/13-migration.md', 'docs/14-open-items-and-roadmap.md', 'docs/28-decision-history.md', 'docs/15-math-computation-toolbox.md', 'docs/16-research-lifecycle.md', 'docs/17-agent-society-and-delegation.md', 'docs/18-command-and-protocol-reference.md', 'docs/19-plugin-and-extension-development.md', 'docs/20-security-privacy-and-compliance.md', 'docs/21-observability-and-operations.md', 'docs/22-academic-operations.md', 'docs/23-extensions-and-deferred.md', 'docs/24-v5r-containment.md', 'docs/25-demoted-domains.md', 'docs/26-turn-orchestration.md', 'docs/27-pack-folder.md', 'docs/29-build-your-own-preset.md', 'tools/transaction.js', 'tools/auditchain.js', 'tools/board.js', 'tools/bridge.js', 'tools/budget.js', 'tools/citations.js', 'tools/control.js', 'tools/discipline.js', 'tools/explain.js', 'tools/external.js', 'tools/governance.js', 'tools/mathtools.js', 'tools/meeting.js', 'tools/minutes.js', 'tools/notify.js', 'tools/projmigrate.js', 'tools/ratelimit.js', 'tools/task.js', 'tools/turn.js', 'tools/member-tools.js', 'tools/env.js', 'tools/vote.js', 'tools/custody.js', 'tools/topology.js', 'tools/formal.js', 'tools/collab.js', 'tools/reviewers.js', 'tools/clockguard.js', 'tools/publication.js', 'tools/fairness.js', 'tools/handover.js', 'tools/conference.js', 'tools/arbitration.js', 'tools/charter.js', 'tools/recruit.js', 'tools/capacity.js', 'tools/retention.js', 'tools/idempotency.js', 'tools/audit.js', 'tools/ip.js', 'tools/bidding.js', 'tools/admission.js', 'tools/report.js', 'tools/activity.js', 'tools/fidelity.js', 'tools/chat.js', 'tools/human.js', 'tools/mailbox.js', 'tools/mathadapters.js', 'tools/mathjobs.js', 'tools/panel.js'],
-  },
-]
+// ★★★ C#6 (TB-2792 Step 6) — ONE ROSTER, ONE SOURCE, NO SECOND COPY.
+// WHY THIS NO LONGER CONTAINS A FILE LIST: rounds 4-8 of the product audit kept finding the SAME defect — a new
+// preset file (this round: `packs/research-core/*`) was added to one roster and forgotten in the other. The managed
+// list had TWO hand-maintained copies: this array, and the tables in docs/27. The list is now DATA: the ONE source is
+// `vibe-math-vmu/roster.json`, read here AT STARTUP. Neither a second array nor a hand-written docs table may come
+// back:
+//   · `scripts/generate-preset-roster.mjs --check` (a step of `regen-all --check`) verifies that every roster entry
+//     SHIPS (package.json#files), EXISTS on disk, and that the docs/27 generated tables are what the roster yields;
+//   · `tests/audit-installer-policy.test.mjs §8` asserts these derived PRESETS EQUAL the roster (drift on either side
+//     is a named FAIL, never a silently different install);
+//   · `tests/audit-package-membership.mjs` reads the SAME PRESETS export, so "shipped -> managed" is one data flow.
+// A malformed roster is a NAMED failure at startup, never a silently empty/partial install.
+const ROSTER_ROOT = dirname(fileURLToPath(import.meta.url))
+export const PRESET_ROSTER_PATH = join(ROSTER_ROOT, 'vibe-math-vmu', 'roster.json')
+
+/** The roster schema, validated in ONE place (the generator imports this too, so the installer and the gate cannot
+ *  disagree about what a valid roster is). Returns {ok, problems} — never throws, so a caller can name every defect. */
+export function validatePresetRoster(data) {
+  const problems = []
+  if (!data || typeof data !== 'object' || Array.isArray(data)) problems.push('the roster must be a JSON object')
+  else {
+    if (data.schema !== 1) problems.push("the roster `schema` must be 1 (got " + JSON.stringify(data.schema) + ")")
+    // An EMPTY list is a legitimate roster (a newer package that stops shipping presets must still be installable, so
+    // its own uninstall path runs); what must never happen is a missing/non-array `presets`.
+    if (!Array.isArray(data.presets)) problems.push('the roster needs a `presets` array (an EMPTY array is allowed: it means this bundle ships none)')
+    const ids = new Set()
+    for (const p of Array.isArray(data.presets) ? data.presets : []) {
+      if (!p || typeof p !== 'object') { problems.push('a preset entry must be an object'); continue }
+      if (typeof p.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(p.id)) problems.push('invalid preset id: ' + JSON.stringify(p.id))
+      else { if (ids.has(p.id)) problems.push('duplicate preset id: ' + p.id); ids.add(p.id) }
+      if (typeof p.src !== 'string' || typeof p.dst !== 'string') problems.push(p.id + ': src and dst must be strings')
+      if (p.dst !== p.id) problems.push(p.id + ': dst must equal id (the installed directory is the preset id)')
+      if (!Array.isArray(p.files) || p.files.length === 0) { problems.push(p.id + ': `files` must be a non-empty array'); continue }
+      const seen = new Set()
+      for (const f of p.files) {
+        if (typeof f !== 'string' || f === '') { problems.push(p.id + ': a file entry is not a non-empty string'); continue }
+        if (/^[\\/]/.test(f) || /^[A-Za-z]:/.test(f) || f.split(/[\\/]/).includes('..')) problems.push(p.id + ': a file must be a relative path inside src: ' + f)
+        if (seen.has(f)) problems.push(p.id + ': duplicate file entry: ' + f)
+        seen.add(f)
+      }
+    }
+  }
+  return { ok: problems.length === 0, problems }
+}
+
+/** Read the ONE roster and return the installer view. Every failure mode is NAMED (a silent empty install is the
+ *  defect this seam exists to prevent). */
+export function readPresetRoster(path = PRESET_ROSTER_PATH) {
+  let raw
+  try { raw = readFileSync(path, 'utf8') } catch (e) {
+    throw new Error('the preset roster ' + path + ' cannot be read: ' + String((e && e.message) || e) + ' — the installer now derives PRESETS[].files from it (docs/27 §6)')
+  }
+  let data
+  try { data = JSON.parse(raw) } catch (e) {
+    throw new Error('the preset roster ' + path + ' is not valid JSON: ' + String((e && e.message) || e))
+  }
+  const v = validatePresetRoster(data)
+  if (!v.ok) throw new Error('the preset roster ' + path + ' is invalid: ' + v.problems.join('; '))
+  return data.presets.map((p) => ({ src: p.src, dst: p.dst, files: p.files.slice() }))
+}
+
+// The managed list, DERIVED — not written here (see the header comment for the five rounds this closes).
+export const PRESETS = readPresetRoster()
 
 const STATE_FILE = '.vibe-math-installed.json'
 // where a replaced user edit is preserved; a leading dot keeps DSH's preset discovery from ever

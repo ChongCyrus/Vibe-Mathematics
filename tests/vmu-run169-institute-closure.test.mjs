@@ -83,7 +83,9 @@ const SEATS = [['r-acad', 'chair'], ['r-1', 'member'], ['r-2', 'member'], ['r-te
     '§0 the kernel owns ONE writer for that key, patched by member (last-wins, bounded)')
   ok(/persistClosureVote: \(recordsStore && typeof recordsStore\.patch === 'function'\) \? persistClosureVote : null,/.test(index),
     '§0 the seam is handed to the loop ONLY when it can persist (capability is decided once at assembly, not re-discovered per vote)')
-  ok(/persistClosureVote = null \} = \{\}\) \{/.test(turn) && /if \(typeof persistClosureVote === 'function'\) \{/.test(turn),
+  // TB-2794 Step 2: the factory gained a reply-field-adapter option AFTER persistClosureVote, so the pin names the
+  // parameter (the contract) instead of freezing the old parameter-list tail.
+  ok(/persistClosureVote = null,/.test(turn) && /resolveReplyAdapter = null \} = \{\}\) \{/.test(turn) && /if \(typeof persistClosureVote === 'function'\) \{/.test(turn),
     '§0 the loop calls that seam for EVERY recorded vote, from BOTH channels')
   ok(/const durable = typeof persistClosureVote === 'function'/.test(turn) && /durableMeans: 'this assembly has no durable store/.test(turn),
     '§0 a vote that could not reach the fold says so in ITS OWN effect (durable:false), not as a second "refused" row')
