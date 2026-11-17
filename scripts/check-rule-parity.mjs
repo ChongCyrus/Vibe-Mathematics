@@ -467,6 +467,20 @@ function declaredSettingKeys() {
   try {
     const keys = new Set()
     for (const m of readFileSync(abs, 'utf8').matchAll(/\bkey:\s*'([^']+)'/g)) keys.add(m[1])
+    // ★ C#3: pack-owned settings namespaces are declared by the PACKS (packs/<id>/settings/declarations.js), not by the
+    // framework schema. P7 asks "is this prompt-named key declared ANYWHERE", so the pack declaration files are read too;
+    // without this a pack's own teaching key would be reported as undeclared after C#3 moved it out of schema.js.
+    try {
+      const packsDir = join(REPO, 'vibe-math-vmu', 'packs')
+      if (existsSync(packsDir)) {
+        for (const e of readdirSync(packsDir, { withFileTypes: true })) {
+          if (!e.isDirectory()) continue
+          const f = join(packsDir, e.name, 'settings', 'declarations.js')
+          if (!existsSync(f)) continue
+          for (const m of readFileSync(f, 'utf8').matchAll(/\bkey:\s*'([^']+)'/g)) keys.add(m[1])
+        }
+      }
+    } catch { /* a missing pack dir leaves only the framework keys; the null return is reserved for an unreadable schema */ }
     return keys
   } catch {
     return null

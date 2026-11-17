@@ -823,6 +823,10 @@
 | `VMU_LEAN_NOT_SETTLED` | 作业尚未结算（`state≠settled`）就要求结算 | 形式化面 | ✅（须给当前 state ✓） |
 | `VMU_LEAN_ARCHIVE_DRIFT` | **归档引用的内容已变**（哈希不符）⇒ `read()` 具名拒且**不返回旧内容** ✓ | 形式化面（`kernel/lean.js` ✓） | ✅（**只引不复制**的执行点 ✓） |
 | `VMU_LEAN_ARCHIVE_NOT_FOUND` / `VMU_LEAN_ARCHIVE_NAME_TAKEN` / `VMU_LEAN_ARCHIVE_NAME_REQUIRED` | 归档三动词：条目不存在／**重名**（不静默覆盖 ✗）／未给 `name` | 形式化面（`kernel/lean.js` ✓） | ✅ |
+| `VMU_SETTING_NAMESPACE_UNKNOWN` | ★ **C#3**：部署/pack 交来一个**未知设置命名空间**（`vmu.<token>.*` 且该 token 既不是框架键、也不属于任何已注册 pack 命名空间）⇒ 具名拒并列出**已注册的 pack 命名空间**；修复是加载该 pack 的 `settings/declarations.js`（它经 `registerPackSettings` 注册），不是改框架 schema | 设置筛查（`vibe-math-vmu/settings/schema.js` 的 `screenSettings`） | ✅（hint 必须给已注册命名空间清单与「pack 声明文件」这条唯一出路） |
+| `VMU_SETTING_NAMESPACE_TAKEN` | ★ **C#3**：pack 想注册的命名空间 token 与**框架命名空间**同名（`vmu.core` 等）⇒ 具名拒；框架命名空间只属于核心表，pack 不得占用 | 设置注册（`registerPackSettings`） | ✅（须点名冲突 token 与「换一个 pack 专属词」） |
+| `VMU_SETTING_NAMESPACE_CONFLICT` | ★ **C#3**：同一设置键被声明两次（框架表＋pack，或两个 pack）⇒ 具名拒；绝不静默合并/覆盖（O4） | 设置注册（`registerPackSettings`） | ✅（须点名重复键与「一键一主」） |
+| `VMU_SETTING_PROFILE_INCOMPLETE` | ★ **C#23**：部署声明用 `minimal` profile，但缺少该 profile 的**必设键** ⇒ 具名拒并列出缺失键；每个必设键都可解释（开关/交付期限/预算/工具上限），不是任意清单 | profile 检查（`vibe-math-vmu/settings/schema.js` 的 `assertProfile`） | ✅（须给 missing[] + profile + 每键 why） |
 | `VMU_LEAN_BLOCKED_NOTE_REQUIRED` | ★ **ROUND-3 P0-c**：`vibe_v5_lean_archive {kind:"blocked"}` **必须带 `note`**（阻塞原因）。缺失 ⇒ 具名拒，绝不写一条没有原因的阻塞记录 —— 该记录正是 `vmu.math.formalVerify=require` 时 `vibe_v5_verdict_final` 放行的唯一凭据（记录落 `track state`／`title formal-blocked|<name>`，裁定回执具名 `formalDecisionSource:"lean-archive"`）。与 `VMU_LEAN_ARCHIVE_NAME_REQUIRED` 分开：那个缺的是**归档名**，这个缺的是**为什么阻塞**。无 Lean face/工具链时同样可达（producer 不依赖 Lean 面） | 形式化归档（`vibe-math-vmu/kit/extras.js` 的 `toolLeanArchive` blocked 分支） | ✅（须给 note 的语义与两条可达出路：写 note 归档，或改用 `vibe_v5_lean_run`→`vibe_v5_lean_job` 通过；套件：`tests/vmu-v5r-tools.test.mjs` 的 P0-c 段、`tests/vmu-cold-start.test.mjs`） |
 | `VMU_LEAN_KIND_UNKNOWN` | `archive` 的 `kind` 不在允许的 kind 枚举（`def｜lemma｜theorem｜assumption`） | 形式化面（`kernel/lean.js` ✓） | ✅（未知即拒，不猜 ✓） |
 | `VMU_ENGINE_UNAVAILABLE` | 引擎不可用（探测失败/未注册） | 计算/形式化 | ✅ |
@@ -1528,7 +1532,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **526** 个码，**逐行**给出状态 ✓：其中 **481** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **530** 个码，**逐行**给出状态 ✓：其中 **485** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **45** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1996,6 +2000,10 @@
 | `VMU_SEED_ROW_ABSENT` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_SEED_UNREADABLE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_SEED_WRITE_FAILED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
+| `VMU_SETTING_NAMESPACE_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
+| `VMU_SETTING_NAMESPACE_TAKEN` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
+| `VMU_SETTING_NAMESPACE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
+| `VMU_SETTING_PROFILE_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
 | `VMU_SKILL_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/skills.js` | 代码里有该码字符串 ✓ |
 | `VMU_SKILL_SELF_ATTEST` | **已实现 ✓** | `vibe-math-vmu/kernel/skills.js` | 代码里有该码字符串 ✓ |
 | `VMU_SKILL_VOCAB_VIOLATION` | **已实现 ✓** | `vibe-math-vmu/kernel/skills.js` | 代码里有该码字符串 ✓ |

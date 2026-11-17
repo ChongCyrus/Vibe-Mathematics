@@ -352,6 +352,18 @@ ok(unregisteredInCode.length === 0,
 
 // ---- G. the SETTINGS surface: documented keys must exist, and the wired column must be honest -----
 {
+  // ★ C#3: pack-owned settings namespaces are declared by the PACKS; load their declaration files from the audited CODE
+  // tree so the docs<->schema comparison sees the SAME composed table the runtime screens (auto-discovered, no pack list).
+  {
+    const packsDir = join(VMU, 'packs')
+    if (existsSync(packsDir)) {
+      for (const e of readdirSync(packsDir, { withFileTypes: true })) {
+        if (!e.isDirectory()) continue
+        const f = join(packsDir, e.name, 'settings', 'declarations.js')
+        if (existsSync(f)) await import(pathToFileURL(f).href)
+      }
+    }
+  }
   const { SETTING_DEFS } = await import(pathToFileURL(join(VMU, 'settings', 'schema.js')).href)
   const keys = new Set(SETTING_DEFS.map((d) => d.key))
   // ★ THE REAL SOURCES OF THIS CRITERION (round 14, MEASURED - the table docs/11 §4.2 quotes):
@@ -550,7 +562,8 @@ ok(unregisteredInCode.length === 0,
   // whole row, and that is exactly why the copy-based counterexample M1 (blanked tier cell) stayed GREEN ✗ — the
   // row's other columns can contain the same words (the doc text does). The cell is index 8 of the `|`-split row:
   // 键|类型|默认|域|作用域|H|谁|接线|载体|说明.
-  const tierCellOf = (r) => (r.split('|')[8] || '')
+  // ★ C#23 added the 必设 column right after 键, so the tier cell moved from index 8 to 9.
+  const tierCellOf = (r) => (r.split('|')[9] || '')
   const TIER_MARKER = { wired: /✅ 已接线/, undetermined: /❓ 未判定/, unwired: /⚠️ 未接线/ }
   const unmarkedRows = rows.filter((r) => !Object.values(TIER_MARKER).some((re) => re.test(tierCellOf(r))))
   ok(unmarkedRows.length === 0, 'every settings row states which of the THREE tiers the key is in (✅/❓/⚠️ — no silent promises; blank or vague still reddens)',

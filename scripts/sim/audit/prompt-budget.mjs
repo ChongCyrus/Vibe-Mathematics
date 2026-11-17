@@ -35,7 +35,7 @@ export const RATIO_LIMIT = 1.25
  *  1.299 reading printed PASS. The assertion now exists. Since the measured value exceeds the target, the acceptance
  *  is NAMED and PINNED at the measurement (a ratchet: growth reddens immediately); tightening it to RATIO_LIMIT is the
  *  budget-trim work, not a silent waiver. */
-export const RATIO_LIMIT_ACCEPTED = 1.38 // ROUND-4: the Lean/formalisation sections are role-gated to chair/member (temp seat-face denies the tools), so temp/normal is deliberately smaller and chair/temp rises to 1.379 (chair 28,661 / temp 20,791); the 1.25 target stays named MISSED and the pin sits at the measurement
+export const RATIO_LIMIT_ACCEPTED = 1.30 // ROUND-6 ratchet: measured 1.299 (chair/normal 26,883 / temp/normal 20,699) so the improvement is encoded, not just described. The 1.25 target stays the named check and remains MISSED (the gap is reported by evaluate()). Raising this number again requires a new measured reading here, not a prose promise.
 
 /** Sentences that may only appear when a meeting exists. The manual's first line is recognizable by its header and
  *  its ⑦ clause, which is the part a regular round cannot act on. */

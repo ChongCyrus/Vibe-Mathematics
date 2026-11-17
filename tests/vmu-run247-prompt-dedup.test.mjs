@@ -190,7 +190,7 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //        表决权分到两个声明键上）。本套件的两条上限此前**漏记**这一轮，实测已红（29 562 > 29 555、78 288 > 78 216）；
   //        这里按同一份逐条记账的口径补上：chair -826、member -803、temp -822、合计 -2451（ROUND-3：删五节历史账）。
   //        来源与归因见 `tests/vmu-run256-prompts-compress.test.mjs` 的 `TB2752_RUN80_FIXES`。
-  const TB2752_RUN80_FIXES = { chair: -2616, member: -816, temp: -1969, sum: -5401 } // ROUND-1 audit P0/P1 fixes
+  const TB2752_RUN80_FIXES = { chair: -2446, member: -646, temp: -1811, sum: -4903 } // ROUND-1 audit P0/P1 fixes
   //   ★ RUN 270 (Lead) — TB-2725 的回退缺口：那次把「回执契约」两句合并成一句时，把 progress 的**可照抄样例**一起删了。
   //       实测后果：fixtureMode=tools 下 member/temp 席的提示词里**一处样例都没有**（只剩 chair 自己的
   //       `v5r-tools-academician` 里还有一份）。这个样例存在的理由是真机缺陷——席位写 `"progress":"长叙述"`（字符串）⇒

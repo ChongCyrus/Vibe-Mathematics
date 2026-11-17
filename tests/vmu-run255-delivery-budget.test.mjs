@@ -61,7 +61,8 @@ const declaredValue = () => {
 /** The rendered settings table on disk (docs/04) - a second artifact, not the code that computes the budget. */
 const tableRowOf = () => {
   const text = readFileSync(join(REPO, 'vibe-math-vmu', 'docs', '04-settings.md'), 'utf8')
-  const re = new RegExp('^\\| `' + KEY.replace(/\./g, '\\.') + '` \\| number \\| `(\\d+)` \\|', 'm')
+  // ★ C#23 added the 必设 column right after 键: allow one extra cell between the key and the type cell.
+  const re = new RegExp('^\\| `' + KEY.replace(/\./g, '\\.') + '` \\| [^|]*\\| number \\| `(\\d+)` \\|', 'm')
   const m = text.match(re)
   return m ? { raw: m[0], def: Number(m[1]) } : null
 }

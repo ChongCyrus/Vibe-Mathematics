@@ -29,6 +29,8 @@ export * from './prompts/v5r-persona.js'
 // A star re-export does NOT put a name in this module's own scope, and `describeV5rPack` needs the LOADED manifest to
 // report both ids - so the manifest is imported explicitly even though it is also re-exported two lines up.
 import { PACK } from './prompts/v5r-core.js'
+// ★ C#3: this pack OWNS its settings namespace — the declarations file registers it through the ONE seam.
+import './settings/declarations.js';
 import { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS } from './settings/defaults.js'
 import { decideSections, v5rPromptSwitchMiddleware, V5R_PROMPT_SWITCH_STATES } from './middleware/prompt-switches.js'
 

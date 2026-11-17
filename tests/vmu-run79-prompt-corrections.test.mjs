@@ -71,7 +71,7 @@ test('§4 item 4 no promise that the [蓝图] block always renders; the board st
 test('§5 item 5 each face names its own phase closed set and says the other face is not this one', () => {
   for (const [slot, text] of Object.entries(normal)) {
     assert.ok(text.includes('派回合面'), slot + ': names the dispatch face')
-    assert.ok(text.includes('`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面'), slot + ': the meeting-round face is explicitly another face')
+    assert.ok(text.includes('会议推进接口的 phase 以工具声明为准，不属于本面'), slot + ': the meeting-round face is explicitly another face')
     // ROUND-1 (2026-11-17): the closed set is now the kernel∪pack UNION (11 values), still scoped to its face in the
     // same breath — the old four-name universal was a real miss (normal/meeting/... are legal phases).
     const at = text.indexOf('phase` 取内核相位与 pack 声明的并集（11 个）')
@@ -138,7 +138,7 @@ const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
 // names `vmu.meetings.eligibleSeats` for the vote (the review rewrite: attendance never decided the vote), F80-4
 // restores the two legal spellings of an evidence pointer (paper phases are outside this water level). Per seat
 // -826 / -803 / -822, sum -2451 (ROUND-3: legacy corrections deleted).
-const TB2752_RUN80_FIXES = { chair: -2616, member: -816, temp: -1969, sum: -5401 } // ROUND-1 P0/P1 prompt fixes
+const TB2752_RUN80_FIXES = { chair: -2446, member: -646, temp: -1811, sum: -4903 } // ROUND-1 P0/P1 prompt fixes
 test('§11 three-seat normal sum is the baseline plus the corrections plus the RUN 272 restore, and nothing else', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   assert.equal(normalSum, TB2741_BASELINE.sum + TB2741_CORRECTIONS_NET.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum,

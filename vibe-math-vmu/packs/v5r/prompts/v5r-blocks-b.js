@@ -57,7 +57,7 @@ const REPLY_COMPACT_TEXT = [
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
 ].join('\n')
-const REPLY_COMPACT_TEXT_TEMP = REPLY_COMPACT_TEXT.split('\n').filter((l) => !l.includes('vibe_v5_verdict')).join('\n')
+const REPLY_COMPACT_TEXT_TEMP = REPLY_COMPACT_TEXT.split('\n').filter((l) => !l.includes('vibe_v5_verdict') && !l.includes('vibe_v5_record_')).join('\n')
 
 // ROUND-5 ratio: the chair already gets the full tool list elsewhere, so its reply spec keeps the CHANNEL + literals
 // and drops the CATALOGUE restatement (~1.8k); member/temp keep the catalogue (they have no other field table).
@@ -285,7 +285,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 780,
     range: 'pack',
     kind: 'shared',
-    texts: { shared: 'Lean 通过（{{ setting:vmu.turn.formalProof }}）' },
+    texts: { shared: 'Lean 通过（{{ setting:vmu.turn.formalProof }}）——这里只指**编译通过**，不代表命题为真，仍需保真收口' },
   },
   {
     name: 'v5r-formal-status-blocked',
@@ -312,6 +312,20 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // with VMU_TURN_NO_PENDING_MEMBER) — while forbidding the fence, which is the only channel that works. The channel
   // paragraph and the field lines below are now RENDERED from `v5r-reply-channel.js`, so the field list cannot drift
   // from the kernel table again; see that file's header for the full defect.
+  // ROUND-7: the ratio trim removed the WHOLE catalogue from the chair copy, taking the minimum shape with it.
+  // The minimum is a fact every seat needs, so it lives in its own small shared section (the long directory stays out).
+  {
+    name: 'v5r-reply-min-shape',
+    order: 796.5,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【回执最小形状】一个已登记字段也要成句：键 + 值（如 `{"say":"…"}`），只写键不算回执。',
+        '最小合法形状可直接照抄：`{"op":"reply","report":{"say":"…","solved":false}}`（`op:"reply"` 由所办代转时用；成员/临时工不要自己调，回复正文围栏即可）。没有可用形状的键不要写——会被具名跳过。',
+      ].join('\n'),
+    },
+  },
   {
     name: 'v5r-reply-compact',
     order: 797,
@@ -737,7 +751,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '【求真表决 —— {{ roleLabel }} {{ member }}】',
         '',
 '本所正在对下列对象发起共识验证：',
-  '  **票箱 id 从开票回执的 `ballotId` 抄**（形如 `b-…`）；命题/陈述读 `vibe_v5_read_library`／`vibe_vmu_records {action:"list"}` 只为核对内容——**不要把记录 id 填进 `target`**（会 `VMU_NO_SUCH_OBJECT`）。没有票箱就不要投票：请所办开票。',
+  '  **票箱 id 从开票回执的 `ballotId` 抄**（形如 `b-…`）；命题/陈述读 `vibe_v5_read_library`／`vibe_vmu_records {action:"list"}` 只为核对内容——**不要把记录 id 填进 `target`**（会 `VMU_NO_SUCH_OBJECT`）。没有票箱就不要投票：**请主席开票**（主席自己召集会议时由所办代开）。',
         '',
         '请给出你**诚实独立的判断**：',
         '  verdict = 1  表示你认为该对象**绝对为真**；',
@@ -787,7 +801,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // 「本回合没有绑定会议」and the grid says「未提供」- a hole a reader can SEE, which is the honest form of "no meeting".
       meeting: [
         '议程：{{ setting:vmu.turn.meetingAgenda }}（类型：{{ setting:vmu.turn.meetingType }}，主席：{{ setting:vmu.turn.meetingChair }}）。本轮绑定该会议：回复第一句请写明会 id（{{ setting:vmu.turn.meetingId }}）。',
-        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：**请主席推进**（`vibe_v5_meeting_round` 是主席动作）绑定下一回合；不要猜 id，也别把发言/投票押上去。',
+        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：**只有主席能调** `vibe_v5_meeting_round`（其他席位请主席推进）绑定下一回合；不要猜 id，也别把发言/投票押上去。',
       ].join('\n'),
     },
   },
@@ -1109,9 +1123,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         "【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（尝试过的路线）｜`obstacles`（阻塞与原因）｜`rejected`（已证伪的路）｜`state`（状态板）。`track:\"state\"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。",
-"**派回合的 `phase` 取内核相位与 pack 声明的并集（11 个）**：`founding`／`normal`／`checkpoint`／`verify`／`verify-debate`／`meeting`／`resume`／`heartbeat`／`paper-write`／`paper-review`／`paper-final`——裸 `review`／`write`／`final` 是流程词不是 phase（旧任务书简写），写成它们会得到 `VMU_INVALID_ARGUMENT unknown phase`（派回合面；`vibe_v5_meeting_round` 的 phase 以工具声明为准，不属于本面）；`paper-review` 回合的产物是**评审票**，结题票 `vote_solved` 不用于评审。",
+"**派回合的 `phase` 取内核相位与 pack 声明的并集（11 个）**：`founding`／`normal`／`checkpoint`／`verify`／`verify-debate`／`meeting`／`resume`／`heartbeat`／`paper-write`／`paper-review`／`paper-final`——裸 `review`／`write`／`final` 是流程词不是 phase（旧任务书简写），写成它们会得到 `VMU_INVALID_ARGUMENT unknown phase`（派回合面；会议推进接口的 phase 以工具声明为准，不属于本面）；`paper-review` 回合的产物是**评审票**，结题票 `vote_solved` 不用于评审。",
         // 旧称：方法库卡：`vibe_v5_record_method`（该名已并入 records 面，改为 record_progress；规则 ledger 的 C9 evidence 仍按旧串在该源里可查）
-        "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = 执行→作业→归档（仅当席位有 Lean 面；编译过≠真）；论文 = `vibe_v5_paper` 的 part 阶段；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法卡：`vibe_v5_record_progress`（track methods）。",
+        "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = 执行→作业→归档（仅当席位有 Lean 面；编译过≠真）；论文 = `vibe_v5_paper` 的 part 阶段；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法卡：records 面（track methods）。",
         "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数）；**不在名册**的 id 具名拒。**归属口径**：`memberWorkShare = memberActs/(memberActs+officeRelayedActs)`（`unknownActs` 不进分母）；**代笔回执**带 `memberActed:false`、`actedForMember`、`ranInOwnTurn:false`，落盘行带 `writtenFrom`（`own-turn`｜`relayed`｜`unknown`，问的是「这次写是怎么到这个席位的」）。`[结题]` 票数读 `closureVote.votesCast`/`votesTotal`（分母=有表决权席，不含 temp），别自己数人头。**`[蓝图]` 行由内核注入**：有就读（无现行版写「无现行版（rev 0，md 未落盘）」）；读不到用 `vibe_vmu_turn{op:\"status\",detail:\"board\"}` 的 `liveReadings.blueprint`，**不会因为**缺块当没有。",
         "  · 读别人的板：`vibe_v5_read_library`（`member`、`track`）；走不通的路写 `rejected`（别把证伪当进展）。",
         "  · **临时工不进成果库**：卡片面对临时工**具名拒**，产出由临时工自己写进回执（指派者只核对、不代写）；过程记录写在回执的 `progress` 字段。",

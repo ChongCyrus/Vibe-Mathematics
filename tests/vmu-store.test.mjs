@@ -302,6 +302,103 @@ const openStore = async (opts = {}) => {
   } finally { await rm(hroot, { recursive: true, force: true }) }
 }
 
+
+// ---- 8c. ROUND-6: one adoption seam, import hydrates, migration hash is consistent ------------------------------
+{
+  // (a) SOURCE: no path may assign the fold directly any more — adopting the disk file is ONE seam.
+  const src = await readFile(join(REPO, 'vibe-math-vmu', 'kernel', 'store.js'), 'utf8')
+  const direct = src.split('\n').filter((line) => /^\s*fold = /.test(line))
+  ok(direct.length === 1 && direct[0].trim() === 'fold = disk',
+    'R6-1 ★★ 只有 adoptDiskFold 自身体内允许 `fold = disk`：reloadIfStale / open / import 全部改调 seam（无第二份采纳实现）',
+    direct)
+  ok(!/^\s*fold = (?:loaded|clone\()/m.test(src),
+    'R6-2 ★ open / import 不再直赋 fold（它们走 adoptDiskFold）', direct)
+  // (b) IMPORT fires the reload hooks (projections hydrated after a whole-fold import)
+  const iroot = await mkdtemp(join(tmpdir(), 'vmu-store-import-hooks-'))
+  try {
+    const s1 = m.createStore({ root: iroot, clock: () => 1000 })
+    await s1.open()
+    await s1.write('phase', 'before-import')
+    const snapshot = s1.export()
+    let hooks = 0
+    s1.onReload(() => { hooks += 1 })
+    const before = s1.stats()
+    await s1.import(snapshot)
+    const after = s1.stats()
+    ok(hooks === 1 && after.reloads === before.reloads + 1 && after.adopts === before.adopts + 1,
+      'R6-3 ★★★ import 也是「采纳磁盘 fold」⇒ 必须 fire reloadHooks（否则 members/meetings/ballotbox 等 Map 投影停在导入前）+ reloads/adopts 各 +1',
+      { hooks, before, after })
+    ok(s1.read('phase') === 'before-import',
+      'R6-4 导入后 fold 内容正确（hooks 不是把数据改坏的那种「重载」）', s1.read('phase'))
+  } finally { await rm(iroot, { recursive: true, force: true }) }
+  // (c) MIGRATION: the migrated fold is written back at open, so the byte-hash fast path cannot mistake pre-migration
+  // bytes for the in-memory fold (P3). On-disk version is STATE_VERSION immediately after open, and a CAS write works.
+  const mroot = await mkdtemp(join(tmpdir(), 'vmu-store-mig-hash-'))
+  try {
+    await mkdir(join(mroot, 'vmu'), { recursive: true })
+    const legacyKeys = {}
+    for (const k of m.PUBLIC_KEYS) legacyKeys[k] = k === 'phase' ? 'legacy' : (k === 'settings.resolved' || k === 'budget' ? {} : [])
+    await writeFile(join(mroot, 'vmu', 'state.json'), JSON.stringify({ version: 0, keys: legacyKeys }, null, 2), 'utf8')
+    const s2 = m.createStore({ root: mroot, clock: () => 1000, migrators: [{ from: 0, id: 'v0->v1', up: (state) => { state.keys.phase = 'migrated' } }] })
+    const info = await s2.open()
+    const onDisk = JSON.parse(await readFile(join(mroot, 'vmu', 'state.json'), 'utf8'))
+    ok(info.migration.applied.length === 1 && onDisk.version === m.STATE_VERSION && onDisk.keys.phase === 'migrated',
+      'R6-5 ★★ P3：迁移后的 fold 在 open 时就落盘（同一份 bytes 与内存 fold 一致）⇒ 字节 hash 快路不会把迁移前字节当成内存 fold',
+      { applied: info.migration.applied, diskVersion: onDisk.version, diskPhase: onDisk.keys.phase })
+    const fp = s2.fingerprintOf('phase')
+    const st = s2.stats()
+    await s2.write('phase', 'after-migration-cas', { expectFingerprint: fp })
+    const st2 = s2.stats()
+    ok((await s2.read('phase')) === 'after-migration-cas' && st2.casHashHits > st.casHashHits,
+      'R6-6 ★ 迁移后首次 CAS 写走字节 hash 快路且写入正确（hash 在迁移落盘后重算，不是迁移前字节）', { hits: st2.casHashHits - st.casHashHits })
+  } finally { await rm(mroot, { recursive: true, force: true }) }
+}
+
+
+// ---- 8d. R6 follow-up (final21 G1): hooks are PER-PATH — open() adopts WITHOUT hydrating; import/CAS DO hydrate -------
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-store-hooks-paths-'))
+  try {
+    // open() must not fire reload hooks: the kernel/resume flow owns hydration at startup (pre-R6 semantics kept).
+    const probe = m.createStore({ root, clock: () => 1000 })
+    let openedHooks = 0
+    probe.onReload(() => { openedHooks += 1 })
+    await probe.open()
+    const st = probe.stats()
+    ok(openedHooks === 0 && st.reloads === 0,
+      'R6-7 ★★ 旧语义/新语义：open() 走同一 adoptDiskFold seam 但 **不 fire hooks**（恢复流程自己负责水化；R6 的缺陷是「没有 seam」，不是「open 必须水化」）',
+      { openedHooks, reloads: st.reloads, adopts: st.adopts })
+    // import DOES fire them (same seam, hooks:true) — the pair is the point, not one side of it.
+    await probe.write('phase', 'x')
+    let importHooks = 0
+    probe.onReload(() => { importHooks += 1 })
+    await probe.import(probe.export())
+    ok(importHooks === 1,
+      'R6-8 ★ import 仍 fire hooks（同一个 seam 的另一侧；两套语义不能互相吞掉）', { importHooks })
+    // ★ lamp: copy tree, force fireHooks=true (ignore meta.hooks) -> open() hydrates and R6-7 reddens.
+    const lampDir = await mkdtemp(join(tmpdir(), 'vmu-store-hooks-lamp-'))
+    try {
+      const tree = join(lampDir, 'vibe-math-vmu')
+      cpSync(join(REPO, 'vibe-math-vmu'), tree, { recursive: true })
+      const storePath = join(tree, 'kernel', 'store.js')
+      const src = readFileSync(storePath, 'utf8')
+      const from = 'const fireHooks = meta.hooks !== false'
+      ok(src.indexOf(from) !== -1, 'R6 lamp-setup: the per-path hooks switch exists')
+      writeFileSync(storePath, src.replace(from, 'const fireHooks = true'))
+      const lampMod = await import(pathToFileURL(storePath).href + '?r6hooks=1')
+      const ldir = await mkdtemp(join(tmpdir(), 'vmu-store-hooks-lamp-ws-'))
+      try {
+        const lp = lampMod.createStore({ root: ldir, clock: () => 1000 })
+        let lh = 0
+        lp.onReload(() => { lh += 1 })
+        await lp.open()
+        ok(lh > 0,
+          'R6 lamp RED-worthy: 若忽略 hooks:false（open 也水化）⇒ 恢复流程会多触发一次水合（final21 G1 的六套回归形状）', { hooks: lh })
+      } finally { await rm(ldir, { recursive: true, force: true }) }
+    } finally { await rm(lampDir, { recursive: true, force: true }) }
+  } finally { await rm(root, { recursive: true, force: true }) }
+}
+
 // ---- 9. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   ok(failed > 0, 'self-probe: the naive read-modify-write lost an update and the assertion caught it', failed)

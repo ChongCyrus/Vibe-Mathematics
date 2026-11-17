@@ -88,8 +88,9 @@ const parseDocRow = (text, key = KEY) => {
     ? lines.findIndex((l, i) => i > h11 && i < h12 && l.startsWith('| `' + key + '` |'))
     : -1
   const cells = rowLine === -1 ? [] : lines[rowLine].split('|').map((c) => c.trim())
-  // cells: ['', key, type, default, domain, scope, hot, who, wired, carrier, doc, '']
-  const cellDefault = cells[3] === undefined ? '' : cells[3].replace(/`/g, '').trim()
+  // cells: ['', key, 必设, type, default, domain, scope, hot, who, wired, carrier, doc, ''] (C#23 added 必设)
+  const off = (cells[2] === '★ minimal' || cells[2] === '—') ? 4 : 3  // C#23 column present ⇒ default is cells[4]; legacy synthetic fixtures ⇒ cells[3]
+  const cellDefault = cells[off] === undefined ? '' : cells[off].replace(/`/g, '').trim()
   const docList = /^\[(.*)\]$/.test(cellDefault) ? cellDefault.slice(1, -1).split(',').map((s) => s.trim()).filter(Boolean) : null
   return { h11, h12, rowLine, cells, cellDefault, docList }
 }

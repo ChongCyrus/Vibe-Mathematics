@@ -47,6 +47,8 @@
  *   tools 让工具名从包里来。两者都不改 `settings`（它仍然是空的，见上）。
  */
 import { V3_TICK_MODULE, V3_TICK_TOPIC } from './middleware/tick.js'
+// ★ C#3: this pack OWNS its settings namespace — the declarations file registers it through the ONE seam.
+import './settings/declarations.js';
 import { V3_DATAPLANE_MODULE } from './middleware/dataplane.js'
 import { V3_PLANNER_MODULE } from './middleware/planner.js'
 import { V3_SUBQUESTIONS_MODULE } from './middleware/subquestions.js'

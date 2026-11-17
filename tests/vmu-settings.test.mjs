@@ -24,6 +24,10 @@ const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
 const SELF_PROBE = process.argv.includes('--self-probe')
 
+// ★ C#3: pack-owned namespaces are declared by the PACKS now — load their declarations before reading the ONE table.
+import '../vibe-math-vmu/packs/v3/settings/declarations.js'
+import '../vibe-math-vmu/packs/v3-core/settings/declarations.js'
+import '../vibe-math-vmu/packs/v5r/settings/declarations.js'
 const target = pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href
 const m = await import(target)
 
@@ -228,6 +232,74 @@ ok(r.values['vmu.core.enabled'] === true, 'untouched keys keep their harmless de
 ok(r.values['vmu.meetings.quorumRule'] === 'all-unanimous', 'a second layer applies')
 ok(Array.isArray(r.provenance['vmu.limits.maxLiveMembers']), 'provenance is recorded for changed keys')
 ok(r.provenance['vmu.core.enabled'] === undefined, 'provenance is absent for untouched keys (default path)')
+
+// ---- 7b. C#4 / C#3 / C#15 / C#23 (TB-2792 Step 1b–1d) ------------------------------------------
+{
+  const eq = (a, b, name, detail) => ok(a === b, name, detail === undefined ? JSON.stringify(a) : detail)
+  const { V5R_SETTING_DEFAULTS } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.js')).href)
+  const defOf = (k) => m.SETTING_DEFS.find((d) => d.key === k)
+  // C#4: the FRAMEWORK defaults are neutral; the v5r institution carries its own values in its own defaults.
+  ok(JSON.stringify(defOf('vmu.records.tracks').def) === '[]',
+    'C#4: framework vmu.records.tracks default is NEUTRAL (no pack track names)', defOf('vmu.records.tracks').def)
+  eq(defOf('vmu.records.requireSettledRecords').def, false,
+    'C#4: framework requireSettledRecords default is NEUTRAL false (no v5r policy)')
+  ok(Array.isArray(V5R_SETTING_DEFAULTS['vmu.records.tracks']) && V5R_SETTING_DEFAULTS['vmu.records.tracks'].length > 0,
+    'C#4: the v5r PACK supplies its own tracks (framework default moved to the pack)', V5R_SETTING_DEFAULTS['vmu.records.tracks'].length)
+  ok(V5R_SETTING_DEFAULTS['vmu.records.requireSettledRecords'] === false,
+    'C#4: the v5r pack supplies its own requireSettledRecords value', V5R_SETTING_DEFAULTS['vmu.records.requireSettledRecords'])
+
+  // C#3: a pack registers its OWN namespace through the one seam; zero framework edit; unknown namespace named.
+  const reg = m.registerPackSettings({ pack: 'c3-test-pack', namespace: 'vmu.c3test', defs: [
+    { key: 'vmu.c3test.mode', type: 'enum', domain: ['a', 'b'], def: 'a', hot: m.HOT.H1, who: 'office', doc: 'C#3 测试命名空间的一个键' },
+  ] })
+  ok(reg && reg.ok === true && reg.added.includes('vmu.c3test.mode'), 'C#3: a pack namespace registers at runtime (zero framework edit)', reg)
+  const screened = m.screenSettings({ 'vmu.c3test.mode': 'b' })
+  eq(JSON.stringify(screened.accepted), JSON.stringify({ 'vmu.c3test.mode': 'b' }),
+    'C#3: the pack key is ACCEPTED by the same screen every framework key goes through')
+  let dup = null
+  try { m.registerPackSettings({ pack: 'c3-test-pack', namespace: 'vmu.c3test', defs: [{ key: 'vmu.c3test.mode', type: 'string', def: '', hot: m.HOT.H1, who: 'office', doc: 'x' }] }) } catch (e) { dup = e }
+  eq(dup && dup.code, 'VMU_SETTING_NAMESPACE_CONFLICT', 'C#3: a duplicate key is refused by name (no silent merge)')
+  let outside = null
+  try { m.registerPackSettings({ pack: 'c3-test-pack', namespace: 'vmu.c3test', defs: [{ key: 'vmu.records.tracks', type: 'stringList', def: [], hot: m.HOT.H1, who: 'office', doc: 'x' }] }) } catch (e) { outside = e }
+  eq(outside && outside.code, 'VMU_INVALID_ARGUMENT', 'C#3: a pack may not declare a framework key (outside its namespace refused)')
+  const unknownNs = m.screenSettings({ 'vmu.nosuchnamespace.key': 1 })
+  eq(unknownNs.rejected[0] && unknownNs.rejected[0].code, 'VMU_SETTING_NAMESPACE_UNKNOWN',
+    'C#3: an UNKNOWN namespace is refused by its own name (not the generic undeclared)', unknownNs.rejected[0])
+  ok(m.registeredPackNamespaces().some((r) => r.namespace === 'vmu.c3test' && r.packs.includes('c3-test-pack')),
+    'C#3: registeredPackNamespaces() reports the pack and its namespace', m.registeredPackNamespaces())
+
+  // C#15: the four quotas are FINITE by default; an explicit 0 remains the written-down unlimited literal.
+  for (const [k, finite] of [['vmu.budget.tokens', 1000000], ['vmu.budget.turns', 500], ['vmu.budget.toolCalls', 10000], ['vmu.budget.subagents', 50]]) {
+    eq(defOf(k).def, finite, 'C#15: ' + k + ' 默认是有限值（不是隐式的 0=不限）')
+  }
+  const budgetScreen = m.screenSettings({ 'vmu.budget.tokens': 0 })
+  eq(budgetScreen.accepted['vmu.budget.tokens'], 0, 'C#15: 显式 0 仍是合法的不限字面量（写出来才算数）')
+  const defaults = m.resolveSettings([])
+  eq(defaults.values['vmu.budget.tokens'], 1000000, 'C#15: 未设时回执给有限默认（source 可区分「未设」）')
+  eq((defaults.provenance['vmu.budget.tokens'] || []).length, 0, 'C#15: 未设键没有 provenance（未设 ≠ 被显式设为默认）')
+  const explicit = m.resolveSettings([{ 'vmu.budget.tokens': 0 }])
+  eq(explicit.values['vmu.budget.tokens'], 0, 'C#15: 显式 unlimited(0) 的值与未设可区分')
+
+  // C#23: minimal profile is a SMALL explainable requirement list; missing keys are refused by name.
+  ok(m.SETTING_PROFILES && m.SETTING_PROFILES.minimal && m.SETTING_PROFILES.minimal.required.length === 4,
+    'C#23: minimal profile declares exactly FOUR required keys (small + explainable)', m.SETTING_PROFILES && m.SETTING_PROFILES.minimal)
+  const emptyReport = m.profileReport({}, 'minimal')
+  eq(emptyReport.ok, false, 'C#23: an empty deployment is NOT minimal-complete')
+  eq(emptyReport.missing.length, 4, 'C#23: all four required keys are named missing', emptyReport.missing.map((x) => x.key))
+  let profErr = null
+  try { m.assertProfile({}, 'minimal') } catch (e) { profErr = e }
+  eq(profErr && profErr.code, 'VMU_SETTING_PROFILE_INCOMPLETE', 'C#23: a missing required key is refused by name')
+  ok(profErr && /vmu\.core\.enabled/.test(String(profErr.hint)) && /vmu\.budget\.tokens/.test(String(profErr.hint)),
+    'C#23: the refusal hint lists every missing key WITH its reason', profErr && profErr.hint)
+  const minimalValues = { 'vmu.core.profile': 'minimal', 'vmu.core.enabled': true, 'vmu.turn.deliveryTimeoutMs': 180000, 'vmu.budget.tokens': 200000, 'vmu.limits.toolCallsPerTurnCap': 40 }
+  ok(m.profileReport(minimalValues).ok === true, 'C#23: a complete minimal values map passes the profile check')
+  const km = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
+  const mk = km.createKernel({ clock: () => 1000, settings: minimalValues })
+  ok(mk && mk.status({}).enabled === true, 'C#23: a minimal profile really BOOTS a kernel (status.enabled)')
+  const doc04 = readFileSync(resolve(REPO, 'vibe-math-vmu', 'docs', '04-settings.md'), 'utf8')
+  ok(/^\| 键 \| 必设 \|/m.test(doc04), 'C#23: docs/04 generated table carries the 必设 column')
+  ok(/\| `vmu\.core\.enabled` \| ★ minimal \|/m.test(doc04), 'C#23: a required key is marked ★ minimal in the generated docs table')
+}
 
 // ---- 8. self-probe -----------------------------------------------------------------------------
 if (SELF_PROBE) {

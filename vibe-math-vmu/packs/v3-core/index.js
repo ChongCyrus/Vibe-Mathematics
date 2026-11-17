@@ -16,6 +16,9 @@
 // INSTITUTION expressible on this framework: its slots, its mechanism defaults, its record tracks, and two of
 // its rules. The behavioural A/B (P3) is separate work.
 
+// ★ C#3: this pack OWNS its settings namespace — the declarations file registers it through the ONE seam.
+import './settings/declarations.js';
+
 /** The stance codes live in the pack's own namespace (R-d); digits are fine (`vmu` precedent: VMU_PACK_V5R_*). */
 export const PACK = Object.freeze({
   id: 'v3-core',

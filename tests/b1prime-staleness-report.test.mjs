@@ -40,7 +40,7 @@ try {
   // key to §11 shifted the header and reddened a suite whose subject is the staleness MESSAGE, not the line number.
   // Adding a key is routine, so a coordinate assertion is a fixture that breaks on normal work. The header text is
   // stable; assert it is present EXACTLY ONCE (a duplicate would make "the first one" a silent guess).
-  const headerHits = lines.map((l, i) => (l.startsWith('| 键 | 类型 |') ? i : -1)).filter((i) => i >= 0)
+  const headerHits = lines.map((l, i) => ((l.startsWith('| 键 | 必设 |') || l.startsWith('| 键 | 类型 |')) ? i : -1)).filter((i) => i >= 0)
   ok(headerHits.length === 1, 'the §11 table header occurs EXACTLY ONCE (located by CONTENT, not by a hard-coded line)', JSON.stringify(headerHits))
   const headerIdx = headerHits[0]
   const bodyFirst = headerIdx + 2        // ★ +2: headerIdx+1 is the `|---|…|` SEPARATOR (my first version deleted the

@@ -38,8 +38,8 @@ import { createHostMath } from './host-math.js'
 import { hydrateIds } from './kernel/ids.js'
 import { assertDeclared } from './settings/schema.js'
 import { pathToFileURL, fileURLToPath } from 'node:url'
-import { basename, isAbsolute, join, dirname } from 'node:path'
-import { readFileSync, existsSync } from 'node:fs'
+import { basename, isAbsolute, join, dirname, sep } from 'node:path'
+import { readFileSync, existsSync, realpathSync } from 'node:fs'
 
 export const name = 'vibe-math-vmu'
 
@@ -519,38 +519,126 @@ export function apply(ctx, config = {}) {
   // static table below is why it went unnoticed: a pack policy was injected BEFORE the kernel existed.
   // THE FIX: ONE stable dispatcher, handed to the kernel for its whole lifetime, that re-reads the LIVE list on every
   // assembly. No second construction path, no mutable kernel hook, and the turn loop needed no change.
-  // ★★★ TB-2792 / C#1 — THE ENTRY NAMES NO PACK. Before this, this file statically imported v5r's prompt switch,
-  // notice block, phases and reply fields and kept a `PACK_RUNTIME` table keyed by the id 'v5r' — so integrating a
-  // SECOND pack meant editing the framework entry (the audit's C#1 FAIL). The pack now brings its own declarations:
-  //   · DATA (phases / replyFields) is scanned SYNCHRONOUSLY from `packs/<id>/runtime.json` (and from any directory in
-  //     `config.packDirs`), because the turn loop's reply-field table is a construction-time snapshot. The scanned data
-  //     rides the EXISTING fold seam (`kernel/pack.js#foldPackDeclarations`), so there is no second registration path.
-  //   · HOOKS (sectionPolicy / noticeBlock) cannot be data. The pack module exports them as `PACK_CONTRIBUTION`; the
-  //     entry collects them when the SAME async pack-apply path below loads the module, and the section-policy
-  //     dispatcher re-reads the live list on every assembly, so a pack loaded after createKernel still takes effect.
+  // ★★★ ROUND-6 AUDIT (C#1 boundary gaps, P2×3) — THE RUNTIME DISCOVERY IS A FILE-READING SURFACE, SO IT IS GUARDED.
+  //   · Gap 1 (PATH TRAVERSAL): `packs:['../outside']` used to resolve `packDirs/../outside/runtime.json` — a pack id is
+  //     an IDENTIFIER, not a path. An invalid id is refused BY NAME (`VMU_PACK_ID_INVALID`) before any read, and every
+  //     resolved file is `realpath`-checked to sit INSIDE one of the allowed roots (the shipped `packs/` and each
+  //     `config.packDirs` entry). Nothing is read on a violation.
+  //   · Gap 2 (SILENT FIRST-WINS): the same id in TWO roots (or a root + an inline declaration) used to pick the first
+  //     silently. Two providers with the same id are now a NAMED refusal (`VMU_PACK_ID_DUPLICATE`) listing every candidate
+  //     absolute path, and NEITHER is used — a receipt that says "which one won" without saying "there were two" is the
+  //     exact silent-precedence family this project removes.
+  //   · Gap 3 (EXTERNAL HOOKS SILENTLY MISSING): a `packDirs` pack used to get DATA only, because the loader imports
+  //     `./packs/<id>/index.js` from the shipped folder. The entry now imports `<packDir>/<id>/index.js` too and collects
+  //     its `PACK_CONTRIBUTION`; a module that exists but fails to import is named (`VMU_PACK_CONTRIBUTION_IMPORT_FAILED`),
+  //     and the absence of a hooks module is a stated receipt fact (`hooks: {found:false}`), never an empty silence.
   const entryHome = dirname(fileURLToPath(import.meta.url))
-  const runtimeDataDirs = [join(entryHome, 'packs')].concat(Array.isArray(config.packDirs) ? config.packDirs.filter((d) => typeof d === 'string' && isAbsolute(d)) : [])
+  // Named discovery failures (invalid id / traversal / duplicate / bad data / hooks): they join packErrors below.
   const packDataErrors = []
-  const scanPackRuntimeData = (id) => {
-    for (const dir of runtimeDataDirs) {
-      const file = join(dir, id, 'runtime.json')
-      if (!existsSync(file)) continue
-      try {
-        const data = JSON.parse(readFileSync(file, 'utf8'))
-        if (!data || typeof data !== 'object') throw new Error('runtime.json is not an object')
-        return { id: typeof data.id === 'string' ? data.id : id, requestId: id, phases: Array.isArray(data.phases) ? data.phases.filter((x) => typeof x === 'string') : [], replyFields: Array.isArray(data.replyFields) ? data.replyFields.filter((f) => f && typeof f === 'object' && typeof f.field === 'string') : [], source: file }
-      } catch (e) { packDataErrors.push({ id, file, code: (e && e.code) || 'VMU_PACK_RUNTIME_DATA_INVALID', message: String((e && e.message) || e) }) }
-    }
+  // The shipped pack root is the folder this entry lives in; config.packDirs adds EXTERNAL roots (validated below).
+  const PACK_ID_SAFE = /^[A-Za-z0-9._-]+$/
+  const packIdProblemOf = (id) => {
+    if (typeof id !== 'string' || id === '') return 'the id is empty'
+    if (id === '.' || id === '..') return 'the id is a path segment, not a pack id'
+    if (!PACK_ID_SAFE.test(id)) return 'the id has characters a pack id cannot have (allowed: letters, digits, dot, underscore, hyphen — no path separators)'
     return null
   }
+  const packDataRoots = (() => {
+    const roots = [{ kind: 'shipped', dir: join(entryHome, 'packs') }]
+    for (const d of Array.isArray(config.packDirs) ? config.packDirs : []) {
+      if (typeof d !== 'string' || d === '') { packDataErrors.push({ id: null, file: String(d), code: 'VMU_PACK_DIR_INVALID', message: 'config.packDirs entries must be non-empty strings' }); continue }
+      if (!isAbsolute(d)) { packDataErrors.push({ id: null, file: d, code: 'VMU_PACK_DIR_INVALID', message: 'config.packDirs entries must be ABSOLUTE paths (a relative dir would resolve against an unknowable cwd)' }); continue }
+      roots.push({ kind: 'external', dir: d })
+    }
+    return roots
+  })()
+  const realPathOrNull = (p) => { try { return realpathSync(p) } catch { return null } }
+  const insideRoot = (rootReal, real) => real === rootReal || real.startsWith(rootReal.charAt(rootReal.length - 1) === sep ? rootReal : rootReal + sep)
+  // Every candidate for one id: {file, real, root} — with traversal and unreadable-root violations NAMED and dropped.
+  const packDataCandidatesOf = (id) => {
+    const out = []
+    for (const root of packDataRoots) {
+      const file = join(root.dir, id, 'runtime.json')
+      if (!existsSync(file)) continue
+      const real = realPathOrNull(file)
+      const rootReal = realPathOrNull(root.dir)
+      if (real === null || rootReal === null) {
+        packDataErrors.push({ id, file, code: 'VMU_PACK_RUNTIME_DATA_UNREADABLE', message: 'the runtime.json exists but its real path cannot be resolved (a broken link or a permission problem)' })
+        continue
+      }
+      if (!insideRoot(rootReal, real)) {
+        packDataErrors.push({ id, file, real, root: root.dir, code: 'VMU_PACK_ID_INVALID', message: 'the resolved runtime.json is OUTSIDE the allowed pack root (path traversal): ' + real + ' is not under ' + rootReal, hint: 'pack ids are identifiers, never paths; put the pack folder under the declared root' })
+        continue
+      }
+      out.push({ id, file, real, root: root.dir, kind: root.kind })
+    }
+    return out
+  }
+  // INLINE declarations are the other provider of the same DATA — computed first so duplicates can be judged against them.
+  const inlinePackData = (Array.isArray(config.packs) ? config.packs : []).filter((p) => p && typeof p === 'object' && !Array.isArray(p))
+    .map((p, index) => ({ id: (p && p.id) || null, inlineIndex: index, phases: Array.isArray(p.phases) ? p.phases : [], replyFields: Array.isArray(p.replyFields) ? p.replyFields : [] }))
+    .filter((p) => p.id && (p.phases.length > 0 || p.replyFields.length > 0))
   const wantedPackIds = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
   const activePackIds = Array.isArray(settings['vmu.packs.active']) ? settings['vmu.packs.active'].filter((p) => typeof p === 'string') : []
-  const runtimePackData = [...new Set([...wantedPackIds, ...activePackIds])].map(scanPackRuntimeData).filter(Boolean)
-  // Inline manifests (config.packs objects / config.packManifests) may carry the same DATA directly; they are folded
-  // through the same seam, so a deployment can declare phases/replyFields with no file at all.
-  const inlinePackData = (Array.isArray(config.packs) ? config.packs : []).filter((p) => p && typeof p === 'object' && !Array.isArray(p))
-    .map((p) => ({ id: (p && p.id) || null, phases: Array.isArray(p.phases) ? p.phases : [], replyFields: Array.isArray(p.replyFields) ? p.replyFields : [] }))
-    .filter((p) => p.id && (p.phases.length > 0 || p.replyFields.length > 0))
+  const requestedRuntimeIds = [...new Set([...wantedPackIds, ...activePackIds])]
+  const externalHooksByRequestId = new Map()
+  const scanPackRuntimeData = (id) => {
+    const problem = packIdProblemOf(id)
+    if (problem !== null) {
+      packDataErrors.push({ id, code: 'VMU_PACK_ID_INVALID', message: 'pack id ' + JSON.stringify(id) + ' is not a safe identifier: ' + problem, hint: 'an id matches /^[A-Za-z0-9._-]+$/ and is never "." / ".." / a path; the file is NOT read' })
+      return null
+    }
+    const candidates = packDataCandidatesOf(id)
+    const inlineSameId = inlinePackData.filter((d) => d.id === id)
+    if (candidates.length > 1) {
+      packDataErrors.push({ id, code: 'VMU_PACK_ID_DUPLICATE', message: 'pack id ' + JSON.stringify(id) + ' is provided by ' + candidates.length + ' roots', candidates: candidates.map((c) => c.real), hint: 'declare the pack in ONE root (or as ONE inline declaration); nothing is chosen silently' })
+      return null
+    }
+    if (candidates.length === 1 && inlineSameId.length > 0) {
+      packDataErrors.push({ id, code: 'VMU_PACK_ID_DUPLICATE', message: 'pack id ' + JSON.stringify(id) + ' is declared BOTH as a file (' + candidates[0].real + ') and inline (config.packs object #' + inlineSameId[0].inlineIndex + ')', candidates: [candidates[0].real, 'inline:' + inlineSameId[0].inlineIndex], hint: 'one id, one provider: drop the inline declaration or the file' })
+      return null
+    }
+    if (candidates.length === 0) return null
+    const c = candidates[0]
+    let data = null
+    try {
+      data = JSON.parse(readFileSync(c.real, 'utf8'))
+      if (!data || typeof data !== 'object') throw new Error('runtime.json is not an object')
+    } catch (e) {
+      packDataErrors.push({ id, file: c.real, code: (e && e.code) || 'VMU_PACK_RUNTIME_DATA_INVALID', message: String((e && e.message) || e) })
+      return null
+    }
+    // Gap 3: a hooks module next to the data file. Found ⇒ it will be imported (and its failure named); absent ⇒ the
+    // receipt says so (`hooks.found:false`), which is the honest answer for a DATA-ONLY pack.
+    let hooks = { found: false, file: null }
+    if (c.kind === 'external') {
+      const candidate = join(dirname(c.real), 'index.js')
+      if (existsSync(candidate)) {
+        const hooksReal = realPathOrNull(candidate)
+        const rootReal = realPathOrNull(c.root)
+        if (hooksReal !== null) { hooks = { found: true, file: hooksReal }; externalHooksByRequestId.set(id, hooksReal) }
+        else packDataErrors.push({ id, file: candidate, code: 'VMU_PACK_CONTRIBUTION_UNREADABLE', message: 'the external pack has an index.js whose real path cannot be resolved' })
+      }
+    }
+    return {
+      id: typeof data.id === 'string' && data.id !== '' ? data.id : id,
+      requestId: id,
+      external: c.kind === 'external',
+      phases: Array.isArray(data.phases) ? data.phases.filter((x) => typeof x === 'string') : [],
+      replyFields: Array.isArray(data.replyFields) ? data.replyFields.filter((f) => f && typeof f === 'object' && typeof f.field === 'string') : [],
+      source: c.real,
+      hooks,
+    }
+  }
+  const runtimePackData = requestedRuntimeIds.map(scanPackRuntimeData).filter(Boolean)
+  // TWO inline declarations for the same id are the same silent-precedence defect as two files.
+  {
+    const byId = new Map()
+    for (const d of inlinePackData) { const prev = byId.get(d.id) || []; prev.push(d.inlineIndex); byId.set(d.id, prev) }
+    for (const [id, indexes] of byId) {
+      if (indexes.length > 1) packDataErrors.push({ id, code: 'VMU_PACK_ID_DUPLICATE', message: 'pack id ' + JSON.stringify(id) + ' is declared by ' + indexes.length + ' inline config.packs objects', candidates: indexes.map((i) => 'inline:' + i), hint: 'one id, one inline provider' })
+    }
+  }
   // HOOKS learned when a pack module is loaded (see the async apply path): the dispatcher reads this LIVE.
   const builtinPromptPolicies = []
   let liveNoticeBlock = null
@@ -561,6 +649,24 @@ export function apply(ctx, config = {}) {
     if (typeof contribution.noticeBlock === 'function') liveNoticeBlock = contribution.noticeBlock
     return { registered: true, id: contribution.id || requestId, sectionPolicy: typeof contribution.sectionPolicy === 'function', noticeBlock: typeof contribution.noticeBlock === 'function' }
   }
+  // ★ ROUND-6 GAP 3: an EXTERNAL (config.packDirs) pack keeps its code in its own folder. The entry imports
+  // `<packDir>/<id>/index.js` and collects its PACK_CONTRIBUTION exactly like a shipped pack; every outcome is NAMED.
+  const importExternalPackContribution = async (requestId) => {
+    const file = externalHooksByRequestId.get(requestId)
+    if (!file) return { attempted: false, found: false }
+    let mod = null
+    try { mod = await import(pathToFileURL(file).href) } catch (e) {
+      const failure = { id: requestId, file, code: (e && e.code) || 'VMU_PACK_CONTRIBUTION_IMPORT_FAILED', message: String((e && e.message) || e) }
+      packDataErrors.push(failure)
+      return { attempted: true, found: true, registered: false, ...failure }
+    }
+    const reg = registerPackContribution(requestId, mod)
+    const row = { id: requestId, file, registered: reg.registered === true, why: reg.why || null }
+    if (reg.registered) packContributionsRegistered.push({ id: reg.id || requestId, sectionPolicy: reg.sectionPolicy === true, noticeBlock: reg.noticeBlock === true, external: true })
+    if (!reg.registered) packDataErrors.push({ id: requestId, file, code: 'VMU_PACK_CONTRIBUTION_ABSENT', message: 'the external pack has an index.js but exports no PACK_CONTRIBUTION: its DATA applies, its HOOKS do not' })
+    return { attempted: true, found: true, ...row }
+  }
+  const externalHooksLoads = []
   const packContributionsRegistered = []
   // ★ THE ONE SINK CONTRACT (kernel/pack.js): a manifest's policy is handed to `onPromptPolicy`, whose RETURN VALUE is
   // the loader's undo. This array holds EXACTLY those manifest-declared policies, so the existing `promptPolicies()`
@@ -1249,6 +1355,17 @@ export function apply(ctx, config = {}) {
             // so this branch records it as applied with nothing to apply, and only a name with neither a manifest NOR
             // data reaches the error path below. An INLINE manifest is never probed for folder data: it has no folder.
             if (loaded === null && inlineManifest === null) {
+              // ★ ROUND-6 GAP 3: an external pack's HOOKS are imported from ITS folder (not from the shipped packs/).
+              // The outcome (registered / absent / import failed) is appended to externalHooksLoads AND packDataErrors.
+              if (externalHooksByRequestId.has(wanted)) {
+                const loadedHooks = await importExternalPackContribution(wanted)
+                externalHooksLoads.push(loadedHooks)
+                const externalDataRow = runtimePackData.find((d) => d.requestId === wanted && d.external)
+                if (externalDataRow) { appliedPacks.push({ id: wanted, applied: [], dataOnly: true, external: true, carries: { runtime: true }, hooks: { found: true, registered: loadedHooks.registered === true, file: loadedHooks.file } }); continue }
+              } else {
+                const externalDataRow = runtimePackData.find((d) => d.requestId === wanted && d.external)
+                if (externalDataRow) { appliedPacks.push({ id: wanted, applied: [], dataOnly: true, external: true, carries: { runtime: true }, hooks: { found: false } }); continue }
+              }
               const here2 = dirname(fileURLToPath(import.meta.url))
               // A GUARD MUST NOT SWALLOW ITS OWN BUG. The first version of this line wrapped `existsSync` in a try/catch
               // to tolerate a missing packs folder - and when `existsSync` was not imported at all, the ReferenceError
@@ -1399,6 +1516,8 @@ export function apply(ctx, config = {}) {
       data: runtimePackData.map((d) => ({ requestId: d.requestId, id: d.id, phases: d.phases.slice(), replyFields: d.replyFields.map((f) => f.field), source: d.source })),
       inline: inlinePackData.map((d) => ({ id: d.id, phases: d.phases.slice(), replyFields: d.replyFields.map((f) => f.field) })),
       contributions: packContributionsRegistered.slice(),
+      externalHooks: externalHooksLoads.map((h) => Object.assign({}, h)),
+      externalHookCandidates: [...externalHooksByRequestId.entries()].map(([id, file]) => ({ id, file })),
       errors: packDataErrors.map((e) => Object.assign({}, e)),
       noticeBlockLive: typeof liveNoticeBlock === 'function',
       sectionPoliciesLive: builtinPromptPolicies.length,

@@ -321,7 +321,20 @@ const MODE = IS_MAIN ? modeFrom(process.argv, { script: 'generate-vmu-settings-t
 const MODE_WRITE = MODE === 'write'
 const JSON_OUT = process.argv.includes('--json')
 
-const { SETTING_DEFS } = await import(new URL('file://' + SCHEMA.replace(/\\/g, '/')).href)
+// ★ C#3 (TB-2792 Step 1b): a pack declares its OWN settings namespace. This table is derived from the SAME table the
+// runtime screens, so it loads every pack's declarations first — AUTO-DISCOVERED (packs/<id>/settings/declarations.js),
+// never a hand-maintained pack list.
+{
+  const packsDir = join(VMU_DIR, 'packs')
+  const declFiles = existsSync(packsDir)
+    ? readdirSync(packsDir, { withFileTypes: true }).filter((e) => e.isDirectory())
+      .map((e) => join(packsDir, e.name, 'settings', 'declarations.js')).filter((f) => existsSync(f)).sort()
+    : []
+  for (const f of declFiles) await import(new URL('file://' + f.replace(/\\/g, '/')).href)
+}
+
+
+const { SETTING_DEFS, SETTING_PROFILES } = await import(new URL('file://' + SCHEMA.replace(/\\/g, '/')).href)
 
 const TYPE_LABEL = {
   boolean: 'bool',
@@ -350,8 +363,8 @@ const renderHot = (def) => (def.hot === 'H3' ? '**H3**' : def.hot)
 const renderWho = (def) => (String(def.who).startsWith('role:') ? def.who : def.who)
 
 const HEADER = [
-  '| 键 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 载体（首个**提到**它的运行时代码；消费点可能在其下游） | 说明 |',
-  '|---|---|---|---|---|---|---|---|---|---|',
+  '| 键 | 必设 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 载体（首个**提到**它的运行时代码；消费点可能在其下游） | 说明 |',
+  '|---|---|---|---|---|---|---|---|---|---|---|',
 ]
 
 export const WIRED = '✅ 已接线'
@@ -630,7 +643,8 @@ export function verdictOf(key) {
 
 const rows = SETTING_DEFS.map((def) => {
   const carrier = carrierOf(def.key)
-  return '| `' + def.key + '` | ' + (TYPE_LABEL[def.type] || def.type) + ' | ' +
+  const REQUIRED_MINIMAL = new Set(((SETTING_PROFILES && SETTING_PROFILES.minimal && SETTING_PROFILES.minimal.required) || []).map((r) => r.key))
+  return '| `' + def.key + '` | ' + (REQUIRED_MINIMAL.has(def.key) ? '★ minimal' : '—') + ' | ' + (TYPE_LABEL[def.type] || def.type) + ' | ' +
     renderDefault(def) + ' | ' + renderDomain(def) + ' | 会话 | ' + renderHot(def) + ' | ' + renderWho(def) + ' | ' +
     verdictOf(def.key) + ' | ' + (carrier ? '`' + carrier + '`' : '—') + ' | ' + def.doc + ' |'
 })
@@ -640,7 +654,7 @@ const generated = HEADER.concat(rows).join('\n')
 // ---- splice into the document, replacing exactly the table body ---------------------------------
 const docText = readFileSync(DOC, 'utf8')
 const lines = docText.split('\n')
-const headerIdx = lines.findIndex((l) => l.startsWith('| 键 | 类型 |'))
+const headerIdx = lines.findIndex((l) => (l.startsWith('| 键 | 必设 |') || l.startsWith('| 键 | 类型 |')))
 if (headerIdx === -1) {
   console.error('vmu settings table: the table header is missing from docs/04 §11')
   process.exit(1)

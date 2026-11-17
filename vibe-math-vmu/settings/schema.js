@@ -58,6 +58,7 @@ export const HOT = Object.freeze({ H0: 'H0', H1: 'H1', H2: 'H2', H3: 'H3' })
 const CORE_DEFS = Object.freeze([
   // ---- core ---------------------------------------------------------------------------------
   { key: 'vmu.core.enabled', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '内核总开关（关闭＝完全不介入）' },
+  { key: 'vmu.core.profile', type: 'enum', domain: ['minimal', 'research'], def: 'research', hot: HOT.H2, who: 'office', doc: '★ C#23：部署自述的运行 profile。minimal = 只要求 4 个必设键（见 SETTING_PROFILES；缺一即 VMU_SETTING_PROFILE_INCOMPLETE 具名拒），research = 全量目录的完整机构（默认）。profile 是**声明**，不是权限：机制开关仍由各键自己决定' },
   { key: 'vmu.core.logLevel', type: 'enum', domain: ['debug', 'info', 'warn', 'error'], def: 'info', hot: HOT.H0, who: 'office', doc: '日志级别（不进模型上下文）' },
 
   // ---- limits (machine-enforced; refusals must name the current value and the cap) ----------
@@ -68,7 +69,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.limits.maxParallel', type: 'positiveInteger', def: 3, hot: HOT.H0, who: 'office', doc: '并发上限（P3：吸收 v5r 的 maxParallel；机器强制）' },
 
   // ---- records ------------------------------------------------------------------------------
-  { key: 'vmu.records.tracks', type: 'stringList', def: ['progress', 'routes', 'obstacles', 'rejected', 'state'], hot: HOT.H1, who: 'office', doc: '记录分轨（负向知识有独立档）' },
+  { key: 'vmu.records.tracks', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '记录分轨。★ C#4：框架默认【中性】——不写任何 pack 的轨名（空列表＝没有轨）；机构自己的轨名由 pack 在自己的 settings 声明里提供（v5r 提供 progress/routes/obstacles/rejected/state… 全套）。这样任何 pack 都不再继承 v5r 政策' },
   { key: 'vmu.records.headListAt', type: 'natural', def: 7, hot: HOT.H1, who: 'office', doc: '头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数' },
   { key: 'vmu.records.truncateMode', type: 'enum', domain: ['keepChars', 'keepHeadTail', 'dropMiddle'], def: 'keepChars', hot: HOT.H1, who: 'office', doc: '截断策略（必须计数，禁静默）' },
   { key: 'vmu.records.fingerprintPolicy', type: 'enum', domain: ['content-only', 'content+display'], def: 'content-only', hot: HOT.H2, who: 'office', doc: '内容指纹口径（默认排除展示头）' },
@@ -78,40 +79,20 @@ const CORE_DEFS = Object.freeze([
   // Found by the NEW read-side gate (tests/vmu-settings.test.mjs 1c): the v5r pack DECLARES and READS this key
   // (`packs/v5r-core.js:48/97`), yet it had never been in the schema - a real knob with a real consumer living
   // entirely outside the registry. Registering it is exactly what the gate demands.
-  { key: 'vmu.records.requireSettledRecords', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '只允许写入已结算记录（v5r 机制；由包携带默认 true）' },
+  { key: 'vmu.records.requireSettledRecords', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '只允许写入已结算记录。★ C#4：框架默认【中性 false】（不替任何 pack 决定这个政策）；v5r pack 在自己的 defaults 里声明它要的值（当前 false，历史上有过 true）' },
   // ROUND 5 / task-39 A (vmu-pack): TWO package-private keys that really have readers. The precedent is the row above
   // (a v5r package key declared here); the other three `vmu.v3.*` names vmu-pack found had ZERO readers and were
   // REMOVED from the pack rather than declared (declaring a key nobody reads is the "声明了没人读" defect).
-  { key: 'vmu.v3.verifierCount', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: 'v3-core 包私有：裁定需要多少名独立验证者表态（v3 `verifierCount`）。读者＝`packs/v3-core/index.js:80` 的 quorum 中间件（`setting("vmu.v3.verifierCount")`）。' },
-  { key: 'vmu.v3.mode', type: 'enum', domain: ['auto', 'manual'], def: 'auto', hot: HOT.H1, who: 'office', doc: 'v3-core 包私有：`manual` ⇒ 未经人工放行不得派发/运行（v3 `mode`）。读者＝`packs/v3-core/index.js:105` 的 manual-gate 中间件。' },
   // ★★★★★★★ PHASE 6 · 目标 2（v3 复刻）：THE TEN PACK-PRIVATE KEYS THE `packs/v3/` BUILD NEEDS, declared here for the
   // reason the two rows above exist - a pack-private key that is NOT in the schema is REFUSED BY NAME by
   // `vibe_vmu_set` (docs/10-packs.md:139-146), so "the pack declares it" is not enough to make it settable.
   // NOTE ON `who`: 'office' (the institute's own knob), matching the two v3-core rows above; these are pack policy
   // values, never framework behaviour, and the kernel reads NONE of them - their readers are `packs/v3/middleware/*`.
-  { key: 'vmu.v3.tickIntervalMs', type: 'natural', def: 2000, hot: HOT.H1, who: 'office', doc: 'v3 复刻：周期扫描的墙钟间隔（v3 `tickIntervalMs:2000`，`vibe-math-v3.js:400`）。读者＝`packs/v3/settings/defaults.json` 的 `v3/tick` 种子 ＋ `packs/v3/middleware/tick.js` 的到期判定。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
-  { key: 'vmu.v3.planningHorizon', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: 'v3 复刻：一次计划最多保留多少个可执行动作（超出截断且计数）。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
-  { key: 'vmu.v3.plannerEnabled', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'v3 复刻：规划器总开关；连续 `plannerMaxFails` 次不可解析 ⇒ 自动置 false 并发出具名事件（绝不静默）。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
-  { key: 'vmu.v3.planMinIntervalMs', type: 'natural', def: 30000, hot: HOT.H1, who: 'office', doc: 'v3 复刻：两次规划之间的最小间隔（冷却）。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
-  { key: 'vmu.v3.plannerMaxQueuedTurns', type: 'number', def: 2, hot: HOT.H1, who: 'office', doc: 'v3 规划器：串行派发队列里同时存在的回合数达到该值就不再派新回合（防止模型慢/卡时把队列越堆越长）；队头已等待超过 vmu.turn.deliveryTimeoutMs 时同样停止派发' },
-{ key: 'vmu.v3.plannerMaxFails', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: 'v3 复刻：连续不可解析多少次后关闭规划器。读者＝`packs/v3/middleware/planner.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
-  { key: 'vmu.v3.methodKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法库每 N 个应用记录保留一次归档。读者＝`packs/v3/middleware/methods.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
-  { key: 'vmu.v3.methodKeepIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法库按时间的保留间隔（0＝只按次数）。读者＝`packs/v3/middleware/methods.js`。' },
-  { key: 'vmu.v3.methodAutoPromote', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: 'v3 复刻：方法是否自动晋升（默认 false＝须人工/规则放行）。读者＝`packs/v3/middleware/methods.js`。' },
-  { key: 'vmu.v3.debateMaxRounds', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'v3 复刻：验证辩论的最大轮次。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
   // ★ PHASE 6 · 目标 2 / P1-3：升迁阈值。★ reader 是 `packs/v3/middleware/planner.js`，★ 未登记/越界时回落 0.7（与声明默认同值）。
   // ★ PHASE 6 · P1-5：汇报三路。★ reader＝`packs/v3/middleware/reports.js`；★ 未登记时回落 file。
   // ★ PHASE 6 · P1-7：工具过滤（★ 按【宿主实际注册名】比对；★ 调用期读取，不进值层）。★ 两张名单都空＝零机制。
   // ★ PHASE 6 · P1-10：论文收口目标。★ 空串＝零机制；★ 读者＝`packs/v3/middleware/paper-close.js`。
-  { key: 'vmu.v3.paperCloseTarget', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: 'v3 复刻：论文收口目标 id；非空时 tick 里检查四件产物，缺件不宣称完成，必要时派 paper-writer 回合。读者＝`packs/v3/middleware/paper-close.js` ✓' },
-  { key: 'vmu.v3.toolAllow', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'v3 复刻：允许的宿主工具名白名单（空＝零策略）；非空时名单外/拿不到工具名 ⇒ 具名拒。读者＝`packs/v3/middleware/toolfilter.js` ✓' },
-  { key: 'vmu.v3.toolDeny', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: 'v3 复刻：禁止的宿主工具名黑名单（优先于 allow）；读者同上 ✓' },
-  { key: 'vmu.v3.reportMode', type: 'enum', domain: ['file', 'push', 'both'], def: 'file', hot: HOT.H1, who: 'office', doc: 'v3 复刻：汇报三路模式（file＝写 reports 轨快照；push＝经 vmu.report 投递；both＝两者）。读者＝`packs/v3/middleware/reports.js` ✓' },
-  { key: 'vmu.v3.reportIntervalMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: 'v3 复刻：汇报节流毫秒；0＝每个 tick 一次；>0 未到点具名 report-not-due。读者＝`packs/v3/middleware/reports.js` ✓' },
   // ★ PHASE 7 · v5r 夹具模式开关（★ 调用期读：★ `kernel/turn/index.js` 的 sectionPolicy 每回合读一次并 disable/enable；★ 因此值层即足够、不是构造期快照）。
-  { key: 'vmu.v5r.fixtureMode', type: 'enum', domain: ['no-tools', 'tools'], def: 'no-tools', hot: HOT.H1, who: 'office', doc: 'PHASE 7：SLV 夹具模式开关。no-tools（默认）＝本轮不调用工具（保持历史 run 可比）；tools＝本轮可以且应该调用工具。由 pack 的 prompt 策略在【调用期】按回合 settings 读取，因此值层即足够；未知取值按具名拒处理，不猜默认。' },
-  { key: 'vmu.v3.promoteValueThreshold', type: 'number', def: 0.7, hot: HOT.H1, who: 'office', doc: 'v3 复刻：命题「价值/关键性」 ≥ 该值且未定论时自动晋升为问题（每 tick 至多一个）。读者＝`packs/v3/middleware/planner.js`；范围 [0,1]，越界/NaN 回落 0.7 ✓' },
-  { key: 'vmu.v3.verdictMode', type: 'enum', domain: ['forced', 'natural'], def: 'forced', hot: HOT.H1, who: 'office', doc: 'v3 复刻：连续概率票如何折叠成裁决（forced＝夹到 [0.01,0.99] 后按阈值；natural＝原值）。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记' },
   { key: 'vmu.records.pointerPropagation', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: 'P3/S21：头部列表为默认信息通道；关＝零注入且提示词逐字回退' },
   { key: 'vmu.records.meetingKeepEvery', type: 'positiveInteger', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：每 N 场会议保留一次归档（v5r 的 meetingKeepEvery）' },
   // task-196 REGISTRATION ALIGNMENT: both keys were WIRED for real (audit age-out; deterministic LZSS packing)
@@ -867,10 +848,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.custody.destroyKeepsReference', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "销毁后保留引用（true ⇒ 记录留存并说明样本已灭失）" },
   { key: 'vmu.anonymity.pseudonymStyle', was: ['vmu.custody.pseudonymStyle'], type: 'enum', domain: ['pseudonym', 'code'], def: 'pseudonym', hot: HOT.H1, who: 'office', doc: "主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒）" },
   { key: 'vmu.anonymity.mappingIrreversible', was: ['vmu.custody.mappingIrreversible'], type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望）" },
-  { key: 'vmu.budget.tokens', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "令牌总量（0＝不限；>0 即成为作用域默认上限）" },
-  { key: 'vmu.budget.turns', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "回合总量（0＝不限）" },
-  { key: 'vmu.budget.toolCalls', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "工具调用总量（0＝不限；与单回合上限 vmu.limits.toolCallsPerTurnCap 分工不同）" },
-  { key: 'vmu.budget.subagents', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "子代理总量（0＝不限）" },
+  { key: 'vmu.budget.tokens', type: 'natural', def: 1000000, hot: HOT.H1, who: 'office', doc: "令牌总量。★ C#15：框架默认是【有限值 1,000,000】——不再是隐式的「0＝不限」；要无限必须【显式写 0】（0 仍是合法的不限字面量，但它是被写出来的决定，不是默认）。未设（source=default）与显式无限（value 0）与有限值在 status.settings.resolved 里可区分" },
+  { key: 'vmu.budget.turns', type: 'natural', def: 500, hot: HOT.H1, who: 'office', doc: "回合总量。★ C#15：默认有限 500；显式 0＝不限（写出来才算数）" },
+  { key: 'vmu.budget.toolCalls', type: 'natural', def: 10000, hot: HOT.H1, who: 'office', doc: "工具调用总量。★ C#15：默认有限 10000；显式 0＝不限；与单回合上限 vmu.limits.toolCallsPerTurnCap 分工不同" },
+  { key: 'vmu.budget.subagents', type: 'natural', def: 50, hot: HOT.H1, who: 'office', doc: "子代理总量。★ C#15：默认有限 50；显式 0＝不限" },
   { key: 'vmu.budget.perTaskShare', type: 'ratio', def: 0, hot: HOT.H1, who: 'office', doc: "单任务可占比例（>0 且有限额时，同一任务超出该份额具名拒）" },
   { key: 'vmu.audit.level', type: 'enum', domain: ['minimal', 'normal', 'verbose'], def: 'normal', hot: HOT.H1, who: 'office', doc: "审计级别（minimal ⇒ 行只留 what/seq/at；verbose ⇒ 另附脱敏字段名与级别）" },
   { key: 'vmu.audit.dir', type: 'string', def: '<root>/vmu/audit', hot: HOT.H1, who: 'office', doc: "审计目录（默认取 docs/20 声明；本面只 REPORT 不触碰文件系统）" },
@@ -1548,9 +1529,129 @@ const CORE_DEFS = Object.freeze([
  */
 import { PLANNED_DEFS } from './planned.js'
 
-export const SETTING_DEFS = Object.freeze([...CORE_DEFS, ...PLANNED_DEFS])
+// ★ C#3: MUTABLE by design — a pack registers its OWN namespace at import time (before the kernel screens config), and the
+// ONE table every consumer reads must then contain it. This is the single extension point; a new pack setting key needs
+// NO framework edit (the pack ships packs/<id>/settings/declarations.js and imports it from its index).
+export const SETTING_DEFS = [...CORE_DEFS, ...PLANNED_DEFS]
 
 const BY_KEY = new Map(SETTING_DEFS.map((d) => [d.key, d]))
+
+/** Registered pack namespaces: namespace ('vmu.v5r') -> { pack, keys:Set<string> }. */
+export const PACK_SETTING_NAMESPACES = new Map()
+
+/**
+ * ★ C#3 (TB-2792 Step 1b) — THE PACK SETTINGS REGISTRATION SEAM. A pack owns its namespace; the framework only validates
+ * and merges. Rules (all refusals named, none silent):
+ *   · namespace must look like `vmu.<token>` (letters/digits/underscore), never a framework token already in the table;
+ *   · every def.key must sit under that namespace, carry the same metadata every framework def carries and not collide;
+ *   · every def is validated by the SAME validateValue/unenforcedReason path (no second implementation).
+ * Returns a receipt a pack loader can print: { ok, pack, namespace, added, total }.
+ */
+export function registerPackSettings({ pack = null, namespace = null, defs = null } = {}) {
+  const ns = typeof namespace === 'string' ? namespace.trim() : ''
+  if (!/^vmu.[a-z][a-z0-9_]*$/.test(ns)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'a pack settings namespace must look like "vmu.<token>": ' + JSON.stringify(namespace),
+      'declare e.g. registerPackSettings({namespace:"vmu.v5r", defs:[…]}) — the prefix is the pack own namespace, not a framework key')
+  }
+  const token = ns.slice('vmu.'.length)
+  // FRAMEWORK namespaces = the HAND-WRITTEN core table only. The generated planned registry may still carry a pack key
+  // as a placeholder (it is regenerated from the docs), so it must not be able to veto the pack's own registration.
+  const frameworkTokens = new Set(CORE_DEFS.map((d) => d.key.split('.')[1]).filter(Boolean))
+  const mine = PACK_SETTING_NAMESPACES.get(ns)
+  if (!mine && frameworkTokens.has(token)) {
+    throw refuse('VMU_SETTING_NAMESPACE_TAKEN', 'namespace ' + ns + ' collides with a FRAMEWORK namespace of the same token',
+      'pick a pack-specific token (e.g. vmu.' + token + '-pack style is not allowed either — use a distinct word such as vmu.v5r): the framework namespace belongs to the core table')
+  }
+  if (!Array.isArray(defs) || defs.length === 0) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'registerPackSettings needs a non-empty defs array for ' + ns,
+      'pass the declarations the pack ships in packs/<id>/settings/declarations.js')
+  }
+  const added = []
+  const seen = new Set()
+  for (const d of defs) {
+    if (!d || typeof d !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a pack settings declaration must be an object', 'got ' + JSON.stringify(d))
+    if (typeof d.key !== 'string' || !d.key.startsWith(ns + '.')) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'pack ' + ns + ' declared key ' + JSON.stringify(d && d.key) + ', which is outside its namespace',
+        'every key in this file must start with "' + ns + '." — a pack may not declare a framework key')
+    }
+    const existing = BY_KEY.get(d.key)
+    if (existing && existing.type !== 'planned') throw refuse('VMU_SETTING_NAMESPACE_CONFLICT', 'duplicate settings key "' + d.key,
+      'a key may be declared once (framework table or one pack); a second declaration is refused, never merged silently')
+    if (seen.has(d.key)) throw refuse('VMU_SETTING_NAMESPACE_CONFLICT', 'duplicate settings key "' + d.key,
+      'a key may be declared once (framework table or one pack); a second declaration is refused, never merged silently')
+    if (typeof d.type !== 'string' || typeof d.hot !== 'string' || typeof d.who !== 'string') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'pack settings key ' + d.key + ' is missing metadata (type/hot/who)',
+        'a pack declaration carries the SAME metadata a framework declaration does (type, hot, who, def, doc)')
+    }
+    seen.add(d.key)
+  }
+  for (const d of defs) {
+    const at = SETTING_DEFS.findIndex((x) => x && x.key === d.key)
+    if (at >= 0) SETTING_DEFS.splice(at, 1, d)
+    else SETTING_DEFS.push(d)
+    BY_KEY.set(d.key, d)
+    added.push(d.key)
+  }
+  const row = PACK_SETTING_NAMESPACES.get(ns) || { packs: new Set(), keys: new Set() }
+  if (pack !== null && pack !== undefined) row.packs.add(String(pack))
+  for (const k of added) row.keys.add(k)
+  PACK_SETTING_NAMESPACES.set(ns, row)
+  return { ok: true, pack: pack === null ? null : String(pack), namespace: ns, added, total: added.length }
+}
+
+/**
+ * ★★ C#23 (TB-2792 Step 1d) — THE MINIMAL RUNNABLE PROFILE.
+ *
+ * WHY: 1,283 declared keys with no answer to "what do I actually have to set?" is undefinable. A profile is a SMALL,
+ * EXPLAINABLE list of keys a deployment must decide BEFORE the framework can run that profile — not a second policy
+ * engine. minimal is deliberately four keys, each with a one-line reason; research (the default) relies on the declared
+ * defaults and adds no extra requirement (a research deployment tunes what it needs).
+ *
+ * The list is a DECLARATION: profileReport() measures presence in the deployment-provided values (not in the defaults),
+ * and assertProfile() refuses by name (VMU_SETTING_PROFILE_INCOMPLETE) with the missing keys and their reasons.
+ */
+export const SETTING_PROFILES = Object.freeze({
+  minimal: Object.freeze({
+    why: '最小可运行 profile：只回答 4 个无法从机制推断的部署决定（其余键用声明默认）',
+    required: Object.freeze([
+      { key: 'vmu.core.enabled', why: '总开关：不声明它就无法区分「故意关闭」与「忘记配置」' },
+      { key: 'vmu.turn.deliveryTimeoutMs', why: '回合交付期限：交付接缝超时行为取决于它，框架不替部署猜' },
+      { key: 'vmu.budget.tokens', why: '令牌总量：C#15 后默认有限，minimal 部署必须明确自己的预算' },
+      { key: 'vmu.limits.toolCallsPerTurnCap', why: '单回合工具调用上限：唯一防止循环失控的框架侧上限' },
+    ]),
+  }),
+  research: Object.freeze({ why: '完整研究机构：使用声明默认，按需调参；无额外必设键', required: Object.freeze([]) }),
+})
+
+/** Which profile a values map declares (vmu.core.profile), defaulting to research. */
+export function profileOf(values = {}) {
+  const v = values && values['vmu.core.profile']
+  return v === 'minimal' ? 'minimal' : 'research'
+}
+
+/** The named report a deployment/profile checks: { ok, profile, required, missing, why }. */
+export function profileReport(values = {}, profile = null) {
+  const which = profile === null || profile === undefined ? profileOf(values) : String(profile)
+  const row = SETTING_PROFILES[which]
+  if (!row) throw refuse('VMU_INVALID_ARGUMENT', 'unknown settings profile: ' + JSON.stringify(which),
+    'legal profiles: ' + Object.keys(SETTING_PROFILES).join(' | ') + ' (declared in settings/schema.js SETTING_PROFILES)')
+  const missing = row.required.filter((r) => values === null || values === undefined || values[r.key] === undefined || values[r.key] === null)
+  return { ok: missing.length === 0, profile: which, required: row.required.map((r) => ({ ...r })), missing: missing.map((r) => ({ ...r })), why: row.why }
+}
+
+/** ★ The named refusal: a minimal deployment missing a required key cannot silently run on defaults. */
+export function assertProfile(values = {}, profile = null) {
+  const report = profileReport(values, profile)
+  if (report.ok) return report
+  throw refuse('VMU_SETTING_PROFILE_INCOMPLETE',
+    'the ' + report.profile + ' profile requires ' + report.required.length + ' settings and ' + report.missing.length + ' is missing: ' + report.missing.map((m) => m.key).join(', '),
+    report.missing.map((m) => m.key + ' — ' + m.why).join('; ') + '. Pass these keys in the deployment config (or pick profile "research" if the declared defaults are the right answer)')
+}
+
+/** The namespaces a deployment/pack may use, for named refusals and docs. */
+export function registeredPackNamespaces() {
+  return [...PACK_SETTING_NAMESPACES.entries()].map(([namespace, row]) => ({ namespace, packs: [...row.packs].sort(), keys: [...row.keys].sort() })).sort((a, b) => a.namespace.localeCompare(b.namespace))
+}
 
 /**
  * THE RENAME CHANNEL (docs/03 §8: VMU_PARAM_RENAMED). A key record may carry `was: [formerNames]`; a deployment
@@ -1878,6 +1979,17 @@ export function screenSettings(input = {}, { source = 'config' } = {}) {
   for (const [k, v] of Object.entries(input || {})) {
     const decl = BY_KEY.get(resolveKey(k)) || null
     if (!decl) {
+      // ★ C#3: an unknown NAMESPACE is a different mistake from a typo inside a known namespace, and the fix differs
+      // (the first needs the pack's declarations file; the second needs the right key). Refuse the first by name.
+      const parts = String(k).split('.')
+      const token = parts.length >= 3 && parts[0] === 'vmu' ? parts[1] : null
+      const frameworkTokens = new Set(SETTING_DEFS.map((d) => d.key.split('.')[1]).filter(Boolean))
+      if (token !== null && !frameworkTokens.has(token) && !PACK_SETTING_NAMESPACES.has('vmu.' + token)) {
+        rejected.push({ key: k, value: v, code: 'VMU_SETTING_NAMESPACE_UNKNOWN',
+          reason: 'unknown settings namespace "vmu.' + token + '" — no framework key and no registered pack namespace owns it (registered pack namespaces: ' + ([...PACK_SETTING_NAMESPACES.keys()].join(', ') || '(none)') + ')',
+          source, default: undefined })
+        continue
+      }
       rejected.push({ key: k, value: v, code: 'VMU_INVALID_ARGUMENT', reason: 'undeclared', source, default: undefined })
       continue
     }

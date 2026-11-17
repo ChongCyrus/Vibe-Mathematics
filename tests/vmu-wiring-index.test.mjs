@@ -16,6 +16,10 @@
 //
 // Seams: the generator honours `VMU_WIRING_DOC` (the doc under test) and `VMU_DOCS_DIR` / `VMU_CODE_DIR`.
 import { readFileSync, writeFileSync, existsSync, rmSync, readdirSync, mkdtempSync, copyFileSync, cpSync } from 'node:fs'
+// ★ C#3: pack-owned settings namespaces register at import time — load them before recomputing key totals.
+import '../vibe-math-vmu/packs/v3/settings/declarations.js';
+import '../vibe-math-vmu/packs/v3-core/settings/declarations.js';
+import '../vibe-math-vmu/packs/v5r/settings/declarations.js';
 import { spawn, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -126,8 +130,12 @@ const rows = dataRows(block)
 {
   const { PLANNED_DEFS } = await import(pathToFileURL(PLANNED).href)
   const schemaMod = await import(pathToFileURL(SCHEMA).href)
-  const coreKeys = (Array.isArray(schemaMod.CORE_DEFS) ? schemaMod.CORE_DEFS
+  // ★ C#3: pack-owned settings keys are declared by the PACKS; include the registered namespaces in the independent key total.
+  const PACK_KEY_LIST = (typeof schemaMod.registeredPackNamespaces === 'function' ? schemaMod.registeredPackNamespaces() : []).flatMap((r) => r.keys)
+  const baseCore = (Array.isArray(schemaMod.CORE_DEFS) ? schemaMod.CORE_DEFS
     : (schemaMod.SETTING_DEFS || []).filter((d) => d && d.planned !== true)).map((d) => d.key)
+  // dedupe: the loaded pack declarations may already be inside SETTING_DEFS (registered at import), and CORE_DEFS may not export
+  const coreKeys = [...new Set(baseCore.concat(PACK_KEY_LIST))]
 
   // (1) planned keys: independent reverse count of `volumes[]`
   const perVolume = new Map()

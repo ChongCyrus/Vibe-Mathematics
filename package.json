@@ -17,6 +17,9 @@
     "./preset-declaration": "./preset-declaration.js"
   },
   "files": [
+    "vibe-math-vmu/packs/v3-core/settings/declarations.js",
+    "vibe-math-vmu/packs/v3/settings/declarations.js",
+    "vibe-math-vmu/packs/v5r/settings/declarations.js",
     "README.en.md",
     "README.md",
     "SECURITY.md",

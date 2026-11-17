@@ -256,11 +256,9 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     const raw = readFileSync(file, 'utf8')
     lastPersistHash = sha256Hex(Buffer.from(raw, 'utf8'))
     const loaded = parseFold(raw, file)
-    fold = loaded
-    stamp = now
-    stats.reloads += 1
-    stats.lastReloadAt = clock()
-    for (const cb of reloadHooks.slice()) { try { cb({ why: 'newer-on-disk', stamp: now, file }) } catch { /* a hook never breaks a read */ } }
+    // ★ ROUND-6: this is the SAME adoption as the CAS content-resync — one seam (adoptDiskFold) fires the hooks and
+    // records the reload, so a projection can never be hydrated by one adoption path and missed by another.
+    adoptDiskFold(loaded, { why: 'newer-on-disk' })
     return { reloaded: true, why: 'newer-on-disk' }
   }
 
@@ -309,14 +307,20 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   const sha256Hex = (buf) => createHash('sha256').update(buf).digest('hex')
   let lastPersistHash = null // sha256 of the bytes THIS instance last wrote (or loaded): a cheap "is the file already my fold?" token
   const adoptDiskFold = (disk, meta = {}) => {
+    // ★ ROUND-6 follow-up (final21 G1): ONE adoption seam, but FIRING THE HOOKS IS A PER-PATH SEMANTIC CHOICE.
+    // `hooks:false` keeps the pre-R6 semantics of a path that adopted the fold WITHOUT hydrating projections (open(),
+    // which the kernel/resume flow hydrates itself); `hooks:true` (default) is a real reload (CAS content-resync,
+    // reloadIfStale, resyncFromDisk, import). Both still go through THIS seam — there is no second implementation.
+    const fireHooks = meta.hooks !== false
     fold = disk
     adoptStamp()
     stats.adopts += 1
-    stats.reloads += 1
-    stats.lastReloadAt = clock()
+    if (fireHooks) { stats.reloads += 1; stats.lastReloadAt = clock() }
     const stampNow = stamp
-    for (const cb of reloadHooks.slice()) {
-      try { cb({ why: meta.why || 'adopted', stamp: stampNow, file, key: meta.key === undefined ? null : meta.key }) } catch { /* a hook never breaks a read */ }
+    if (fireHooks) {
+      for (const cb of reloadHooks.slice()) {
+        try { cb({ why: meta.why || 'adopted', stamp: stampNow, file, key: meta.key === undefined ? null : meta.key }) } catch { /* a hook never breaks a read */ }
+      }
     }
     return fold
   }
@@ -588,9 +592,8 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
         } catch (e) {
           if (e && e.code === 'ENOENT') {
             loaded = { version: STATE_VERSION, keys: defaultKeys(), createdAt: clock() }
-            fold = loaded
+            adoptDiskFold(loaded, { why: 'opened-created', hooks: false })
             await persist() // already inside the chain + lock: re-entering runExclusive here would deadlock
-            adoptStamp()
             stats.opens++
             return { opened: 'created', version: fold.version }
           }
@@ -608,8 +611,11 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
           }
         }
         const report = await migrateInPlace(loaded)
-        fold = loaded
-        adoptStamp()
+        adoptDiskFold(loaded, { why: report.applied.length > 0 ? 'opened-after-migration' : 'opened-loaded', hooks: false })
+        // ★ ROUND-6 / P3: a migration changes the IN-MEMORY fold while the file still holds the pre-migration bytes. The
+        // byte-hash fast path must never treat those pre-migration bytes as "equal to memory", so the migrated fold is
+        // written back HERE (one persist) and the hash is re-derived from the bytes that now match the in-memory fold.
+        if (report.applied.length > 0) await persist()
         stats.opens++
         return { opened: loaded.createdAt ? 'created' : 'loaded', version: fold.version, migration: report, expected, coherence: coherenceOn ? 'on' : 'off' }
       }))
@@ -718,7 +724,9 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
         if (!PUBLIC_KEYS.includes(k)) throw refuse('VMU_INVALID_ARGUMENT', 'snapshot carries an undeclared key: ' + k)
       }
       return runExclusive(() => withFileLock(async () => {
-        fold = clone(snapshot)
+        // ★ ROUND-6: an import REPLACES the whole fold, so it is an adoption like any other — it must fire the reload
+        // hooks (otherwise every Map projection the kernel hydrated from onReload stays on the PRE-import fold).
+        adoptDiskFold(clone(snapshot), { why: 'imported' })
         fold.version = STATE_VERSION
         await persist()
         return { ok: true, version: fold.version }

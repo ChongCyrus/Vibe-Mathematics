@@ -364,8 +364,23 @@ async function main() {
   const contractText = readFileSync(join(DOCS_DIR, '03-interface-contract.md'), 'utf8')
   const { PLANNED_DEFS } = await import(pathToFileURL(PLANNED_FILE).href)
   const schemaMod = await import(pathToFileURL(SCHEMA_FILE).href)
+  // ★ C#3: pack-owned settings keys register from packs/<id>/settings/declarations.js. The wiring index's denominator must
+  // count them — otherwise the generated total disagrees with the settings table's concrete rows (measured 1264 vs 1284).
+  const PACK_KEY_LIST = []
+  try {
+    const packsDir = join(VMU_DIR, 'packs')
+    for (const e of readdirSync(packsDir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      const f = join(packsDir, e.name, 'settings', 'declarations.js')
+      if (!existsSync(f)) continue
+      const mod = await import(pathToFileURL(f).href)
+      for (const d of (Array.isArray(mod.DEFS) ? mod.DEFS : [])) if (d && typeof d.key === 'string') PACK_KEY_LIST.push(d.key)
+    }
+  } catch { /* no packs dir: framework keys only */ }
   const coreKeys = (Array.isArray(schemaMod.CORE_DEFS) ? schemaMod.CORE_DEFS
     : (schemaMod.SETTING_DEFS || []).filter((d) => d && d.planned !== true)).map((d) => d.key)
+  // dedupe: SETTING_DEFS may already contain the registered pack keys; CORE_DEFS (when exported) does not.
+  for (const k of PACK_KEY_LIST) if (!coreKeys.includes(k)) coreKeys.push(k)
 
   const idx = await collectIndex({ volumes, plannedDefs: PLANNED_DEFS, settingsText, contractText, coreKeys,
     glossaryTerms: readGlossaryTerms() })

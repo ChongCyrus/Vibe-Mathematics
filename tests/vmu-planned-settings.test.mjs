@@ -47,12 +47,19 @@ const ok = (cond, name, detail) => {
   ok(/planned keys=\d+ \(from docs=\d+\)/.test(out), 'the generator prints its counts on stdout', out.trim().split('\n')[0])
 }
 
+// ★ C#3: pack-owned namespaces are declared by the PACKS; load them so "composed core+planned" includes them.
+import '../vibe-math-vmu/packs/v3/settings/declarations.js'
+import '../vibe-math-vmu/packs/v3-core/settings/declarations.js'
+import '../vibe-math-vmu/packs/v5r/settings/declarations.js'
+
 const genMod = await import(pathToFileURL(GEN).href)
 const { collectPlannedDefs, docVolumes, coreKeys, namespacesOf, mirrorVolumes, renderPlannedFile, KEY_RE, NON_SETTING } = genMod
 const { PLANNED_DEFS } = await import(pathToFileURL(PLANNED).href)
 const schemaMod = await import(pathToFileURL(SCHEMA).href)
 const CORE_DEFS = (Array.isArray(schemaMod.SETTING_DEFS) ? schemaMod.SETTING_DEFS : []).filter((d) => d && d.planned !== true)
 const CORE_KEYS = CORE_DEFS.map((d) => d.key)
+// ★ C#3: keys a PACK declares are "existing", not "planned" — the generator excludes them via packKeys.
+const PACK_KEYS = new Set((typeof schemaMod.registeredPackNamespaces === 'function' ? schemaMod.registeredPackNamespaces() : []).flatMap((r) => r.keys))
 
 // ---- B. the AUDIT's group-G rule, recomputed independently ---------------------------------------
 {
@@ -144,7 +151,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
     mirrorVols.slice(0, 5).map((d) => d.key).join(','))
   // The generator's own extraction must reproduce the committed file AND the same key count.
   const core = await coreKeys(SCHEMA)
-  const recomputed = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core) })
+  const recomputed = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core), packKeys: PACK_KEYS })
   ok(renderPlannedFile(recomputed.defs) === readFileSync(PLANNED, 'utf8'), 're-rendering from the docs reproduces the committed file byte for byte')
   ok(PLANNED_DEFS.length > 0 && recomputed.defs.length > 0, 'both the committed defs and the generator output are non-empty (non-vacuous comparison)',
     recomputed.defs.length + '/' + PLANNED_DEFS.length)
@@ -204,7 +211,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   ok(missingFromPlanned.length === 0, 'the "planned" bucket is exactly the committed registry (recomputed independently)',
     missingFromPlanned.slice(0, 5).join(','))
   // The generator's own stats must agree with this independent recount (no hidden category).
-  const stats = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core), mirrors }).stats
+  const stats = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core), mirrors, packKeys: PACK_KEYS }).stats
   ok(stats.twoSegment === buckets.twoSegment.size && stats.wildcard === buckets.wildcard.size
     && stats.existing === buckets.existing.size && stats.whitelist === buckets.whitelist.size
     && stats.serviceCall === buckets.serviceCall.size,
@@ -246,7 +253,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   const mirrorNames = new Set(mirrors.map((m) => m.name))
   const stripped = docVolumes(DOCS).map((v) => (mirrorNames.has(v.name) ? { num: v.num, name: v.name, text: '' } : v))
   const withMirror = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core), mirrors }).defs
-  const withoutMirror = collectPlannedDefs({ volumes: stripped, core, namespaces: namespacesOf(core), mirrors }).defs
+  const withoutMirror = collectPlannedDefs({ volumes: stripped, core, namespaces: namespacesOf(core), mirrors, packKeys: PACK_KEYS }).defs
   ok(renderPlannedFile(withoutMirror) === renderPlannedFile(withMirror),
     'the registry is identical whether or not the mirror text is present (no cycle: docs/04 <- schema <- planned.js <- docs/04)')
   // And the settings table must be regenerable WITHOUT invalidating the registry, both ways round, so the

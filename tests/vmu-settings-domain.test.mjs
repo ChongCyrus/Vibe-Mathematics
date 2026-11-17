@@ -113,7 +113,7 @@ console.log('=== 3. THE PACK/MERGE FACE: same disposition, with its layer named 
 
 console.log('=== 4. THREE STATES, NEVER MIXED ===')
 {
-  const touch = build({ 'vmu.notdeclared.typo': 1, 'vmu.budget.onExceed': 'nonsense' })
+  const touch = build({ 'vmu.records.notdeclaredTypo': 1, 'vmu.budget.onExceed': 'nonsense' })
   const st = touch.status()
   const rec = st.settings.settingsRejected || []
   const undeclared = rec.filter((r) => r.reason === 'undeclared')
@@ -121,8 +121,16 @@ console.log('=== 4. THREE STATES, NEVER MIXED ===')
   ok(rec.length === 2 && undeclared.length === 1 && outside.length === 1,
     'T1. an UNDECLARED key and an OUT-OF-DOMAIN value are recorded as DIFFERENT reasons (counts printed)',
     { total: rec.length, undeclared: undeclared.length, outside: outside.length })
-  ok(touch.settingsView()['vmu.notdeclared.typo'] === 1,
+  ok(touch.settingsView()['vmu.records.notdeclaredTypo'] === 1,
     'T2. an undeclared key is LEFT ALONE (recorded, never silently deleted by a face that does not own it)')
+  // ★ C#3: a key under an UNKNOWN NAMESPACE is a different named refusal (fix = load the pack declaration), while a
+  // typo inside a KNOWN namespace stays the generic undeclared reason pinned above.
+  {
+    const nsTouch = build({ 'vmu.notdeclared.typo': 1 })
+    const nsRec = (nsTouch.status().settings.settingsRejected || []).filter((r) => r.key === 'vmu.notdeclared.typo')
+    ok(nsRec.length === 1 && nsRec[0].code === 'VMU_SETTING_NAMESPACE_UNKNOWN' && /registered pack namespaces/.test(String(nsRec[0].reason)),
+      'T2b. C#3: an UNKNOWN namespace is recorded with its own named code and lists the registered pack namespaces', nsRec[0])
+  }
   ok(st.settings.resolved['vmu.budget.onExceed'].value === 'refuse', 'T3. the out-of-domain key keeps its declared default')
   const clean = build({ 'vmu.budget.onExceed': 'warn' })
   ok(clean.status().settings.settingsRejectedCount === 0,

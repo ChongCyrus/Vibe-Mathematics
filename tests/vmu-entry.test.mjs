@@ -15,7 +15,7 @@
 // zero-prompt assertion to fail.
 
 import { createHostMath } from '../vibe-math-vmu/host-math.js'
-import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { readFile, writeFile, mkdtemp, mkdir, rm, cp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -1023,6 +1023,175 @@ if (SELF_PROBE) {
   } finally {
     const { rm } = await import('node:fs/promises')
     await rm(dir, { recursive: true, force: true })
+  }
+}
+
+// ── 6d. ROUND-6 AUDIT (C#1 boundary gaps, P2×3): ids are identifiers, duplicates are named, external HOOKS work ─────
+// Each gap has a positive probe AND a reverse lamp (mutate the entry so the guard disappears ⇒ the criterion goes red):
+//   ① path traversal via pack id  ⇒ VMU_PACK_ID_INVALID, the file OUTSIDE the root is never read
+//   ② the same id in two roots     ⇒ VMU_PACK_ID_DUPLICATE with every candidate path, nothing picked silently
+//   ③ an external pack's HOOKS     ⇒ its index.js IS imported and PACK_CONTRIBUTION collected (absent/unimportable = named)
+{
+  const mkExt = async (base, id, { withHooks = false } = {}) => {
+    const dir = join(base, id)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'runtime.json'), JSON.stringify({ schema: 1, id, phases: ['ext-phase'], replyFields: [{ field: 'ext_field', face: 'vmu.tasks', op: 'advance' }] }))
+    if (withHooks) {
+      await writeFile(join(dir, 'index.js'), [
+        'export const PACK_CONTRIBUTION = Object.freeze({',
+        "  id: '" + id + "',",
+        "  sectionPolicy: () => ({ external: true }),",
+        "  noticeBlock: () => '[EXT-NOTICE]',",
+        '})',
+        '',
+      ].join('\n'))
+    }
+    return dir
+  }
+  const applyExt = async (cfg) => {
+    const h = fakeCtx()
+    const handle = entry.apply(h.ctx, cfg)
+    await new Promise((r) => setTimeout(r, 200))
+    return { handle, host: h }
+  }
+
+  // ① POSITIVE: a traversal-shaped id is refused by NAME and the outside file is NOT read
+  {
+    const base = await mkdtemp(join(tmpdir(), 'vmu-c1-traversal-'))
+    const extRoot = join(base, 'packs-ext')
+    await mkdir(extRoot, { recursive: true })
+    // a valid runtime.json OUTSIDE the declared root — the traversal target
+    await mkdir(join(base, 'outside'), { recursive: true })
+    await writeFile(join(base, 'outside', 'runtime.json'), JSON.stringify({ schema: 1, id: 'outside', phases: ['traversed-phase'], replyFields: [] }))
+    const probe = await applyExt({ clock, root: join(base, 'ws'), packs: ['../outside'], packDirs: [extRoot] })
+    const rt = probe.handle.packRuntime()
+    ok(rt.errors.some((e) => e.code === 'VMU_PACK_ID_INVALID') && rt.data.length === 0 && !JSON.stringify(rt).includes('traversed-phase'),
+      '★★★ ROUND-6 ①：pack id 是标识符不是路径 —— `packs:["../outside"]` 被具名 `VMU_PACK_ID_INVALID` 拒绝，根外的 runtime.json 从未被读',
+      { errors: rt.errors.map((e) => e.code), data: rt.data })
+    ok(probe.handle.packErrors().some((e) => e.code === 'VMU_PACK_ID_INVALID'),
+      '★★ 同一事实在 packErrors（状态面读的那张表）里也具名', probe.handle.packErrors().map((e) => e.code))
+    await rm(base, { recursive: true, force: true })
+  }
+  // ① LAMP: remove BOTH guards (id shape + realpath containment) in a tree copy ⇒ the outside file IS read (red)
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-c1-traversal-lamp-'))
+    try {
+      const copy = join(dir, 'vibe-math-vmu')
+      await cp(join(REPO, 'vibe-math-vmu'), copy, { recursive: true, filter: (src) => !/[\\/]docs([\\/]|$)/.test(src) })
+      const copyEntry = join(copy, 'vibe-math-vmu.js')
+      const src = await readFile(copyEntry, 'utf8')
+      const guard1 = '    const problem = packIdProblemOf(id)\n    if (problem !== null) {'
+      const guard2 = '      if (!insideRoot(rootReal, real)) {'
+      ok(src.indexOf(guard1) !== -1 && src.indexOf(guard2) !== -1, 'ROUND-6 ① lamp: mutation points present')
+      const broken = src.replace(guard1, '    const problem = packIdProblemOf(id)\n    if (false && problem !== null) {').replace(guard2, '      if (false && !insideRoot(rootReal, real)) {')
+      await writeFile(copyEntry, broken)
+      const lampEntry = await import(pathToFileURL(copyEntry).href + '?r6traversal=1')
+      const base = await mkdtemp(join(dir, 'probe-'))
+      const extRoot = join(base, 'packs-ext')
+      await mkdir(extRoot, { recursive: true })
+      await mkdir(join(base, 'outside'), { recursive: true })
+      await writeFile(join(base, 'outside', 'runtime.json'), JSON.stringify({ schema: 1, id: 'outside', phases: ['traversed-phase'], replyFields: [] }))
+      const h = fakeCtx()
+      const handle = lampEntry.apply(h.ctx, { clock, root: join(base, 'ws'), packs: ['../outside'], packDirs: [extRoot] })
+      await new Promise((r) => setTimeout(r, 200))
+      const rt = handle.packRuntime()
+      ok(rt.data.some((d) => (d.phases || []).includes('traversed-phase')) && !rt.errors.some((e) => e.code === 'VMU_PACK_ID_INVALID'),
+        '★★ 反灯①（去掉 id 形状 + realpath 包含两道闸）⇒ 根外 runtime.json 真被读、traversed-phase 被折入，判据红', rt.data)
+      await rm(base, { recursive: true, force: true })
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+
+  // ② POSITIVE: the same id in two roots is a NAMED duplicate with every candidate path (no silent first-wins)
+  {
+    const base = await mkdtemp(join(tmpdir(), 'vmu-c1-dup-'))
+    const rootA = join(base, 'rootA')
+    const rootB = join(base, 'rootB')
+    await mkExt(rootA, 'dup-pack')
+    await mkExt(rootB, 'dup-pack')
+    const probe = await applyExt({ clock, root: join(base, 'ws'), packs: ['dup-pack'], packDirs: [rootA, rootB] })
+    const rt = probe.handle.packRuntime()
+    const dup = rt.errors.find((e) => e.code === 'VMU_PACK_ID_DUPLICATE')
+    ok(!!dup && Array.isArray(dup.candidates) && dup.candidates.length === 2 && rt.data.filter((d) => d.requestId === 'dup-pack').length === 0,
+      '★★★ ROUND-6 ②：同一 id 出现在两个根 ⇒ 具名 `VMU_PACK_ID_DUPLICATE`（列出全部候选绝对路径），不静默取第一个',
+      dup && { code: dup.code, candidates: dup.candidates })
+    await rm(base, { recursive: true, force: true })
+  }
+  // ② LAMP: disable the duplicate check in a tree copy ⇒ first root wins silently (red)
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-c1-dup-lamp-'))
+    try {
+      const copy = join(dir, 'vibe-math-vmu')
+      await cp(join(REPO, 'vibe-math-vmu'), copy, { recursive: true, filter: (src) => !/[\\/]docs([\\/]|$)/.test(src) })
+      const copyEntry = join(copy, 'vibe-math-vmu.js')
+      const src = await readFile(copyEntry, 'utf8')
+      const guard = '    if (candidates.length > 1) {'
+      ok(src.indexOf(guard) !== -1, 'ROUND-6 ② lamp: mutation point present')
+      await writeFile(copyEntry, src.replace(guard, '    if (false && candidates.length > 1) {'))
+      const lampEntry = await import(pathToFileURL(copyEntry).href + '?r6dup=1')
+      const base = await mkdtemp(join(dir, 'probe-'))
+      const rootA = join(base, 'rootA')
+      const rootB = join(base, 'rootB')
+      await mkExt(rootA, 'dup-pack')
+      await mkExt(rootB, 'dup-pack')
+      const h = fakeCtx()
+      const handle = lampEntry.apply(h.ctx, { clock, root: join(base, 'ws'), packs: ['dup-pack'], packDirs: [rootA, rootB] })
+      await new Promise((r) => setTimeout(r, 200))
+      const rt = handle.packRuntime()
+      ok(!rt.errors.some((e) => e.code === 'VMU_PACK_ID_DUPLICATE') && rt.data.some((d) => d.requestId === 'dup-pack'),
+        '★★ 反灯②（去掉 dup 检查 = 回到静默先胜）⇒ 无具名错误、第一个根的数据被采用，判据红', rt.data)
+      await rm(base, { recursive: true, force: true })
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+
+  // ③ POSITIVE: an external pack's HOOKS are imported from ITS folder and collected (not silently missing)
+  {
+    const base = await mkdtemp(join(tmpdir(), 'vmu-c1-ext-'))
+    // the external folder is plain files outside the repo: a package.json marks it as ESM so its index.js can export
+    await writeFile(join(base, 'package.json'), JSON.stringify({ type: 'module' }))
+    const extRoot = join(base, 'packs-ext')
+    await mkExt(extRoot, 'ext-pack', { withHooks: true })
+    const probe = await applyExt({ clock, root: join(base, 'ws'), packs: ['ext-pack'], packDirs: [extRoot] })
+    const rt = probe.handle.packRuntime()
+    ok(rt.contributions.some((c) => c.id === 'ext-pack' && c.sectionPolicy === true && c.noticeBlock === true) && rt.noticeBlockLive === true && rt.sectionPoliciesLive >= 1,
+      '★★★ ROUND-6 ③：外部 pack 的 HOOKS 真的工作 —— `<packDir>/<id>/index.js` 被 import，PACK_CONTRIBUTION 的 sectionPolicy/noticeBlock 生效',
+      { contributions: rt.contributions, noticeBlockLive: rt.noticeBlockLive })
+    ok(rt.externalHooks.some((h) => h.id === 'ext-pack' && h.registered === true) && !rt.errors.some((e) => /CONTRIBUTION/.test(String(e.code))),
+      '★★ 外部 HOOKS 的回执具名（found/registered），不是空 silence', rt.externalHooks)
+    await rm(base, { recursive: true, force: true })
+  }
+  // ③ LAMP: stop importing external hooks ⇒ contributions empty while DATA still applies (the silent-missing shape)
+  {
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-c1-ext-lamp-'))
+    try {
+      const copy = join(dir, 'vibe-math-vmu')
+      await cp(join(REPO, 'vibe-math-vmu'), copy, { recursive: true, filter: (src) => !/[\\/]docs([\\/]|$)/.test(src) })
+      const copyEntry = join(copy, 'vibe-math-vmu.js')
+      const src = await readFile(copyEntry, 'utf8')
+      const guard = '              if (externalHooksByRequestId.has(wanted)) {'
+      ok(src.indexOf(guard) !== -1, 'ROUND-6 ③ lamp: mutation point present')
+      await writeFile(copyEntry, src.replace(guard, '              if (false && externalHooksByRequestId.has(wanted)) {'))
+      const lampEntry = await import(pathToFileURL(copyEntry).href + '?r6ext=1')
+      const base = await mkdtemp(join(dir, 'probe-'))
+      await writeFile(join(base, 'package.json'), JSON.stringify({ type: 'module' }))
+      const extRoot = join(base, 'packs-ext')
+      await mkExt(extRoot, 'ext-pack', { withHooks: true })
+      const h = fakeCtx()
+      const handle = lampEntry.apply(h.ctx, { clock, root: join(base, 'ws'), packs: ['ext-pack'], packDirs: [extRoot] })
+      await new Promise((r) => setTimeout(r, 200))
+      const rt = handle.packRuntime()
+      ok(rt.contributions.length === 0 && rt.data.some((d) => d.requestId === 'ext-pack'),
+        '★★ 反灯③（不 import 外部 hooks）⇒ 外部 pack 只剩 DATA、HOOKS 静默缺失 —— 判据红（正是审计报的形状）', { contributions: rt.contributions, data: rt.data.length })
+      await rm(base, { recursive: true, force: true })
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+
+  // ④ the SHIPPED v5r runtime.json is itself a well-formed, single-provider declaration (the probe the audit asked for)
+  {
+    const v5rRuntime = JSON.parse(await readFile(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'runtime.json'), 'utf8'))
+    ok(/^[A-Za-z0-9._-]+$/.test(String(v5rRuntime.id)) && v5rRuntime.id !== '.' && v5rRuntime.id !== '..' &&
+      Array.isArray(v5rRuntime.phases) && v5rRuntime.phases.length > 0 && Array.isArray(v5rRuntime.replyFields),
+      '★★ ROUND-6 探针：shipped v5r runtime.json 自带安全 id（不过穿越/dup 规则）且 phases/replyFields 形状正确',
+      { id: v5rRuntime.id, phases: v5rRuntime.phases.length })
   }
 }
 

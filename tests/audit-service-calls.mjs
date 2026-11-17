@@ -122,6 +122,16 @@ function declaredKeys() {
   for (const f of ["settings/schema.js", "settings/planned.js"]) {
     try { for (const m of readFileSync(join(VMU, f), "utf8").matchAll(/key:\s*'([^']+)'/g)) keys.add(m[1]) } catch { /* absent file leaves the set smaller, which only widens the check */ }
   }
+  // ★ C#3: pack-owned settings keys are declared by the PACK (packs/<id>/settings/declarations.js). A read of such a key
+  // is not an "undeclared setting" — the declaration exists, just not in the framework file. Auto-discovered, no pack list.
+  try {
+    const packsDir = join(VMU, 'packs')
+    for (const e of readdirSync(packsDir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      const f = join(packsDir, e.name, 'settings', 'declarations.js')
+      try { for (const m of readFileSync(f, 'utf8').matchAll(/key:\s*'([^']+)'/g)) keys.add(m[1]) } catch { /* this pack declares no settings */ }
+    }
+  } catch { /* no packs dir: framework keys only */ }
   return keys
 }
 

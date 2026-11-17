@@ -18,6 +18,9 @@
 // 的随形写法、不把断言塞进条件分支；集合类断言一律先钉住**具体条数**（`=== N`），再用逐项 for 循环。
 // 每一条断言都已知"怎样会让它红"（在注释里点名）。
 import { readFileSync } from 'node:fs'
+// ★ C#3: v3 keys are declared by the PACK now — load its declarations before any schema/setting check.
+import '../vibe-math-vmu/packs/v3/settings/declarations.js';
+import '../vibe-math-vmu/packs/v3-core/settings/declarations.js';
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 

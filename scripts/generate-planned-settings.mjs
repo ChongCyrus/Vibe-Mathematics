@@ -181,7 +181,7 @@ export function mirrorVolumes(volumes, core, opts = {}) {
  * that a design set with cross-references does not have. Returns { defs, stats } where stats carries
  * every exclusion counter, the mirror list and the multi-volume count (the report quotes them).
  */
-export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
+export function collectPlannedDefs({ volumes, core, namespaces, mirrors, packKeys = null }) {
   const coreSet = new Set(core)
   const nsSet = namespaces instanceof Set ? namespaces : namespacesOf(core)
   const mirrorList = mirrors || mirrorVolumes(volumes, core)
@@ -206,6 +206,9 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
       const bare = vol.text.slice(m.index + k.length, m.index + k.length + 1)
       if (bare === '*' || bare === '…' || /^\.\s*[*…]/.test(after)) { excluded.wildcard.add(k); continue } // a family wildcard
       if (coreSet.has(k)) { excluded.existing.add(k); continue }                 // already declared
+      // ★ C#3: a PACK-OWNED namespace key is declared by that pack (settings/declarations.js), not "planned" — the docs
+      // volumes still name it, but the real declaration exists, so it must not be re-minted as a design todo.
+      if (packKeys && packKeys.has(k)) { excluded.existing.add(k); continue }
       if (NON_SETTING.has(k)) { excluded.whitelist.add(k); continue }            // service/registry name
       if (nsSet.has(k)) { excluded.namespace.add(k); continue }                  // derived namespace of a key
       // ROUND 14: a dotted name IMMEDIATELY FOLLOWED BY `(` is a METHOD CALL, not a setting - settings are never
@@ -345,8 +348,19 @@ async function main() {
   const asJson = process.argv.includes('--json')
   const volumes = docVolumes()
   const core = await coreKeys()
+  // ★ C#3: load every pack's OWN declarations (auto-discovered) so its keys are measured as DECLARED, not planned.
+  const packKeys = new Set()
+  const packsDir = join(VMU_DIR, 'packs')
+  if (existsSync(packsDir)) {
+    for (const e of readdirSync(packsDir, { withFileTypes: true }).filter((x) => x.isDirectory())) {
+      const f = join(packsDir, e.name, 'settings', 'declarations.js')
+      if (!existsSync(f)) continue
+      const mod = await import(pathToFileURL(f).href)
+      for (const d of (Array.isArray(mod.DEFS) ? mod.DEFS : [])) if (d && typeof d.key === 'string') packKeys.add(d.key)
+    }
+  }
   const mirrors = mirrorVolumes(volumes, core)
-  const { defs, stats } = collectPlannedDefs({ volumes, core, namespaces: namespacesOf(core), mirrors })
+  const { defs, stats } = collectPlannedDefs({ volumes, core, namespaces: namespacesOf(core), mirrors, packKeys })
   const next = renderPlannedFile(defs)
   const prev = existsSync(OUT_FILE) ? readFileSync(OUT_FILE, 'utf8') : null
   const stale = prev !== next
