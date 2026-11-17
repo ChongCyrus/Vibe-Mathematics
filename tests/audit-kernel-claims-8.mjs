@@ -1,4 +1,4 @@
-// tests/audit-kernel-claims-8.mjs — ROUND 107, batch H: paper (16) · ballotbox (13) · migration (15).
+// tests/audit-kernel-claims-8.mjs — ROUND 107, batch H: ballotbox (13) · migration (15).
 //
 // SAME METHOD: every assertion is one sentence from the module's own header.
 //
@@ -43,82 +43,8 @@ const msgOf = (r) => String((r.threw && r.threw.message) || (r.value && r.value.
 const short = (s) => String(s).slice(0, 90)
 const srcOf = (f) => readFileSync(join(K, f), 'utf8')
 
-const PA = await import(u('paper.js'))
 const BB = await import(u('ballotbox.js'))
 const MG = await import(u('migration.js'))
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
-console.log('=== 1. paper：归属机器强制、完整性是闸、注册被委派、不静默覆盖、上限具名 ===')
-{
-  ok(PA.apiVersion === 1, '★ apiVersion 为 1', PA.apiVersion)
-  ok(PA.ENFORCED_SCOPE === 'evaluated-so-far', '★ “D3: the refusal states its EVALUATION SCOPE”', PA.ENFORCED_SCOPE)
-  ok(PA.WIRED_KEYS.length > 0 && PA.WIRED_KEYS.every((k) => k.startsWith('vmu.paper.')),
-    '★ “The keys this module really reads” —— WIRED_KEYS 全在 vmu.paper.* 家族', PA.WIRED_KEYS)
-  ok(PA.PLANNED_KEYS.length > 0 && PA.PLANNED_KEYS.every((e) => Array.isArray(e) && e.length >= 2 && typeof e[1] === 'string' && e[1].length > 0),
-    '★ “Declared but deliberately NOT wired (the audit criterion: named, with a reason, and a revival condition)” —— 每条带非空原因',
-    PA.PLANNED_KEYS.map((e) => (Array.isArray(e) ? e[0] : e)))
-  ok(PA.FINALIZERS.length > 0 && PA.FINALIZERS.length === 3 && PA.FINALIZERS.includes('editor') && PA.FINALIZERS.includes('contributor') && PA.FINALIZERS.includes('any'),
-    '★ FINALIZERS 三个取值（editor/contributor/any）', PA.FINALIZERS)
-  ok(PA.PAPER_FORMATS.length > 0 && PA.PAPER_FORMATS.length === 3 && PA.PAPER_LANGUAGES.length > 0 && PA.PAPER_LANGUAGES.length === 2 &&
-    PA.CONSULT_POINTS.length > 0 && PA.CONSULT_POINTS.length === 2 && PA.CONSULT_TIMEOUT_ACTIONS.length > 0 && PA.CONSULT_TIMEOUT_ACTIONS.length === 2,
-    '★ 四个枚举的取值集合（formats 3／languages 2／consult points 2／timeout actions 2）',
-    { f: PA.PAPER_FORMATS, l: PA.PAPER_LANGUAGES, p: PA.CONSULT_POINTS, t: PA.CONSULT_TIMEOUT_ACTIONS })
-  const pp = PA.createPaper({ clock: () => 1000 })
-  const FACE = ['start', 'contribute', 'revise', 'finalize', 'consult', 'requestConsult', 'consultState', 'status']
-  ok(FACE.length > 0 && FACE.every((m) => typeof pp[m] === 'function'), '★ 面方法齐备（discovery-first）',
-    { missing: FACE.filter((m) => typeof pp[m] !== 'function'), keys: Object.keys(pp) })
-  const started = attempt(() => pp.start({ title: 'T', sections: ['intro', 'methods'], contributors: { intro: 'ann', methods: 'bob' }, editor: 'ann' }))
-  const paper = started.threw === null ? started.value : null
-  ok(paper !== null && typeof paper.paperId === 'string' && paper.paperId.length > 0, '★ “vmu had their PIECES but not the ORCHESTRATION” —— start() 建稿并返回 paperId',
-    started.threw ? short(started.threw.message) : paper && Object.keys(paper))
-  const pid = paper && paper.paperId
-  // 归属：只有被签约的人能交
-  const wrongOwner = attempt(() => pp.contribute({ paperId: pid, section: 'methods', by: 'ann' }))
-  ok(codeOf(wrongOwner) !== null && msgOf(wrongOwner).includes('bob') && msgOf(wrongOwner).includes('ann'),
-    '★ “ownership is MACHINE-ENFORCED: a section can only be handed in by the member it was contracted to, and a refusal names BOTH the owner and the caller”',
-    { code: codeOf(wrongOwner), msg: short(msgOf(wrongOwner)) })
-  const rightOwner = attempt(() => pp.contribute({ paperId: pid, section: 'methods', by: 'bob', artifact: 'text-2' }))
-  ok(rightOwner.threw === null, '★ 正确归属者可以交稿（否证"一律拒"）', rightOwner.threw ? short(rightOwner.threw.message) : rightOwner.value && Object.keys(rightOwner.value))
-  const twice = attempt(() => pp.contribute({ paperId: pid, section: 'methods', by: 'bob', artifact: 'text-2b' }))
-  ok(codeOf(twice) !== null, '★ “nothing is silently overwritten: a second hand-in for the same section … is refused”', { code: codeOf(twice), msg: short(msgOf(twice)) })
-  // 完整性闸：intro 未交 ⇒ finalize 具名拒并点名【缺哪节 + 谁欠】
-  const fin1 = await attemptA(() => pp.finalize({ paperId: pid, by: 'ann' }))
-  ok(codeOf(fin1) !== null && msgOf(fin1).includes('intro') && msgOf(fin1).includes('ann'),
-    '★ “completeness is a GATE, not a hope: finalising with outstanding sections is refused BY NAME — listing each missing section and who owes it”',
-    { code: codeOf(fin1), msg: short(msgOf(fin1)) })
-  // 关闭要求 ⇒ 缺口随【回执】旅行（★ 需注入 register 缝，否则先撞 VMU_ENGINE_UNAVAILABLE；★ officeConsult 的
-  //   “关”是【字符串 'off'】—— paper.js:139 `readKey('vmu.paper.officeConsult') === 'off' ? 'off' : 'required'`）
-  const laxSettings = { 'vmu.paper.requireAllSections': false, 'vmu.paper.officeConsult': 'off' }
-  const lax = PA.createPaper({ clock: () => 1000, settings: laxSettings, register: async () => ({ ok: true, version: 'v1', registered: true }) })
-  const laxStart = attempt(() => lax.start({ title: 'T2', sections: ['intro'], contributors: { intro: 'ann' }, editor: 'ann' }))
-  const laxId = laxStart.value && laxStart.value.paperId
-  const finLax = await attemptA(() => lax.finalize({ paperId: laxId, by: 'ann' }))
-  ok(finLax.threw === null && finLax.value !== null && JSON.stringify(finLax.value).includes('intro'),
-    '★ “unless the pack has explicitly turned the requirement off, and then the GAPS TRAVEL IN THE RECEIPT so they are recorded rather than forgotten”',
-    finLax.threw ? short(finLax.threw.message) : finLax.value && Object.keys(finLax.value))
-  // 注册被委派：没有 register 缝 ⇒ 具名拒（不假装已登记）
-  const noReg = PA.createPaper({ clock: () => 1000, settings: laxSettings })
-  const nrStart = attempt(() => noReg.start({ title: 'T3', sections: ['intro'], contributors: { intro: 'ann' }, editor: 'ann' }))
-  const nrId = nrStart.value && nrStart.value.paperId
-  const nrFin = await attemptA(() => noReg.finalize({ paperId: nrId, by: 'ann' }))
-  ok(codeOf(nrFin) === 'VMU_ENGINE_UNAVAILABLE',
-    '★ “registration is DELEGATED … when no seam is bound, refuses by name instead of pretending the manuscript was registered”',
-    { code: codeOf(nrFin), msg: short(msgOf(nrFin)) })
-  // maxSections 上限：具名拒且【写明计数与上限】
-  const capped = PA.createPaper({ clock: () => 1000, settings: { 'vmu.paper.maxSections': 1 } })
-  const capStart = attempt(() => capped.start({ title: 'T4', sections: ['intro', 'methods'], contributors: { intro: 'ann', methods: 'bob' }, editor: 'ann' }))
-  ok(codeOf(capStart) === 'VMU_RESOURCE_BUDGET' && msgOf(capStart).includes('2') && msgOf(capStart).includes('1'),
-    '★ “opening a manuscript with more sections than the cap is refused by name WITH THE COUNT AND THE CAP”', { code: codeOf(capStart), msg: short(msgOf(capStart)) })
-  // D3 的作用域宣称（★ paper 头部只承诺"拒绝声明其【求值作用域】"，不承诺 enforced[] ⇒ 只断言 scope，
-  //   并把"哪条拒绝带/不带 enforced[]"作为【读数】打进 detail，供报告如实记录，不当作宣称违反）
-  const anyRef = [wrongOwner, twice, capStart].filter((r) => codeOf(r) !== null)
-  const refShape = anyRef.map((r) => {
-    const ref = r.threw || r.value
-    return { code: codeOf(r), scope: ref.enforcedScope || null, hasEnforcedArray: Array.isArray(ref.enforced) }
-  })
-  ok(anyRef.length > 0 && refShape.every((x) => x.scope === PA.ENFORCED_SCOPE),
-    '★ “D3: the refusal states its EVALUATION SCOPE” —— 每条拒绝都带 enforcedScope', refShape)
-}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 console.log('=== 2. ballotbox：27 键分区、法定人数不足具名拒、平票自曝规则、弃权/缺席分开、秘密票计数保留 ===')
@@ -278,5 +204,5 @@ if (process.argv.includes("--selftest")) {
 }
 
 console.log("")
-console.log("=== KERNEL CLAIMS 7H (paper 16 · ballotbox 13 · migration 15): " + pass + " passed, " + fail + " failed ===")
+console.log("=== KERNEL CLAIMS 7H (ballotbox 13 · migration 15): " + pass + " passed, " + fail + " failed ===")
 process.exit(fail === 0 ? 0 : 1)

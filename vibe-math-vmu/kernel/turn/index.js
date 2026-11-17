@@ -3311,7 +3311,13 @@ export function createTurnOrchestrator({
         'vmu.turn.meetingType': meetingRead === null || meetingRead.type === undefined || meetingRead.type === null ? '' : String(meetingRead.type),
         'vmu.turn.meetingChair': meetingRead === null ? '' : String(meetingRead.chair === undefined || meetingRead.chair === null ? (meetingRead.convenedBy === undefined || meetingRead.convenedBy === null ? '' : meetingRead.convenedBy) : meetingRead.chair),
         'vmu.turn.meetingAgenda': meetingRead === null || meetingRead.materials === undefined || meetingRead.materials === null ? '' : String(meetingRead.materials),
-        'vmu.turn.meetingDelivery': '本回合绑定会议 ' + boundMeetingId + '：你的发言会投到这场会；若你想说的是另一场会，先离席，或用 vibe_v5_meeting_round { meeting: "<会 id>" } 把下一回合绑定到那场会。',
+        // ★ TB-2794 (round-7 prompt audit): the binding verb is CHAIR-ONLY (v5r seat-faces: meeting_round member:false).
+        // Teaching it in every seat's frame made a non-chair read a call it is ACL-refused for. The chair keeps the
+        // exact route; every other seat is told the truth it can act on (ask the chair / leave the seat) and the tool
+        // name is not injected at all — the rendered member frame then contains "vibe_v5_meeting_round" ZERO times.
+        'vmu.turn.meetingDelivery': (String(turn.role || '').toLowerCase() === 'chair'
+          ? '本回合绑定会议 ' + boundMeetingId + '：你的发言会投到这场会；若你想说的是另一场会，先离席，或用 vibe_v5_meeting_round { meeting: "<会 id>" } 把下一回合绑定到那场会。'
+          : '本回合绑定会议 ' + boundMeetingId + '：你的发言会投到这场会；若你想说的是另一场会，先离席，并由主席把下一回合绑定到那场会（这是主席席的职责，不是本席可调用的动作）。'),
       }
     // Caller-supplied facts are merged LAST, so an explicit per-turn override still wins (T108/T109 pin exactly this).
     const turnSettings = { ...(settings || {}), ...meetingFacts, ...(turn.facts || {}) }

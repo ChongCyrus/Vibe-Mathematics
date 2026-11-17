@@ -129,14 +129,14 @@
 
 ### ② 机制
 
-- (b) 可装配的论文机制在 **`kit/paper.js` + `packs/v5r/paper.js`**（不是 `kernel/paper.js`，后者列在 `scripts/lib/reachability.mjs:36-48` 的 `KNOWN_UNMOUNTED`：`createPaper(` 只在测试/脚本里出现，v5r 论文走 pack → kit，且 kit 不读它那些 `vmu.paper.*` 键）。
-- 状态机 `vibe-math-vmu/kit/paper.js`：`start`（需 target、≥1 participants、不许重复开题）→ `recordPart`（只能 writing、只能参与成员；每人一段，重复提交是**替换**并回执 `replaced`）→ `advance`（writing→reviewing，自动成互审环 `reviewOf`）→ `recordReview` → `advance`（全 true 才 awaiting-editor）→ `recordFinal`（仅 chair）→ `render`。
+- (b) 可装配的论文机制在 **`packs/research-core/paper-flow.js` + `packs/v5r/paper.js`**（不是 `kernel/paper.js`，后者列在 `scripts/lib/reachability.mjs:36-48` 的 `KNOWN_UNMOUNTED`：`createPaper(` 只在测试/脚本里出现，v5r 论文走 pack → kit，且 kit 不读它那些 `vmu.paper.*` 键）。
+- 状态机 `vibe-math-vmu/packs/research-core/paper-flow.js`：`start`（需 target、≥1 participants、不许重复开题）→ `recordPart`（只能 writing、只能参与成员；每人一段，重复提交是**替换**并回执 `replaced`）→ `advance`（writing→reviewing，自动成互审环 `reviewOf`）→ `recordReview` → `advance`（全 true 才 awaiting-editor）→ `recordFinal`（仅 chair）→ `render`。
 - 章节：`packs/v5r/paper.js` 的九节，字段映射 `sectionFields: ['title','','solution','','','methods','rules','limits','evidence']`（`vibe-math-vmu/packs/v5r/paper.js:63` 附近，传给 `createPaperFlow`）。
 - 面向模型的面：`vibe_v5_paper`（`packs/v5r/tools.js:1239` 的 `toolPaper`，11 个 action：`sections|status|start|part|review|advance|final|render|compile|consult|consult_state`）。
 
 ### ③ 消费者
 
-`toolPaper` → `createPaperSubsystem`（`packs/v5r/paper.js:82` 附近）→ `createPaperFlow`（`kit/paper.js`）→ `kernel.records`（每次状态/片段/评审都是一条记录，标题 `v5r-paper|<target>|<artifact>`）；`PaperMd` 按记录 id + fingerprint 重建正文。
+`toolPaper` → `createPaperSubsystem`（`packs/v5r/paper.js:82` 附近）→ `createPaperFlow`（`packs/research-core/paper-flow.js`）→ `kernel.records`（每次状态/片段/评审都是一条记录，标题 `v5r-paper|<target>|<artifact>`）；`PaperMd` 按记录 id + fingerprint 重建正文。
 
 ### ④ 门禁
 
@@ -149,8 +149,8 @@
 
 "合作撰写"与"系统合并"是**真机制**（见 ④）；但"**所有**有价值产物"不成立，有两层实锤：
 
-1. **九节里 3 节结构性为空**：`sectionFields` 的第 2/4/5 项是空串（index 1 引言、index 3 已检验通过的命题、index 4 已解决的子问题）。`PaperMd` 遇到空字段直接 `continue`（`kit/paper.js` 的 PaperMd 循环），所以这三节**只输出标题**，无论成员写了多少片段。
-2. **不从记录库涌现**：`kit/paper.js` 全文不读 `propositions`/`verified`/`methods` 等轨道；"有价值之物"只来自成员手写的 part 字段，不存在"扫描记录库、把已验证命题/已解决子问题自动列进去"的消费者。
+1. **九节里 3 节结构性为空**：`sectionFields` 的第 2/4/5 项是空串（index 1 引言、index 3 已检验通过的命题、index 4 已解决的子问题）。`PaperMd` 遇到空字段直接 `continue`（`packs/research-core/paper-flow.js` 的 PaperMd 循环），所以这三节**只输出标题**，无论成员写了多少片段。
+2. **不从记录库涌现**：`packs/research-core/paper-flow.js` 全文不读 `propositions`/`verified`/`methods` 等轨道；"有价值之物"只来自成员手写的 part 字段，不存在"扫描记录库、把已验证命题/已解决子问题自动列进去"的消费者。
 
 **缺什么**：① 把 index 3/4 接到 `verified`/`propositions`/`problems` 轨道（或给论文提供显式"产物清单"输入面），② 一条能失败的断言："库里已有 N 条 verified ⇒ 对应节非空/含引用"。
 
@@ -173,7 +173,7 @@
 
 ### ② 机制
 
-- `recordPart` 只接受**参与成员**且只在 `writing` 状态（`kit/paper.js`；错误是具名的 `VMU_NO_SUCH_OBJECT`）。
+- `recordPart` 只接受**参与成员**且只在 `writing` 状态（`packs/research-core/paper-flow.js`；错误是具名的 `VMU_NO_SUCH_OBJECT`）。
 - `advance`：writing→reviewing 时自动生成互审环 `reviewOf[participants[i]] = participants[(i+1)%n]`；reviewing→awaiting-editor **只有全部成员 `deliverable===true`** 才成立，否则记录分歧、`round++` 回到 writing；轮数上限是 **pack 常量 `PAPER_MAX_ROUNDS = 3`**（`packs/v5r/paper.js`），到达上限强制进 awaiting-editor 并带 `forcedAfterCap` + 警告。
 - `recordReview`：`deliverable` 必须是真布尔（`'deliverable must be true or false (an unstated verdict is NOT deliverable)'`，提示「未表态不算可交付」）。
 - 合并：`PaperMd` 按记录 id 重新读回并**校验 fingerprint**，正文被背后改动就具名拒（不用旧文本）。
@@ -191,7 +191,7 @@
 机制与门禁都真实，满足"分工后系统合并、互审"。但台账 E2 行把落点写成 `vmu.review.mode:'single-blind'`、`vmu.reviewers.maxLoad:3`、`vmu.paper.maxRounds:3` —— **这三条在论文路径上都不是消费者**：
 
 - `vmu.paper.maxRounds` 的读者只有 `vibe-math-vmu/kernel/paper.js:41,159,363,400-405,430-444`，而该模块**不被装配**（`scripts/lib/reachability.mjs:36-48`）；`settings/schema.js:1359` 的 doc 仍写「已接线（paper.js 读取）」，v5r `packs/v5r/settings/defaults.json:68` 还把它设成 3 —— 这是"声明说已接线、在册路径没人读"的**惰性声明**。真实上限是 pack 常量。
-- `vmu.review.mode` / `vmu.reviewers.maxLoad` 的读者是 `kernel/reviewers.js:9-10,32,37,81-115`（评审人市场：`single-blind`、回避、并发上限），消费者是**已发布的内核面 `vibe_vmu_reviewers`**（probe13：`true`；`vibe-math-vmu/tools/reviewers.js` 的 action 枚举 register/assign/…/keysUsed）—— 它服务"评审人市场"，与论文互审（`kit/paper.js` 的 `reviewOf` 环）**是两套东西**。
+- `vmu.review.mode` / `vmu.reviewers.maxLoad` 的读者是 `kernel/reviewers.js:9-10,32,37,81-115`（评审人市场：`single-blind`、回避、并发上限），消费者是**已发布的内核面 `vibe_vmu_reviewers`**（probe13：`true`；`vibe-math-vmu/tools/reviewers.js` 的 action 枚举 register/assign/…/keysUsed）—— 它服务"评审人市场"，与论文互审（`packs/research-core/paper-flow.js` 的 `reviewOf` 环）**是两套东西**。
 
 **缺什么**：要么把 `vmu.paper.maxRounds` 真正接到 `createPaperFlow({maxRounds})`（并把 doc 改成一致），要么从 v5r 值层删掉这条惰性声明；`review.mode/maxLoad` 在台账里改成正确的消费者名（评审人面），别当成论文互审的落点。
 
@@ -317,7 +317,7 @@ submit({engine:'python'}) ⇒ { "ok": false, "code": "VMU_MATH_UNSUPPORTED_OP",
 
 1. **F1 的"Python 真能跑"**：未判定。准入层（引擎声明/面发布/并发闸）已验；真跑需要一个有宿主 `spawn` 接缝的装配或真机，本轮都没有。探针装配下 `engines===[]` 使 submit 在准入层就拒。下一步：真机上由 office 设 `vmu.math.engines:['python']` 后 `vibe_vmu_mathjobs {action:'submit',engine:'python',argv:['-c','print(1+1)']}` 看 `settled:true`。
 2. **F2 的"真机断点续跑"**：未判定（只有单测 e2e；phase 12 只读、不跑真机）。
-3. **E2 的"single-blind 是否是论文互审的模式"**：已判定**不是**（`vmu.review.mode` 的消费者是 `kernel/reviewers.js` 的评审人市场，不是 `kit/paper.js` 的 `reviewOf` 互审环）；若 Lead 认为这条键应与论文互审共用，那是**缺口**而不是未判定——需要接线。
+3. **E2 的"single-blind 是否是论文互审的模式"**：已判定**不是**（`vmu.review.mode` 的消费者是 `kernel/reviewers.js` 的评审人市场，不是 `packs/research-core/paper-flow.js` 的 `reviewOf` 互审环）；若 Lead 认为这条键应与论文互审共用，那是**缺口**而不是未判定——需要接线。
 
 ## 10. 给 Lead 的三条建议（按成本排序）
 

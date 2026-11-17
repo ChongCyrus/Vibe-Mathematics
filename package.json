@@ -333,6 +333,7 @@
     "tests/legacy/v4-final-paper.test.mjs",
     "tests/legacy/v5-institute-fixes.mutants.mjs",
     "tests/legacy/v5-tool-help.test.mjs",
+    "tests/vmu-service-contribution.test.mjs",
     "tests/vmu-ab-v5r-meetings.test.mjs",
     "tests/vmu-ab-v5r-verification.test.mjs",
     "tests/vmu-action-arity-spellings.test.mjs",
@@ -671,7 +672,6 @@
     "vibe-math-vmu/kernel/notify.js",
     "vibe-math-vmu/kernel/pack.js",
     "vibe-math-vmu/kernel/panel.js",
-    "vibe-math-vmu/kernel/paper.js",
     "vibe-math-vmu/kernel/partnership.js",
     "vibe-math-vmu/kernel/projmigrate.js",
     "vibe-math-vmu/kernel/prompt/index.js",
@@ -711,7 +711,6 @@
     "vibe-math-vmu/kernel/workflow.js",
     "vibe-math-vmu/kit/extras.js",
     "vibe-math-vmu/kit/handlers.js",
-    "vibe-math-vmu/kit/paper.js",
     "vibe-math-vmu/kit/tools.js",
     "vibe-math-vmu/math-computation.js",
     "vibe-math-vmu/math-engines.js",
@@ -950,7 +949,9 @@
     "tests/vmu-run80-prompt-corrections.test.mjs",
     "scripts/doctor.mjs",
     "scripts/lib/install-seed.mjs",
-    "vibe-math-vmu/packs/v5r/runtime.json"
+    "vibe-math-vmu/packs/v5r/runtime.json",
+    "vibe-math-vmu/packs/research-core/index.js",
+    "vibe-math-vmu/packs/research-core/paper-flow.js"
   ],
   "license": "MIT",
   "keywords": [

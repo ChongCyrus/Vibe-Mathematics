@@ -62,10 +62,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.core.logLevel', type: 'enum', domain: ['debug', 'info', 'warn', 'error'], def: 'info', hot: HOT.H0, who: 'office', doc: '日志级别（不进模型上下文）' },
 
   // ---- limits (machine-enforced; refusals must name the current value and the cap) ----------
-  { key: 'vmu.limits.toolCallsPerTurnCap', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '单回合工具调用上限；0＝不限' },
-  { key: 'vmu.limits.maxLiveMembers', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '在活成员上限；0＝不设（机器强制）' },
-  { key: 'vmu.limits.memoryCeilingMb', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '宿主进程 RSS 上限（超限拒绝新建成员；框架无法测量自己的"净"内存，故此处是宿主进程口径）；0＝不设' },
-  { key: 'vmu.limits.wallClockMs', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻）' },
+  { key: 'vmu.limits.toolCallsPerTurnCap', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '单回合工具调用上限。★ C#15：0 只有在**显式写下**时才是「不限」（explicit-unlimited）；未设置 ≠ 不限（状态 unset-default，见 limitsReadings 与 status）。本键在 build 中是 advisory（没有阻断消费者），如实标注' },
+  { key: 'vmu.limits.maxLiveMembers', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '在活成员上限；0 只有在显式写下时才是「不限」（未设置 ≠ 不限；状态见 limitsReadings）。本键 machine-enforced（blocking）' },
+  { key: 'vmu.limits.memoryCeilingMb', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '宿主进程 RSS 上限（超限拒绝新建成员；框架无法测量自己的"净"内存，故此处是宿主进程口径）。0 只有在显式写下时才是「不设」；未设置 ≠ 不限（状态见 limitsReadings）。blocking' },
+  { key: 'vmu.limits.wallClockMs', type: 'natural', def: 0, hot: HOT.H0, who: 'office', doc: '阶段墙钟上限（框架侧口径，不是用户可设的截止时刻）。0 只有在显式写下时才是「不限」；未设置 ≠ 不限（见 limitsReadings）。本键在 build 中是 advisory（没有阻断消费者），如实标注' },
   { key: 'vmu.limits.maxParallel', type: 'positiveInteger', def: 3, hot: HOT.H0, who: 'office', doc: '并发上限（P3：吸收 v5r 的 maxParallel；机器强制）' },
 
   // ---- records ------------------------------------------------------------------------------
@@ -205,7 +205,7 @@ const CORE_DEFS = Object.freeze([
   // Reader: kernel/turn/index.js `replyLimitOf(settings)` (absent/invalid value falls back to the default 2000).
   { key: 'vmu.turn.replyLimitChars', type: 'number', def: 2000, min: 500, max: 200000, hot: HOT.H1, who: 'office', doc: '回合回复正文被回执原样保留的字符上限（默认 2000，允许 500–200000）；超出部分是**截断**而不是丢弃——全文写进 `Members/<member>/Turns/<turn>.md`，回执带 `replyFullPath`/`replyFullSha256`/`replyFullBytes`；调大它会让每回合回执变大，慎用' },
   { key: 'vmu.turn.unknownReplyFieldMode', type: 'enum', domain: ['ignore-named', 'refuse'], def: 'ignore-named', hot: HOT.H1, who: 'office', doc: 'PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。' },
-  { key: 'vmu.turn.protocolPath', type: 'string', def: 'Shared/Protocol.md', hot: HOT.H2, who: 'office', doc: 'protocol path named by the compact reply catalogue (relative to the session working directory)' },
+  { key: 'vmu.turn.protocolPath', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: 'protocol path named by the compact reply catalogue (relative to the session working directory). ★ C#4 residue (TB-2792 round 7): the FRAMEWORK default is NEUTRAL (empty = this framework names no protocol document); an institution that HAS one declares it in its own settings defaults (v5r: packs/v5r/settings/defaults.json = Shared/Protocol.md)' },
   // ★ B4 (2026-10-29): the blueprint's 「按时更新」 window. It used to be a pack CONSTANT (30 days), which made the rule
   // unobservable in any live run (no run lasts 30 days) and untunable in any real institute (a lab reviewing monthly and a
   // lab reviewing yearly cannot share one number). The value is deployment policy, so it is declared here; the pack
@@ -1401,9 +1401,6 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.migration.rollbackPointDensity', type: 'natural', def: 1, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
   { key: 'vmu.migration.stepBatch', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
   { key: 'vmu.notify.crossInstitution', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（notify.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.paper.maxRounds', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.paper.maxSections', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.paper.requireAllSections', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（paper.js 读取）；默认值取自模块源码" },
   { key: 'vmu.partnership.crossBorderApproverRoles', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "已接线（partnership.js 读取）；默认值取自模块源码" },
   { key: 'vmu.partnership.crossBorderGate', type: 'object', def: null, hot: HOT.H1, who: 'office', doc: "已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据）" },
   { key: 'vmu.partnership.invoiceTaxSlots', type: 'object', def: null, hot: HOT.H1, who: 'office', doc: "已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据）" },
@@ -1539,6 +1536,11 @@ const BY_KEY = new Map(SETTING_DEFS.map((d) => [d.key, d]))
 /** Registered pack namespaces: namespace ('vmu.v5r') -> { pack, keys:Set<string> }. */
 export const PACK_SETTING_NAMESPACES = new Map()
 
+/** Which pack owns each registered key (key -> pack name). One key, one owner: re-registration by the SAME pack is
+ *  an UPDATE (the receipt names `updatedFrom`), by a different pack is a refusal. */
+export const PACK_SETTING_OWNERS = new Map()
+let packRegistrationSeq = 0
+
 /**
  * ★ C#3 (TB-2792 Step 1b) — THE PACK SETTINGS REGISTRATION SEAM. A pack owns its namespace; the framework only validates
  * and merges. Rules (all refusals named, none silent):
@@ -1567,6 +1569,7 @@ export function registerPackSettings({ pack = null, namespace = null, defs = nul
       'pass the declarations the pack ships in packs/<id>/settings/declarations.js')
   }
   const added = []
+  const updates = []
   const seen = new Set()
   for (const d of defs) {
     if (!d || typeof d !== 'object') throw refuse('VMU_INVALID_ARGUMENT', 'a pack settings declaration must be an object', 'got ' + JSON.stringify(d))
@@ -1575,8 +1578,14 @@ export function registerPackSettings({ pack = null, namespace = null, defs = nul
         'every key in this file must start with "' + ns + '." — a pack may not declare a framework key')
     }
     const existing = BY_KEY.get(d.key)
-    if (existing && existing.type !== 'planned') throw refuse('VMU_SETTING_NAMESPACE_CONFLICT', 'duplicate settings key "' + d.key,
-      'a key may be declared once (framework table or one pack); a second declaration is refused, never merged silently')
+    if (existing && existing.type !== 'planned') {
+      const owner = PACK_SETTING_OWNERS.get(d.key)
+      const sameOwner = pack !== null && pack !== undefined && owner === String(pack)
+      if (!sameOwner) throw refuse('VMU_SETTING_NAMESPACE_CONFLICT', 'duplicate settings key "' + d.key,
+        'a key may be declared once (framework table or one pack); a second declaration by a DIFFERENT owner is refused, never merged silently')
+      updates.push({ key: d.key, def: Object.assign({}, d), was: Object.assign({}, existing) })
+      continue
+    }
     if (seen.has(d.key)) throw refuse('VMU_SETTING_NAMESPACE_CONFLICT', 'duplicate settings key "' + d.key,
       'a key may be declared once (framework table or one pack); a second declaration is refused, never merged silently')
     if (typeof d.type !== 'string' || typeof d.hot !== 'string' || typeof d.who !== 'string') {
@@ -1586,17 +1595,30 @@ export function registerPackSettings({ pack = null, namespace = null, defs = nul
     seen.add(d.key)
   }
   for (const d of defs) {
+    if (updates.some((u) => u.key === d.key)) continue
     const at = SETTING_DEFS.findIndex((x) => x && x.key === d.key)
+    if (at >= 0) row.priorDefs.set(d.key, SETTING_DEFS[at])
     if (at >= 0) SETTING_DEFS.splice(at, 1, d)
     else SETTING_DEFS.push(d)
     BY_KEY.set(d.key, d)
+    if (pack !== null && pack !== undefined) PACK_SETTING_OWNERS.set(d.key, String(pack))
     added.push(d.key)
   }
-  const row = PACK_SETTING_NAMESPACES.get(ns) || { packs: new Set(), keys: new Set() }
+  const row = PACK_SETTING_NAMESPACES.get(ns) || { packs: new Set(), keys: new Set(), priorDefs: new Map() }
   if (pack !== null && pack !== undefined) row.packs.add(String(pack))
   for (const k of added) row.keys.add(k)
   PACK_SETTING_NAMESPACES.set(ns, row)
-  return { ok: true, pack: pack === null ? null : String(pack), namespace: ns, added, total: added.length }
+  // A re-registration may be an UPDATE of keys this pack already owns: replace the declaration and report what it was.
+  for (const u of updates) {
+    BY_KEY.set(u.key, u.def)
+    const at = SETTING_DEFS.findIndex((x) => x && x.key === u.key)
+    if (at >= 0) SETTING_DEFS.splice(at, 1, u.def)
+    PACK_SETTING_OWNERS.set(u.key, String(pack))
+    if (!row.keys.has(u.key)) row.keys.add(u.key)
+  }
+  packRegistrationSeq += 1
+  return { ok: true, pack: pack === null ? null : String(pack), namespace: ns, added, updated: updates.map((u) => u.key),
+    updatedFrom: updates.map((u) => ({ key: u.key, previous: u.was })), total: added.length + updates.length, registration: packRegistrationSeq }
 }
 
 /**
@@ -1623,6 +1645,79 @@ export const SETTING_PROFILES = Object.freeze({
   research: Object.freeze({ why: '完整研究机构：使用声明默认，按需调参；无额外必设键', required: Object.freeze([]) }),
 })
 
+/** ★ C#15 (ROUND-7 audit, CHANGED): the four `vmu.limits.*` keys are read as a TRI-STATE, not as "0 = unlimited".
+ *  `unset-default` (nobody declared it: the declared default 0 is NOT a decision), `explicit-unlimited` (the operator
+ *  wrote 0: an explicit, auditable "no ceiling") and `finite` (a number). `enforcement` is the truth about the framework:
+ *  `maxLiveMembers` and `memoryCeilingMb` are machine-enforced (blocking); `toolCallsPerTurnCap` and `wallClockMs` have
+ *  no blocking consumer in this build and are reported as ADVISORY instead of pretending. */
+export const LIMIT_READING_KEYS = Object.freeze([
+  'vmu.limits.toolCallsPerTurnCap', 'vmu.limits.maxLiveMembers', 'vmu.limits.memoryCeilingMb', 'vmu.limits.wallClockMs',
+])
+export const LIMIT_ENFORCEMENT = Object.freeze({
+  'vmu.limits.toolCallsPerTurnCap': 'advisory',
+  'vmu.limits.maxLiveMembers': 'blocking',
+  'vmu.limits.memoryCeilingMb': 'blocking',
+  'vmu.limits.wallClockMs': 'advisory',
+})
+const declaredRow = (key) => SETTING_DEFS.filter((d) => d && d.key === key)[0] || null
+export function limitsReadings(values = {}) {
+  const limits = {}
+  const warnings = []
+  for (const key of LIMIT_READING_KEYS) {
+    const explicit = !!values && Object.prototype.hasOwnProperty.call(values, key) && values[key] !== undefined
+    const row = declaredRow(key)
+    const declaredDefault = row && Object.prototype.hasOwnProperty.call(row, 'def') ? row.def : undefined
+    const raw = explicit ? values[key] : declaredDefault
+    const n = Number(raw)
+    const finite = Number.isFinite(n) && n > 0
+    const state = explicit ? (n === 0 ? 'explicit-unlimited' : (finite ? 'finite' : 'invalid')) : 'unset-default'
+    const enforcement = LIMIT_ENFORCEMENT[key] || 'advisory'
+    limits[key.split('.').pop()] = {
+      key, value: raw, explicit, state, enforcement,
+      effective: state === 'explicit-unlimited' ? null : (finite ? n : (state === 'unset-default' ? null : raw)),
+      means: state === 'explicit-unlimited'
+        ? 'explicitly declared 0 = UNLIMITED (an auditable decision, not a default)'
+        : (state === 'finite'
+          ? 'explicit finite ceiling ' + String(n) + '; enforcement: ' + enforcement
+          : (state === 'invalid'
+            ? 'declared value ' + JSON.stringify(raw) + ' is not a positive number: treated as NOT a ceiling and reported, never silently honoured'
+            : 'UNSET: the declared default 0 is NOT an unlimited decision here. Set the key explicitly (0 = a written "no ceiling", or a finite number). enforcement: ' + enforcement)),
+    }
+    if (state === 'unset-default') warnings.push({ key, code: 'VMU_LIMIT_UNSET', enforcement, means: 'vmu.limits.* unset: the default 0 is not an explicit "unlimited"; this ceiling is not a decision anyone made' })
+  }
+  return {
+    ok: true, limits, warnings,
+    means: 'C#15: 0 is unlimited ONLY when written explicitly (`explicit-unlimited`); `unset-default` says nobody decided. `enforcement` names what the framework really does (blocking vs advisory) instead of implying a gate that does not exist.',
+  }
+}
+
+/** ★ C#15 (ROUND-7, token budget): the 1,000,000-token declared default is a SAFETY default, not a long-run budget.
+ *  Real runs spend 30–73M tokens, so a deployment that never set `vmu.budget.tokens` gets a NAMED startup warning (it
+ *  must set e.g. 80M, or write 0 = explicit unlimited). This never blocks. */
+export function tokenBudgetReading(values = {}) {
+  const key = 'vmu.budget.tokens'
+  const row = declaredRow(key)
+  const declared = row && Object.prototype.hasOwnProperty.call(row, 'def') ? row.def : undefined
+  const explicit = !!values && Object.prototype.hasOwnProperty.call(values, key) && values[key] !== undefined
+  const raw = explicit ? values[key] : declared
+  const n = Number(raw)
+  const state = explicit ? (n === 0 ? 'explicit-unlimited' : 'finite') : 'unset-default'
+  const warning = state === 'unset-default'
+    ? {
+        code: 'VMU_BUDGET_TOKENS_DEFAULT',
+        severity: 'advisory',
+        key,
+        value: raw,
+        means: 'vmu.budget.tokens is UNSET: the declared default ' + String(declared) + ' tokens is a SAFETY default, not a long-run budget. Real runs spend 30–73M tokens. Set `vmu.budget.tokens` explicitly (e.g. 80000000) or 0 = explicit unlimited before a real long run; this warning never blocks a turn.',
+      }
+    : null
+  return { key, value: raw, explicit, state, effective: state === 'explicit-unlimited' ? null : (Number.isFinite(n) ? n : raw), warning,
+    means: state === 'explicit-unlimited'
+      ? 'explicitly declared 0 = UNLIMITED tokens (an auditable decision)'
+      : (state === 'finite' ? 'explicit token budget ' + String(n) : 'UNSET: running on the declared safety default ' + String(declared) + ' tokens (see warning)') }
+}
+
+
 /** Which profile a values map declares (vmu.core.profile), defaulting to research. */
 export function profileOf(values = {}) {
   const v = values && values['vmu.core.profile']
@@ -1646,6 +1741,79 @@ export function assertProfile(values = {}, profile = null) {
   throw refuse('VMU_SETTING_PROFILE_INCOMPLETE',
     'the ' + report.profile + ' profile requires ' + report.required.length + ' settings and ' + report.missing.length + ' is missing: ' + report.missing.map((m) => m.key).join(', '),
     report.missing.map((m) => m.key + ' — ' + m.why).join('; ') + '. Pass these keys in the deployment config (or pick profile "research" if the declared defaults are the right answer)')
+}
+
+/**
+ * ★★★ C#3 RESIDUE (TB-2792 round 7): A PACK SETTING REGISTRATION MUST BE RETRACTABLE, AND ITS KEY UPDATEABLE.
+ * Registration used to be one-way: after a pack unloaded its namespace/keys stayed globally valid, and the SAME key
+ * could not be re-declared at all (`VMU_SETTING_NAMESPACE_CONFLICT` even for the owner). Both are the "declared but
+ * ineffective / stale global" family: a retracted key must not stay settable through the old declaration, and an
+ * owner updating its own declaration must be able to.
+ *
+ * retractPackSettings({ namespace }) reverts a whole namespace; { pack } reverts just that pack's keys (a namespace
+ * shared by several packs keeps the others). Each removed key RESTORES the declaration it shadowed (a generated
+ * `planned` placeholder, or nothing), and after the namespace is fully retracted any read of one of its keys is
+ * refused BY NAME (`VMU_SETTING_NAMESPACE_UNKNOWN`) by screenSettings/resolveSettings — never silently accepted as
+ * the old value. Re-registering the namespace makes it live again.
+ */
+export function retractPackSettings({ pack = null, namespace = null, reason = 'manual' } = {}) {
+  const targets = []
+  if (typeof namespace === 'string' && namespace !== '') {
+    if (!PACK_SETTING_NAMESPACES.has(namespace)) {
+      throw refuse('VMU_SETTING_NAMESPACE_UNKNOWN', 'no pack settings namespace "' + namespace + '" is registered',
+        'registered: ' + ([...PACK_SETTING_NAMESPACES.keys()].sort().join(', ') || '(none)'))
+    }
+    targets.push(namespace)
+  } else if (pack !== null && pack !== undefined) {
+    const id = String(pack)
+    for (const [ns, row] of PACK_SETTING_NAMESPACES.entries()) if (row.packs.has(id)) targets.push(ns)
+    if (targets.length === 0) {
+      throw refuse('VMU_SETTING_NAMESPACE_UNKNOWN', 'pack "' + id + '" has no registered settings namespace',
+        'registered: ' + (registeredPackNamespaces().map((r) => r.namespace + '<-[' + r.packs.join('|') + ']').join(', ') || '(none)'))
+    }
+  } else {
+    throw refuse('VMU_INVALID_ARGUMENT', 'retractPackSettings needs a namespace or a pack id', 'pass { namespace } or { pack }')
+  }
+  const removed = []
+  const retracted = []
+  const kept = []
+  for (const ns of targets) {
+    const row = PACK_SETTING_NAMESPACES.get(ns)
+    if (!row) continue
+    const id = pack === null || pack === undefined ? null : String(pack)
+    const keys = id === null ? [...row.keys] : [...row.keys].filter((k) => PACK_SETTING_OWNERS.get(k) === id)
+    for (const key of keys) {
+      const at = SETTING_DEFS.findIndex((x) => x && x.key === key)
+      const prior = (row.priorDefs && row.priorDefs.get(key)) || null
+      if (at >= 0) { if (prior) SETTING_DEFS.splice(at, 1, prior); else SETTING_DEFS.splice(at, 1) }
+      BY_KEY.delete(key)
+      PACK_SETTING_OWNERS.delete(key)
+      row.keys.delete(key)
+      if (row.priorDefs) row.priorDefs.delete(key)
+      removed.push({ key, pack: id, restored: prior ? prior.type : null })
+    }
+    if (id !== null) row.packs.delete(id)
+    else row.packs.clear()
+    if (row.keys.size === 0) { PACK_SETTING_NAMESPACES.delete(ns); retracted.push(ns) }
+    else kept.push({ namespace: ns, packs: [...row.packs].sort(), keys: [...row.keys].sort() })
+  }
+  packRegistrationSeq += 1
+  return { ok: true, reason: String(reason), pack: pack === null || pack === undefined ? null : String(pack),
+    namespaces: targets, removed, removedCount: removed.length, retracted, kept, registration: packRegistrationSeq,
+    means: 'removed keys are no longer declared settings; a read of one is refused BY NAME as VMU_SETTING_NAMESPACE_UNKNOWN until the namespace is registered again' }
+}
+
+/** Pack-unload helper: match namespaces by manifest id / request id / `vmu.<token>` prefix and retract them. */
+export function retractPackSettingsForPackId(id, { reason = 'pack-unload' } = {}) {
+  const pid = String(id)
+  const targets = []
+  for (const [ns, row] of PACK_SETTING_NAMESPACES.entries()) {
+    const token = ns.slice('vmu.'.length)
+    if (row.packs.has(pid) || pid === token || pid.startsWith(token + '-')) targets.push(ns)
+  }
+  if (targets.length === 0) return { ok: true, matched: [], removedCount: 0, namespaces: [] }
+  const receipts = targets.map((ns) => retractPackSettings({ namespace: ns, reason }))
+  return { ok: receipts.every((r) => r.ok), matched: targets, removedCount: receipts.reduce((n, r) => n + r.removedCount, 0), namespaces: receipts }
 }
 
 /** The namespaces a deployment/pack may use, for named refusals and docs. */
@@ -2032,6 +2200,23 @@ export function resolveSettings(layers = [], { onInvalid = 'refuse' } = {}) {
       assertNoUserTime(k)
       const decl = BY_KEY.get(resolveKey(k)) || null
       if (!decl) {
+        // A key in a namespace no framework table and no LIVE pack owns is a DIFFERENT mistake from a typo inside a
+        // known namespace: it is the named `VMU_SETTING_NAMESPACE_UNKNOWN` (this is also what a key from a RETRACTED
+        // pack namespace reads as — the old value is not silently accepted).
+        const parts = String(k).split('.')
+        const token = parts.length >= 3 && parts[0] === 'vmu' ? parts[1] : null
+        const frameworkTokens = new Set(CORE_DEFS.map((d) => d.key.split('.')[1]).filter(Boolean))
+        if (token !== null && !frameworkTokens.has(token) && !PACK_SETTING_NAMESPACES.has('vmu.' + token)) {
+          const message = 'setting ' + k + ' belongs to unknown settings namespace "vmu.' + token + '": no framework key and no registered (LIVE) pack namespace owns it — including a RETRACTED one'
+          if (onInvalid !== 'reject') throw refuse('VMU_SETTING_NAMESPACE_UNKNOWN', message,
+            're-register the pack namespace (packs/<id>/settings/declarations.js) or stop presenting the key: after a retraction the old value is NOT silently accepted')
+          rejected.push({ key: k, value: v, code: 'VMU_SETTING_NAMESPACE_UNKNOWN', reason: message, layer: i })
+          out[k] = v
+          layerAccepted[k] = v
+          provenance[k] = provenance[k] || []
+          provenance[k].push(i)
+          continue
+        }
         if (onInvalid !== 'reject') throw refuse('VMU_INVALID_ARGUMENT', 'undeclared setting key: ' + k,
           'declare it in vibe-math-vmu/settings/schema.js first (docs/04 R4)')
         rejected.push({ key: k, value: v, code: 'VMU_INVALID_ARGUMENT', reason: 'undeclared', layer: i })

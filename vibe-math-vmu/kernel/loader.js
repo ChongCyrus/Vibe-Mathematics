@@ -32,7 +32,10 @@ export const DSH_HOOKS = BUS_DSH_HOOKS
 export const API_KEYS = Object.freeze(['log', 'setting', 'kernel', 'dryRun', 'traceId', 'hook', 'services'])
 
 const CAPABILITIES = Object.freeze(['read-state', 'read-args', 'deny', 'cancel', 'rewrite-args', 'rewrite-result',
-  'append-prompt', 'record', 'notify', 'set-setting', 'trigger-workflow', 'annotate'])
+  'append-prompt', 'record', 'notify', 'set-setting', 'trigger-workflow', 'annotate',
+  // ★ TB-2794 Step 0: a declared module may contribute a service through api.services.provide (provider id stamped by
+  // the loader). Separate from trigger-workflow: publishing a face and driving another face are different authorities.
+  'contribute-services'])
 
 export const FRAMEWORK_API_VERSION = 1
 
@@ -143,6 +146,28 @@ export function createLoader({ services = {}, log = () => {}, dryRun = false, cl
         return svc
       },
       names: () => (typeof services.names === 'function' ? services.names().slice() : []),
+      // ★ TB-2794 Step 0: the CONTRIBUTION half of the same door. A module that declares the `contribute-services`
+      // capability may publish a face (or retract its own); the provider id is stamped here, so a module can never
+      // retract a pack's service or the kernel's. Without the capability this is a NAMED refusal, not a silent no-op.
+      provide: (name, impl, meta = {}) => {
+        if (!Array.isArray(caps) || caps.indexOf('contribute-services') === -1) {
+          throw Object.assign(refuse('VMU_NOT_PERMITTED', 'this module may not contribute services: it did not declare the contribute-services capability',
+            'declare capabilities: ["contribute-services", …] in the module meta; the provider id is stamped by the loader'),
+          { enforced: ['capabilities.contribute-services'], enforcedScope: 'evaluated-so-far', service: String(name) })
+        }
+        if (typeof services.provide !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this assembly has no service-contribution seam',
+          'construct the kernel through kernel/index.js (it exposes provideService/retractService)')
+        return services.provide(name, impl, Object.assign({}, meta, { by: 'module:' + entry.id }))
+      },
+      retract: (name) => {
+        if (!Array.isArray(caps) || caps.indexOf('contribute-services') === -1) {
+          throw Object.assign(refuse('VMU_NOT_PERMITTED', 'this module may not retract services: it did not declare the contribute-services capability',
+            'declare capabilities: ["contribute-services", …] in the module meta'),
+          { enforced: ['capabilities.contribute-services'], enforcedScope: 'evaluated-so-far', service: String(name) })
+        }
+        if (typeof services.retract !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this assembly has no service-contribution seam', 'construct the kernel through kernel/index.js')
+        return services.retract(name, { by: 'module:' + entry.id })
+      },
     }),
   })
 

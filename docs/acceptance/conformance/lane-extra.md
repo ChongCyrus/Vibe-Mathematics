@@ -16,7 +16,7 @@
 |---|---|---|---|---|---|---|
 | B1 | 公共 Verified 文件夹；只有 p=1 可入；只有辩论能把 p 改成 1 | 有（且写的是 m 票） | **无** | **无** | ❌ 缺口 | 没有 verified 轨/类/字段，没有"p=1 只能来自辩论"的写入门 |
 | B2 | 公共蓝图：总目标技术路线；按时更新；院士+常驻共同设计；**最终编辑权归院士** | 仅作为"路径"被插值 | 只有路径字符串 | **无** | ❌ 缺口 | 无蓝图对象、无编辑权闸、无更新节奏 |
-| B9 | 分派后各自负责部分的论文 | 有 | **有**（`vibe_v5_paper`→`kit/paper.js`） | 部分（editor 席位） | ✅ 具备 | 无"必须分派"强闸（可选） |
+| B9 | 分派后各自负责部分的论文 | 有 | **有**（`vibe_v5_paper`→`packs/research-core/paper-flow.js`） | 部分（editor 席位） | ✅ 具备 | 无"必须分派"强闸（可选） |
 | B10 | 脚本文件 | 有（且**禁止**临时脚本） | 部分（`math_computation` 回执归档） | 有（core 规则拒 `vibe_vmu_script`） | ⚠️ 部分 | 无"脚本文件夹/轨"这一承载；只有可复核回执 |
 | F1 | 数学计算工具；**所办可设并发上限** | 有 | **有**（call-time 读取 + 具名拒） | 有（`VMU_RESOURCE_BUDGET`） | ✅ 具备 | 写入面无席位约束（`vibe_v5_set` 可被任何能看到它的成员调用） |
 | F2 | 人工干预决策/运行；断点续跑 | 有 | **有**（human 门 + pause/resume + 耐久投影） | 有（默认零机制） | ✅ 具备 | v5r 默认 `gatedActions:[]` ⇒ 默认不闸任何动作 |
@@ -73,7 +73,7 @@
 $ grep -rn "Verified" --include=*.js vibe-math-vmu/ | wc -l
 85
 $ grep -rln "Verified" --include=*.js vibe-math-vmu/       # 15 个文件
-kernel/auditchain.js  kernel/crypto.js  kernel/records.js  kit/paper.js
+kernel/auditchain.js  kernel/crypto.js  kernel/records.js  packs/research-core/paper-flow.js
 packs/v3/index.js  packs/v3/middleware/dataplane.js  packs/v3/middleware/defects.js
 packs/v3/middleware/verify.js  packs/v3/prompts/paper.js
 packs/v5r/prompts/{v5r-assistant,v5r-blocks-a,v5r-blocks-b,v5r-core,v5r-persona,v5r-prompts}.js
@@ -118,17 +118,17 @@ packs/v5r/prompts/{v5r-assistant,v5r-blocks-a,v5r-blocks-b,v5r-core,v5r-persona,
 
 ### (b) 机制存在且可达
 
-- `kit/paper.js:111` `start({ target, participants = [], editor = 'academician', lang = 'zh', format = 'both' })`；状态机 `:13` `['writing','reviewing','awaiting-editor','finalized']`。
-- 按人分部分：`kit/paper.js:148-149`
+- `packs/research-core/paper-flow.js:111` `start({ target, participants = [], editor = 'academician', lang = 'zh', format = 'both' })`；状态机 `:13` `['writing','reviewing','awaiting-editor','finalized']`。
+- 按人分部分：`packs/research-core/paper-flow.js:148-149`
   `const previous = state.parts[part.member] || null; state.parts[part.member] = { recordId, fingerprint, round, at, title }` ⇒ **每人一份、带指纹**。
-- 分派复核：`kit/paper.js:168-169` `state.reviewOf[member]` 决定"谁复核谁的部分"。
-- 定稿前必须一致：`kit/paper.js:191-206`（`unanimous` 或到达轮次上限 `capped`）。
+- 分派复核：`packs/research-core/paper-flow.js:168-169` `state.reviewOf[member]` 决定"谁复核谁的部分"。
+- 定稿前必须一致：`packs/research-core/paper-flow.js:191-206`（`unanimous` 或到达轮次上限 `capped`）。
 - 入口面：`packs/v5r/tools.js:834` `toolPaper` → `vibe_v5_paper`，actions `start / part / review / advance / final / render / status / compile / sections`（`:843` 起）。
-- ★ 注：`packs/v5r/middleware/paper-dispatch.js` 是**已废弃**的平行实现（文件头 `PAPER_DISPATCH_DEPRECATED`，replacement=`vibe_v5_paper`）；活路径是 `vibe_v5_paper → packs/v5r/paper.js → kit/paper.js`。
+- ★ 注：`packs/v5r/middleware/paper-dispatch.js` 是**已废弃**的平行实现（文件头 `PAPER_DISPATCH_DEPRECATED`，replacement=`vibe_v5_paper`）；活路径是 `vibe_v5_paper → packs/v5r/paper.js → packs/research-core/paper-flow.js`。
 
 ### (c) 门禁 —— 部分
 
-- `kit/paper.js:226-232`：非 `editorDefault`（academician）定稿 ⇒ 具名拒 `VMU_NOT_PERMITTED`，并自曝
+- `packs/research-core/paper-flow.js:226-232`：非 `editorDefault`（academician）定稿 ⇒ 具名拒 `VMU_NOT_PERMITTED`，并自曝
   > 「the original lets the office finalize only after consulting the institute — **that path is a named gap here**」
 - 没有"每篇论文必须按人分派"的强闸（可以 start 后直接写？—— `part` 才落 parts，但不分派不拒）。
 
@@ -233,7 +233,7 @@ packs/v5r/prompts/{v5r-assistant,v5r-blocks-a,v5r-blocks-b,v5r-core,v5r-persona,
   - `grep -rn "createPaper(" --include=*.js --include=*.mjs vibe-math-vmu` ⇒ **只有定义**（`kernel/paper.js:111`）。
   - 全部引用者：`tests/vmu-paper.test.mjs`、`tests/vmu-paper-consult.test.mjs`、`tests/audit-enforced-consistency.test.mjs`。
   - 内核自己就这么写：`kernel/index.js:1415`「`paper` has NO instance in this assembly (nothing constructs it here), so there is nothing to wrap.」
-- 活论文面是另一条链：`packs/v5r/tools.js:834,840` `vibe_v5_paper` → `packs/v5r/paper.js:16,52` `createPaperSubsystem` → `kit/paper.js:createPaperFlow`；而 `kit/paper.js:226-232` 把"所办咨询后定稿"标成 **named gap**（原文见 B9）。
+- 活论文面是另一条链：`packs/v5r/tools.js:834,840` `vibe_v5_paper` → `packs/v5r/paper.js:16,52` `createPaperSubsystem` → `packs/research-core/paper-flow.js:createPaperFlow`；而 `packs/research-core/paper-flow.js:226-232` 把"所办咨询后定稿"标成 **named gap**（原文见 B9）。
 - ⇒ C-30 门在**生产路径上不存在**。它是一组"有声明、有读者、但读者模块未被装配"的键（与"死键"不同：读者代码真实存在且有测试，只是没进装配）。
 
 ### 判定：⚠️ 部分
@@ -329,7 +329,7 @@ v5r-persona.js:1  v5r-blocks-a.js:10  v5r-blocks-b.js:4  v5r-core.js:5
 
 - **精读**（全部或大段读过，并用其 `file:line` 下结论）：
   `packs/v5r/tools.js`（选读约 300 行：`report`/`overview`/`paper`/`configure`/`set`/`pause`/`resume`/`message`/`verdict`/面清单）、
-  `kit/paper.js`（选读 `:1-60,111-232,266-283,367`）、
+  `packs/research-core/paper-flow.js`（选读 `:1-60,111-232,266-283,367`）、
   `kernel/records.js`（键表与 `put` 校验 `:57-98,219-240,397-493,796-816`）、
   `kernel/paper.js`（键表 `WIRED_KEYS` 与 `cfg`/门/拒绝）、
   `kernel/human.js`（`cfg`/门/超时 `:70-130,340-370,414-434,533`）、
@@ -346,5 +346,5 @@ v5r-persona.js:1  v5r-blocks-a.js:10  v5r-blocks-b.js:4  v5r-core.js:5
 - **本轮未核实（留作待核，不要当成已通过）**：
   ① 逐成员的**工具可见性**（`turn.visibleToolsOf` 的实机结果）⇒ 决定 `vibe_v5_set` 是否真的只有所办能调到；
   ② `vibe_v5_human` 在真实会话里能否把待批项呈现给用户并回填；
-  ③ `vibe_v5_paper` 在实机上是否真的走 `kit/paper.js`（本轮是静态调用链证据，未跑）；
+  ③ `vibe_v5_paper` 在实机上是否真的走 `packs/research-core/paper-flow.js`（本轮是静态调用链证据，未跑）；
   ④ `math_computation` 的 `mode:'file'` 归档落盘位置与检索方式（B10 的关键，实机未验）。

@@ -253,7 +253,6 @@ export const HOOK_REGISTRY = Object.freeze([
   // extension may legitimately react to) or listed in `LOG_ONLY_EMITS` (an accounting/observability row that
   // is NOT a subscribable hook). Nothing is left in between - see `docs/05 §5.4` and the classification gate
   // `D:\_tmp\vmu-hook-emit-census.mjs` (仓库外临时探针).
-  { name: 'paper/office-consult-required', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'finalisation was refused because the office was not consulted', producer: 'kernel/paper.js' },
   { name: 'publication/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a paper advanced a publication stage', producer: 'kernel/publication.js' },
   { name: 'publication/replication-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a replication attempt failed', producer: 'kernel/publication.js' },
   { name: 'notify/emit', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a notification was emitted to the delivery seam', producer: 'kernel/notify.js' },

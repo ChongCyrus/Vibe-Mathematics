@@ -2,7 +2,7 @@
  * tests/vmu-run217-feedback53.test.mjs — RUN 217：run 54（FEEDBACK53）量到的「回执为真、但回答的是另一个问题」。
  *
  * THE THREE DEFECTS THIS SUITE PINS (all MEASURED in run 54, task-sim54.txt):
- *   ① `vibe-math-vmu/kit/paper.js` — the compile receipt said `pdf.produced:true` (a true answer to "is the file there"),
+ *   ① `vibe-math-vmu/packs/research-core/paper-flow.js` — the compile receipt said `pdf.produced:true` (a true answer to "is the file there"),
  *      and xelatex's own log said `Missing character: There is no ≥ (U+2265) in font [lmroman10-regular]` four times and
  *      the same for `∎` once. The PDF therefore read "n  1" where the paper wrote "n ≥ 1": the receipt never answered
  *      "did the mathematics print". Unicode math glyphs are now re-spelled as LaTeX math, and the repair counts travel in
@@ -30,7 +30,7 @@ const VMU = join(REPO, 'vibe-math-vmu')
 const TMP = __tmpRoot() + '/r217'
 mkdirSync(TMP, { recursive: true })
 
-const SRC_PAPER = readFileSync(join(VMU, 'kit', 'paper.js'), 'utf8')
+const SRC_PAPER = readFileSync(join(VMU, 'packs', 'research-core', 'paper-flow.js'), 'utf8')
 const SRC_BLUEPRINT = readFileSync(join(VMU, 'packs', 'v5r', 'blueprint.js'), 'utf8')
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
 const SRC_PROMPTS = readFileSync(join(VMU, 'packs', 'v5r', 'prompts', 'v5r-paper-prompts.js'), 'utf8')

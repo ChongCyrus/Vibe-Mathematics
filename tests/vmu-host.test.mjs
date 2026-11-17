@@ -514,7 +514,11 @@ if (SELF_PROBE) {
   // ★ ROUND-1 P0-c/P0-f re-pin (measured 8951): the summary gained TWO mandatory readings — `usage` (the model-token
   // meter/wiring, P0-c) and `verifiedWarrantPolicy` (which warrant kinds may settle a conclusion, P0-f). The ceiling
   // exists to catch RUNAWAY growth, so it is re-pinned above the measured value with the cause written down.
-  ok(text.length < 10000, '★ 真装配（v5r pack）下 status 默认 summary < 10000 字节（P0-c usage + P0-f warrantPolicy 后实测 8951；仍远小于宿主截断线）', 'bytes=' + text.length)
+  // ★★ ROUND-7 re-pin (Lead ruling, measured on the current tree): HEAD's summary measured 9972; uncommitted parallel
+  // lanes then added more status sections (usage / verifiedWarrantPolicy / closureVote / servicesProvided 等)，实测 10003。
+  // 增长明细：这些段是其他车道的在飞改动；C#15 的 limits/tokenBudget 块**不在 summary**（只在 budget.status）。本 pin 只
+  // 记录「实测值 + 原因」，不是放宽语义；上限仍是一条防 runaway 的硬线（10240）。
+  ok(text.length <= 10240, '★ 真装配（v5r pack）下 status 默认 summary ≤ 10240 字节（HEAD 9972 → 当前实测 10003：增长来自 usage/warrantPolicy/closureVote/servicesProvided 等新增 status 段；C#15 块不在 summary）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),

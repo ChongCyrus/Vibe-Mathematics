@@ -6,7 +6,7 @@
 //
 //   · `vibe-math-vmu/kernel/paper.js` (shipped in `installer.js`, owning six `vmu.paper.*` keys and declaring itself the
 //     producer of `paper/office-consult-required`) is imported by NO live file — `createPaper(` appears only in tests
-//     and scripts. The v5r paper actually runs through `packs/v5r/paper.js` → `kit/paper.js`, which reads none of those
+//     and scripts. The v5r paper actually runs through `packs/v5r/paper.js` → `packs/research-core/paper-flow.js`, which reads none of those
 //     keys ⇒ `vmu.paper.officeConsult='required'` was INERT on the mounted path while the table credited its reader.
 //   · `vibe-math-vmu/kernel/grant.js` — `createGrant(` appeared only in `tests/audit-enforced-consistency.test.mjs`,
 //     yet it owned four `vmu.grant.*` keys and declared itself the producer of `grant/granted`. Measured here, then
@@ -74,22 +74,18 @@ ok(stale.length === 0, '★★ the exception list holds no entry that is reachab
 const weakReason = Object.entries(KNOWN_UNMOUNTED).filter(([, why]) => typeof why !== 'string' || why.trim().length < 80)
 ok(weakReason.length === 0, '★★ each exception states WHY and HOW it was measured (no bare allowlist entries)', { weakReason: weakReason.map(([k]) => k) })
 
-// ★ paper.js is the measured case, so pin the measurement itself: it must still be unreachable AND still own the
-// office-consult keys. If someone mounts it, this flips and the settings claim becomes real — deliberately loud.
-const paperSrc = readFileSync(join(VMU, 'kernel/paper.js'), 'utf8')
-ok(unreachable.includes('kernel/paper.js') && /vmu\.paper\.officeConsult/.test(paperSrc),
-  '★★ the measured case is recorded as measured: kernel/paper.js is unreachable AND is the reader the settings table credited',
-  { unreachable: unreachable.includes('kernel/paper.js'), readsConsult: /vmu\.paper\.officeConsult/.test(paperSrc) })
-
-// ★★ and the MOUNTED path must be named AND must now CARRY the gate. This line used to assert the opposite (`!/officeConsult/`)
-// because the gate existed only in the unmounted `kernel/paper.js`; it was then wired into the live path
-// (`packs/v5r/paper.js` → `kit/paper.js`), which is why the assertion flipped. It stays deliberately loud in the new
-// direction: if the mounted flow stops reading the consult keys, the rule 「定稿前必须问所办」 silently goes inert again.
-const kitPaper = readFileSync(join(VMU, 'kit/paper.js'), 'utf8')
-const kitConsultKeys = (kitPaper.match(/vmu\.paper\.officeConsult[A-Za-z]*/g) || [])
-ok(new Set(kitConsultKeys).size >= 5,
-  '★★ the MOUNTED paper flow (kit/paper.js) reads the office-consult family — the gate lives on the registered path, not only in an unmounted module',
-  { kitConsultKeys: [...new Set(kitConsultKeys)] })
+// ★ TB-2794 Step 1: the former measured case (`kernel/paper.js`, an unmounted duplicate of the paper flow) is GONE.
+// The flow moved to packs/research-core/paper-flow.js and is mounted through packs/v5r/paper.js; pin the new facts:
+//   · the kernel module no longer exists (and is NOT excused in KNOWN_UNMOUNTED — the map is empty);
+//   · the MOUNTED flow still reads the office-consult family (the 「定稿前必须问所办」 gate stays on the live path).
+ok(!unreachable.includes('kernel/paper.js') && Object.keys(KNOWN_UNMOUNTED).length === 0,
+  '★★ kernel/paper.js is DELETED and KNOWN_UNMOUNTED is empty (the face moved to packs/research-core, nothing is excused)',
+  { unreachable: unreachable.includes('kernel/paper.js'), known: Object.keys(KNOWN_UNMOUNTED) })
+const flowSrc = readFileSync(join(VMU, 'packs/research-core/paper-flow.js'), 'utf8')
+const flowConsultKeys = (flowSrc.match(/vmu.paper.officeConsult[A-Za-z]*/g) || [])
+ok(new Set(flowConsultKeys).size >= 5,
+  '★★ the MOUNTED paper flow (packs/research-core/paper-flow.js) reads the office-consult family — the gate lives on the registered path, not only in a deleted module',
+  { flowConsultKeys: [...new Set(flowConsultKeys)] })
 
 // ★★ the grant family: DELETED — the honest shape after the decision, pinned as ABSENCE so a future "re-add the
 // knob" cannot resurrect a settings claim without a mechanism. The module is gone, and no file in `kernel/**` or

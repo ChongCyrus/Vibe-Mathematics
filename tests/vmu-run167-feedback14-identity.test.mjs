@@ -62,7 +62,7 @@ const newRoot = async (tag) => { const r = await mkdtemp(join(BASE, tag + '-'));
 // ── §0 source pins ──────────────────────────────────────────────────────────────────────────────────────────────────
 {
   const meetings = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'meetings.js'), 'utf8')
-  const paper = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const paper = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const turn = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
   const tools = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   ok(/const archivedIds = new Set\(archive\.map\(\(x\) => String\(x\.id\)\)\)/.test(meetings) && /while \(takenAny\(mid\)/.test(meetings),

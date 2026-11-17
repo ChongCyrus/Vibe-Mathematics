@@ -78,7 +78,7 @@ const hire = async (k) => { for (const [id, slot] of SEATS) await k.members.hire
   const index = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
   const host = readFileSync(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
   const tools = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
-  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const quality = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js'), 'utf8')
   ok(/function adoptTombstoneRow\(id, row\) \{/.test(records) && /shared\.tombstonesAdopted \+= 1/.test(records),
     '§0 a fold tombstone the local store has never seen is ADOPTED as a trashed row (not merely counted)')

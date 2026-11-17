@@ -31,7 +31,7 @@ const TMP = mkdtempSync(join(tmpdir(), 'vmu-r78-small-'))
 mkdirSync(TMP, { recursive: true })
 
 const SRC_MEETINGS = readFileSync(join(VMU, 'kernel', 'meetings.js'), 'utf8')
-const SRC_PAPER_KIT = readFileSync(join(VMU, 'kit', 'paper.js'), 'utf8')
+const SRC_PAPER_KIT = readFileSync(join(VMU, 'packs', 'research-core', 'paper-flow.js'), 'utf8')
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
 
 let passed = 0

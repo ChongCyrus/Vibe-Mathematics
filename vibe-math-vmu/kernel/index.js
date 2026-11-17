@@ -139,7 +139,7 @@ import { createReproPack } from './repropack.js'
 // ROUND 247: the domain compliance face (docs/20 §9.1-§9.4) - clinical (N2) and animal (N3) packs.
 import { createLegalEntity } from './partnership.js'
 import { createReviewers } from './reviewers.js'
-import { SETTING_DEFS, screenSettings, resolveSettings, validateValue, unenforcedReport } from '../settings/schema.js'
+import { SETTING_DEFS, screenSettings, resolveSettings, validateValue, unenforcedReport, assertProfile } from '../settings/schema.js'
 // PHASE 6 / P0 (goal-3 audit R1/R3): ONE reader for "configured value, else the DECLARED default". Every read below
 // that may see an unconfigured key goes through it, so the declared default has one home (settings/schema.js).
 import { readSetting } from './settings-defaults.js'
@@ -860,6 +860,10 @@ export function createKernel({
       if (r.reason !== 'undeclared') settings[r.key] = r.default
     }
   }
+  // ★ C#23 (ROUND-7): `assertProfile` had no production caller. A deployment that EXPLICITLY declares a profile is
+  // checked at boot: profile 'minimal' missing any of its required keys is refused BY NAME (VMU_SETTING_PROFILE_INCOMPLETE).
+  // No declared profile ⇒ no enforcement (backward compatible: the declared default 'research' needs nothing).
+  if (Object.prototype.hasOwnProperty.call(settings, 'vmu.core.profile')) assertProfile(settings, settings['vmu.core.profile'])
   const settingsView = new Proxy(settings, {
     get: (target, key) => (key === 'get' ? (k) => target[k] : target[key]),
     has: (target, key) => key === 'get' || key in target,
@@ -3439,7 +3443,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     names() { return [...statusSections.keys()].sort() },
   })
 
-  const middlewareServiceCatalog = () => ({
+  const middlewareServiceCatalog = () => Object.assign({}, {
     'vmu.tasks': tasks, 'vmu.meetings': meetings, 'vmu.chat': chat, 'vmu.mailbox': mailbox,
     // ★ PHASE 12 / D15: the debate's final ruling. Listed here because a capability a declared module may not reach is
     // not a capability ("能力在内核，但要有路"): a pack that wants to close a debate must be able to call the aggregation
@@ -3505,7 +3509,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // deliberately not published here.
       note: 'start() only: the blocking run() is not published to middleware, because a hook budget (2000 ms) is smaller than a script budget (60000 ms) — the result arrives as the script/settled event',
     }),
-  })
+  }, providedCatalog())
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,
     // which is exactly the "silent fake" `requireStore()` exists to refuse. A module calling `kernel.read()`
@@ -3525,6 +3529,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       },
       get: (name) => { const id = String(name === undefined || name === null ? '' : name); return middlewareServiceCatalog()[id] || null },
       names: () => { const cat = middlewareServiceCatalog(); return Object.keys(cat).filter((k) => cat[k]).sort() },
+      // ★ TB-2794 Step 0: a declared module may CONTRIBUTE a service (capability-gated in loader.js). The kernel keeps
+      // the one provider map; the loader only forwards, so registry/status/unload cannot disagree with what was provided.
+      provide: (name, impl, meta) => provideService({ name, apiVersion: meta && meta.apiVersion, impl, by: meta && meta.by }),
+      retract: (name, meta) => retractService({ name, by: meta && meta.by }),
     },
     log,
     dryRun,
@@ -3547,6 +3555,69 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         .catch((e) => note('script/settled emit failed: ' + String((e && e.message) || e)))
     } })
   const registry = createRegistry({})
+  // ★★★ TB-2794 Step 0 — THE SERVICE CONTRIBUTION SEAM. A research face is MOVING out of the kernel, one face at a time.
+  // Until a face's local construction is deleted, a pack may NOT shadow it (dual implementation is forbidden); the local
+  // value keeps winning and provideService refuses with VMU_SERVICE_CONFLICT. Once the local construction is gone, the same
+  // contribution becomes the face: every reader resolves through the ONE seam below, and status says WHO provides it.
+  const providedServices = new Map()
+  const providedCatalog = () => {
+    const out = {}
+    for (const [name, row] of providedServices.entries()) out[name] = row.impl
+    return out
+  }
+  const SERVICE_NAME_RE = /^vmu\.[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/
+  const provideService = ({ name, apiVersion = null, impl = null, by = null } = {}) => {
+    const key = typeof name === 'string' ? name.trim() : ''
+    if (!SERVICE_NAME_RE.test(key)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a contributed service needs a dotted vmu.<area>[.<name>] name: ' + JSON.stringify(name),
+        'e.g. provideService({name:"vmu.paper", apiVersion:1, impl, by:"v5r"}) — the kernel publishes it under the SAME registry every local service goes through')
+    }
+    const v = Number(apiVersion)
+    if (!Number.isInteger(v) || v < 1) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'contributed service ' + key + ' must declare an integer apiVersion >= 1',
+        'per-service versioning is the published contract (D13-O3); a pack must say which contract its face implements')
+    }
+    if (!impl || (typeof impl !== 'object' && typeof impl !== 'function')) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'contributed service ' + key + ' has no implementation object', 'pass impl (the service instance the pack constructed)')
+    }
+    let existing = null
+    try { existing = registry.resolve(key) } catch { existing = null }
+    if (existing !== null) {
+      throw refuse('VMU_SERVICE_CONFLICT', 'the name ' + key + ' is already published by ' + (providedServices.get(key) ? ('pack "' + providedServices.get(key).by + '"') : 'the KERNEL'),
+        providedServices.get(key)
+          ? 'one name has one provider; retract the previous contribution (pack unload) before providing it again'
+          : 'this kernel still CONSTRUCTS that face locally — a pack must not shadow it (no dual implementation); the face is provided only after its local construction is deleted in the migration step')
+    }
+    const receipt = registry.register(key, impl, { apiVersion: v, providedBy: by === null || by === undefined ? '(unattributed)' : String(by) })
+    providedServices.set(key, { impl, apiVersion: v, by: by === null || by === undefined ? '(unattributed)' : String(by), at: clock(), registry: receipt })
+    return { ok: true, name: key, apiVersion: v, providedBy: providedServices.get(key).by }
+  }
+  const retractService = ({ name, by = null } = {}) => {
+    const key = typeof name === 'string' ? name.trim() : ''
+    const row = providedServices.get(key)
+    if (!row) {
+      throw refuse('VMU_NO_SUCH_OBJECT', 'no CONTRIBUTED service is published under that name: ' + key,
+        'the kernel own services are not retractable by a pack; status().servicesProvided lists the contributed ones')
+    }
+    if (by !== null && by !== undefined && row.by !== String(by)) {
+      throw refuse('VMU_NOT_PERMITTED', 'service ' + key + ' was contributed by "' + row.by + '", not by "' + String(by) + '"',
+        'only the contributor may retract it; this keeps one pack from unloading another pack face')
+    }
+    const out = registry.unregister(key)
+    providedServices.delete(key)
+    return { ok: true, ...out }
+  }
+  const serviceOf = (name) => {
+    try { return registry.get(String(name)) } catch { return null }
+  }
+  // the ONE reader every migrated getter uses: a locally constructed face wins (until its construction is deleted), then a
+  // contributed impl. null = neither, and callers turn that into a NAMED refusal (never a silent no-op).
+  const resolveFace = (local, name) => {
+    if (local !== null && local !== undefined) return local
+    const row = providedServices.get(name)
+    return row ? row.impl : null
+  }
+  const servicesProvided = () => [...providedServices.entries()].map(([name, row]) => ({ name, apiVersion: row.apiVersion, providedBy: row.by, at: row.at }))
   // Publish what this assembly actually offers (M4, D13-O3): a pack can then DECLARE `requires` and be
   // checked, instead of discovering a missing service at the first hook. Only real capabilities appear.
   if (library) registry.register('vmu.library', { apiVersion: 1 }, { kind: 'service', description: 'records, content identity, head list' })
@@ -3884,7 +3955,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
 
     /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */
     get legalentity() { return legalEntity },
-    get reviewers() { return reviewers },
+    get reviewers() { return resolveFace(reviewers, 'vmu.reviewers') },
     get alerts() { return alerts },
     get retention() { return retention },
     get delegation() { return delegation },
@@ -3902,7 +3973,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get memory() { return memory },
     get bidding() { return bidding },
     get skills() { return skills },
-    get publication() { return publication },
+    get publication() { return resolveFace(publication, 'vmu.publication') },
     get collab() { return collab },
     get identity() { return identity },
     get human() { return human },
@@ -3911,8 +3982,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get explain() { return explain },
     get control() { return control },
     get citations() { return citations },
-    get formal() { return formal },
-    get mathjobs() { return mathjobs },
+    get formal() { return resolveFace(formal, 'vmu.formal') },
+    get mathjobs() { return resolveFace(mathjobs, 'vmu.mathjobs') },
     // ROUND 2 (task-14): the four new faces, reachable like every other service.
     get mathadapters() { return mathadapters },
     get chat() { return chat },
@@ -3926,7 +3997,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // ROUND 3 / task-24: the activity waiter, reachable like every other service.
     get activity() { return activity },
     // ROUND 3 / task-20: the fidelity registry (the C-45 enforcement point).
-    get fidelity() { return fidelity },
+    get fidelity() { return resolveFace(fidelity, 'vmu.fidelity') },
     /** P1-9: the async durable-defect-load receipt (`status: pending|loaded|unavailable`, named code when unavailable). */
     fidelityLoad: () => Object.assign({}, fidelityLoad),
     /** P1-9: AWAITABLE form of the same load — `await kernel.fidelityReady()` resolves the receipt (polling not needed). */
@@ -3979,7 +4050,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   get hr() { return tenure },
     get migration() { return migration },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
-    get lean() { return lean },
+    get lean() { return resolveFace(lean, 'vmu.lean') },
     /** ★ PHASE 9 / goal 3: the environment adapter (probe/list/report; it never installs). */
     get env() { return env },
     get latex() { return latex },
@@ -5411,6 +5482,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     settingsRejected() { return settingsRejected.map((r) => Object.assign({}, r)) },
     /** Pack bookkeeping: what was applied and unloaded is part of the audit trail, not a side note. */
     notePackApplied(id) { packNotesLog.push({ id, at: clock(), what: 'applied' }); return { ok: true } },
+    // ★ TB-2794 Step 0: the service contribution seam (pack manifest services + module api.services.provide).
+    provideService,
+    retractService,
+    service: serviceOf,
+    providedServices,
     notePackUnloaded(id) { packNotesLog.push({ id, at: clock(), what: 'unloaded' }); return { ok: true } },
     packNotes() { return packNotesLog.map((n) => Object.assign({}, n)) },
 
@@ -5590,6 +5666,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
             ? 'audit rows are appended to <root>/vmu/audit/<day>.jsonl; a write failure is reported here, never swallowed'
             : 'no durable root: the audit is in-memory only (auditTail)' },
         registrations: registrations.slice(),
+        // ★ TB-2794 Step 0: services CONTRIBUTED by packs/modules, with the provider named. Empty after an unload —
+        // "absent because nobody provides it" and "absent because the unload removed it" are both readable here.
+        servicesProvided: servicesProvided(),
+        servicesProvidedMeans: 'servicesProvided = faces the KERNEL did not construct: each names the pack/module that contributed it (registry.status().services[].providedBy carries the same fact). Read this before concluding a face is missing from the assembly: a missing face with no entry here was never provided, not unloaded silently',
         // `packs` must reflect what is ACTUALLY applied - including packs applied through the pack loader,
         // which records itself in the notes; a status that only tracks usePack() would under-report.
         // ROUND 240: an UNLOADED pack must not stay listed. `notePackUnloaded` was recording the event and nothing read it,

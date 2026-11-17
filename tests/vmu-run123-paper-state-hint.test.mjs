@@ -10,7 +10,7 @@
 //   `advance()` 不会让论文变成 awaiting-editor（互审要靠 `action:"review"`）。hint 把调用者指向了一个
 //   无论如何重复都不能改变答案的动作 —— 这是"拒绝要点名良形状"（B 族）里最容易被忽略的一支。
 //
-// 修法：`kit/paper.js#nextMoveFor(state)` 按当前状态给下一步的**可执行调用**：
+// 修法：`packs/research-core/paper-flow.js#nextMoveFor(state)` 按当前状态给下一步的**可执行调用**：
 //   writing   ⇒ `vibe_v5_paper { action: "part", … }`（先有部分），再由 advance() 进入 reviewing
 //   reviewing ⇒ `vibe_v5_paper { action: "review", of: "<author>", member: "<reviewer>", deliverable: true }`
 //   finalized ⇒ 这份论文已经定稿：换个 target 或读状态

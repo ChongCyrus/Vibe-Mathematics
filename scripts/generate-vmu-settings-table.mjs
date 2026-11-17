@@ -112,7 +112,7 @@ const SOURCE_FILES = SOURCES.map((f) => {
  * is a necessary condition, not a sufficient one — a key can be read by a module the running plugin never imports. Two
  * such modules were measured by `tests/vmu-kernel-reachability.test.mjs`:
  *   · `kernel/paper.js` — owns six `vmu.paper.*` keys; `createPaper(` exists only in tests/scripts. The live v5r paper
- *     runs through `packs/v5r/paper.js` → `kit/paper.js`, which reads NONE of them ⇒ the table said ✅ 已接线
+ *     runs through `packs/v5r/paper.js` → `packs/research-core/paper-flow.js`, which reads NONE of them ⇒ the table said ✅ 已接线
  *     ("现在改就有效") about `vmu.paper.officeConsult='required'` while changing it could not change anything.
  *   · `kernel/grant.js` — owns four `vmu.grant.*` keys; `createGrant(` exists only in one test file.
  * That is exactly the failure this project keeps paying for (设了值 ≠ 生效了), and it sat on the DOC face: a reader of

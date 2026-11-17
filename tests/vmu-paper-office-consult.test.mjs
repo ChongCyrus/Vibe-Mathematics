@@ -3,8 +3,8 @@
 //
 // WHY THIS FILE EXISTS. `vmu.paper.officeConsult` was declared, documented as wired, and read by `kernel/paper.js` —
 // a module NOTHING constructs in the live assembly (`createPaper(` appears only in tests/scripts). The paper the
-// institute actually runs finalises through `packs/v5r/paper.js` → `kit/paper.js`, which read NONE of those keys, so the
-// rule never executed while the settings table said "已接线". The gate now lives on that path (kit/paper.js
+// institute actually runs finalises through `packs/v5r/paper.js` → `packs/research-core/paper-flow.js`, which read NONE of those keys, so the
+// rule never executed while the settings table said "已接线". The gate now lives on that path (packs/research-core/paper-flow.js
 // `recordFinal`), and this file proves four things a green light alone would not:
 //   ① the refusal is NAMED and carries the facts a caller needs (current value, legal values, which keys were enforced);
 //   ② the question SURVIVES (it is written into the paper's state record, so a crash does not re-ask from scratch);
@@ -14,7 +14,7 @@
 // Run: node tests/vmu-paper-office-consult.test.mjs
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isReachableRel } from '../scripts/lib/reachability.mjs'
 
@@ -22,7 +22,7 @@ const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '..')
 const VMU = join(REPO, 'vibe-math-vmu')
 const PACK = join(VMU, 'packs', 'v5r', 'paper.js')
-const KIT = join(VMU, 'kit', 'paper.js')
+const KIT = join(VMU, 'packs', 'research-core', 'paper-flow.js')
 
 let passed = 0
 let failed = 0
@@ -328,9 +328,9 @@ console.log('=== ⑪ 五个键都有真语义（不是只读一个键、其余�
 
 console.log('=== ⑫ 可达性：闸所在的模块真的从插件入口可达（这次缺陷的根因） ===')
 {
-  ok(isReachableRel(VMU, 'kit/paper.js') === true, '★★ kit/paper.js 从插件入口可达（闸不在孤岛上）')
+  ok(isReachableRel(VMU, 'packs/research-core/paper-flow.js') === true, '★★ research-core/paper-flow.js 从插件入口可达（闸不在孤岛上）')
   ok(isReachableRel(VMU, 'packs/v5r/paper.js') === true, '★★ packs/v5r/paper.js 可达（在册的论文流水线）')
-  ok(isReachableRel(VMU, 'kernel/paper.js') === false, '★★ 反证：kernel/paper.js 不可达——"把闸长在那里"正是旧缺陷的根因', isReachableRel(VMU, 'kernel/paper.js'))
+  ok(!existsSync(join(VMU, 'kernel', 'paper.js')), '★★ 反证：kernel/paper.js 已删除——"把闸长在死面上"正是旧缺陷的根因', existsSync(join(VMU, 'kernel', 'paper.js')))
   const kitSrc = readFileSync(KIT, 'utf8')
   ok(/function recordConsult\(/.test(kitSrc) && /function consultGate\(/.test(kitSrc) && /recordFinal/.test(kitSrc),
     '★ 闸与答复面在同一文件、且挂在 recordFinal 上（源码探针）')
@@ -369,7 +369,7 @@ console.log('=== ⑬ F-5（RUN 86 / FEEDBACK86）：revise→writing 后，成�
   const dir = mkdtempSync(join(tmpdir(), 'office-consult-f5-lamp-'))
   try {
     cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
-    const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+    const kitPath = join(dir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
     const src = readFileSync(kitPath, 'utf8')
     const from = "if (row !== null && slot !== 'chair' && slot !== 'office') {"
     ok(src.indexOf(from) !== -1, 'F-5 lamp-setup：chair 栏杆的判定点存在')

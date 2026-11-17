@@ -11,14 +11,14 @@
     },
     {
       "file": "vibe-math-vmu/kernel/pack.js",
-      "line": 987,
+      "line": 1009,
       "name": "declarePackTools",
       "why": "host author: declaring pack tools requires a host bridge capability. The refusal is raised while the HOST wires a pack declaration, not in a seat receipt.",
       "owner": "host-integration"
     },
     {
       "file": "vibe-math-vmu/kernel/registry.js",
-      "line": 133,
+      "line": 136,
       "name": "contract",
       "why": "host author: pack/service version negotiation happens inside the host bridge; contract() is that bridge's own view of what this build publishes.",
       "owner": "host-integration"
@@ -74,7 +74,7 @@
     },
     {
       "file": "vibe-math-vmu/kernel/index.js",
-      "line": 2323,
+      "line": 2327,
       "name": "open",
       "why": "kernel author: the ledger refuses outside a member-scoped turn; the hint cites kernel/turn/index.js open(), an internal constructor the kernel author calls.",
       "owner": "kernel-core"
@@ -88,7 +88,7 @@
     },
     {
       "file": "vibe-math-vmu/kernel/pack.js",
-      "line": 95,
+      "line": 106,
       "name": "compressText",
       "why": "kernel author: corrupt payloads are diagnosed for whoever produced the bytes with compressText(); a seat only sees the surrounding pack receipt.",
       "owner": "kernel-core"

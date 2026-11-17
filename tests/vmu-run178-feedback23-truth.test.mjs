@@ -28,7 +28,7 @@ const HOST = join(REPO, 'vibe-math-vmu', 'host.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const TURN = join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
 const LEAD = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'leadership.js')
-const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 
 let passed = 0
 let failed = 0

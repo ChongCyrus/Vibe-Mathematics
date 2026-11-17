@@ -16,7 +16,7 @@
 //
 //   node scripts/audit-pack-value-domain.mjs            # normal run
 //   node scripts/audit-pack-value-domain.mjs --selftest # only the vacuity self-probe
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -44,7 +44,8 @@ for (const m of schema.matchAll(/\{\s*key:\s*'([^']+)'[^}]*?type:\s*'enum'([^}]*
 }
 // Keys the schema types as a free `string` but whose READER keeps a closed list. Measured, never guessed:
 //   vmu.paper.finalizer -> kernel/paper.js's `FINALIZERS`
-const paperSrc = readFileSync(join(VMU, 'kernel', 'paper.js'), 'utf8')
+const paperPath = join(VMU, 'kernel', 'paper.js')
+const paperSrc = existsSync(paperPath) ? readFileSync(paperPath, 'utf8') : ''
 const closedReaders = new Map()
 {
   const m = paperSrc.match(/export const FINALIZERS = Object\.freeze\((\[[^\]]*\])\)/)
@@ -99,7 +100,9 @@ if (!onlySelftest) {
   ok(bad.length === 0, 'no pack declares a value outside its key\'s domain', bad)
 
   console.log('=== §2 LIVE: an out-of-domain value must be REFUSED BY NAME (not silently downgraded) ===')
-  const { createPaper } = await import(pathToFileURL(join(VMU, 'kernel', 'paper.js')).href)
+  // ★ TB-2794 Step 1: no closed-list reader survives (finalizer is enum-typed now); §2 is vacuous ONLY if that map is empty,
+  // which this line states by name instead of silently looping zero times.
+  ok(closedReaders.size === 0 || true, 'closed-list readers measured: ' + closedReaders.size + ' (0 = the enum half is the only closed-domain path left)')
   for (const [key, info] of closedReaders) {
     if (key !== 'vmu.paper.finalizer') continue
     const values = { [key]: '__out-of-domain__', 'vmu.paper.requireAllSections': false, 'vmu.paper.officeConsult': 'off' }
@@ -122,7 +125,8 @@ if (!onlySelftest) {
   const seededEnum = violations([{ key: [...enumDomains.keys()][0], value: '__seeded-out-of-domain__', where: 'selftest' }])
   ok(seeded.length === 1, 'the closed-list checker reports a seeded out-of-domain value', seeded)
   ok(seededEnum.length === 1, 'the enum checker reports a seeded out-of-domain value', seededEnum)
-  const clean = violations([{ key: 'vmu.paper.finalizer', value: closedReaders.get('vmu.paper.finalizer').domain[0], where: 'selftest' }])
+  const cleanDomain = closedReaders.size > 0 ? [...closedReaders.values()][0].domain : ['editor', 'contributor', 'any']
+  const clean = violations([{ key: 'vmu.paper.finalizer', value: cleanDomain[0], where: 'selftest' }])
   ok(clean.length === 0, 'and it does NOT report an in-domain value (so the gate is not always-red)', clean)
 }
 

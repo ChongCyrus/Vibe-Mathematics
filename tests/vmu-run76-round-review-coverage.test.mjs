@@ -9,7 +9,7 @@
 // because the paper had burned rounds on a rule nobody had explained.
 //
 // THE MECHANISM IS DELIBERATE AND IS NOT CHANGED HERE: a review judges the prose of ITS round, so when the round moves
-// a row from round N−1 is durable history, not a vote on round N (`vibe-math-vmu/kit/paper.js` `readReview`'s
+// a row from round N−1 is durable history, not a vote on round N (`vibe-math-vmu/packs/research-core/paper-flow.js` `readReview`'s
 // `source:'durable-other-round'` branch and `requireCrossReview`, which count `body.round === state.round` only). What
 // was missing was the READING. This suite pins that reading:
 //   · §0 the shape: ONE arithmetic function (`perRoundReviewCoverageOfState`) is defined once in the kit, `missing`
@@ -35,7 +35,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
-const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 
 let passed = 0
 let failed = 0

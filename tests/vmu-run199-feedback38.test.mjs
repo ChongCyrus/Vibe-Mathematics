@@ -25,7 +25,7 @@ const ENTRY = join(ROOT, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const QUALITY = join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 const PQ = read('vibe-math-vmu/packs/v5r/paper-quality.js')
-const PAPER = read('vibe-math-vmu/kit/paper.js')
+const PAPER = read('vibe-math-vmu/packs/research-core/paper-flow.js')
 const TURNK = read('vibe-math-vmu/kernel/turn/index.js')
 const TURN = read('vibe-math-vmu/tools/turn.js')
 const PACK = read('vibe-math-vmu/packs/v5r/tools.js')
@@ -174,7 +174,7 @@ test('RUN 199 §2 — advance names WHO REFUSED apart from WHO WAS NEVER COUNTED
       const lampDir = mkdtempSync(join(tmpdir(), 'run199-lamp-'))
       try {
         cpSync(join(ROOT, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
-        const kitPath = join(lampDir, 'vibe-math-vmu', 'kit', 'paper.js')
+        const kitPath = join(lampDir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
         let mut = readFileSync(kitPath, 'utf8')
         const p1 = "if (judged.partChanged) return out(false, 'part-text-changed')"
         const p2 = 'if (crossEarlier && judgedEarlier.bound === true && !judgedEarlier.partChanged) {'

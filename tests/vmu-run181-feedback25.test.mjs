@@ -25,7 +25,7 @@ import { readFile } from 'node:fs/promises'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
-const PAPER = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const HANDLERS = join(REPO, 'vibe-math-vmu', 'kit', 'handlers.js')
 const HOST = join(REPO, 'vibe-math-vmu', 'host.js')
 const QUALITY = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')

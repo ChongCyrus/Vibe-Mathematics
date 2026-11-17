@@ -20,7 +20,7 @@
 //     the card receipt names `title` + `titleMeans`.
 //   · `tools/meeting.js`: `summary` carries `closureTally {face, detail, votesCast, cast, confirmed, missing}` + means.
 //   · `host.js` records list: `truncatedBy[]` names the ceiling that bit, with the numbers it used.
-//   · `kit/paper.js#start`: `editor {value, source, means}`.
+//   · `packs/research-core/paper-flow.js#start`: `editor {value, source, means}`.
 //   · `packs/v5r/tools.js`: `paper status` carries `roundMeans`; `pdfCompiled` names the compile ledger.
 //   · `kernel/records.js`: `status().lastRefusal {code, at, op, message}` + means.
 //   · `packs/v5r/paper-quality.js`: `pointerText` strips the markdown wrapper; the verified-line comparison normalizes
@@ -79,7 +79,7 @@ const missingOf = (v) => (v && Array.isArray(v.missing) ? v.missing : [])
   const handlers = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'handlers.js'), 'utf8')
   const meeting = readFileSync(join(REPO, 'vibe-math-vmu', 'tools', 'meeting.js'), 'utf8')
   const host = readFileSync(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
-  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const tools = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   const records = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
   const quality = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js'), 'utf8')

@@ -15,7 +15,7 @@ import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked, classifySubje
 // ★ The VERIFIED carrier (B1 step 1): `findVerified` answers null instead of guessing, `promoteVerified` is the ONLY
 // writer on that track, and `parseCard` names a card it cannot judge (empty/truncated body) instead of half-parsing it.
 import { parseCard, parseCardBody, findVerified, promoteVerified, VERIFIED_TRACK } from './verified.js'
-// ★ GOAL ROUND 3: the paper subsystem's RUNTIME ENTRY. It lives in this pack (`./paper.js` → `kit/paper.js` is the flow);
+// ★ GOAL ROUND 3: the paper subsystem's RUNTIME ENTRY. It lives in this pack (`./paper.js` → `packs/research-core/paper-flow.js` is the flow);
 // the face below is only the missing READ POINT — before it, `paper.start` existed but nothing in production called it.
 // ★ E4 (真缺陷): `PAPER_CONSULT_ROLES` is imported, not re-typed. The kit owns the consult STATE TRANSITION; the pack owns
 // "who may answer". One declaration, two readers (createPaperSubsystem hands it to the kit as `consultRoles`; the tool
@@ -1752,7 +1752,7 @@ function requireVoter(kernel, member, what) {
 }
 
 // ── ★ E4 (真缺陷): THE MISSING TOOL FACE FOR "THE OFFICE ANSWERS" ────────────────────────────────────────────────
-// `kit/paper.js` grew `recordConsult`/`consultState` and the gate runs on the assembled path — but `vibe_v5_paper`'s
+// `packs/research-core/paper-flow.js` grew `recordConsult`/`consultState` and the gate runs on the assembled path — but `vibe_v5_paper`'s
 // action table only had start/part/review/advance/final/render/status/compile/sections, so in a REAL session the
 // academician's final was blocked by a question NOBODY could answer: the gate could only ever time out. That is the
 // "mechanism with no reachable consumer" defect, one level worse than a missing feature (the mechanism exists and is
@@ -6565,7 +6565,7 @@ function toolSet(args = {}, { kernel } = {}) {
 /**
  * ★★ GOAL ROUND 3 — `vibe_v5_paper`: THE PAPER SUBSYSTEM'S RUNTIME ENTRY (the read point that was missing).
  *
- * WHY THIS FACE EXISTS. `packs/v5r/paper.js` exports `createPaperSubsystem` and `kit/paper.js` holds the whole flow
+ * WHY THIS FACE EXISTS. `packs/v5r/paper.js` exports `createPaperSubsystem` and `packs/research-core/paper-flow.js` holds the whole flow
  * (writing → reviewing → awaiting-editor → finalized, the fingerprint guard, md/tex/meta/pdf), but NOTHING in production
  * ever called it: `paper.start` appeared only in unit tests. A member could neither open nor advance a paper, so the
  * paper mechanism was "complete but unreachable". This face is the missing entry — and the ONLY thing it does is map
@@ -6587,7 +6587,7 @@ function toolSet(args = {}, { kernel } = {}) {
  *   consult target · member|by (the ANSWERER) · request_id · answer|note   ← ★ E4: the office's answer
  *   render / status / compile / sections
  *
- * ★ E4 (真缺陷) — `consult` EXISTS SO THE GATE CAN BE SATISFIED FROM A SESSION AT ALL. `kit/paper.js` `recordConsult`
+ * ★ E4 (真缺陷) — `consult` EXISTS SO THE GATE CAN BE SATISFIED FROM A SESSION AT ALL. `packs/research-core/paper-flow.js` `recordConsult`
  * was reached by nothing but tests: the action table had no answer action, so `vmu.paper.officeConsult="required"` (the
  * declared v5r value) could only ever time out in a real run. Two design rules for this action:
  *   · it adds NO second policy — the answer is delegated to `paper.recordConsult`, and "who may answer" is the pack's
@@ -6785,7 +6785,7 @@ function glyphFindingsOf (pdfLike) {
 
 function projectPdfBlock(pdf, target) {
   // ★★ RUN 158 (run 6 / item 6 + N5): the projection carries the outDir/sourceName that were TRIED and discloses when
-  // the two tails are the same text — one failure structure for `final` and `compile`, see kit/paper.js compilePdf.
+  // the two tails are the same text — one failure structure for `final` and `compile`, see packs/research-core/paper-flow.js compilePdf.
   const p = pdf || {}
   const ok = p.ok === true
   // ★★★ TB-2768 (RUN 81 attempt-3): the glyph verdict is decided ONCE here and travels on the pdf block, inside `math`,

@@ -96,7 +96,7 @@ function parseCalls (hint) {
 
 // ── §0 source guards (the mechanism this suite checks must exist; the BEHAVIOUR is checked below with real receipts)
 {
-  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const tools = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   ok(/judgedPartFingerprint/.test(kit) && /judgedPartRound/.test(kit),
     '§0 the review row carries the judged part fingerprint and round (TB-2743 A)')
@@ -223,7 +223,7 @@ function parseCalls (hint) {
     '§A2b no legacy round-invalidated entries are invented on top of the text-changed one', cov && cov.invalidatedByRound)
   // ★ D-4: the disagreement/refusal prose may only print ≠ between REALLY different fingerprints; the old code printed
   // "f56eba11… ≠ f56eba11…" (same hash) when the defect was the ROUND. The branch that could print it now compares first.
-  const kitSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const kitSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   ok(kitSrc.includes('const sameBytes =') && kitSrc.includes('作废原因是轮次/无绑定，不是字节'),
     '§A2b ★ D-4: the STALE-PART line compares the two fingerprints before printing "≠" (equal bytes get the round explanation)')
   ok(!/judgedPartFingerprint '\s*\+ String\(v\.judgedPartFingerprint\) \+ ' ≠ 当前 '/.test(kitSrc),
@@ -381,7 +381,7 @@ function parseCalls (hint) {
     const dir = mkdtempSync(join(tmpdir(), 'vmu-r79-lamp-'))
     try {
       cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
-      const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+      const kitPath = join(dir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
       let src = readFileSync(kitPath, 'utf8')
       // ★ #3b（audit-declaration-criterion RULE E）：遍历 mutation 列表的循环在空表上会静默通过；先钉住非空。
       ok(Array.isArray(mutations) && mutations.length > 0, 'lamp-setup: the mutation list is non-empty (' + mutations.length + ')')

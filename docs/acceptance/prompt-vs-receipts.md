@@ -21,24 +21,24 @@
 
 | # | 席位/相位 | 工具（动作） | 判读 | 提示词证据 | 回执证据 | 判定 |
 |---:|---|---|---|---|---|---|
-| 1 | chair/normal | `vibe_v5_start` | **E** | `prompts/01-chair.txt:57`（`vibe_v5_start`） | `receipts.jsonl:1`（seq 1，`hiredNow`） | 开所回执 hired/hiredNow/rosterBefore 与提示词「开所」段一致（started.already 另有含义，提示词已写明） |
-| 2 | chair/normal | `vibe_v5_hire` | **E** | `prompts/01-chair.txt:31`（`vibe_v5_hire`） | `receipts.jsonl:2`（seq 2，`hired`） | hire 回执 roster/hiredNow 与提示词「用 vibe_v5_hire」一致 |
-| 3 | chair/normal | `vibe_v5_record_proposition` | **E** | `prompts/01-chair.txt:24`（`vibe_v5_record_proposition`） | `receipts.jsonl:3`（seq 3，`proofState`） | proof_state 入参 / proofState 回执的别名对照提示词已明文写出 |
-| 4 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/01-chair.txt:358`（`mdChangedSinceIndex`） | `receipts.jsonl:4`（seq 4，`mdWritten`） | 回执同屏给顶层 mdWritten:true 与嵌套 md.written:false（本次调用写没写 vs 文件在不在），提示词只说「md 是唯一真相」，没教两形 |
-| 5 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/03-chair.txt:354`（`mdChangedSinceIndex`） | `receipts.jsonl:5`（seq 5，`formatSwitched`） | 同 P4 的两形，另加 formatSwitched:true（落盘形态被改写）无教学 |
-| 6 | chair/normal | `vibe_v5_blueprint adopt` | **D** | `prompts/03-chair.txt:354`（`materialize:true`） | `receipts.jsonl:6`（seq 6，`mdOwner`） | adopt 回执 mdWrite.written:true + mdOwner.writtenBy:"kernel-materialized"，而提示词把 kernel-materialized 只挂在「显式 materialize:true」下 |
-| 7 | chair/normal | `vibe_v5_blueprint read` | **E** | `prompts/03-chair.txt:354`（`mdChangedSinceIndex`） | `receipts.jsonl:7`（seq 7，`mdChangedSinceIndex`） | read 回执 mdChangedSinceIndex/md.written 与提示词 fs-first 段一致 |
+| 1 | chair/normal | `vibe_v5_start` | **E** | `prompts/01-chair.txt:58`（`vibe_v5_start`） | `receipts.jsonl:1`（seq 1，`hiredNow`） | 开所回执 hired/hiredNow/rosterBefore 与提示词「开所」段一致（started.already 另有含义，提示词已写明） |
+| 2 | chair/normal | `vibe_v5_hire` | **E** | `prompts/01-chair.txt:32`（`vibe_v5_hire`） | `receipts.jsonl:2`（seq 2，`hired`） | hire 回执 roster/hiredNow 与提示词「用 vibe_v5_hire」一致 |
+| 3 | chair/normal | `vibe_v5_record_proposition` | **E** | `prompts/01-chair.txt:25`（`vibe_v5_record_proposition`） | `receipts.jsonl:3`（seq 3，`proofState`） | proof_state 入参 / proofState 回执的别名对照提示词已明文写出 |
+| 4 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/01-chair.txt:355`（`mdChangedSinceIndex`） | `receipts.jsonl:4`（seq 4，`mdWritten`） | 回执同屏给顶层 mdWritten:true 与嵌套 md.written:false（本次调用写没写 vs 文件在不在），提示词只说「md 是唯一真相」，没教两形 |
+| 5 | chair/normal | `vibe_v5_blueprint propose` | **D** | `prompts/03-chair.txt:351`（`mdChangedSinceIndex`） | `receipts.jsonl:5`（seq 5，`formatSwitched`） | 同 P4 的两形，另加 formatSwitched:true（落盘形态被改写）无教学 |
+| 6 | chair/normal | `vibe_v5_blueprint adopt` | **D** | `prompts/03-chair.txt:351`（`materialize:true`） | `receipts.jsonl:6`（seq 6，`mdOwner`） | adopt 回执 mdWrite.written:true + mdOwner.writtenBy:"kernel-materialized"，而提示词把 kernel-materialized 只挂在「显式 materialize:true」下 |
+| 7 | chair/normal | `vibe_v5_blueprint read` | **E** | `prompts/03-chair.txt:351`（`mdChangedSinceIndex`） | `receipts.jsonl:7`（seq 7，`mdChangedSinceIndex`） | read 回执 mdChangedSinceIndex/md.written 与提示词 fs-first 段一致 |
 | 8 | member/normal | `vibe_vmu_records list` | **A** | `prompts/04-member.txt:35`（`vibe_v5_read_library`） | `receipts.jsonl:8`（seq 8，`truncated`） | 读记录本真要 vibe_vmu_records list，但 12 份提示词 0 命中该工具名；成员只被教 read_library/inbox |
 | 9 | member/normal | `vibe_v5_meeting` | **E** | `prompts/04-member.txt:2`（`vibe_v5_meeting`） | `receipts.jsonl:9`（seq 9，`notified`） | convene(at) 回执 notified:[r-1,r-2] 与提示词「预约=给被邀者下一回合的通知块」一致（notifyRows 未教，见 B 注） |
 | 10 | member/normal | `vibe_v5_meeting` | **B** | `prompts/07-member.txt:3`（`vibe_v5_meeting`） | `receipts.jsonl:9`（seq 9，`notifyRows`） | 被预约者提示词首行出现会议预约块，但 notifyRows/notifyFailed/noticesMeans 读数无教学 |
-| 11 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:366`（`waitingFor`） | `receipts.jsonl:10`（seq 10，`waitingFor`） | attend 回执 waitingFor/lateAdmission 与提示词「到点不自开、等 quorum/chair-proceed」一致 |
-| 12 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:366`（`waitingFor`） | `receipts.jsonl:11`（seq 11，`lateAdmission`） | 同 P11（第二个迟到者 lateAdmission 口径一致） |
-| 13 | member/meeting | `vibe_vmu_meeting status` | **B** | `prompts/05-member.txt:303`（`vibe_vmu_meeting`） | `receipts.jsonl:12`（seq 12，`speechUsed`） | status 板几十个读数（speechUsed/speechExtendMs/waiters/eligible…）提示词未教怎么用 |
-| 14 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:27`（`vibe_v5_say`） | `receipts.jsonl:13`（seq 13，`memberActed`） | 提示词说「发言只能你自己在本回合做完，别请所办代办」，回执却是所办代 r-1 发言：memberActed:true（动作记在 r-1 名下）+actedForMember:"r-1"+via:"meeting"——做的人不是 r-1，承诺与现行形状相反 |
-| 15 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:27`（`vibe_v5_say`） | `receipts.jsonl:14`（seq 14，`actedForMember`） | 同 P14（代 r-2 发言；memberActed:true + actedForMember:"r-2" + via:"meeting"） |
-| 16 | chair/meeting | `vibe_v5_motion` | **E** | `prompts/06-chair.txt:50`（`vibe_v5_motion`） | `receipts.jsonl:15`（seq 15，`motion`） | motion 回执与提示词会议动议段一致 |
-| 17 | chair/meeting | `vibe_v5_second` | **E** | `prompts/01-chair.txt:46`（`vibe_v5_second`） | `receipts.jsonl:16`（seq 16，`seconded`） | second 回执与提示词附议段一致 |
-| 18 | chair/meeting | `vibe_vmu_vote` | **D** | `prompts/06-chair.txt:19`（`vote_solved`） | `receipts.jsonl:17`（seq 17，`closureVote`） | 提示词教「用回执字段 vote_solved 表达结题判定」，回执里同名事实长成 closureVote{cast,votesCast,votesFor…}；且真工具 vibe_vmu_vote 12 份提示词 0 命中 |
+| 11 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:363`（`waitingFor`） | `receipts.jsonl:10`（seq 10，`waitingFor`） | attend 回执 waitingFor/lateAdmission 与提示词「到点不自开、等 quorum/chair-proceed」一致 |
+| 12 | member/meeting | `vibe_vmu_meeting attend` | **E** | `prompts/05-member.txt:363`（`waitingFor`） | `receipts.jsonl:11`（seq 11，`lateAdmission`） | 同 P11（第二个迟到者 lateAdmission 口径一致） |
+| 13 | member/meeting | `vibe_vmu_meeting status` | **B** | `prompts/05-member.txt:311`（`vibe_vmu_meeting`） | `receipts.jsonl:12`（seq 12，`speechUsed`） | status 板几十个读数（speechUsed/speechExtendMs/waiters/eligible…）提示词未教怎么用 |
+| 14 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:28`（`vibe_v5_say`） | `receipts.jsonl:13`（seq 13，`memberActed`） | 提示词说「发言只能你自己在本回合做完，别请所办代办」，回执却是所办代 r-1 发言：memberActed:true（动作记在 r-1 名下）+actedForMember:"r-1"+via:"meeting"——做的人不是 r-1，承诺与现行形状相反 |
+| 15 | chair/meeting | `vibe_v5_say` | **C** | `prompts/01-chair.txt:28`（`vibe_v5_say`） | `receipts.jsonl:14`（seq 14，`actedForMember`） | 同 P14（代 r-2 发言；memberActed:true + actedForMember:"r-2" + via:"meeting"） |
+| 16 | chair/meeting | `vibe_v5_motion` | **E** | `prompts/06-chair.txt:52`（`vibe_v5_motion`） | `receipts.jsonl:15`（seq 15，`motion`） | motion 回执与提示词会议动议段一致 |
+| 17 | chair/meeting | `vibe_v5_second` | **E** | `prompts/01-chair.txt:47`（`vibe_v5_second`） | `receipts.jsonl:16`（seq 16，`seconded`） | second 回执与提示词附议段一致 |
+| 18 | chair/meeting | `vibe_vmu_vote` | **D** | `prompts/06-chair.txt:20`（`vote_solved`） | `receipts.jsonl:17`（seq 17，`closureVote`） | 提示词教「用回执字段 vote_solved 表达结题判定」，回执里同名事实长成 closureVote{cast,votesCast,votesFor…}；且真工具 vibe_vmu_vote 12 份提示词 0 命中 |
 | 19 | chair/meeting | `vibe_vmu_vote` | **D** | `prompts/01-chair.txt:15`（`vote_solved`） | `receipts.jsonl:18`（seq 18，`closureVote`） | 同 P18（r-1 票） |
 | 20 | chair/meeting | `vibe_vmu_vote` | **D** | `prompts/01-chair.txt:15`（`vote_solved`） | `receipts.jsonl:19`（seq 19，`closureVote`） | 同 P18（r-2 票） |
 | 21 | member/normal | `vibe_vmu_meeting status` | **B** | `prompts/07-member.txt:0`（`vibe_vmu_meeting`） | `receipts.jsonl:20`（seq 20，`waiters`） | status 回执的 waiters/eligible/floor 等读数提示词未教 |
@@ -47,11 +47,11 @@
 | 24 | member/normal | `vibe_v5_verdict` | **E** | `prompts/08-member.txt:3`（`vibe_v5_verdict`） | `receipts.jsonl:22`（seq 22，`submission`） | verdict 回执与提示词打分段一致 |
 | 25 | member/normal | `vibe_v5_verdict` | **E** | `prompts/08-member.txt:3`（`vibe_v5_verdict`） | `receipts.jsonl:23`（seq 23，`readBack`） | 同 P24（第二票） |
 | 26 | member/normal | `vibe_v5_verdict_final` | **C** | `prompts/08-member.txt:0`（`vibe_v5_verdict_final`） | `receipts.jsonl:24`（seq 24，`VMU_MEETING_QUORUM_LOST`） | member 08 提示词 0 命中 verdict_final 与 VMU_MEETING_QUORUM_LOST（chair 才有），回执却把该码交给 member 读 |
-| 27 | chair/normal | `vibe_vmu_meeting close` | **E** | `prompts/09-chair.txt:45`（`vibe_vmu_meeting`） | `receipts.jsonl:25`（seq 25，`closed`） | close 回执与提示词结会段一致 |
-| 28 | chair/normal | `vibe_v5_record_progress` | **E** | `prompts/09-chair.txt:25`（`vibe_v5_record_progress`） | `receipts.jsonl:26`（seq 26，`recordId`） | record_progress 回执与提示词记账段一致 |
-| 29 | chair/normal | `vibe_v5_record_method` | **E** | `prompts/09-chair.txt:27`（`vibe_v5_record_method`） | `receipts.jsonl:27`（seq 27，`recordId`） | record_method 回执与提示词记账段一致 |
-| 30 | chair/normal | `vibe_v5_read_library` | **B** | `prompts/09-chair.txt:41`（`vibe_v5_read_library`） | `receipts.jsonl:28`（seq 28，`panelPointer`） | read_library 回执 entries/truncated 可读，但提示词没教怎么用这两读数 |
-| 31 | chair/normal | `vibe_vmu_records list` | **A** | `prompts/09-chair.txt:41`（`vibe_v5_read_library`） | `receipts.jsonl:29`（seq 29，`records`） | 同 P8（chair 侧也直接调 vibe_vmu_records） |
+| 27 | chair/normal | `vibe_vmu_meeting close` | **E** | `prompts/09-chair.txt:46`（`vibe_vmu_meeting`） | `receipts.jsonl:25`（seq 25，`closed`） | close 回执与提示词结会段一致 |
+| 28 | chair/normal | `vibe_v5_record_progress` | **E** | `prompts/09-chair.txt:26`（`vibe_v5_record_progress`） | `receipts.jsonl:26`（seq 26，`recordId`） | record_progress 回执与提示词记账段一致 |
+| 29 | chair/normal | `vibe_v5_record_method` | **E** | `prompts/09-chair.txt:28`（`vibe_v5_record_method`） | `receipts.jsonl:27`（seq 27，`recordId`） | record_method 回执与提示词记账段一致 |
+| 30 | chair/normal | `vibe_v5_read_library` | **B** | `prompts/09-chair.txt:42`（`vibe_v5_read_library`） | `receipts.jsonl:28`（seq 28，`panelPointer`） | read_library 回执 entries/truncated 可读，但提示词没教怎么用这两读数 |
+| 31 | chair/normal | `vibe_vmu_records list` | **A** | `prompts/09-chair.txt:42`（`vibe_v5_read_library`） | `receipts.jsonl:29`（seq 29，`records`） | 同 P8（chair 侧也直接调 vibe_vmu_records） |
 | 32 | member/normal | `vibe_v5_paper start` | **E** | `prompts/10-member.txt:50`（`vibe_v5_paper`） | `receipts.jsonl:30`（seq 30，`started`） | paper start 回执与提示词论文生命周期一致 |
 | 33 | member/normal | `vibe_vmu_records list` | **A** | `prompts/10-member.txt:37`（`vibe_v5_read_library`） | `receipts.jsonl:31`（seq 31，`records`） | 同 P8（member 读记录本） |
 | 34 | member/normal | `vibe_v5_paper part` | **B** | `prompts/10-member.txt:50`（`vibe_v5_paper`） | `receipts.jsonl:32`（seq 32，`requiredLines`） | part 回执给 requiredLines/evidenceGate（还缺什么行/证据闸），提示词没教怎么读 |
@@ -60,14 +60,14 @@
 | 37 | member/normal | `vibe_v5_paper review` | **E** | `prompts/10-member.txt:50`（`vibe_v5_paper`） | `receipts.jsonl:35`（seq 35，`deliverable`） | review 回执 deliverable 与提示词互审段一致 |
 | 38 | member/normal | `vibe_v5_paper review` | **E** | `prompts/10-member.txt:50`（`vibe_v5_paper`） | `receipts.jsonl:36`（seq 36，`review`） | 同 P37（第二份评审） |
 | 39 | member/normal | `vibe_v5_paper advance` | **E** | `prompts/04-member.txt:48`（`vibe_v5_paper`） | `receipts.jsonl:37`（seq 37，`advance`） | 同 P36（评审后推进） |
-| 40 | chair/normal | `vibe_v5_paper final` | **A** | `prompts/12-chair.txt:66`（`vibe_v5_paper`） | `receipts.jsonl:38`（seq 38，`VMU_OFFICE_CONSULT_REQUIRED`） | 提示词把 final 当结题动作，回执拒绝并要求先 consult（hint 才第一次出现 action:"consult"），全部提示词 0 命中 consult |
-| 41 | chair/normal | `vibe_v5_paper consult_state` | **A** | `prompts/12-chair.txt:66`（`vibe_v5_paper`） | `receipts.jsonl:39`（seq 39，`consult`） | consult_state 被真调用，但「consult」这个动作在 12 份提示词 0 命中 |
-| 42 | chair/normal | `vibe_v5_paper consult` | **A** | `prompts/12-chair.txt:66`（`vibe_v5_paper`） | `receipts.jsonl:40`（seq 40，`consult`） | 同 P41（真正 consult 提交） |
-| 43 | chair/normal | `vibe_v5_paper final` | **A** | `prompts/12-chair.txt:66`（`vibe_v5_paper`） | `receipts.jsonl:41`（seq 41，`toolchainAbsent`） | final 回执 ok:true 同时 toolchainAbsent:["latex"]、missing:["pdf"]；提示词教「final=chair 接受即收口」，未教缺 pdf/缺工具链时怎么读 |
-| 44 | chair/normal | `vibe_v5_paper compile` | **A** | `prompts/12-chair.txt:66`（`vibe_v5_paper`） | `receipts.jsonl:42`（seq 42，`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`） | compile 被真调用直接报「无宿主 spawn 接缝」，compile 在 12 份提示词 0 命中 |
-| 45 | chair/normal | `vibe_v5_paper render` | **A** | `prompts/12-chair.txt:66`（`vibe_v5_paper`） | `receipts.jsonl:43`（seq 43，`renderOk`） | 提示词承诺 render 产出；回执 ok:true 但 renderOk:false（toolchain 缺），另有 wrote/wroteDeprecated/wroteWhere 三形 |
-| 46 | chair/normal | `vibe_v5_paper status` | **B** | `prompts/12-chair.txt:66`（`vibe_v5_paper`） | `receipts.jsonl:44`（seq 44，`reachableMoves`） | status 回执给 reachableMoves/editorReading/archiveArtifacts，提示词未教怎么用 |
-| 47 | chair/normal | `vibe_vmu_records list` | **A** | `prompts/12-chair.txt:41`（`vibe_v5_read_library`） | `receipts.jsonl:45`（seq 45，`records`） | 同 P8（chair 读记录本） |
+| 40 | chair/normal | `vibe_v5_paper final` | **A** | `prompts/12-chair.txt:67`（`vibe_v5_paper`） | `receipts.jsonl:38`（seq 38，`VMU_OFFICE_CONSULT_REQUIRED`） | 提示词把 final 当结题动作，回执拒绝并要求先 consult（hint 才第一次出现 action:"consult"），全部提示词 0 命中 consult |
+| 41 | chair/normal | `vibe_v5_paper consult_state` | **A** | `prompts/12-chair.txt:67`（`vibe_v5_paper`） | `receipts.jsonl:39`（seq 39，`consult`） | consult_state 被真调用，但「consult」这个动作在 12 份提示词 0 命中 |
+| 42 | chair/normal | `vibe_v5_paper consult` | **A** | `prompts/12-chair.txt:67`（`vibe_v5_paper`） | `receipts.jsonl:40`（seq 40，`consult`） | 同 P41（真正 consult 提交） |
+| 43 | chair/normal | `vibe_v5_paper final` | **A** | `prompts/12-chair.txt:67`（`vibe_v5_paper`） | `receipts.jsonl:41`（seq 41，`toolchainAbsent`） | final 回执 ok:true 同时 toolchainAbsent:["latex"]、missing:["pdf"]；提示词教「final=chair 接受即收口」，未教缺 pdf/缺工具链时怎么读 |
+| 44 | chair/normal | `vibe_v5_paper compile` | **A** | `prompts/12-chair.txt:67`（`vibe_v5_paper`） | `receipts.jsonl:42`（seq 42，`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`） | compile 被真调用直接报「无宿主 spawn 接缝」，compile 在 12 份提示词 0 命中 |
+| 45 | chair/normal | `vibe_v5_paper render` | **A** | `prompts/12-chair.txt:67`（`vibe_v5_paper`） | `receipts.jsonl:43`（seq 43，`renderOk`） | 提示词承诺 render 产出；回执 ok:true 但 renderOk:false（toolchain 缺），另有 wrote/wroteDeprecated/wroteWhere 三形 |
+| 46 | chair/normal | `vibe_v5_paper status` | **B** | `prompts/12-chair.txt:67`（`vibe_v5_paper`） | `receipts.jsonl:44`（seq 44，`reachableMoves`） | status 回执给 reachableMoves/editorReading/archiveArtifacts，提示词未教怎么用 |
+| 47 | chair/normal | `vibe_vmu_records list` | **A** | `prompts/12-chair.txt:42`（`vibe_v5_read_library`） | `receipts.jsonl:45`（seq 45，`records`） | 同 P8（chair 读记录本） |
 
 ## §3 五类统计
 
@@ -176,7 +176,7 @@ E 类 19 对，覆盖开所/雇佣/蓝图 propose-read/会议 convene-attend-mot
 | --- | --- | --- |
 | P40 `final` → `VMU_OFFICE_CONSULT_REQUIRED`，提示词 0 处教 consult | 改提示词：教问询门（读 `consult_state` 取 `awaiting.id`，所办答复后重试 `final`；不得设 off 绕过） | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js:608`（chair）、`:647`（member）；`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:601`（paper-final 阶段块） |
 | P43 `final` `ok:true` 但 `missing:["pdf"]`，`ok` 被读成完成 | 补回执命名：`okMeans`（ok = 请求被接受）、`complete`/`completeMeans`、`unfinished`、`reachableInstead`（status / env probe / 无引擎也能收口） | `vibe-math-vmu/packs/v5r/tools.js:6285`（`PAPER_OK_MEANS`）、`:6825-6829`（final 回执） |
-| P44 `compile` → `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`，hint 只有宿主接缝 | 补能力侧最小改动：pack 在 `REACHABLE INSTEAD:` 后追加可执行替代（status 读 toolchainAbsent、env probe `need:"latex"`、无引擎也能 final） | `vibe-math-vmu/packs/v5r/tools.js:6991`；kit 原文 `vibe-math-vmu/kit/paper.js:1809-1830`（不改 kit 语义，只由 pack 追加） |
+| P44 `compile` → `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`，hint 只有宿主接缝 | 补能力侧最小改动：pack 在 `REACHABLE INSTEAD:` 后追加可执行替代（status 读 toolchainAbsent、env probe `need:"latex"`、无引擎也能 final） | `vibe-math-vmu/packs/v5r/tools.js:6991`；kit 原文 `vibe-math-vmu/packs/research-core/paper-flow.js:1809-1830`（不改 kit 语义，只由 pack 追加） |
 | P45 `render` `ok:true` 但 `renderOk:false` | 补回执命名：`okMeans` + `renderOkMeans`（renderOk = 归档行齐，不是「.tex 失败」）+ `complete` 与 `renderOk` 同值 BY CONSTRUCTION | `vibe-math-vmu/packs/v5r/tools.js:6926-6932`（render 回执） |
 
 **快照口径（写死，防陈述滞后）**：本表 §3/§4/§11 量的是 **RUN 255 构建的快照语料** `D:/_tmp/sim/e2e`（生成时间 2026-11-09T04:46Z = 2026-11-09 12:46 +08:00，48 steps / 47 pairs / 45 receipts / 12 prompts）。**本表的 A1/A2 计数是快照读数**：A1 = `[40,43,44,45]`（4 对）、A2 = `[8,22,23,31,33,41,42,47]`（8 对）。**当前代码的 A1/A2 读数见 `D:/_tmp/sim/e2e-258` 复算：A1 = `[]`（0 对）、A2 = `[8,22,23,31,33,47]`（6 对）**——两个数都保留：快照读数描述本表证据，当前读数描述代码现状，二者不互相替代。快照迁移（重做快照 + 把 §4/§11 的行号与集合换到新语料）由 Lead 在真机第 75 次跑完后另立任务（TB-2648）执行；在那之前 §4/§11 不改。
@@ -726,7 +726,7 @@ A2 caliber RUN 260: a2=[]
 
 ### §20.2 TB-2772 prompt 侧（2026-11-13）：论文正文用 LaTeX 命令、不写裸 unicode 数学字符
 
-来自第 82 次真机 V15/V16 双 FAIL：PDF 丢 23 处字形（`⌊` U+230A、`⌋` U+230B、`∉` U+2209、`①` U+2460 等——xelatex 字体不认），替换表只是兜底；机制侧（`kit/paper.js` 替换表、`tools.js` 的 `part` 文案）归 impl-lane，本记录只覆盖提示词侧。**被量相位净增 0**，`TB2752_RUN80_FIXES` 仍 `{ chair: 51, member: 45, temp: 0, sum: 96 }`，cap/ratchet 未动。
+来自第 82 次真机 V15/V16 双 FAIL：PDF 丢 23 处字形（`⌊` U+230A、`⌋` U+230B、`∉` U+2209、`①` U+2460 等——xelatex 字体不认），替换表只是兜底；机制侧（`packs/research-core/paper-flow.js` 替换表、`tools.js` 的 `part` 文案）归 impl-lane，本记录只覆盖提示词侧。**被量相位净增 0**，`TB2752_RUN80_FIXES` 仍 `{ chair: 51, member: 45, temp: 0, sum: 96 }`，cap/ratchet 未动。
 
 - **旧句（已 0 命中）**：`≥`/`≤`/`∎` 这类 unicode 数学符号会被自动换成 LaTeX 数学命令（回执 `math.glyphsRepaired` 计数），但你仍应优先写成数学模式。——「会被自动换」是**过度承诺**：替换表未覆盖的字形会被 xelatex 静默丢掉（第 82 次丢 23 处）。
 - **新句①（`v5r-paper-prompts.js` 写作指南，paper-write 相位）**：在成对 `$…$`/`$$…$$` 规则后加「**正文一律用 LaTeX 命令、不写裸 unicode 数学符号**（`ℤ`→`\mathbb{Z}`、`⌊`→`\lfloor`、`⌋`→`\rfloor`、`∅`→`\varnothing`、`∉`→`\notin`、`①`→`1`）；`$…$` 里的 `^`/`_` 同样。回执 `math.glyphsRepaired` 的替换表只是**兜底、不是保证**——未覆盖的字形会被 xelatex **静默丢掉**。」
@@ -818,3 +818,21 @@ final16b 的 6 套件红 + E1 同根失败，根因是 ROUND-1 的 P0-4 压缩�
 - **判据**：真实最大 **chair/meeting 33,679 ≤ 36,400（余 2,721）**；`chair-temp-ratio = 1.297 ≤ 1.30`（target 1.25 仍具名 MISSED，ceiling 1.30 已 ratchet）；`audit-prompt-budget --check` PASS；sim 闸 PASS；受 pin 套件全绿（run80 61/0、run247 74/0、run256 34/0、run77 7/0、run79 11/0、run78 8/0、run144 64/0、run239 166/0、run150 73/0、vmu-turn 326/0、tools 372/0、run257 134/0、type 15/0、AB exit 0、run209 6/0、run210 5/0、doc-sync 11/0、run251 三套）。
 - **记账**：`TB2752_RUN80_FIXES = { chair: -2446, member: -646, temp: -1811, sum: -4903 }`（collect 27,053/25,355/20,857 = 73,265；cap 未动），六处判据一次同步。
 - 备注：`regen --check` 期间为 15/17——失败项 settings table/wiring index 报 `namespace vmu.v3 collides`，来自 impl-lane 正在改 `settings/schema.js`（Lead 已预告会短暂红）；本域文件与 `check-docs` 均 PASS，待其落地后复跑。
+
+### §20.11 ROUND-7b（2026-11-17，P0 reply-min-shape 渠道纠正 + P1 + ratio 收口）
+
+- **P0（渠道纠正）**：`v5r-reply-min-shape` 改为 role-bound：**席位（chair/member/temp）的回复正文围栏写字段本身** `{"say":"…","solved":false}`（一个已登记字段也要成句；**围栏里不要写 `op`**）；只有 **chair 副本**另加「所办代转才用工具调用参数 `vibe_vmu_turn {op:"reply", member, report:{…}}`——那是参数，不是围栏形状」。反灯：渲染里「照抄 `{"op":"reply","report"` 在回复正文语境」= 0；三席字段形状都在。
+- **P1-1 meeting_round 只教主席**：绑定会议门控节改 role-bound——chair 见「只有主席能调」；member/temp 只见「只有主席能推进，请主席把下一回合绑定」。**prompt 侧 teaching = 0**；渲染里仍剩 1 处来自**内核注入的会议帧**（不在本写域，已转 impl-lane）。
+- **P1-2/3 temp-delivery 一致性 + 长度**：重写为 1 个一致小节（**1,490 ≤1,500 字符**）：只读观察 + 核对；临时计算在**自己的工作目录**做并把结果写进回执；成果卡/记录由主席或成员写；会议信息由**主席转述**（不读纪要、无会议面）；不投票不裁决。渲染里 `record_progress`/`record_proposition` 教学 **0**。
+- **P2**：`v5r-formal-review` 渲染层补「Lean 通过只指**编译通过**，不代表命题为真，仍需保真收口」；leaderless 现文已是「只有院士席能写领头人」；非主席 overview 现文已是「主席读它；非主席读 [在册]」；`【本轮你实际能调用的工具】` 是 host-only 占位段（宿主替换），已在段内写明「你读到原文说明替换未发生」。
+- **ratio 收口**：补回 pin 句（run239 §10c/§10d/§11b、run77 #5、run247 §5d、run256 §1h/§5d、vmu-turn T92、vmu-v5r-tools 的 mailbox 四句与工具清单句）后，**只删非 pin 的 chair 冗余**（charter-voting/org、libraries 叙述、tools 散文、句内重复）把 `chair-temp-ratio` 压到 **1.278 ≤1.28**（余量 0.022；target 1.25 仍具名 MISSED）；真实最大 **chair/meeting 32,705 ≤36,400（余 3,695）**。
+- **记账**：`TB2752_RUN80_FIXES = { chair: -3569, member: -1116, temp: -2376, sum: -7061 }`（collect 25,930/24,885/20,292 = 71,107；cap 未动），六处判据 + run256 的 fixture-tools 实测 1,444 一次同步。
+- **复跑**：prompt 相关 pin 套件全绿（run80 61/0、run77 7/0、run79 11/0、run78 8/0、run247 74/0、run256 34/0、run144 64/0、run239 166/0、run150 73/0、vmu-turn 326/0、tools 372/0、run257 134/0、type 15/0、AB exit 0、run209 6/0、doc-sync 11/0、run251 三套、g7 66/0）。`regen` 17/17、`check-docs` 在其依赖的 impl-lane 收口后复跑（期间 `packs/research-core/paper-flow.js` 正在移动，run210 会 ENOENT，属外部）。
+
+### §20.12 ROUND-7c（final22 G4：fact pin 与文档行号收口）
+
+- **`run256-prompts-facts`（96/11 → 107/0）**：事实 `verdictElementKeys` 的装配句被压 ratio 时改写成 `<理由>`，与事实正则要求的 `每个元素逐字长这样：`{ member:"<席位 id>", p:0 或 1, reason:"<一句话理由>" }`——数值键是 **`p`**` 不再逐字一致，导致 1 条根红 + 11 条 CLI/变异级联。**按事实原样补回该句**（保留 `不是 verdict` 与 `VMU_INVALID_ARGUMENT` 语义，不恢复冗长）；11 条级联同根消失。
+- **`vmu-ledger-teaching-pins` L53**：压 ratio 时把 `notification.state` 删了，`delivered`/`queued` 的收据口径不完整。补回「回执 `delivery`/`notified`/`notification.state` 说明通知到谁（`delivered`＝已推进，`queued`＝仍在收件箱未读）——没人被告知就不算落地」。
+- **`audit-doc-line-refs`（12 越界/8 记录 → 9/0）**：`source-prompt-coverage.md:43/53` 里指向 `v5r-blocks-a.js` 旧行（当时第 604 行）的引用与两份 conformance 的 `:596-607` 随 blocks-a 压缩越界；按现行真行重锚到 `v5r-blocks-b.js:1130`（形式化开关）/`:408`（Lean 形式化验证正文）。gate 未放宽：agent.cordis.yml 的 8 条外部越界仍按原记录保留。
+- 记账同步：`TB2752_RUN80_FIXES = { chair: -3588, member: -1116, temp: -2376, sum: -7080 }`（collect 25,911/24,885/20,292 = 71,088）；`chair-temp-ratio = 1.277 ≤1.28`（target 1.25 仍具名 MISSED）；真实最大 **chair/meeting 32,686 ≤36,400（余 3,714）**。
+- 复跑：`run256-prompts-facts` 107/0、`vmu-ledger-teaching-pins` 61/0、`audit-doc-line-refs` 9/0、`vmu-v5r-tools` 372/0、`audit-prompt-budget` PASS、`regen 17/17`；其余 pin 套件（run256-compress 34/0、run80 61/0、run77 7/0、run79 11/0、run78 8/0、run247 74/0、run144 64/0、run239 166/0、run150 73/0、vmu-turn 326/0、run257 134/0、type 15/0、AB 0、run209 6/0、doc-sync 11/0、run251 三套、g7 66/0）全绿。

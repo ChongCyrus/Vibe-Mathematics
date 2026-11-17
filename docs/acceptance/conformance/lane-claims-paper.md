@@ -53,7 +53,7 @@
    - "概率=1 ⇒ 可入 verified"的落点仍回到 §1 的 `settled` 自动标记（`kit/handlers.js:157-176`），与 lean 无关。
    - **联动是不存在的**：`grep passedWithdrawn` 只在 fidelity/formal/library/v3-packs 命中；没有任何代码读 `lean job passed` 去改卡或改票。
 3. **「鼓励形式化」开关 —— ⚠️ 存在、被读，但唯一效果是提示词/回显**：
-   - `settings/schema.js:249` `vmu.math.formalVerify` enum `off|encourage|require`，def `'off'`，doc「P3：判定时的形式化要求；默认 off＝零策略」；`:231` `vmu.turn.formalModeLine` def「鼓励：按实现难度自行决定…」（读者 `v5r-blocks-a.js:596-607` ⇒ 提示词文本）。
+   - `settings/schema.js:249` `vmu.math.formalVerify` enum `off|encourage|require`，def `'off'`，doc「P3：判定时的形式化要求；默认 off＝零策略」；`:231` `vmu.turn.formalModeLine` def「鼓励：按实现难度自行决定…」（读者 `v5r-blocks-b.js:408` ⇒ 提示词文本）。
    - `kernel/lean.js:210/235/247-259`：读键并进 `policy()` 返回 `{formalVerify, requireFormal, encourageFormal, initiative, initiativeEffect:'display-only'}`；`settings/schema.js:256` `vmu.math.leanInitiative` doc 明写「**本运行时只回显**」。
    - **真消费者缺口**：`grep requireFormal\|encourageFormal` 除 `policy()` 自身与 `kernel/math.js:150` 的 `requireFormalization` 状态回显外，**全树零消费者** ⇒ 没有一个判定点据此改变行为（探针 §9③）。
 
@@ -127,16 +127,16 @@
 
 ## 6. E1–E4 论文阶段
 
-流程实现：入口 `packs/v5r/tools.js:812-900`（`vibe_v5_paper` actions: sections/status/start/part/review/advance/final/render/compile；`:820` 明写本面不加策略，阶段/席位由流程判）→ `packs/v5r/paper.js:52-69` → **`kit/paper.js`（456 行，真流程）**。九节骨架 `packs/v5r/paper.js:20-30`。
+流程实现：入口 `packs/v5r/tools.js:812-900`（`vibe_v5_paper` actions: sections/status/start/part/review/advance/final/render/compile；`:820` 明写本面不加策略，阶段/席位由流程判）→ `packs/v5r/paper.js:52-69` → **`packs/research-core/paper-flow.js`（456 行，真流程）**。九节骨架 `packs/v5r/paper.js:20-30`。
 
 ### E1 系统梳理原总问题与所有有价值产物，合作撰写最终论文 —— ⚠️ 部分
-- 机制 ✅：九节含「引言与问题背景 / 原问题的完整解法 / 已检验通过的命题 / 已解决子问题 / 创造或发现的有价值之物…」；正文由系统合并：`kit/paper.js:281-312` 用所有成员的 part 重建全文，逐段按指纹校验（`readPartVerified` `:265-278`，不符 ⇒ `VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH`）。
+- 机制 ✅：九节含「引言与问题背景 / 原问题的完整解法 / 已检验通过的命题 / 已解决子问题 / 创造或发现的有价值之物…」；正文由系统合并：`packs/research-core/paper-flow.js:281-312` 用所有成员的 part 重建全文，逐段按指纹校验（`readPartVerified` `:265-278`，不符 ⇒ `VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH`）。
 - 门禁 ✅：`tests/vmu-v5r-tools.test.mjs:436-560` ③f 正/反断言（重复 start、错阶段 review、非参与成员 recordPart ⇒ `VMU_NO_SUCH_OBJECT`、指纹被改 ⇒ MISMATCH）。
 - **缺**：「**所有**有价值产物」是**静态九节**，不是从记录/库涌现的清单；没有任何检查"某个已检验命题没被纳入论文"。
 
 ### E2 合作写（分工后系统合并）、互审 —— ✅
 - 参与名单 = paper 参与者；非参与成员写 part ⇒ `VMU_NO_SUCH_OBJECT`（③f 断言）。
-- 互审**自动成环**：`kit/paper.js:182-186` `advance` writing→reviewing 时 `reviewOf[i]=participants[(i+1)%n]`。
+- 互审**自动成环**：`packs/research-core/paper-flow.js:182-186` `advance` writing→reviewing 时 `reviewOf[i]=participants[(i+1)%n]`。
 - 互审必须**真布尔**：`recordReview`（`:161-175`）`deliverable` 非布尔 ⇒ `VMU_INVALID_ARGUMENT`（注释「未表态不算可交付」）；全 true ⇒ `awaiting-editor`，否则退回 writing 且 `round++`，至 `PAPER_MAX_ROUNDS=3` 后 `forcedAfterCap`（`:188-206`）。
 - 门禁 ✅：③f 覆盖"一票 false ⇒ 退回 round 2 / 全 true ⇒ awaiting-editor / 刚写完就 review ⇒ 具名拒"。
 
@@ -146,8 +146,8 @@
 - **缺**：任何机器可判的质量检查（完整性/无编造/术语一致）。
 
 ### E4 最后讨论、检查无误后定稿 —— ⚠️ 部分
-- 定稿闸 ✅：`kit/paper.js:223-262` `recordFinal` 要求 `state.editor===editorDefault`（'academician'/chair 席位），decision ∈ `deliverable|revise`，revise 超轮数具名拒；③f 断言"非 chair ⇒ `VMU_NOT_PERMITTED`"。
-- **所办前置是死声明**：`packs/v5r/settings/defaults.json:60-64` 声明 `vmu.paper.officeConsult:'required'`、`officeConsultOn:'finalize'`、`TimeoutMs:0`、`OnTimeout:'hold'`、`ExemptRoles:[]`；读者只有 `kernel/paper.js:49-53,139-148`（`WIRED_KEYS`），而 **`kernel/paper.js` 未被任何文件 import、host.js 的 `TOOL_FACES` 里没有 paper 面 ⇒ 该机制不可达**；v5r 自己的论文路径走 `kit/paper.js`，**不读 officeConsult**。旁证：③g 断言定稿提示词里含"未接线""咨询"——**提示词自己承认这条前置没接线**（`tests/vmu-v5r-tools.test.mjs:540-552`）。
+- 定稿闸 ✅：`packs/research-core/paper-flow.js:223-262` `recordFinal` 要求 `state.editor===editorDefault`（'academician'/chair 席位），decision ∈ `deliverable|revise`，revise 超轮数具名拒；③f 断言"非 chair ⇒ `VMU_NOT_PERMITTED`"。
+- **所办前置是死声明**：`packs/v5r/settings/defaults.json:60-64` 声明 `vmu.paper.officeConsult:'required'`、`officeConsultOn:'finalize'`、`TimeoutMs:0`、`OnTimeout:'hold'`、`ExemptRoles:[]`；读者只有 `kernel/paper.js:49-53,139-148`（`WIRED_KEYS`），而 **`kernel/paper.js` 未被任何文件 import、host.js 的 `TOOL_FACES` 里没有 paper 面 ⇒ 该机制不可达**；v5r 自己的论文路径走 `packs/research-core/paper-flow.js`，**不读 officeConsult**。旁证：③g 断言定稿提示词里含"未接线""咨询"——**提示词自己承认这条前置没接线**（`tests/vmu-v5r-tools.test.mjs:540-552`）。
   - 复核（`grep -rn officeConsult --include=*.js`，排除 schema/defaults）：全部命中集中在 `kernel/paper.js:49-53,139-148,187,233-324,452,514`，**其它文件 0 命中**。而 `settings/schema.js:1065` 的文档串却写「读者：定稿路径（`kernel/paper.js`／**human 面**）」——**human 面并不读这些键**，这句文档本身也不准确。
 
 **状态汇总**：E1 ⚠️ / E2 ✅ / E3 ⚠️ / E4 ⚠️
@@ -169,7 +169,7 @@
 
 - 未跑 T0/T1 等长门禁（按任务约定）；未跑 `regen-all`/`check-docs`。
 - 未逐条核 `packs/v5r/middleware/*.js` 全文（5 个文件），只核了"是否挂 `has_locked_formal_proof`"（0 命中）与 prompt policies 的接线。
-- 未核 `vmu.paper.review.mode:'single-blind'`、`vmu.paper.reviewers.maxLoad:3`、`vmu.paper.maxRounds:3` 的真实读者（`kit/paper.js` 用的是常量 `PAPER_MAX_ROUNDS`，设置键是否被读**未验**）。
+- 未核 `vmu.paper.review.mode:'single-blind'`、`vmu.paper.reviewers.maxLoad:3`、`vmu.paper.maxRounds:3` 的真实读者（`packs/research-core/paper-flow.js` 用的是常量 `PAPER_MAX_ROUNDS`，设置键是否被读**未验**）。
 - 未核 `vibe_v5_paper` 的 `render/compile` 两个 action 的产物质量（只核了流程状态机）。
 - 未核 institute-min 的 `has_locked_formal_proof` 分支真机行为（只读了声明）。
 - 台账 42 条我只负责 9 条，其余不在此文件。

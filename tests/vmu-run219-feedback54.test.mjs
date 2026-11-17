@@ -5,7 +5,7 @@
  *   ① `vibe-math-vmu/packs/v5r/tools.js` — the blueprint face PUBLISHED `draft` and never forwarded it, so a propose that
  *      passed `draft:"rec-37"` came back with `continuedBase.requested:null` and `why:"this call named no draft"` — a
  *      sentence about the request that contradicted the request. The name is forwarded now.
- *   ② `vibe-math-vmu/kit/paper.js` — `final` with no `member` printed `the academician (chair seat) must finalise this
+ *   ② `vibe-math-vmu/packs/research-core/paper-flow.js` — `final` with no `member` printed `the academician (chair seat) must finalise this
  *      paper; "" is not on the roster` while `status.editorReading` showed the chair SEATED: the empty string was a
  *      MISSING SIGNATURE, not a roster lookup result, and the hint offered two repairs for neither problem.
  *   ③ `vibe-math-vmu/packs/v5r/paper-quality.js` — `writeAs` said both forms "pass" (read as equivalent), and
@@ -31,7 +31,7 @@ const TMP = scratchPath('r219')
 mkdirSync(TMP, { recursive: true })
 
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
-const SRC_PAPER = readFileSync(join(VMU, 'kit', 'paper.js'), 'utf8')
+const SRC_PAPER = readFileSync(join(VMU, 'packs', 'research-core', 'paper-flow.js'), 'utf8')
 const SRC_QUALITY = readFileSync(join(VMU, 'packs', 'v5r', 'paper-quality.js'), 'utf8')
 const SRC_HOST = readFileSync(join(VMU, 'host.js'), 'utf8')
 const SRC_MEETINGS = readFileSync(join(VMU, 'kernel', 'meetings.js'), 'utf8')

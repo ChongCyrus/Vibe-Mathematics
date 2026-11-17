@@ -25,6 +25,10 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, "..")
 const VMU = join(REPO, "vibe-math-vmu")
 const LEDGER = join(REPO, "docs", "acceptance", "phase3-inert-keys-ledger.md")
+// ★ TB-2794 Step 1: the paper dead face was deleted; its four policy keys are declared-but-unwired until the v5r paper policy
+// moves. The verdict lives in its OWN ledger (the phase3 ledger's 118-key identity must not be edited), and the audit reads
+// both — a named record, never a silent pass.
+const PAPER_LEDGER = join(REPO, "docs", "acceptance", "paper-migration-inert-keys.md")
 
 /** Every `.js` under a directory. No swallowing: a directory that cannot be walked is an error, not an empty list. */
 export function jsFiles(dir) {
@@ -106,7 +110,8 @@ for (const dir of ["tests", "scripts"]) {
   for (const f of jsFiles(p)) sources.set(f, readFileSync(f, "utf8"))
 }
 const schemaPath = join(VMU, "settings", "schema.js")
-const ledgerText = requireFile(LEDGER, 'the declared ledger the silent-keys suite consults')
+// ★ audit-no-silent-reads: a ledger this gate depends on is READ OR REFUSED BY NAME (no ternary-to-empty fallback).
+const ledgerText = requireFile(LEDGER, 'the declared ledger the silent-keys suite consults') + String.fromCharCode(10) + requireFile(PAPER_LEDGER, 'the paper migration inert-key ledger (TB-2794 Step 1)')
 const keys = silentKeys({ schemaSrc: sources.get(schemaPath) || "", sources, ledgerText, schemaPath })
 // ★ BARE-MODE SELF-PROOF (runs on every gate run, not only with --selftest): the relaxed criterion still catches a
 // silently-declared key. Without this, the relaxation could have been a blanket pass and nothing would say so.

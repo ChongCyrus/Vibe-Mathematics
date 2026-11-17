@@ -404,7 +404,7 @@ ok(auditBlock && auditBlock.checks && auditBlock.checks.warnings === 0, 'audit w
 // ── 5) the replay segment: same input twice must produce the same corpus ──────────────────────────────────────
 // The corpus is produced twice from a pinned clock and a wiped workspace, then compared. The product USED to mint
 // `consult-<seq4>-<rand4>` from Math.random and every content hash downstream of that id moved with it; TB-2634
-// replaced that with a deterministic FNV-1a digest (kit/paper.js), so the ids are now a REPLAYABLE fact rather than a
+// replaced that with a deterministic FNV-1a digest (packs/research-core/paper-flow.js), so the ids are now a REPLAYABLE fact rather than a
 // declared uncertainty. The replay still pins the clock (and the seeded Math.random, as a belt-and-braces guard for
 // the four named survivors), and the normalization below stays as a safety net. A single unexplained byte still
 // fails: `unexplainedDiff` returns null only when every difference is one of the declared substitutions. On top of
@@ -466,7 +466,7 @@ const replayReceiptsA = readText(join(DET_A, 'receipts.jsonl')) || ''
 const replayReceiptsB = readText(join(DET_B, 'receipts.jsonl')) || ''
 const receiptsDiff = unexplainedDiff(replayReceiptsA, replayReceiptsB)
 ok(receiptsDiff === null, 'replay: receipts.jsonl differs ONLY by the declared product facts', receiptsDiff === null ? undefined : receiptsDiff)
-// TB-2634 (md-lane) made the id deterministic: `vibe-math-vmu/kit/paper.js` mints `consult-<seq4>-<hash4>` with an
+// TB-2634 (md-lane) made the id deterministic: `vibe-math-vmu/packs/research-core/paper-flow.js` mints `consult-<seq4>-<hash4>` with an
 // FNV-1a digest and the only remaining `Math.random` call sites are the four named survivors. So the old assertion --
 // "the corpus contains RANDOM ids, therefore it was really run" -- now describes a shape the product no longer has,
 // and its name would send the next reader looking for randomness that is gone. The replacement keeps the teeth the

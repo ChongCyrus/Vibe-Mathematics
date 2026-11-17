@@ -115,7 +115,7 @@ const TB2732_BASELINE = { chair: 29500, sum: 78171 }
 // this suite as a NAMED line item — never by editing 78 171 into the measured number (that would erase the baseline).
 // Per seat after ROUND-3: chair -826, member -803, temp -822; sum -2451 (five legacy correction sections deleted);
 // the taskbook's +120 envelope. No cap / ratchet was raised.
-const TB2752_RUN80_FIXES = { chair: -2446, member: -646, temp: -1811, sum: -4903 } // ROUND-1 audit P0/P1 fixes
+const TB2752_RUN80_FIXES = { chair: -3588, member: -1116, temp: -2376, sum: -7080 } // ROUND-1 audit P0/P1 fixes
 test('§8 the RUN 78 corrections are net-zero, plus the NAMED RUN 80 batch (+96): three-seat normal sum ≤ baseline + TB-2752', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   const sumCeiling = TB2732_BASELINE.sum + TB2752_RUN80_FIXES.sum

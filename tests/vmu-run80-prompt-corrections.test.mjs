@@ -118,15 +118,15 @@ test('§2 the two sides do not contradict each other', async () => {
 
 test('§3 the water levels move with the text, not behind it', () => {
   console.log('=== 3. ACCOUNTING (run256 / run77) AND THE DOC WATERMARK ===')
-  ok(run256.includes('const TB2752_RUN80_FIXES = { chair: -2446, member: -646, temp: -1811, sum: -4903 }'), '§3a run256 records the corrections as one constant (per seat -2446 / -646 / -1811, sum -4903)')
+  ok(run256.includes('const TB2752_RUN80_FIXES = { chair: -3588, member: -1116, temp: -2376, sum: -7080 }'), '§3a run256 records the corrections as one constant (per seat -3588 / -1116 / -2376, sum -7080)')
   ok(run256.includes('+ RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair'), '§3b run256 chair ceiling is derived from the constant')
   ok(run256.includes('+ RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum'), '§3c run256 sum ceiling is derived from the constant')
-  ok(run77.includes('const TB2752_RUN80_FIXES = { chair: -2446, member: -646, temp: -1811, sum: -4903 }') && run77.includes('+ TB2752_RUN80_FIXES.sum') && run77.includes('+ TB2752_RUN80_FIXES.chair'), '§3d run77 §7 ceilings include the same constant')
+  ok(run77.includes('const TB2752_RUN80_FIXES = { chair: -3588, member: -1116, temp: -2376, sum: -7080 }') && run77.includes('+ TB2752_RUN80_FIXES.sum') && run77.includes('+ TB2752_RUN80_FIXES.chair'), '§3d run77 §7 ceilings include the same constant')
   ok(says(receiptsDoc, 'TB-2752') && says(receiptsDoc, 'F80-3') && says(receiptsDoc, 'F80-4') && says(receiptsDoc, 'F80-8') && says(receiptsDoc, 'F80-12'), '§3e docs/acceptance/prompt-vs-receipts.md carries the four corrections')
   // The constant is not a wish: the live measurement equals baseline + constant.
   const chairLive = got.combos.filter((c) => c.slot === 'chair' && c.phase === 'normal')[0].chars
-  ok(chairLive === 29499 - 2446, '§3f chair normal live length = the RUN 272 water level + the recorded delta', { live: chairLive, expected: 29499 - 2446 })
-  ok(sum === 78168 - 4903, '§3g three-seat normal sum = the RUN 272 water level + the recorded delta', { live: sum, expected: 78168 - 4903 })
+  ok(chairLive === 29499 - 3588, '§3f chair normal live length = the RUN 272 water level + the recorded delta', { live: chairLive, expected: 29499 - 3588 })
+  ok(sum === 78168 - 7080, '§3g three-seat normal sum = the RUN 272 water level + the recorded delta', { live: sum, expected: 78168 - 7080 })
 })
 
 test('§5 TB-2765 teaching: formulas are `$…$`/`$$…$$` in the assembled paper prompt, and the A-1/A-2/D-7 read-face notes are in the office prompt', async () => {

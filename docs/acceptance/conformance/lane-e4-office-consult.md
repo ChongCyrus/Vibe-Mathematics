@@ -10,8 +10,8 @@
 
 | # | 事实 | 证据 |
 |---|---|---|
-| 1 | v5r 的论文**实际走** `packs/v5r/paper.js` → `kit/paper.js` | `packs/v5r/tools.js` 的 `toolPaper` 用 `createPaperSubsystem({ kernel })`；`kit/paper.js` 的 `createPaperFlow` |
-| 2 | `kit/paper.js` **一个 consult 键都不读** | 改前 `grep -c officeConsult vibe-math-vmu/kit/paper.js` ⇒ `0` |
+| 1 | v5r 的论文**实际走** `packs/v5r/paper.js` → `packs/research-core/paper-flow.js` | `packs/v5r/tools.js` 的 `toolPaper` 用 `createPaperSubsystem({ kernel })`；`packs/research-core/paper-flow.js` 的 `createPaperFlow` |
+| 2 | `packs/research-core/paper-flow.js` **一个 consult 键都不读** | 改前 `grep -c officeConsult vibe-math-vmu/packs/research-core/paper-flow.js` ⇒ `0` |
 | 3 | 那套闸只存在于 `kernel/paper.js`，而它**在装配里没有构造者** | `kernel/index.js` 自述 "paper has NO instance in this assembly"；`tests/vmu-kernel-reachability.test.mjs` 把它列进 `KNOWN_UNMOUNTED` |
 | 4 | 所以照 docs 设 `vmu.paper.officeConsult='required'` **什么都不会发生** | 上两条合并；`docs/04-settings.md:183` 自己记了这次实测 |
 
@@ -21,7 +21,7 @@
 
 ## 2. 改了什么
 
-### 2.1 `vibe-math-vmu/kit/paper.js`（唯一执行点）
+### 2.1 `vibe-math-vmu/packs/research-core/paper-flow.js`（唯一执行点）
 
 | 行 | 内容 |
 |---|---|
@@ -44,23 +44,23 @@
 | `:58` | `const PAPER_CONSULT_ROLES = Object.freeze(['office'])` —— 答复角色是**机构政策**，声明在 pack |
 | `:70-71` | `consultRoles: PAPER_CONSULT_ROLES` 交给 kit（kit 只执行，不猜谁答复） |
 
-> 披露：E4 的写域原本写的是 `kit/paper.js` +（若需要）`packs/v5r/paper.js`。**动了 `packs/v5r/paper.js` 这两行**，因为"谁答复"必须由政策侧给出，否则闸一开就永远答不了（kit 猜 `'office'` 就等于把政策写进机制）。其余 `packs/v5r/**` 未动。
+> 披露：E4 的写域原本写的是 `packs/research-core/paper-flow.js` +（若需要）`packs/v5r/paper.js`。**动了 `packs/v5r/paper.js` 这两行**，因为"谁答复"必须由政策侧给出，否则闸一开就永远答不了（kit 猜 `'office'` 就等于把政策写进机制）。其余 `packs/v5r/**` 未动。
 
 ### 2.3 语义锁死（三个键，逐条）
 
 | 键 | 语义 | 取值 | 谁读 | 失败怎么走 |
 |---|---|---|---|---|
-| `vmu.paper.officeConsult` | 定稿前是否必须问所办 | `required`（缺省）／`off` | `kit/paper.js:149` | **读不懂 ⇒ 拒**（不静默放行） |
-| `vmu.paper.officeConsultOn` | 何时必须问 | `finalize`（缺省）／`finalize-or-submit` | `kit/paper.js:154` | 认不出 ⇒ 按 `finalize` |
-| `vmu.paper.officeConsultTimeoutMs` | 等答复的时限 | `0`＝无限等 | `kit/paper.js:156` | — |
-| `vmu.paper.officeConsultOnTimeout` | 超时处置 | `hold`（缺省）／`refuse` | `kit/paper.js:158` | 认不出 ⇒ `hold`；**没有 default-allow 这一档** |
-| `vmu.paper.officeConsultExemptRoles` | 谁豁免 | `[]`（缺省＝不豁免任何人） | `kit/paper.js:160` | 豁免只匹配 `member` 的 `id`／`slot` |
+| `vmu.paper.officeConsult` | 定稿前是否必须问所办 | `required`（缺省）／`off` | `packs/research-core/paper-flow.js:149` | **读不懂 ⇒ 拒**（不静默放行） |
+| `vmu.paper.officeConsultOn` | 何时必须问 | `finalize`（缺省）／`finalize-or-submit` | `packs/research-core/paper-flow.js:154` | 认不出 ⇒ 按 `finalize` |
+| `vmu.paper.officeConsultTimeoutMs` | 等答复的时限 | `0`＝无限等 | `packs/research-core/paper-flow.js:156` | — |
+| `vmu.paper.officeConsultOnTimeout` | 超时处置 | `hold`（缺省）／`refuse` | `packs/research-core/paper-flow.js:158` | 认不出 ⇒ `hold`；**没有 default-allow 这一档** |
+| `vmu.paper.officeConsultExemptRoles` | 谁豁免 | `[]`（缺省＝不豁免任何人） | `packs/research-core/paper-flow.js:160` | 豁免只匹配 `member` 的 `id`／`slot` |
 
 ### 2.4 注册（docs/03 §8）
 
-- `:447` **改写** `VMU_OFFICE_CONSULT_REQUIRED` 的"执行点"列：从"定稿路径（`kernel/paper.js`／human 面）"改成"**在册的定稿路径**：`packs/v5r/paper.js` → `kit/paper.js` 的 `recordFinal({decision:'deliverable'})`（`kernel/paper.js` 的同名门在装配里没有构造者，因此不是执行点）"，并写明回执带 `.enforced[]`／`.settingValues`。
+- `:447` **改写** `VMU_OFFICE_CONSULT_REQUIRED` 的"执行点"列：从"定稿路径（`kernel/paper.js`／human 面）"改成"**在册的定稿路径**：`packs/v5r/paper.js` → `packs/research-core/paper-flow.js` 的 `recordFinal({decision:'deliverable'})`（`kernel/paper.js` 的同名门在装配里没有构造者，因此不是执行点）"，并写明回执带 `.enforced[]`／`.settingValues`。
 - `:448` **新增** `VMU_OFFICE_CONSULT_TIMEOUT`（超时分岔两种都不放行；未知取值按 `hold` 执行并在 `.settingValues` 里显形）。
-- `package.json`／`installer.js` **无需改**：没有新文件（`vibe-math-vmu/kit/paper.js` 已在 `package.json:785` 与 `installer.js` 的 managed `files[]` 里）。
+- `package.json`／`installer.js` **无需改**：没有新文件（`vibe-math-vmu/packs/research-core/paper-flow.js` 已在 `package.json:785` 与 `installer.js` 的 managed `files[]` 里）。
 
 ### 2.5 新测试
 
@@ -121,7 +121,7 @@
 1. **闸不是恒过也不是恒拒**：测试 ① 与 ② 是一对——**同一条提问**在未答复时 `ok:false`／`VMU_OFFICE_CONSULT_REQUIRED`，答复后 `ok:true`／`finalized:true`，且 ② 断言回执的 `consult.requestId === ① 的 error.requestId`（证明放行来自**那条**答案，不是别的路径）。
 2. **"读不懂不静默"**：`officeConsult` 设成 `'sometimes'` ⇒ `VMU_INVALID_ARGUMENT`，`declared:['required','off']`，论文状态仍是 `awaiting-editor`（测试 ⑦）。
 3. **超时两种分岔都不放行**：`hold` 下 `heldOnTimeout:true`／`requestCleared:false`／等待的还是同一条提问；`refuse` 下 `requestCleared:true` 且再试会开**新**提问（测试 ⑥）。
-4. **确认"在册路径"就是这条**：`packs/v5r/tools.js` 的 `toolPaper` 的 `final` 分支调的正是 `kit/paper.js` 的 `recordFinal`，不是 `kernel/paper.js`。
+4. **确认"在册路径"就是这条**：`packs/v5r/tools.js` 的 `toolPaper` 的 `final` 分支调的正是 `packs/research-core/paper-flow.js` 的 `recordFinal`，不是 `kernel/paper.js`。
 5. **确认没有第二道闸被顺手打开**：`kernel/paper.js` 未改（仍是不可达模块），`git diff --stat` 里没有它。
 6. **未做的反证（诚实标注）**：想跑"把 `recordConsult` 那行注释掉看 ② 变红"的突变测试，但测试文件是按自身位置推导仓根的，复制到 `D:\_tmp` 后解析不到 `scripts/lib/reachability.mjs`，而**在 `tests/` 里临时放突变文件会瞬时改变作业集合**（本仓已因此误红过别的 lane 的门禁）⇒ 放弃，改用上面 1–5 的实测替代。**所以"突变必红"这一句我没有实测，只实测了"未答→拒／答→放行"这一对。**
 
@@ -129,9 +129,9 @@
 
 ## 7. 未做 / 未核（**不许当成"没问题"**）
 
-1. ★ **所办答复没有工具面入口**：`recordConsult` 只在 `kit/paper.js` 的流程对象上，`vibe_v5_paper` 的 action 表（`start/part/review/advance/final/render/status/compile/sections`）里**没有 consult 动作** ⇒ 真实会话里"所办答复"目前只能由 pack/宿主代码调用。要给入口需改 `packs/v5r/tools.js`（E4 写域之外，请 Lead 或多派一条 lane）。
-2. **schema 行文档仍写旧读点**：`settings/schema.js` 里 `vmu.paper.officeConsult` 的 `docs` 串写着"读者：定稿路径（`kernel/paper.js`／human 面）"，现在真正的读者是 `kit/paper.js`（schema 是 Lead 的写域，未动）。
-3. **docs/04 的一句散文已过时**：`:183` 仍写"`kit/paper.js` 后者一个 consult 键都不读"（我修好之后这句不再成立；该处是生成器之外的正文，归派生面负责人）。
+1. ★ **所办答复没有工具面入口**：`recordConsult` 只在 `packs/research-core/paper-flow.js` 的流程对象上，`vibe_v5_paper` 的 action 表（`start/part/review/advance/final/render/status/compile/sections`）里**没有 consult 动作** ⇒ 真实会话里"所办答复"目前只能由 pack/宿主代码调用。要给入口需改 `packs/v5r/tools.js`（E4 写域之外，请 Lead 或多派一条 lane）。
+2. **schema 行文档仍写旧读点**：`settings/schema.js` 里 `vmu.paper.officeConsult` 的 `docs` 串写着"读者：定稿路径（`kernel/paper.js`／human 面）"，现在真正的读者是 `packs/research-core/paper-flow.js`（schema 是 Lead 的写域，未动）。
+3. **docs/04 的一句散文已过时**：`:183` 仍写"`packs/research-core/paper-flow.js` 后者一个 consult 键都不读"（我修好之后这句不再成立；该处是生成器之外的正文，归派生面负责人）。
 4. **没跑全量 T1**：只跑了 E4 相关的 12 条命令（见 §3）。全量 `GATE_SCOPE=vmu node tests/run-tests.mjs` 归 Lead 汇总。
 5. **没跑任何 `--write`**（按指令）：`generate-wired-schema`／`regen-all` 只跑 `--check`，当前分别 exit 0／16-16，因此**不需要**写入。
 6. **未核**：`human` 面是否也该有 consult 动作（`officeConsultOn='finalize-or-submit'` 的"投稿前问"目前只实现了一半：`submit` 路径未查）；`kernel/paper.js` 的同名闸与 kit 的语义**是否逐字一致**（只核了"两条分叉都不放行"这一条，没有逐字段比对）。
@@ -141,8 +141,8 @@
 ## 8. 复核用的锚（一行一条，grep 就能重放）
 
 ```
-grep -n "consultRoles" vibe-math-vmu/kit/paper.js Vibe-Mathematics/vibe-math-vmu/packs/v5r/paper.js
-grep -n "OFFICE_CONSULT" vibe-math-vmu/kit/paper.js
+grep -n "consultRoles" vibe-math-vmu/packs/research-core/paper-flow.js Vibe-Mathematics/vibe-math-vmu/packs/v5r/paper.js
+grep -n "OFFICE_CONSULT" vibe-math-vmu/packs/research-core/paper-flow.js
 grep -n "officeConsult" vibe-math-vmu/docs/03-interface-contract.md vibe-math-vmu/docs/04-settings.md
 node tests/vmu-paper-office-consult.test.mjs
 node tests/vmu-v5r-tools.test.mjs

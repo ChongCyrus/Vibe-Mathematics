@@ -72,7 +72,7 @@ const qualityOf = async (A, target) => {
 // ── §0 the source says what this pins ───────────────────────────────────────────────────────────────────────────────
 {
   const quality = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js'), 'utf8')
-  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const records = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
   const index = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
   const turn = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
@@ -235,7 +235,7 @@ const qualityOf = async (A, target) => {
     const dir = await mkdtemp(join(__tmpRoot(), 'run172-lamp-'))
     try {
       cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
-      const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+      const kitPath = join(dir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
       const src = readFileSync(kitPath, 'utf8')
       const from = "if (judged.partChanged) return out(false, 'part-text-changed')"
       ok(src.indexOf(from) !== -1, '§3 lamp-setup：指纹绑定判据存在')

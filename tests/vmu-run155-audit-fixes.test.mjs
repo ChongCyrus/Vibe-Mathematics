@@ -30,7 +30,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
-const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const QUALITY = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')
 

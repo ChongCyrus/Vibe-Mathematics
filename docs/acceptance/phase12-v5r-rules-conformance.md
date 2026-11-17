@@ -36,7 +36,7 @@
 | B6 | 命题库：完整定义＋布尔概率∈[0,1]＋进度；证明过程平时只写「证明/证伪**尝试**」字段；真会证了才写正式证明/证伪；**只有含正式证明（写完）的命题卡才能用于辩论**；概率＝1 要标记 verified | ✅ **已实现（本轮收口，2026-10-24）**：承载在 `track=propositions`＋`vibe_v5_record_proposition`（必填 `statement/value/motive/p`，`p∈[0,1]` 越界名拒），「正式证明」是成员文件 `Members/<id>/Propos/<pid>.md` 的 `## 证明尝试/## 证伪尝试`（平时只写尝试，写完了才标 `proofState=complete`）——★「只有正式证明写完的卡才能进辩论」现在有**机器闸且端到端断言过**：闸是 `vibe-math-vmu/packs/v5r/verification-gates.js` 的 `debateSubjectGate`（两种缺失两个码 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF` / `_UNPROVEN`），真调用点是 `vibe-math-vmu/packs/v5r/tools.js:1299`（`vibe_v5_meeting` 在**会议存在之前**判定，证据取自 `records` 面的卡投影/verified 行/Lean 结论），端到端证据 `tests/vmu-debate-subject-proof.test.mjs` **39/0**（含面级反例：没写完的卡/半成品/一句话命题各按名拒；TEETH 有证据则放行）；`p=1 ⇒ verified` 的单写入器与门是 `promoteVerified`＋`p1Intent`（`VMU_PACK_V5R_P1_NEEDS_DEBATE`）。★ 判据口径（与 D7 同法）：门在**制度面**（被教的 `vibe_v5_meeting`）；内核原始面 `vibe_vmu_meeting` 不带制度判断——它只认 `typeCatalog`（默认空 ⇒ `type` 是标签），这是「能力在内核、政策在包」的必然结果，**不是隐去的漏洞**：绕开制度面直接开一场没有对象的辩论，其裁决也不会被 `promoteVerified` 接受（p=1 的证据形态不在原始面上）。 | 见左（`verification-gates.js`＋`tests/vmu-debate-subject-proof.test.mjs` 39/0） | ✅ 已实现 |
 | B7 | 方法库（一般化/推广/抽象出工具、理论框架） | ✅ **机制＋消费者**（`lane-rows-b.md` B7）：`vibe_v5_record_method`（`packs/v5r/tools.js:1427`）＋ `methods` 轨 ＋ `read_library` 可读 ＋ 轨校验 | `tests/vmu-v5r-tools.test.mjs` 记卡正向组 | ✅ 已实现 |
 | B8 | Lean 代码＋编译结果归档；**lean 通过 ⇒ 辩论只查描述/定义符合性 ⇒ 符合即概率＝1 且可入 verified**；参数可开「鼓励形式化」开关 | ✅ **机制＋消费者**（本轮补齐，此前 ❌「联动」）：`vibe_v5_fidelity_conclude`（`packs/v5r/tools.js:926` 起）——`fidelity:'conform'` ⇒ 走**同一条** `gatedCardHandler` 写 p=1（证据＝这次 Lean 作业 ＋ `lean_conformance:'conform'`），再 `singleWriter` 复核 ＋ `promoteVerified({warrant:{id:lean_job,kind:'lean-conformance',subject:cardId}})`（唯一促升入口）；`fidelity:'defect'` ⇒ `kernel.fidelity.declareDefect`（原因必填）；缺作业／面不认识／作业未通过 ⇒ `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED`（消息区分"面不认识该作业"与"作业没通过（点名 state）"）。★ 施工时按**真实服务面方法名/返回形状**核对，抓出三条"真机上永不命中"的静默机制并已修：`passedWithdrawnFor(id) === true` 与返回的标记对象形状不符（`kernel/fidelity.js:150-158`）、`leanPassedOf` 探 `lean.job` 而面方法名是 `status`（`kernel/lean.js:977`）⇒ **Lean 证据链此前整条是死的**。这也是 `kernel/fidelity`/`kernel/lean` 第一次有 pack 消费者。**仍缺**：「参数可开鼓励形式化开关」的门禁联动（`vmu.math.requireFormal`/`encourageFormal` 当前零消费者，另记） | `tests/vmu-fidelity-conclude.test.mjs` **69/0**；`tests/vmu-debate-subject-proof.test.mjs` **39/0** | ✅ 已实现 |
-| B9 | 分派后各自负责部分的论文 | ✅ **机制＋消费者**（`lane-rows-b.md` B9）：政策壳 `packs/v5r/paper.js` ＋ 真流程 `kit/paper.js`（start `:346`、recordPart `:372`、环形互审 `:416-424`、deliverable 是**真布尔**判断 `:399-412`、全员 true 才 awaiting-editor、`recordFinal` 仅主席 `:461`、九节由 parts 按 id＋指纹重组 `:526`）；工具面 `packs/v5r/tools.js:1667` 含 `consult`／`consult_state` | `tests/vmu-v5r-tools.test.mjs` 论文正反组 ＋ `tests/vmu-paper-office-consult.test.mjs` 65/0 | ✅ 已实现 |
+| B9 | 分派后各自负责部分的论文 | ✅ **机制＋消费者**（`lane-rows-b.md` B9）：政策壳 `packs/v5r/paper.js` ＋ 真流程 `packs/research-core/paper-flow.js`（start `:346`、recordPart `:372`、环形互审 `:416-424`、deliverable 是**真布尔**判断 `:399-412`、全员 true 才 awaiting-editor、`recordFinal` 仅主席 `:461`、九节由 parts 按 id＋指纹重组 `:526`）；工具面 `packs/v5r/tools.js:1667` 含 `consult`／`consult_state` | `tests/vmu-v5r-tools.test.mjs` 论文正反组 ＋ `tests/vmu-paper-office-consult.test.mjs` 65/0 | ✅ 已实现 |
 | B10 | 脚本文件 | ✅ **已实现（本轮收口）**（`lane-rows-b.md` B10，口径由 Lead 裁定＝「脚本作为所级产物应可归档／复核」才算实现）：**能写**——成员用基座 write 面写脚本文件；**临时跑被真规则拒**（`packs/v5r/prompts/v5r-core.js:224-241`，码 `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS`，`tests/vmu-entry.test.mjs:392`）；**但"脚本声明／归档／复算"面不存在**，而规则 hint 里写着"归档/复算流程" ⇒ **承诺无落点**（与 B4 的假 hint 同类） ★ **本轮已修**：`vibe_v5_script{op:archive|read|list}` 落地（`packs/v5r/tools.js:556-660`、`:1726-1733`）：脚本落 `scripts` 轨、`kind:'dataset'`（不新增 kind）、指纹由 `records.put` 算、正文逐字返回；轨未声明 ⇒ `VMU_INVALID_ARGUMENT`(declared/missingTrack)，找不到 ⇒ `VMU_NO_SUCH_OBJECT` ⇒ 「写脚本没有归档/复核落点」这句不再成立（`tests/vmu-phase12-closures.test.mjs` 覆盖） ★ 已收口：`tests/vmu-phase12-closures.test.mjs`（49/0）端到端证明——`scripts` 轨归档＋指纹＋`vibe_v5_script` 按名/按 id 读回**正文逐字相同**、列表返回 `count`/`fingerprint`，未知脚本名 ⇒ `VMU_NO_SUCH_OBJECT`，缺 `name`/`content` ⇒ `VMU_INVALID_ARGUMENT`，未知 op 具名拒；且该面只在 pack 里（宿主工具表没有 `vibe_v5_script`）。 | 禁用临时脚本有断言；归档/复算无面 | ✅ 已实现 |
 | B11 | 自反馈库：问题/冗余/障碍/可优化点与方案；**院士另含对各阶段（平时/会议/辩论）流程与组织协作的自反馈优化** | ✅ **已实现（本轮收口）**（`lane-rows-b.md` B11，成员侧 a／院士侧 b 分开判）：**a 成员侧 ⚠️** — `vibe_v5_feedback`（`packs/v5r/tools.js:404-440`）三 op、路由必填、interpersonal assessment `:402,:422-425`、`feedback` 轨 `defaults.json:19`、提示行 `v5r-blocks-b.js:89-108`、门禁 `tests/b1prime-feedback-gate.test.mjs`；**但** `read_library` 四轨不含 feedback ⇒ **他人读不到自己之外的反馈**；且 `v5r-blocks-b.js:105`「未闭环条目会出现在汇报与总览的计数里」经复核**确为假承诺**（`packs/v5r/tools.js:177-193` report 与 `:196-215` overview 的 counts 都没有 feedback）。**b 院士侧 ❌** — `grep -rEn "复盘|阶段自|流程优化|组织协作" packs/v5r/` **零命中**，category 是自由串、无阶段维度、无院士专属面/读面/门禁 ★ 已收口：`tests/vmu-phase12-closures.test.mjs`（49/0）端到端证明——`vibe_v5_report` 与 `vibe_v5_overview` 的 `counts.feedback` 与 `vibe_v5_feedback op=list` 用同一个分类器，关掉一张卡真的把数字从 2 移到 1（`feedback.open 2→1 / closed 0→1`），且 `report.report` 文本里的「未闭环 2 条／共 2 条」随之一致。 | a 有门禁；b 无 | ⚠️ 部分 |
 
@@ -73,10 +73,10 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| E1 | 分派后各自负责部分的论文 | ✅ **已实现（2026-10-24 收口）**：旧判据是「三节永远只有标题、`kit/paper.js` 不读库」。现在**三节由记录面填充**——`vibe-math-vmu/packs/v5r/paper-quality.js` 的 `fillRecordSections` 通过 kit 的 `mdFill` 缝注入（`packs/v5r/paper.js:80` 把 `mdFill` 接到 flow、`:112` 的 `filledMd` 是同一实现），三节分别取：§1 已声明的目标、§3 `verified` 轨的行、§4 自身卡标 p=1 的 `problems` 行，**带 id 与出处**；空节不是空白而是**具名合法空句**（`sectionAudit` 逐节报 mode/count，调用方可机器判定"填充 vs 合法空"）。这正是旧行担心的「所有有价值产物不会从库里涌现」的反面：产物**是从记录面读出来的**，不是成员凭记忆复述。 | `vibe-math-vmu/packs/v5r/paper-quality.js`＋`tests/vmu-paper-quality.test.mjs` **57/0**（E1-a/b/c 三条） | ✅ 已实现 |
-| E2 | 互审（review） | ✅ **机制＋门禁，但台账的落点原先写错了**（`lane-rows-c.md` E2 更正）：真实机制是 `kit/paper.js` 的环形互审环——非参与成员不许写、非布尔 `deliverable` 具名拒、一条 false 退回 writing round2 并带 refusers、全 true 才进 `awaiting-editor`。★ 更正：`vmu.paper.maxRounds` 只被**不可达**的 `kernel/paper.js` 读（`scripts/lib/reachability.mjs:36-48`），v5r 的 `defaults.json:68` 设的 3 是惰性声明，**真实上限是 pack 常量 `PAPER_MAX_ROUNDS=3`**；`vmu.review.mode`／`vmu.reviewers.maxLoad` 的消费者是评审人市场面（`vibe_vmu_reviewers`），不是论文互审环 | `tests/vmu-v5r-tools.test.mjs` 论文正反组、`tests/vmu-paper*` | ✅ 已实现 |
+| E1 | 分派后各自负责部分的论文 | ✅ **已实现（2026-10-24 收口）**：旧判据是「三节永远只有标题、`packs/research-core/paper-flow.js` 不读库」。现在**三节由记录面填充**——`vibe-math-vmu/packs/v5r/paper-quality.js` 的 `fillRecordSections` 通过 kit 的 `mdFill` 缝注入（`packs/v5r/paper.js:80` 把 `mdFill` 接到 flow、`:112` 的 `filledMd` 是同一实现），三节分别取：§1 已声明的目标、§3 `verified` 轨的行、§4 自身卡标 p=1 的 `problems` 行，**带 id 与出处**；空节不是空白而是**具名合法空句**（`sectionAudit` 逐节报 mode/count，调用方可机器判定"填充 vs 合法空"）。这正是旧行担心的「所有有价值产物不会从库里涌现」的反面：产物**是从记录面读出来的**，不是成员凭记忆复述。 | `vibe-math-vmu/packs/v5r/paper-quality.js`＋`tests/vmu-paper-quality.test.mjs` **57/0**（E1-a/b/c 三条） | ✅ 已实现 |
+| E2 | 互审（review） | ✅ **机制＋门禁，但台账的落点原先写错了**（`lane-rows-c.md` E2 更正）：真实机制是 `packs/research-core/paper-flow.js` 的环形互审环——非参与成员不许写、非布尔 `deliverable` 具名拒、一条 false 退回 writing round2 并带 refusers、全 true 才进 `awaiting-editor`。★ 更正：`vmu.paper.maxRounds` 只被**不可达**的 `kernel/paper.js` 读（`scripts/lib/reachability.mjs:36-48`），v5r 的 `defaults.json:68` 设的 3 是惰性声明，**真实上限是 pack 常量 `PAPER_MAX_ROUNDS=3`**；`vmu.review.mode`／`vmu.reviewers.maxLoad` 的消费者是评审人市场面（`vibe_vmu_reviewers`），不是论文互审环 | `tests/vmu-v5r-tools.test.mjs` 论文正反组、`tests/vmu-paper*` | ✅ 已实现 |
 | E3 | 论文合规（证据/引用/不得编造） | ✅ **已实现（2026-10-24 收口）**：文本合同级门禁一直在（`tests/vmu-v5r-tools.test.mjs` 的证据规则/不得编造/三阶段隔离），旧判据缺的是**产出物**的机器闸。现在闸挂在 `render`——**产出交付物的那一刻**（`vibe-math-vmu/packs/v5r/paper.js:144` 的 `checkQuality`，在委托之前跑，拒了就不写任何文件，归档保持上一状态）；它判的是 `PaperMdRaw`（成员**自己写的**未填充正文），不是填充后的渲染——否则缝自己把 verified 注进 §3，闸就永远为真、等于没闸（`packs/v5r/paper.js:139-143` 的注释记录了这条推理）。四条具名拒：① 引用了没人记录过的 id ⇒ 名拒并**点名那个 id**；② 某一部分完全没有证据 ⇒ 拒（附录不能许诺不存在的证据）；③ 正文漏掉记录面持有的 verified 结论 ⇒ 名拒并点名该行，补上后同一篇即通过（**成对**断言才让它成为闸而不是关键词禁令）；④ `qualityGate` 以返回值形式给同一判定（编辑可以先问后提交）。 | `tests/vmu-paper-quality.test.mjs` **57/0**（E3-a…e 五条） | ✅ 已实现 |
-| E4 | 最后讨论、检查无误后定稿 | ✅ **本轮补齐（此前是 ❌ 缺口）**：闸现在长在**在册路径**上 —— `packs/v5r/paper.js` → `kit/paper.js:124-149` 的 `CONSULT_KEYS`（`vmu.paper.officeConsult` / `…On` / `…TimeoutMs` / `…OnTimeout` / `…ExemptRoles` 五个键由 kit 真读）；策略仍在 pack（谁答复、哪些角色豁免以参数传入，kit 只拥有状态迁移、耐久台账与具名拒）。★ 历史事实保留：这些键的读取者曾是 `kernel/paper.js`，而 `createPaper(` 只在测试/脚本里被调用 ⇒ 装配时不加载，设置表却给它们打 `✅ 已接线`（**假绿**，由 `scripts/generate-vmu-settings-table.mjs` 的第四档 `⚠️ 未接线（读取者不可达）` 与 `tests/vmu-kernel-reachability.test.mjs` 钉住） | `tests/vmu-kernel-reachability.test.mjs`（8/0：paper.js 仍不可达 ＋ **kit/paper.js 必须读 consult 族**，方向已从"断言缺口"翻成"断言闸在位"）＋ `tests/vmu-paper-office-consult.test.mjs`。★★ **但本轮复核发现状态应为「部分」**：闸长在了在册路径上，**可所办没有任何工具面入口能答复**（`vibe_v5_paper` 的 action 表只有 start/part/review/advance/final/render/status/compile/sections，`recordConsult` 只能由 pack/宿主代码调）⇒ 真实会话里咨询只能一路超时，「提醒后得到确认」这条**走不完**。已派 vmu-pack 加 `consult` action（含未知 requestId 具名拒、答复人须为所办席位） | `tests/vmu-paper-office-consult.test.mjs` **65/0**（答复路径用例直接调 kit API，**这正是它没能发现「无工具面」的原因**：测试与代码用了同一个假设） | ⚠️ 部分 |
+| E4 | 最后讨论、检查无误后定稿 | ✅ **本轮补齐（此前是 ❌ 缺口）**：闸现在长在**在册路径**上 —— `packs/v5r/paper.js` → `packs/research-core/paper-flow.js:124-149` 的 `CONSULT_KEYS`（`vmu.paper.officeConsult` / `…On` / `…TimeoutMs` / `…OnTimeout` / `…ExemptRoles` 五个键由 kit 真读）；策略仍在 pack（谁答复、哪些角色豁免以参数传入，kit 只拥有状态迁移、耐久台账与具名拒）。★ 历史事实保留：这些键的读取者曾是 `kernel/paper.js`，而 `createPaper(` 只在测试/脚本里被调用 ⇒ 装配时不加载，设置表却给它们打 `✅ 已接线`（**假绿**，由 `scripts/generate-vmu-settings-table.mjs` 的第四档 `⚠️ 未接线（读取者不可达）` 与 `tests/vmu-kernel-reachability.test.mjs` 钉住） | `tests/vmu-kernel-reachability.test.mjs`（8/0：paper.js 仍不可达 ＋ **packs/research-core/paper-flow.js 必须读 consult 族**，方向已从"断言缺口"翻成"断言闸在位"）＋ `tests/vmu-paper-office-consult.test.mjs`。★★ **但本轮复核发现状态应为「部分」**：闸长在了在册路径上，**可所办没有任何工具面入口能答复**（`vibe_v5_paper` 的 action 表只有 start/part/review/advance/final/render/status/compile/sections，`recordConsult` 只能由 pack/宿主代码调）⇒ 真实会话里咨询只能一路超时，「提醒后得到确认」这条**走不完**。已派 vmu-pack 加 `consult` action（含未知 requestId 具名拒、答复人须为所办席位） | `tests/vmu-paper-office-consult.test.mjs` **65/0**（答复路径用例直接调 kit API，**这正是它没能发现「无工具面」的原因**：测试与代码用了同一个假设） | ⚠️ 部分 |
 
 ## §6 额外要求（F）
 
@@ -84,7 +84,7 @@
 |---|---|---|---|---|
 | F1 | 工具：Python 等计算工具可用；工具并发上限 | ✅ **已实现（本轮收口）**（`lane-rows-c.md` F1）：**并发上限这一半 ✅**（键在、office 独占、别角色写被具名拒 `r-1 may not set vmu.math.maxParallel (declared owner: office)`、真值进 `mathjobs.config()`）；**但"Python 等计算工具"默认不可用**：schema 声明 8 个默认引擎，运行时 `config.engines=[]`，`submit({engine:'python'})` ⇒ `VMU_MATH_UNSUPPORTED_OP 未声明任何引擎（vmu.math.engines 为空）`；部署脚本也只注入少数 vmu 键 ⇒ 真机同样为空。★ 未判定：python 真跑（探针无宿主 spawn 接缝，准入层就拒；真机只跑过 Lean） ★ 已收口：`vmu.math.engines` 的**声明默认**＝8 个引擎（`vibe-math-vmu/settings/schema.js:244` → `mathDefaults().mathEngines`），消费者 `vibe-math-vmu/kernel/mathjobs.js:426` 的 `readKey` 现在是「先读配置、再退回声明默认」，用的就是那个唯一 reader `kernel/settings-defaults.js`（它自己的头注释记着四个门各造默认、其中三个与声明不一致的旧账）。实测：空设置下 `config().engines` = `["python","r","octave","julia","matlab","maple","wolfram","cli"]`、`submit({engine:"python"})` 被接受（spawn 接缝由 `kernel/index.js:889` 注入，本机 python 在 `C:\Users\admin\AppData\Local\Programs\Python\Python312`）；反例仍在：显式 `[]` ⇒ `VMU_MATH_UNSUPPORTED_OP`。断言 `tests/vmu-mathjobs.test.mjs` +1（未配置 ⇒ 声明默认生效且首引擎可提交；显式空 ⇒ 仍拒）⇒ 11 passed / 0 failed。★ 诚实边界：真机 run 6 的 transcript 里没有 `vibe_vmu_mathjobs` 调用，所以「Python 真跑」目前只有单元＋探针证据，没有真机证据。 | 并发键有门禁；引擎面**无门禁** | ⚠️ 部分 |
 | F2 | 断点续跑 | ✅ **机制＋门禁**（`lane-rows-c.md` F2）：`tests/vmu-resume-e2e.test.mjs:231` 覆盖续跑；★ 未判定：**真机**断点续跑（phase 12 只读不跑真机） | `tests/vmu-resume-e2e.test.mjs` 108/0 | ✅ 已实现 |
-| F3 | 特殊权限/请求可经报告所办向用户询问 | ✅ **本轮补齐（此前是 ⚠️ 一半）**：报告面（`vibe_v5_report`）＋ 咨询闸（`kit/paper.js` 的 consult 族，E4 同一实现）两条路都在册。★ 历史事实保留：此前 `vmu.paper.officeConsult` 的读取者装配不加载 ⇒ 只剩报告一条路 | `tests/vmu-paper-office-consult.test.mjs` ＋ 同 E4 的 `tests/vmu-kernel-reachability.test.mjs` | ✅ 已实现 |
+| F3 | 特殊权限/请求可经报告所办向用户询问 | ✅ **本轮补齐（此前是 ⚠️ 一半）**：报告面（`vibe_v5_report`）＋ 咨询闸（`packs/research-core/paper-flow.js` 的 consult 族，E4 同一实现）两条路都在册。★ 历史事实保留：此前 `vmu.paper.officeConsult` 的读取者装配不加载 ⇒ 只剩报告一条路 | `tests/vmu-paper-office-consult.test.mjs` ＋ 同 E4 的 `tests/vmu-kernel-reachability.test.mjs` | ✅ 已实现 |
 | F4 | 功能尽量通过**代理可执行命令（工具）**实现，而非每轮结束输出 JSON | ✅ **已实现（F5 之后补齐：提示词不再教 JSON 围栏）**：替代通道是**已存在的工具**——`vibe_vmu_turn {op:'reply', reply, reply_for?}`（`vibe-math-vmu/tools/turn.js:87-134` 调 `kernel.turn.supplyMemberReply`；内核侧 `supplyStructuredReply` 在 `kernel/turn/index.js:1005-1063`，两个真值源冲突 ⇒ `VMU_TURN_REPLY_CONFLICT`，`mergeReplyChannels` `:228-260`）；回执里的 `closureVote` 是**机器字段**（不是让人手写）。★ **更正我上一版台账写错的话**：这里曾写「`vibe_v5_reply`（别称 `vibe_v5_verdict`）」——**`vibe_v5_reply` 这个工具不存在**（`packs/v5r/tools.js` 只声明 `vibe_v5_verdict` 与 `vibe_v5_verdict_final`），是 vmu-pack 的静态门禁 `audit-prompt-tool-params` 按「参数键 ⊆ 真工具表」把它抓出来的。★ 教训：写给模型的花名一旦是幽灵，比不具名更糟（模型会照它调用，然后必拒）。**补齐证据**：手写层的教学段已零旧措辞（```json 围栏 0 处、「只输出一个合法 JSON 对象」0 处、`end_verify 的 formal_proof` 0 处、「m 票布尔一致」0 处；残留只出现在更正段与源码注释里，前者是引用、后者不进装配），且 `tests/audit-prompt-retired-mechanisms.test.mjs` 把这条件变成断言（68/0）；回执链路本身是工具参数（`vibe_vmu_turn {op:'reply', report:{…}}`），不是每轮手写 JSON。 | `tests/vmu-turn-reply-tool.test.mjs` 32/0、`tests/vmu-turn.test.mjs` 191/0 | ⚠️ 部分 |
 | F5 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | ✅ **已实现（本轮重写手写层 ＋ 把门禁改成量「修好了」）**：手写层里 9 处旧措辞被替换或删除——`v5r-blocks-a.js` 的 `（end_verify 的 formal_proof）`⇒命题卡 `proofState:complete`＋Lean 归档证据、`仍须 m 票布尔一致`⇒「正式证明＋辩论裁决为真」、truth-note 与 temp 两处 `m 票`⇒`【五】的定论门槛`，以及院士／研究员两个变体各 9 行的旧投票段整体换成 8 行现行机制（`vibe_v5_verdict` 用法、p=1 且具名证据的进门（`VMU_PACK_V5R_P1_NEEDS_DEBATE`／`VERIFIED_SINGLE_WRITER`）、`表决（法定票数 m = min(所办上限, 在册有表决权人数)）≠ 定论`）；`v5r-blocks-b.js` 的 6 处 ```json 围栏与「只输出一个合法 JSON 对象」全删，改成「结束时调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」＋最小合法 `report` 样例（`core.js:535` 还有一处回执 JSON 围栏，同批删）。★ 门禁从「旧措辞必须仍在装配里」改成「旧措辞**只能**出现在更正段」：`tests/audit-prompt-retired-mechanisms.test.mjs` **68/0**，`OBSOLETE` 四类（reply-fence／m-vote-count／phantom-formal-tools／reply-transport）逐条断言 `在装配里的次数 === 在更正段里的次数`，另加 TEETH（植入一条教学段落必红）。★ 同批另修两个教学缺陷：`vibe_v5_tool_help` 被教成要传 `tool` 键（真实签名只收 `member`，`packs/v5r/tools.js:379-395`），以及 `audit-prompt-tool-params` 的两条「账本必须非空／必须等于 cap」断言——它们与 `audit-prompt-retired-mechanisms` 的 `captureNeedles` 属同一族「把缺陷当证据」，改成「账本为空也算良构（cap 是天花板）＋用合成调用证非空洞」，该门禁 **74/0**。 | `tests/audit-prompt-retired-mechanisms.test.mjs` 68/0 · `tests/audit-prompt-tool-params.test.mjs` 74/0 · `tests/vmu-pack-prompts.test.mjs` 24/0 · `tests/vmu-prompt-live-facts.test.mjs` 23/0 · `tests/vmu-corrections` 83/0 · `regen-all` 16/16（语料 sha 未变，因为语料是**冻结的捕获层**，本轮改的是手写层，门禁量的也是装配层） |
 
@@ -255,7 +255,7 @@ const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n
 
 ### 落了什么
 1. **共用可达图** `scripts/lib/reachability.mjs`（`walkAssembly` / `unreachableKernelModules` / `KNOWN_UNMOUNTED`）。**一份实现、两个消费者**，避免两处漂移。
-2. **新门禁** `tests/vmu-kernel-reachability.test.mjs`（**8/0**）：① 每个 kernel 模块必须从插件入口可达，**或**列进 `KNOWN_UNMOUNTED` 并写明"为什么不可达 + 怎么测出来的"；② 豁免表**只减不增**（模块重新可达后必须删条目）；③ 豁免理由不得是裸文件名；④ 钉住两个实测案例本身（paper.js 不可达且拥有 consult 键；`kit/paper.js` 不读 consult；grant.js 不可达且拥有 `vmu.grant.enabled`）。
+2. **新门禁** `tests/vmu-kernel-reachability.test.mjs`（**8/0**）：① 每个 kernel 模块必须从插件入口可达，**或**列进 `KNOWN_UNMOUNTED` 并写明"为什么不可达 + 怎么测出来的"；② 豁免表**只减不增**（模块重新可达后必须删条目）；③ 豁免理由不得是裸文件名；④ 钉住两个实测案例本身（paper.js 不可达且拥有 consult 键；`packs/research-core/paper-flow.js` 不读 consult；grant.js 不可达且拥有 `vmu.grant.enabled`）。
 3. **生成器按同一张图判"接线"**（`scripts/generate-vmu-settings-table.mjs`）：不可达 kernel 模块里的读取**不再算消费者**，并新增**第四档** `⚠️ 未接线（读取者不可达：该模块装配时不加载）`，载体列仍点名那个模块（好让判断可查，不必被相信）。
    - 实测变化：`wired 1172 → 1155`，**恰好 17 行** `wired → 未接线（读取者不可达）`，逐行 diff 确认**没有任何其它行的状态变化**。
    - ★ 一个必须记下的教训：第一版把 `hasConsumer` 改成"逐文件扫原文"，结果 8 个 `planned` 键（`vmu.ballot.freezeMode` 等，它们的键名在 `WIRED_KEYS` **声明数组**里）被误报成 `已接线` —— 因为原文里数组元素也算字面量。**这是"设了值≠生效了"的镜像：声明也算字面量**。修正＝逐文件保留**已剔除声明行**的视图（`filtered`），并实测确认 17 行的变化集不含任何多余行。
@@ -267,7 +267,7 @@ const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n
 
 ### 未闭合面（写下原因，不留白）
 1. **`kernel/grant.js` 该删还是该挂**：v5r 规则集不要求 grants，它现在是"打包了、测试过、装配里没有消费者"的能力。按红线④（无消费者不给机制）应当**挂上或删掉**，但删一个有测试的内核面需要独立决定 ⇒ 本轮只在 `KNOWN_UNMOUNTED` 里具名登记，并把"删/挂"留作显式待办。
-2. **`kernel/paper.js` 的 office-consult 闸要不要移植到在册路径**：`kit/paper.js` 是真正跑的论文流水线。若要满足 E4，闸必须长在**那条**上（而不是让 paper.js 复活成第二个论文子系统）。
+2. **`kernel/paper.js` 的 office-consult 闸要不要移植到在册路径**：`packs/research-core/paper-flow.js` 是真正跑的论文流水线。若要满足 E4，闸必须长在**那条**上（而不是让 paper.js 复活成第二个论文子系统）。
 3. **可达性只覆盖 `kernel/`**：pack 模块由 pack loader 按配置在运行时解析，静态图看不见 ⇒ 对 `packs/` 用同一判据会**误报**。这是口径边界，不隐瞒。
 
 ### 门禁
@@ -289,13 +289,13 @@ const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n
 | D9 | 邀请/举手/发言序：pack 侧 `invite`/`interacted speak` 跨注册表落地，`attend` 有了入口（改前 pack 开的 service 会议里**除主席外没有任何人能发言**，因为没有任何 `attend` 路径，`meetings.speak` 一律 `VMU_NOT_MEMBER "attend() first"`） | `tools/meeting.js`、`tests/vmu-meeting-invite.test.mjs` 67/0 |
 | D12 | 表决人数下限变成真的下限：第三项从 `m.present.size` 换成"可达席位∩名册"，并把这些事实报出来（`capUniverse`/`capUniverseSource`/`capPolicy`）；此前只要在场人数够，`quorumCap` 永远绑不住 | `kernel/meetings.js` `quorumOf`；`tests/vmu-meetings.test.mjs` 201/0 |
 | D15 | 裁决聚合：`kernel/meetingverdict.js` 命题感知（行可标命题；混命题／半标／裁决所指与目标不符都具名拒，**绝不裁错卡**），6 位小数是声明常量；`vibe_v5_verdict_final` 由主席签发，`from`＝主席 member id，通知走既有 mailbox | `tests/vmu-meeting-verdict.test.mjs` 37/0、`tests/vmu-v5r-verdict-final.test.mjs` 63/0 |
-| E4 | 咨询闸从**不可达**的 `kernel/paper.js` 搬到在册路径 `kit/paper.js`，"谁答复"作为机构政策由 pack 声明；超时两分岔（`hold` 保留提问／`refuse` 作废重开）**都不放行** | `tests/vmu-paper-office-consult.test.mjs` 65/0 |
+| E4 | 咨询闸从**不可达**的 `kernel/paper.js` 搬到在册路径 `packs/research-core/paper-flow.js`，"谁答复"作为机构政策由 pack 声明；超时两分岔（`hold` 保留提问／`refuse` 作废重开）**都不放行** | `tests/vmu-paper-office-consult.test.mjs` 65/0 |
 | F4 | 回复不再是手写 JSON 的**唯一**路径：`vibe_vmu_turn{op:'reply'}`（`tools/turn.js:87-134`）＋回执里的机器字段 `closureVote`＋`noReplyShape`（该字段要会议却没给会议 ⇒ 具名 `notApplicable`，不拼 `undefined`）。★ 更正：曾写作 `vibe_v5_reply`，**该工具不存在** | `tests/vmu-turn-reply-tool.test.mjs` 32/0、`vmu-turn` 191/0 |
 
 ### 两条系统性发现（都已做成门禁，不是"记一笔"）
 
 1. **可达性**：`scripts/lib/reachability.mjs` 从 8 个插件入口走装配图。它证明 `kernel/paper.js` 与 `kernel/grant.js` **没有任何装配会加载**，而这正是设置表把 17 个键印成 `✅ 已接线` 的原因（"读者存在"≠"读者会跑"）。生成器现在共用同一份图并按第四档 `⚠️ 未接线（读取者不可达）` 出表；`tests/vmu-kernel-reachability.test.mjs`（8/0）逐模块断言"可达或声明在 `KNOWN_UNMOUNTED` 且写明理由"，列表**只减不增**。★ 顺带修掉第二个"声明即字面"的假绿：键的消费者原来在**含声明行**的原文里数，8 个 `planned` 键因此变成"已接线"；改成在剔除声明行后的文本里数。
-2. **所办咨询的应答面无入口**（本轮复核 E4 时发现，已派工）：闸在位、测试全绿，但 `vibe_v5_paper` 的 action 表里没有"答复咨询"这一项 ⇒ 真机会话里咨询只能超时。**这正是"测试与代码用了同一个假设"造成的假绿**：测试直接调 `kit/paper.js` 的 `recordConsult`，于是永远发现不了"没人能调到它"。E4 因此从 ✅ 降为 ⚠️。
+2. **所办咨询的应答面无入口**（本轮复核 E4 时发现，已派工）：闸在位、测试全绿，但 `vibe_v5_paper` 的 action 表里没有"答复咨询"这一项 ⇒ 真机会话里咨询只能超时。**这正是"测试与代码用了同一个假设"造成的假绿**：测试直接调 `packs/research-core/paper-flow.js` 的 `recordConsult`，于是永远发现不了"没人能调到它"。E4 因此从 ✅ 降为 ⚠️。
 
 ### 这一批同时改判的
 
@@ -1175,7 +1175,7 @@ A4 的残留缺口是「默认不参会」只有散文（原文写「由 `vmu.me
 
 ### §29.1 E1：三节空洞已由记录面填充
 
-旧判据（实测）是 `PaperMd.emptySections = ['1:引言与问题背景','3:已检验通过的命题','4:已解决的子问题 / 中间成果']`，且 `kit/paper.js` 全文不读 propositions/verified 轨。
+旧判据（实测）是 `PaperMd.emptySections = ['1:引言与问题背景','3:已检验通过的命题','4:已解决的子问题 / 中间成果']`，且 `packs/research-core/paper-flow.js` 全文不读 propositions/verified 轨。
 
 现在：
 
@@ -8543,10 +8543,10 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 
 **§197.3 两条缺陷与修法**
 
-- **F-95a 闸门开在最贵的那一步**：`kit/paper.js#recordPart` 收下任何 `evidence` 数组，第一次解析指针是在 `render` 的 qualityGate —— 那时论文已写完、互审完、所办咨询完、定稿完。成员自己把它写成 feedback 卡：**"整条链路要走完全部阶段才在最后一步发现引用是伪造/无效的形状，返工成本最高"**。
+- **F-95a 闸门开在最贵的那一步**：`packs/research-core/paper-flow.js#recordPart` 收下任何 `evidence` 数组，第一次解析指针是在 `render` 的 qualityGate —— 那时论文已写完、互审完、所办咨询完、定稿完。成员自己把它写成 feedback 卡：**"整条链路要走完全部阶段才在最后一步发现引用是伪造/无效的形状，返工成本最高"**。
   修法：`packs/v5r/paper-quality.js` 新增纯函数 `checkEvidencePointers({evidence,records})`（复用同一个 `MEMBER_FILE`/`TRACK_OF_CATEGORY`/`recordOf`，不写第二份解析器），`packs/v5r/paper.js` 以 `flow.evidencePointers` 暴露（只读），`packs/v5r/tools.js` 的 `case 'part'` 在 `recordPart` **之前**解析并具名拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`（消息点名每条坏指针与原因 `no-such-record`/`wrong-track`/`not-a-member-file-pointer`，hint 指明「先建记录再写 part」）；`part` 回执新增 `evidence{provided,checked,resolved,means}`。records 面对未知 id 会抛 `VMU_NO_SUCH_OBJECT`，解析器逐条 try/catch 把它变成每条指针的 reason，而不是让一条坏指针中断整张列表。
   判据：**闸门要开在最便宜的那一刻**——同一份合同，越早拒越好；而「无证据」仍由交付门的 `≥1 条 + 每条有指纹` 拥有（草稿可自由渲染）。
-- **F-95b 字段名要说它数的是什么**：`render` 的 `wrote:["md","tex","meta"]` 读起来像「写了三个文件」，而 `Paper/<id>/` 里只有 `.tex`；成员靠读 `kit/paper.js` 源码才消解。修法：`render` 回执新增 `wroteWhere{records,disk,means}`，`means` 明说「`wrote` 是 paper 轨的记录种类；`render()` 不写文件，`.tex`/`.pdf` 要等 `compile` 才进 `Paper/<id>/`」。
+- **F-95b 字段名要说它数的是什么**：`render` 的 `wrote:["md","tex","meta"]` 读起来像「写了三个文件」，而 `Paper/<id>/` 里只有 `.tex`；成员靠读 `packs/research-core/paper-flow.js` 源码才消解。修法：`render` 回执新增 `wroteWhere{records,disk,means}`，`means` 明说「`wrote` 是 paper 轨的记录种类；`render()` 不写文件，`.tex`/`.pdf` 要等 `compile` 才进 `Paper/<id>/`」。
 
 **§197.4 测试与门禁**
 
@@ -9540,7 +9540,7 @@ build `6b04a8ea`，clone `slvp123`，port 19725。`DRIVE exit=0`、`durationSec 
 
 ### §218.3 F-123a 与三处修法
 
-`vibe-math-vmu/kit/paper.js` 的 `recordFinal` 在非 `awaiting-editor` 状态给的那句 hint 把调用者指向一个重复多少次都
+`vibe-math-vmu/packs/research-core/paper-flow.js` 的 `recordFinal` 在非 `awaiting-editor` 状态给的那句 hint 把调用者指向一个重复多少次都
 不会改变答案的动作。修法：新增 `nextMoveFor(state)`，按状态给**可执行的下一步**：
 
 - `writing` ⇒ `vibe_v5_paper { action: "part", target, part, body, member }`，再由 `advance()` 进入 reviewing；
@@ -10325,7 +10325,7 @@ vibe_vmu_turn { op:"step", member:"r-1", phase:"normal", why:"…请在你回合
 2. **教学侧**：捕获的原句**逐字保留**（它是保真基线，覆盖率门按子串核对），在它后面**另起一行**补真话：「本仓库里这个设置键是 `vmu.paper.latexCommand`…写法 `vibe_v5_set { key:"vmu.paper.latexCommand", value:"<绝对路径>" }`；设好之后内核把这条命令当作**唯一**引擎候选；清空即恢复按顺序探测。」
 
 **F-133b：编译失败没有一句编译器原话。**
-`kit/paper.js#compilePdf` 的拒绝只带 `VMU_PAPER_LATEX_FAILED` + 引擎列表；面（`kernel/latex.js`）明明把 `stderr` 尾部放在返回对象上，回执却不转述。代理因此分不清「字体/宏包缺失」「.tex 写坏」还是「引擎没找到」。
+`packs/research-core/paper-flow.js#compilePdf` 的拒绝只带 `VMU_PAPER_LATEX_FAILED` + 引擎列表；面（`kernel/latex.js`）明明把 `stderr` 尾部放在返回对象上，回执却不转述。代理因此分不清「字体/宏包缺失」「.tex 写坏」还是「引擎没找到」。
 修法：回执 message 末尾加「；编译器说：」+ **一行**（取 `!` 开头的首条 TeX 错误行，压成单行、上限 240 字符），完整尾部仍留在错误的 `stderrTail` 上；hint 同时点名 `vmu.paper.latexCommand`（绝对路径覆盖）与 `stderrTail` 的位置。
 
 两处都有实测：`tests/vmu-run133-latex-diagnostic.test.mjs` **15/0**（§1 声明与教学、§2 覆盖是唯一候选且不发明路径、§3 空值保持旧顺序、§4 拒绝带一行编译器原话且压成单行）。
@@ -10417,7 +10417,7 @@ G7 是台账最后一行判据（「提示词与规则完全相符、自洽」�
 | C2 | L3 / L47 | 同一段向所有席位说「你没有表决权及 hire/fire 权限」，与 `seat-faces.js` 的三席面及 m = min(设置, 院士+常驻研究员) 相反 | 改成「权限按席位：院士席可 hire/fire 并表决，常驻研究员可表决，临时工席都没有」 |
 | C3 | L14 | 「一句话命题」被列为合法辩论对象（`verification-gates.js#debateSubjectGate` 放行 + 披露），而 L14 只允许含已写完证明的卡（L45 另允许文件引用） | 闸把 `statement` 改为**具名拒** `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`，message 说清两种形态，hint 给「写成卡（`record_proposition` + `proof_ref`/`proof_state`）」与「文件引用」两条路 |
 | C4 | L14（L16 佐证） | `proof_state:"complete"` 必须有 Lean 证据，而辩论对象又要 complete ⇒ 不跑 Lean 的**文本证明闭环不可登记**，L16 的「鼓励」变成强制 | 登记的凭据是「写完的证明」本身：`proof_ref` 非空即可登记 complete；Lean 仍是更强证据；两条都没有才具名拒（hint 同时给 proof_ref 与 lean_run 两条路） |
-| C5 | L56 | `:520` 允许到轮次上限后带未处理 false 定稿，`:550` 却断言「全体参与成员已表示可交付」 | `:550` 改成「（到了轮次上限时为警告列出后的“可交付”）」，与 `kit/paper.js` 的 `forcedAfterCap` 事实一致 |
+| C5 | L56 | `:520` 允许到轮次上限后带未处理 false 定稿，`:550` 却断言「全体参与成员已表示可交付」 | `:550` 改成「（到了轮次上限时为警告列出后的“可交付”）」，与 `packs/research-core/paper-flow.js` 的 `forcedAfterCap` 事实一致 |
 
 工具面失真一处：`verification-gates.js` 的 `STATEMENT` 分支注释仍称「一句话命题→具名拒」而代码放行——本次改法让注释重新成为事实（拒的就是它）。
 
@@ -11577,11 +11577,11 @@ academician's to finalise`，于是工具面 `compile` 不可达，代理改用�
 | F1 | `verdict_final` 回执亲手教「去改 `rec-12` 的概率」，照做却被卡片锁拒；`verified_promote` 又说 p=0.99 未定 | **真机制缺陷**（L14 锁与 L53 写回互相封死） | `packs/v5r/tools.js` 卡片锁、`verdict_final.correction.call` |
 | F2 | `fidelity_conclude{lean_job:"lean-2"}` 在续跑进程里读不到上一进程的作业 | **真机制缺陷**（镜像未水合）+ 教学（两个作业面同名不同目录） | `packs/v5r/tools.js` `toolFidelityConclude` |
 | F3 | 论文「发回修订」被与「可交付」同一道正文门拒；`recordPart` 教的回退路不可达 | **真机制缺陷** | `packs/v5r/paper.js` `flow.recordFinal` 预闸 |
-| F4 | 用院士席成员 id 建论文 ⇒ 永远定不了稿；拒绝句「not the academician's to finalise」在签署人就是院士时为假 | **真机制缺陷**（两件事共用一句话，且 message 字面为假） | `kit/paper.js` `start` / `recordFinal` |
-| F5 | 两条并行 `part` 都回 ok，随后其中一条静默丢失 | **真机制缺陷**（记录层无版本比较） | `kit/paper.js` `writeState` |
+| F4 | 用院士席成员 id 建论文 ⇒ 永远定不了稿；拒绝句「not the academician's to finalise」在签署人就是院士时为假 | **真机制缺陷**（两件事共用一句话，且 message 字面为假） | `packs/research-core/paper-flow.js` `start` / `recordFinal` |
+| F5 | 两条并行 `part` 都回 ok，随后其中一条静默丢失 | **真机制缺陷**（记录层无版本比较） | `packs/research-core/paper-flow.js` `writeState` |
 | F6 | `quorumMin` 写入成功但本会话不生效 | **不是缺陷**：回执已写 `requiresRestart:true` / `appliesAt:"next start"`（构造期快照），照实保留 | `kernel/meetings.js` |
 | F7 | 三席名册下 `VMU_MEETING_QUORUM_LOST` 数学上不可达，回执却读起来像「闸已接线」 | **真机制缺陷（回执诚实性）** | `packs/v5r/tools.js` `voteFloorGate` |
-| F8 | PDF 失败回执的 `stderrTail` 为空（真话在 `stdoutTail`）；`.tex` 里出现 `\\textbf\{…\}` | **真机制缺陷**（转义顺序 + 尾部来源） | `kit/paper.js` `esc` / `compilePdf` 失败回执 |
+| F8 | PDF 失败回执的 `stderrTail` 为空（真话在 `stdoutTail`）；`.tex` 里出现 `\\textbf\{…\}` | **真机制缺陷**（转义顺序 + 尾部来源） | `packs/research-core/paper-flow.js` `esc` / `compilePdf` 失败回执 |
 | P1 | 总览的修复建议 `vibe_v5_configure {"member":…}` 被该工具具名拒 | **真教学缺陷**（框架自己的建议是无效调用） | `packs/v5r/leadership.js` |
 | P2 | `vibe_v5_set` 被当带 `reason` | **代理自身错误**：真声明是 `key/value/why`，活文件里没有 `reason` 写法 | 不改代码 |
 | P3 | 教 `vibe_v5_vote` | **代理自身错误**：全仓 `grep vibe_v5_vote` = 0，真工具是 `vibe_vmu_vote` | 不改代码 |
@@ -11601,17 +11601,17 @@ academician's to finalise`，于是工具面 `compile` 不可达，代理改用�
    dangling（最小内核不构造 `lean`），所以经局部绑定 `leanFace` 调用。
 3. **F3 预闸只管可交付**（`packs/v5r/paper.js`）：`const verdict = flow.qualityGate(args)` 只在
    `String(args.decision || '') === 'deliverable'` 时运行；`revise` 直通到 kit 的 revise 分支（把状态写回 writing）。
-   同时 `kit/paper.js` `recordPart` 的 hint 改成流程真能走的那一步（由编辑者发 `final{decision:"revise"}`）。
-4. **F4 编辑者归一化 + 两句话各说一件事**（`kit/paper.js`）：`start` 收到非 `academician`/`office` 的 editor 时查名册，
+   同时 `packs/research-core/paper-flow.js` `recordPart` 的 hint 改成流程真能走的那一步（由编辑者发 `final{decision:"revise"}`）。
+4. **F4 编辑者归一化 + 两句话各说一件事**（`packs/research-core/paper-flow.js`）：`start` 收到非 `academician`/`office` 的 editor 时查名册，
    院士席成员 ⇒ 记为 `"academician"`，其它席位 ⇒ `VMU_INVALID_ARGUMENT` 具名拒（带两条可走的路）；`recordFinal`
    把「所办代定稿的具名缺口」与「不是院士编辑」拆成两句，并删掉那句在院士签署时字面为假的旧话。
-5. **F5 记录层乐观锁**（`kit/paper.js`）：`readState` 把读到的 `rev` 挂成非枚举 `__seen`；`writeState` 写前
+5. **F5 记录层乐观锁**（`packs/research-core/paper-flow.js`）：`readState` 把读到的 `rev` 挂成非枚举 `__seen`；`writeState` 写前
    `records.get` 比对，不等 ⇒ `VMU_STATE 'paper "X" was changed by another writer between this call's read and its
    write (revision A → B): this write would drop that change, so nothing was written'`（hint 让调用方重读重试）。
 6. **F7 人数闸自述「能否咬人」**（`packs/v5r/tools.js` `voteFloorGate`）：回执的 `floor.gate` 增加 `uncovered`、
    `vacuous`、`bitesWhen`：「本名册下所有具名选民都署了 ⇒ 需求按构造满足，这一轮跑不到 `VMU_MEETING_QUORUM_LOST`——
    这是算术，不是闸没接线」。
-7. **F8 先转义再包 bold，并交代尾部来源**（`kit/paper.js`）：`escText` 只做 TeX 特殊字符转义，`esc` 在其结果上包
+7. **F8 先转义再包 bold，并交代尾部来源**（`packs/research-core/paper-flow.js`）：`escText` 只做 TeX 特殊字符转义，`esc` 在其结果上包
    `\textbf{…}`；`compilePdf` 失败时若 `stderrTail` 为空则放 `stdoutTail` 并记 `tailSource:"stdout"`，hint 指向
    回执里真正有字的那条尾巴。
 8. **P1 建议改成声明的形状**（`packs/v5r/leadership.js`）：`vibe_v5_set {"key":"vmu.turn.leaderId","value":"<chair>",
@@ -11721,7 +11721,7 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 | G7 | 同上 | 自动填充行改口：「本所本期目标（设置键 `vmu.turn.objective`，是【全所】的目标、不一定是本篇论文的研究对象；本篇的具体问题写在作者自己的 part 正文里）」。 |
 | G8 | `vibe-math-vmu/math-computation.js`（6 份副本同源） | 追加规则**不动**（契约钉在五套测试里）；回执 `cli` 增加 `scriptConflict`：当调用方 argv 已自带非选项输入、而归档脚本仍被追加时，明说「只吃一个输入的工具会把多出来的参数当第二个输入；LaTeX 请走 `vibe_v5_paper { action: "compile" }`」。 |
 | G9 | `vibe-math-vmu/kernel/paper.js` | `VMU_OFFICE_CONSULT_REQUIRED` 的 extra 带 `target` 与 `paperId`（与答复要的键同名，可照抄）。 |
-| G10 | `vibe-math-vmu/kit/paper.js` + `packs/v5r/tools.js` | `final` 的 pdf 失败块与 `action:"compile"` **共用同一结构**：`argv/stderrTail/stdoutTail/tailSource/signal`。 |
+| G10 | `vibe-math-vmu/packs/research-core/paper-flow.js` + `packs/v5r/tools.js` | `final` 的 pdf 失败块与 `action:"compile"` **共用同一结构**：`argv/stderrTail/stdoutTail/tailSource/signal`。 |
 
 ### 254.4 机器化：新套件 53 条，三处回归当场抓住并修好
 
@@ -11804,12 +11804,12 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 
 | 缺陷 | 站点 | 修法 |
 | --- | --- | --- |
-| H1 | `vibe-math-vmu/kit/paper.js` | `advance` 新增 `readReview(member)`：先看缓存，缓存没有就读**磁盘上本轮的评审行**（`paper-review` 记录按 `updatedAt` 取最新），同轮命中即**自愈缓存**并标 `source:"durable"`；不同轮明确标 `durable-other-round` 与「不是本轮」；回执带 `reviewsRead`。评审判定不再依赖易丢的内存缓存。 |
+| H1 | `vibe-math-vmu/packs/research-core/paper-flow.js` | `advance` 新增 `readReview(member)`：先看缓存，缓存没有就读**磁盘上本轮的评审行**（`paper-review` 记录按 `updatedAt` 取最新），同轮命中即**自愈缓存**并标 `source:"durable"`；不同轮明确标 `durable-other-round` 与「不是本轮」；回执带 `reviewsRead`。评审判定不再依赖易丢的内存缓存。 |
 | H2 | 同上 | 轮数上限之外新增 `REPAIR_ROUNDS = 2` 个**修复轮**：到上限后 `final{decision:"revise"}` 仍能把论文写回 writing（`repair:true, repairs, repairBudget, cap`）；用完才拒，且拒绝语点名三条**真实存在**的出口（补 part 过内容门 / 把 `vmu.paper.maxRounds` 设为正数（下次调用即生效）/ 换新 target 重开）。 |
 | H2b | `vibe-math-vmu/packs/v5r/paper.js` | 装配不再捕获常量：`maxRounds: () => …` 每次读设置（正数生效，其余回退 `PAPER_MAX_ROUNDS`），并注明「0 在 kernel 面=unlimited、本流程仍用 3」的口径差异。 |
-| H3 | `vibe-math-vmu/kit/paper.js` | `readState` 接受 `paper-<x>` 拼写（去掉前缀重查），回执自报的 id 可直接当 target 用。 |
+| H3 | `vibe-math-vmu/packs/research-core/paper-flow.js` | `readState` 接受 `paper-<x>` 拼写（去掉前缀重查），回执自报的 id 可直接当 target 用。 |
 | G9 | 同上 | 真正被撞的是 kit 的 `consultGate()`（不是 kernel 那条没人装配的面）：`awaiting` / `opened` / `timeout` 三支的 extra 都带 `target` 与 `paperId`。 |
-| G10 | `vibe-math-vmu/kit/paper.js` + `packs/v5r/tools.js` | 成功回执也带 `produced`/`argv`/`outDir`/`sourceName`；`final` 的 `missing` 在 pdf 成功时**不再**把 `pdf` 列进去（改 `missingAfter`）。 |
+| G10 | `vibe-math-vmu/packs/research-core/paper-flow.js` + `packs/v5r/tools.js` | 成功回执也带 `produced`/`argv`/`outDir`/`sourceName`；`final` 的 `missing` 在 pdf 成功时**不再**把 `pdf` 列进去（改 `missingAfter`）。 |
 
 ### 255.4 机器化：新套件 55 条
 
@@ -11836,7 +11836,7 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 
 对提交 `c5d356b9` 跑只读审计（`PROBLEMS(5)`）。五条都不是「功能不好用」，而是**收据/文档说了机制没做的事**——
 
-1. `final` 的 pdf 失败块**永远** `argv: []`：`vibe-math-vmu/kit/paper.js` 的 failure 对象从不复制 `r.argv`，而下游
+1. `final` 的 pdf 失败块**永远** `argv: []`：`vibe-math-vmu/packs/research-core/paper-flow.js` 的 failure 对象从不复制 `r.argv`，而下游
    `recordFinal` 的 catch 与 `packs/v5r/tools.js` 的投影都只认 `e.argv` 并默认 `[]`。真机里编译器明明跑了 5 个参数，
    收据却拿不出路径证据。
 2. `action:"compile"` 与 `final` 的 pdf 块**不是同一个形状**：compile 失败直接**抛**（没有回执），成功只回 6 个键；
@@ -11853,7 +11853,7 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 
 | 问题 | 站点 | 修法 |
 | --- | --- | --- |
-| 1 | `vibe-math-vmu/kit/paper.js` | 失败对象在抛出前复制面真正 spawn 的 `argv`（`r.argv.slice(0,16)`），带 RUN 155 注记说明「两个投影只认 `e.argv`」。 |
+| 1 | `vibe-math-vmu/packs/research-core/paper-flow.js` | 失败对象在抛出前复制面真正 spawn 的 `argv`（`r.argv.slice(0,16)`），带 RUN 155 注记说明「两个投影只认 `e.argv`」。 |
 | 2 | `vibe-math-vmu/packs/v5r/tools.js` | 新增模块级 `projectPdfBlock(pdf, target)`——**一份**22 键投影（成功/失败同键集），`final` 与 `compile` 都走它；compile 失败改为**回执** `{ok:true, compiled:{ok:false,…}}` 而不是抛异常；`catch` 逐字段显式投影（`Error.message` 不可枚举，`...(e||{})` 会把它丢掉）。 |
 | 3 | 同上 | 结算改走 `records.supersede({id, reason, by, body})`（新版本，保留 id/slug/createdAt），回执 `settlement.mode:'supersede'` + `record:{id,rev,mode}`；没有 `supersede()` 的部署才回退 `put`，回执**明说**「这一版还了整条、rev/createdAt/slug 会被重建」。两支的 `preserved` 都是真话。 |
 | 4 | `tests/vmu-run155-audit-fixes.test.mjs` | 行为覆盖取代源码自证：真链路驱动 `final` 与 `compile`，断言**收据里** `argv` 至少 4 项、含 `-output-directory=`、`.tex` 实参是 `^[A-Za-z]:/` 绝对正斜杠、`stderrTail` 有编译器的话且 `tailSource:"stdout"`、`missing` 含 `pdf`、键集与 `projectPdfBlock` 逐字相同。run153 的 §0 也标注为「源码口径，行为见 run154/run155」。 |
@@ -11920,7 +11920,7 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 
 ### 257.3 新抓出的七处（全部是「回执/状态说的和机制做的不一样」）
 
-1. **修复轮回执不自报**：`kit/paper.js` 的修复分支已 return `repair/repairs/repairBudget/cap/from/to`，但
+1. **修复轮回执不自报**：`packs/research-core/paper-flow.js` 的修复分支已 return `repair/repairs/repairBudget/cap/from/to`，但
    `packs/v5r/tools.js` 的 `final` 投影只挑了几个键，四个读数全丢 ⇒ 代理必须再查一次 `status` 才知道自己在修复轮。
 2. **N1「自动号撞镜像」把整个 Lean 面锁死**：工作区已有 `lean-1..6` 镜像时，新的 `vibe_v5_lean_run` 每次都
    `VMU_MATH_JOB_ID_TAKEN`，而拒绝语的出口「显式传 `jobId`」在工具声明里**不存在** ⇒ 面自锁。
@@ -11942,7 +11942,7 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
     其余动作的 hint 改成指向这次**真的**可用的 listing；`status` 回执加 `pdfMeans` 说明归档行与编译产物是两件事。
   - `projectPdfBlock`：`engine` 回退到 `triedEngines[0].engine`，新增 `engineSource: 'face' | 'triedEngines' | null`。
 - `kit/extras.js`：`toolLeanRun` 把 `args.jobId` 转给 `lean.submit`（内核一直读这个键，面此前吞掉）。
-- `kit/paper.js`：新增 `folderOf()`（空白与 `\/:*?"<>|` 折成 `-`、去首尾与重复连字符），`compilePdf` 的
+- `packs/research-core/paper-flow.js`：新增 `folderOf()`（空白与 `\/:*?"<>|` 折成 `-`、去首尾与重复连字符），`compilePdf` 的
   `outDir`/`sourceName` 与 `start` 回执的 `folder` 共用它；`start` 回执自报 `id`/`folder`。
 - `kernel/panel.js`：`board()` 行补 `subgoal`/`status`（未设置为 `null`，不编造值）。
 
@@ -12039,7 +12039,7 @@ durable 评审读 + 修复轮 + 现读 `maxRounds`、`paper-<x>` 寻址与 consu
 
 ### 258.4 修法（RUN 158，全部落在可达性与回执真话上，不动规则语义）
 
-- `kit/paper.js`
+- `packs/research-core/paper-flow.js`
   - 新增 `PORTABLE_TARGET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/` 与 `mintPaperId()`：可移植 `target` 仍得
     `paper-<target>`；不可移植标题**铸** `paper-pN`（扫已用 id，撞号跳过），**标题仍是标题**。`start` 回执自报
     `id`/`folder`/`asciiSafe`/`idMinted`/`idMeans`，`readState` 同时认标题与铸造 id。
@@ -12139,7 +12139,7 @@ durable 评审读 + 修复轮 + 现读 `maxRounds`、`paper-<x>` 寻址与 consu
     `staticMeans` 与动态两支各自写清楚（同长不同哈希、长度也变了两种真话）。
   - `recoverStatus.portsMeans`：点名 `recoverStatus.ports` 只答「端口是否接线」，不答「本次跑它没有有效面」。
 - `kernel/latex.js`：timeout/interrupted/failed/noOutput 四个失败回执都带**绝对** `outDir`（与 `argv` 同形）。
-- `kit/paper.js`：失败对象带 `tailsIdenticalMeans`（两支真话）与 `failure.outDir = (r && r.outDir) || outDir`；
+- `packs/research-core/paper-flow.js`：失败对象带 `tailsIdenticalMeans`（两支真话）与 `failure.outDir = (r && r.outDir) || outDir`；
   `start` 回执带 `asciiSafeMeans`（「THE TITLE 不是可移植 ASCII 名」≠「目录不安全」）。
 - `packs/v5r/tools.js`：`projectPdfBlock` 带 `tailsIdenticalMeans`；`verdict_final` 回执带 `meetingState`/`meetingStateMeans`（归档读与 live 读不同句）。
 - `kernel/index.js`：`setSettingsValue` 回执带 `scope:'this-kernel'` 与 `scopeMeans`。
@@ -12325,7 +12325,7 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 4. **note 从本调用真正读到的字段拼**（`vibe-math-vmu/packs/v5r/verification-gates.js`）：`debateSubjectGate` 的允许分支
    按 `proofState === PROOF_STATE_COMPLETE` 拆两支 —— 「登记了 `complete`，但 `proofRef` 是空的」/「既没登记 proofRef
    （值）也没有 proofState（值）」；`fidelityAsked` 的拒绝附带 `hint`，点名形参 `fidelity` 并给出两种取值的写法。
-5. **工物行按 state 的规范 target 拼**（`vibe-math-vmu/kit/paper.js` + `vibe-math-vmu/packs/v5r/tools.js`）：
+5. **工物行按 state 的规范 target 拼**（`vibe-math-vmu/packs/research-core/paper-flow.js` + `vibe-math-vmu/packs/v5r/tools.js`）：
    `PaperArtifacts` 的 `canon` 取自 `found.state.target`（`present[name]` 用它拼标题），回执加
    `requestedTarget`/`missingMeans`（「缺的是 ARCHIVE ROW = 那次写没跑，不等于造不出」），`final` 投影把它俩一起传。
 6. 无第 6 项独立修法（第 6 条即第 5 条的站点）。
@@ -12398,7 +12398,7 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 - `consult_state { target: "paper-p14" }` ⇒ `requests:[]`、`counters.opened:0`；用标题拼写 ⇒ 读到 1 条 answered。
 - `consult { target: "paper-p14", … }` ⇒ `VMU_NO_SUCH_OBJECT no waiting consult request "consult-<标题>-1"`。
 - **根因**（工作区 `VibeMath/vmu/state.json` 实证）：paper 轨里一篇论文是 **1 行 STATE + 4 行 ARTEFACT**，而
-  `render` 写的 **meta 行 body 也复制了 `id`/`target`/`status`**（`vibe-math-vmu/kit/paper.js` 的
+  `render` 写的 **meta 行 body 也复制了 `id`/`target`/`status`**（`vibe-math-vmu/packs/research-core/paper-flow.js` 的
   `const meta = { id: state.id, target: state.target, status: state.status, round, editor, … }`）。
   `readState` / `mintPaperId` 的「按铸造 id 找」回落分支遍历**整条轨**，于是 id 拼写解析到 **meta 行**
   （`reviews:{}`、没有 consult 台账）；标题拼写走 `rowByTitle(recordName(word,'state'))`，读到真 STATE 行。
@@ -12406,10 +12406,10 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 
 ### 262.4 三层修法（身份 / 同一份真相 / 词表）
 
-1. **论文的身份只有 STATE 行**（`vibe-math-vmu/kit/paper.js`）：新增
+1. **论文的身份只有 STATE 行**（`vibe-math-vmu/packs/research-core/paper-flow.js`）：新增
    `const stateRows = () => listPaper().filter((r) => /\\|state$/.test(String(r.title || '')) || String(r.kind || '') === 'paper-state')`；
    `mintPaperId()` 与 `readState`/`mintPaperId` 的铸造 id 回落都只遍历 `stateRows()` —— 产物行再也顶替不了论文。
-2. **互审闸与 `advance` 读同一份真相**（`vibe-math-vmu/kit/paper.js`）：新增 `reviewRowOf(state, member)`
+2. **互审闸与 `advance` 读同一份真相**（`vibe-math-vmu/packs/research-core/paper-flow.js`）：新增 `reviewRowOf(state, member)`
    （按 `recordName(state.target,'review|'+member)` 找 durable `paper-review` 行，`updatedAt` 最新优先，读 body
    并校验 `body.member`）；`crossReviewers(state,{deliverableOnly})` 在缓存不足时按 participants 逐人自愈缓存
    （`round` 必须等于本轮、`deliverable===true`、`of` 不是自己）；`requireCrossReview` 的拒绝语同时报
@@ -12597,7 +12597,7 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 - **item 2 的根因**：`vibe-math-vmu/host.js` 的 `vibe_vmu_records` 在 `list` 分支里**先读 pack 库**，非空就原样返回 —— `track`/`kind`/`limit` 全被忽略，而库头行本来就不带 track；`expand` 又只问 records 投影，于是同一个面印出来的 id 它自己读不回来。现在：`list` **读两个库**（records 投影 + pack 库头），按 id 去重合并，`track` 过滤时**库头按名排除**（它没有 track 可匹配，不能装成匹配），`kind`/`limit` 照做；回执新增 `rowsFrom:{records,library}`、`trackFilter`/`trackFilterMeans`、`libraryHeads`/`libraryHeadsMeans`。`expand` 先问 records 投影，`VMU_NO_SUCH_OBJECT` 时回落到 pack 库并回 `expandedFrom:"library"`，两个库都不认识才具名拒（hint 明说「本面读两个库」）。
 - **`total` 的会计口径**（这一版第一稿踩到、由 `vmu-host.test.mjs` 抓住）：第一稿把 `limit` 传进库读，`total` 变成页大小，「21 里给 5」退化成「5 里给 5」；现在库里**不封顶地读**（`limit:0` 是调用者的取全部通道），`total` 取库自己的 `available`（封顶前的集合大小），`count` 是页大小，两者分开报；提示句里的「或先按 track 收窄」保留（`tests/vmu-doc-claims-vs-code.test.mjs` 的 `records-face-track-hint` 钉的就是这句 —— 句子为真，面也真的照做了）。
 - **item 1/9**：`status` 透传 `caps:{headMaxItems, headMaxItemsAtStart, headMaxItemsMeans}` 与 `capsMeans`，并新增 `foldedYet: shared.pulls > 0` + `foldedYetMeans`（没 fold 过就说「上面每个计数都可能是 0，而库里其实有行 —— 先 `action:list` 或 `expand` 一次」）。
-- **item 5**：`vibe-math-vmu/kit/paper.js` 的 `recordPart` 在替换时给出 `replaced.oldBytes`/`newBytes` 与一句 `means`：「一个成员只有一个 part 槽位，这一调用替换了先前录的那一节（oldBytes → newBytes），不是新增第二节」。
+- **item 5**：`vibe-math-vmu/packs/research-core/paper-flow.js` 的 `recordPart` 在替换时给出 `replaced.oldBytes`/`newBytes` 与一句 `means`：「一个成员只有一个 part 槽位，这一调用替换了先前录的那一节（oldBytes → newBytes），不是新增第二节」。
 - **item 6**：`vibe-math-vmu/packs/v5r/paper-quality.js` 的 `VERIFIED_MISSING` hint 补上可达修法：论文已在 awaiting-editor（只有 writing 阶段能写 part）时，先让主编 `vibe_v5_paper { action:"final", …, decision:"revise", note:"…" }` 把它退回 writing，再录 part。
 - **item 7 的真根因（比反馈说的更硬）**：`start` 的 `title` 参数**被 schema 接受、被面静默丢弃**，论文的显示名从未落库；同时 `start` 回执里的 `title` 其实是 `target`。现在 `title` 落进 state 并在回执里以 `paperTitle` 报出（另给 `titleMeans` 说明「`title` 是论文的地址、`paperTitle` 是人类名字」），`readState` 在 target / `paper-<x>` id 之外也接受**标题**寻址 —— 三种拼写指向同一篇论文，回执照旧只答地址。
 
@@ -12708,8 +12708,8 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 
 ### 267.2 修法
 - **F3 会议 mint 查归档**（`vibe-math-vmu/kernel/meetings.js`）：`openSeq` 的 mint 循环先建 `archivedIds = new Set(archive.map((x) => String(x.id)))`，`takenAny` 同时查活会与归档（显式 id 路径原有的 `archivedTwin` 拒绝保持不变）；回执的 `takenAny` 让调用者看见「这个名字为什么被跳过」。
-- **F4 论文名先查回收站**（`vibe-math-vmu/kit/paper.js`）：新增 `trashedNamesake()`（读 `records.trashRows({ track: TRACK })`），`start` 与 `mintPaperId` 在落名之前先查；撞上回收站里的同名篇就具名拒 `VMU_PACK_V5R_CORE_PAPER_STATE`（「该名字在 TRASH 里仍被 … 持有，先 restore 或 purge 它」），而不是静默换号或覆盖。
-- **F6 只向「有别的 part 可审的人」收 verdict**（`vibe-math-vmu/kit/paper.js`）：`reviewRowOf` 合并成**一份**；新增 `reviewTargetFor(state, member)`，只把评审对象指向**写过 part 的别人**；`advance` 的 `required` 只含被指派了「别人 part」的人，没 part 的人进 `notRequired` 并在回执里说明「他们不是 refuser」；同时放宽 `requireCrossReview`：不再要求「≥2 个 crosser」，改成「每个被指派者都交了本轮 deliverable 评审」（两成员、只有一人写 part 的论文以前永远凑不齐两人）＋保留「参与者 < 2 就具名拒」的地板（单参与者靠形状拦住，不靠计数）。
+- **F4 论文名先查回收站**（`vibe-math-vmu/packs/research-core/paper-flow.js`）：新增 `trashedNamesake()`（读 `records.trashRows({ track: TRACK })`），`start` 与 `mintPaperId` 在落名之前先查；撞上回收站里的同名篇就具名拒 `VMU_PACK_V5R_CORE_PAPER_STATE`（「该名字在 TRASH 里仍被 … 持有，先 restore 或 purge 它」），而不是静默换号或覆盖。
+- **F6 只向「有别的 part 可审的人」收 verdict**（`vibe-math-vmu/packs/research-core/paper-flow.js`）：`reviewRowOf` 合并成**一份**；新增 `reviewTargetFor(state, member)`，只把评审对象指向**写过 part 的别人**；`advance` 的 `required` 只含被指派了「别人 part」的人，没 part 的人进 `notRequired` 并在回执里说明「他们不是 refuser」；同时放宽 `requireCrossReview`：不再要求「≥2 个 crosser」，改成「每个被指派者都交了本轮 deliverable 评审」（两成员、只有一人写 part 的论文以前永远凑不齐两人）＋保留「参与者 < 2 就具名拒」的地板（单参与者靠形状拦住，不靠计数）。
 - **F9 把 `missing` 的解释折进 `window`**（`vibe-math-vmu/kernel/turn/index.js` 的 `closureVoteOf`）：`window:'session'` 保持不变，但 `windowMeans` 里直接写出这句 —— `` `missing` means "not seen in THIS session", NOT "did not vote": votes cast in another session are invisible here ``。**没有新增字段**：这个面有一条 <1500 字符的尺寸 pin（`vmu-host.test.mjs`），塞四个新字段会撑破，而删字段又违反「被移出的键必须原文可读」的另一条 pin ⇒ 唯一的合规修法是**压字**（实测 `closureVoteView()` 1411 字符）。
 - **F5 一个字段三种事实**（`vibe-math-vmu/packs/v5r/tools.js`）：`narrowingInEffect = face.narrowed === true && notNarrowed.length === 0`；`narrowInEffectMeans(face, notNarrowed, inEffect)` 三分支——① 类型**声明了** allow list 但身份面一条都没给出 ⇒ 「DECLARES an allow list … identity face showed 0 of the 20 allowed names (empty-intersect)」；② 类型**根本没声明**收窄 ⇒ 「type declares NO narrowing」（先 `filter(reason !== 'type-declares-no-narrowing')`，免得把「没声明」说成「装不上」）；③ 真装上了 ⇒ 「in effect」。失败步（`turnFailed:true`）与成功步共用同一个字段（一个回执形状对两扇门）。
 
@@ -12934,10 +12934,10 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 ### 272.3 修法（四个面，都是"让扫描/读数与事实同形"）
 
 - **一个门必须扫完每一行的每一个指针**（`packs/v5r/paper-quality.js`）：新增 `eachMemberFile(line, push)`（`new RegExp(MEMBER_FILE.source, 'g')` 循环、零长防御），JSON 字段与裸文本两条路径都改用它；JSON 解析失败时**不跳过**，把原始 body 当 prose 扫（`origin:'prose-raw'`）。复测（同一份 run 17 真数据）：`CITATION_UNKNOWN`，`missing[0].path` 保留 `…run17-not-a-record.md#§3`，`missing[0].id` 是归一化后的 `run17-not-a-record`。
-- **一笔评审要说清自己是哪一轮、哪一边的读数**（`kit/paper.js` 的 `readReview`/`reviewsRead`）：round 错配返回 `{deliverable:false, source:'durable-other-round', rowDeliverable, rowRound, rowOf, means:'…ROUND MISMATCH, not a member refusing'}`；`reviewsRead` 的每一项都带 `rowDeliverable/rowRound/rowOf/means`。
+- **一笔评审要说清自己是哪一轮、哪一边的读数**（`packs/research-core/paper-flow.js` 的 `readReview`/`reviewsRead`）：round 错配返回 `{deliverable:false, source:'durable-other-round', rowDeliverable, rowRound, rowOf, means:'…ROUND MISMATCH, not a member refusing'}`；`reviewsRead` 的每一项都带 `rowDeliverable/rowRound/rowOf/means`。
 - **恢复要按内容重算出身份**（`kernel/records.js#restore`）：`fingerprint.startsWith('tombstone:')` 时 `rec.fingerprint = fingerprintOf(rec)`。
 - **一笔账要有窗口，并且窗口号要耐久**（`kernel/index.js` + `kernel/store.js` + `tools/turn.js`）：新耐久键 **`closure_window`**（`PUBLIC_KEYS` 第 21 个）；`persistClosureVote` 的每一行带 `window`；`closureVoteFoldRows()` 只合并当前窗口（无 `window` 的旧行视为窗口 1）；`reopenClosureVote({why, by})` 把窗口 +1、回执 `{window, previousWindow, archivedVotes, sessionVotesCleared, means, windowMeans}`；入口是 `vibe_vmu_turn {op:"reopen-closure"}`（只有所办可达——成员回合只许 `status`/`reply`）。`flushRecordsFold()` 必须**同时**覆盖 `closure_votes`/`closure_window` 的写入（否则 reopen 回执会自报 `archivedVotes:0`，因为票还在途：`trackFoldWrite()` 把这三类 patch 都登记进 `foldWrites.inflight`）。
-- **垃圾里的名字要能被点名**（`kit/paper.js#trashLookup` + `packs/v5r/tools.js`）：`start` 撞 trash 的拒文补齐顶层 `{stateRecordId, status:'trashed', inTrash:true, trash}`；`paper status` 的 `exists:false` 回执补 `inTrash`/`trash{recordId,purgeAt}` 与"另有 N 篇未列出"；`createdAt/updatedAt` 这类**轮次**不再伪装成时间戳（改 `createdRound/updatedRound`，part 的 `at` 记轮次）。
+- **垃圾里的名字要能被点名**（`packs/research-core/paper-flow.js#trashLookup` + `packs/v5r/tools.js`）：`start` 撞 trash 的拒文补齐顶层 `{stateRecordId, status:'trashed', inTrash:true, trash}`；`paper status` 的 `exists:false` 回执补 `inTrash`/`trash{recordId,purgeAt}` 与"另有 N 篇未列出"；`createdAt/updatedAt` 这类**轮次**不再伪装成时间戳（改 `createdRound/updatedRound`，part 的 `at` 记轮次）。
 - **提示词与设置对齐**（`packs/v5r/prompts/v5r-reply-channel.js`）：run 17 里成员在围栏 JSON 里多带一个 `recordsStatus` 助手键，整轮被 `VMU_TURN_UNKNOWN_FIELD` 拒（`replyLength:3553`），而它引用的正是提示词里那句"自造键默认忽略"。现在提示词明写「本所 `vmu.turn.unknownReplyFieldMode` 声明为 `refuse`：多一个未登记的键整轮被具名拒；要放宽只能由所办改设置」——`packs/v5r/settings/defaults.json:10` 声明的就是 `refuse`。
 
 ### 272.4 机器化与读数
@@ -13080,7 +13080,7 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 1. **一个名字用概率来起**（⑨）：`vibe_v5_record_proposition` 不传 `title` 时，卡名退化成 `proposition <p>`——真机上是 `proposition 0.6`。这个名字会跟着 `verified_promote` 变成 `已验证｜proposition 0.6`，再被质量闸的 `requiredLine` 逼进论文正文。规则 L53 的裁定**会改 p**，于是名字从写下那一刻就开始撒谎。修法：`kit/handlers.js` 新增 `titleOfCard(args, kindWord)`——`title` → `id` → **主张本身**（`statement`/`content` 折空白取前 48 字符加 `…`）→ 类型词，**永不使用 `p`**；回执给出 `title` 与 `titleMeans`（说明这个名字来自哪一支）。
 2. **票读不到它该在哪本账上**（⑩）：会议面 `vibe_v5_meeting {action:"summary"}` 回 `votes:0, votesSource:"none-recorded-on-this-face"`，而 `vibe_vmu_status {detail:"closure"}` 读得到 3 票。两个面都真——机构级结题票走 `vibe_vmu_vote`，会议板不记 vote 事件。修法：摘要回执带 `closureTally{face:'vibe_vmu_status', detail:'closure', readable, votesCast, cast, confirmed, missing}` 与 `closureTallyMeans`（"这是另一本账，不是另一个真相"）；F8 同源，`close` 的 `closureVoteNote` 也补了同一句话。
 3. **被截断的页不知道自己被谁截断**（④）：`records {action:"list"}` 回 `truncated:true` + `total:66, returned:7`，hint 只列了两种可能家族。修法：回执加 `truncatedBy[]`（`limit (this call asked for N)` / `vmu.records.headListAt (capped at N)` / track 过滤 / kind 过滤）与 `truncatedByMeans`（说清 `limit:0` 才是取全量）。
-4. **起点不报终点**（⑦）：`start` 省略 `editor` 时默认落在 `academician`，但回执不说；读者要到 `status` 才知道。修法：`kit/paper.js#start` 回执带 `editor:{value, source:'default'|'argument'|'argument-normalised', means}`。
+4. **起点不报终点**（⑦）：`start` 省略 `editor` 时默认落在 `academician`，但回执不说；读者要到 `status` 才知道。修法：`packs/research-core/paper-flow.js#start` 回执带 `editor:{value, source:'default'|'argument'|'argument-normalised', means}`。
 5. **数字的单位靠猜**（⑤）：`parts[].round` 是轮号、`consult.requests[].at` 是 epoch 毫秒，视图不解释。修法：`paper status` 带 `roundMeans`（"`round` 是轮次序号，`at` 是唯一的墙钟时间"）。
 6. **被拒过几次可以数，被拒了哪次不可查**（⑬）：`refusalsTotal:1` 没有对象。修法：`kernel/records.js` 记 `lastRefusal{code, at, op, message}`，`status()` 回执上带它和 `lastRefusalMeans`（"更早的只计数，不保留"）。
 7. **指针带着 markdown 的壳**（①）：正文里写 `` `Members/r-1/Propos/rec-1.md#§3` ``，回执的 `missing[].path` 把收尾的刻度也带上。修法：`paper-quality.js` 新增 `pointerText()` 剥掉行内代码/引号的壳，锚点排除集扩到引号与书名号。
@@ -13124,9 +13124,9 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 
 ### 276.3 这一轮抓到的真缺陷（与修法）
 
-1. **定稿在编译之前就发生了**（F1，严重）：`paper-p17` 的 `final` 回 `finalized:true`，同一份回执的 `pdf` 段却是 `produced:false` + `VMU_PAPER_LATEX_FAILED`（`! Double subscript.`）。之后 `revise` 被拒「not awaiting its editor (now: finalized)」、`compile` 只重排同一份坏 `.tex`、`part` 只在 writing 可写 ⇒ **一个可修的笔误要求另起一篇论文**。修法：`kit/paper.js#recordFinal` 在编译之后才落 `final`——引擎**真的跑到 compile 并失败**时回滚（`{ok:true, finalized:false, rolledBack:{from:'finalized', to:'awaiting-editor'}, reviseAvailable:true}`，状态与 `final` 字段一起退回）；**没有 LaTeX 面**（`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`）是环境缺口，仍按旧行为定稿并加 `pdfEnvironmentMissing:true`；历史残件（已 `finalized` 但没有 `paper-pdf` 行）可以用 `final {decision:"revise"}` 救回（`pdfLessFinal`）。
+1. **定稿在编译之前就发生了**（F1，严重）：`paper-p17` 的 `final` 回 `finalized:true`，同一份回执的 `pdf` 段却是 `produced:false` + `VMU_PAPER_LATEX_FAILED`（`! Double subscript.`）。之后 `revise` 被拒「not awaiting its editor (now: finalized)」、`compile` 只重排同一份坏 `.tex`、`part` 只在 writing 可写 ⇒ **一个可修的笔误要求另起一篇论文**。修法：`packs/research-core/paper-flow.js#recordFinal` 在编译之后才落 `final`——引擎**真的跑到 compile 并失败**时回滚（`{ok:true, finalized:false, rolledBack:{from:'finalized', to:'awaiting-editor'}, reviseAvailable:true}`，状态与 `final` 字段一起退回）；**没有 LaTeX 面**（`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`）是环境缺口，仍按旧行为定稿并加 `pdfEnvironmentMissing:true`；历史残件（已 `finalized` 但没有 `paper-pdf` 行）可以用 `final {decision:"revise"}` 救回（`pdfLessFinal`）。
 2. **闸递过来的写法自己编不过**（F2，严重）：`requiredLineMath` 把整句包进 `$…$`，句中有标识符 `n_plus_n_eq_two_n`——数学模式里每个 `_` 都是下标，xelatex 回 `! Double subscript.`。照闸的建议做 → 编译失败 → 撞上 F1 的死锁。修法：`paper-quality.js` 新增 `safeForm()`：**行内出现标识符时不再给 `$…$` 形式**（`requiredLineMath:null`、`requiredLineIdentifier:true`），hint 明说"按纯文本原样写，不要包进 `$…$`"。
-3. **编译台账说了 8 次"没有"**（F3，中）：`paper-p19` 的 PDF 就在盘上（112 268 B），`paper status.pdfCompiled` 一直 `produced:false`。根因有两层：先前的查找拿**寻址用的 id** 去比行标题中段（`paper-pdf` 行名叫 `v5r-paper|<TARGET>|pdf`，TARGET 是 `start` 时的**人类标题**），改成两种拼写都匹配之后仍然 false——因为 `paper.papers()` 的行**只有元数据、没有 body**，解析 `row.body` 永远得到空。修法：`kit/paper.js` 把 `compiledPdfRow(state)`（逐行打开读 body）导出到 flow API，`packs/v5r/tools.js` 的 `pdfCompiled` 改问这**一个**读者，并用 `matchedBy:'target'|'id'` 说明命中哪种拼写。
+3. **编译台账说了 8 次"没有"**（F3，中）：`paper-p19` 的 PDF 就在盘上（112 268 B），`paper status.pdfCompiled` 一直 `produced:false`。根因有两层：先前的查找拿**寻址用的 id** 去比行标题中段（`paper-pdf` 行名叫 `v5r-paper|<TARGET>|pdf`，TARGET 是 `start` 时的**人类标题**），改成两种拼写都匹配之后仍然 false——因为 `paper.papers()` 的行**只有元数据、没有 body**，解析 `row.body` 永远得到空。修法：`packs/research-core/paper-flow.js` 把 `compiledPdfRow(state)`（逐行打开读 body）导出到 flow API，`packs/v5r/tools.js` 的 `pdfCompiled` 改问这**一个**读者，并用 `matchedBy:'target'|'id'` 说明命中哪种拼写。
 4. **数得清被拒几次，说不出被拒了哪次**（F4，中）：`records status` 的 `refusalsTotal` 从 0→1→2，回执里没有 `lastRefusal`——内核从 RUN 175 起就有这个字段，是 `host.js` 的手写投影把它吞掉了。修法：投影补 `lastRefusal` 与 `lastRefusalMeans`（"更早的只计数"）。
 5. **闸要求正文抄一句被截断的话**（F5，轻）：行名 48 字 + `…` 被 Verified 行继承，`requiredLine` 于是要求逐字出现 `…Σ_{k=1}^{n} k(k+1) = n(n…`。修法：`claimPrefix()` 去掉末尾省略号，截断名按**前缀**匹配；`missingEvidence` 每条带 `requiredLineTruncated`，hint 说"只要求前缀，不必抄省略号"。
 6. **所内流程项**（本所可自改，写进下一轮简报）：F6 全所索引类小节应作为**所级附录**登记，不挤进某个成员的 part 槽；F7 子会话读面固定"先窄读再 `expand` 单条"，`limit:0` 只用于计数校验；F8 裁定写回卡片时同一回合就把成员文件里的状态行改掉。
@@ -13170,12 +13170,12 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 
 ### 277.3 这一轮抓到的真缺陷（与修法）
 
-1. **"引擎跑过并失败"被当成"这台机器没有 LaTeX 面"**（D1，高；这是 RUN 176 的修法在真机上失效）。`paper-p21` 的正文含 `$\zzznotacommand{1}$`，`final {decision:"deliverable"}` 回执 `ok:true` + **`finalized:true`**，同一份回执的 `pdf` 段是 `{ok:false, code:"VMU_PACK_V5R_CORE_PAPER_PDF_FAILED", faceCode:"VMU_PAPER_LATEX_FAILED", engine:"xelatex", message:"…! Undefined control sequence."}`，**没有 `rolledBack`、没有 `reviseAvailable`**；随后 `status.paper.stage:"finalized"`，而 `final {decision:"revise"}` 回执 `from:"awaiting-editor"`（两个面互相矛盾）。根因：RUN 176 的判定写的是 `String(t).includes(':compile')`，而 LaTeX 面回的是**结构化** `tried` 条目（`{engine, phase, available, exitCode, stderr}`），`String(对象)` 恒为 `"[object Object]"` ⇒ 相位判定恒 false ⇒ 每次真失败都落进"环境缺口"分支（那支**允许**定稿）。真机 stderr 证明引擎真跑过：`! Undefined control sequence.` / `l.42` / `Output written on …paper-p21.pdf (1 page)`。修法：`kit/paper.js` 新增 `phaseOf(t)`（对象读 `t.phase`，字符串仍按旧的 `engine:phase[:code]` 读），`reachedCompile = triedList.some((t) => phaseOf(t) === 'compile')`；环境缺口（EXECUTOR_MISSING / NO_ENGINE / 只有 probe）仍定稿，但只在**没有一次 compile 相位**时才成立。
+1. **"引擎跑过并失败"被当成"这台机器没有 LaTeX 面"**（D1，高；这是 RUN 176 的修法在真机上失效）。`paper-p21` 的正文含 `$\zzznotacommand{1}$`，`final {decision:"deliverable"}` 回执 `ok:true` + **`finalized:true`**，同一份回执的 `pdf` 段是 `{ok:false, code:"VMU_PACK_V5R_CORE_PAPER_PDF_FAILED", faceCode:"VMU_PAPER_LATEX_FAILED", engine:"xelatex", message:"…! Undefined control sequence."}`，**没有 `rolledBack`、没有 `reviseAvailable`**；随后 `status.paper.stage:"finalized"`，而 `final {decision:"revise"}` 回执 `from:"awaiting-editor"`（两个面互相矛盾）。根因：RUN 176 的判定写的是 `String(t).includes(':compile')`，而 LaTeX 面回的是**结构化** `tried` 条目（`{engine, phase, available, exitCode, stderr}`），`String(对象)` 恒为 `"[object Object]"` ⇒ 相位判定恒 false ⇒ 每次真失败都落进"环境缺口"分支（那支**允许**定稿）。真机 stderr 证明引擎真跑过：`! Undefined control sequence.` / `l.42` / `Output written on …paper-p21.pdf (1 page)`。修法：`packs/research-core/paper-flow.js` 新增 `phaseOf(t)`（对象读 `t.phase`，字符串仍按旧的 `engine:phase[:code]` 读），`reachedCompile = triedList.some((t) => phaseOf(t) === 'compile')`；环境缺口（EXECUTOR_MISSING / NO_ENGINE / 只有 probe）仍定稿，但只在**没有一次 compile 相位**时才成立。
 2. **修法答对了，回执却把它扔掉**（D1 后半，同一处）：`packs/v5r/tools.js` 的 `final` 投影只转 `ok/finalized/target/final/missing/…/pdf`，把 `rolledBack`/`reviseAvailable`/`pdfEnvironmentMissing` 三个字段吞掉了 ⇒ agent 看到 `finalized:true`，只能得出"旧 bug 回来了"。修法：投影补齐这四个字段（`rolledBack` 为显式 `null`，不是缺键——"值"和"缺席"是两句不同的话）。
 3. **引用闸把"文件名"当记录 id，而且只在最后一步才炸**（D3，中低）：正文写 `Members/r-1/Propos/run22-cubes.md#二`（真实记录 id 是 `rec-6xx`），`part` 接受、互审通过，到 `render` 才回 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`（`missing[].id:"run22-cubes"`）。规则本身没错（该指针确实指不到记录），错的是**时刻**。修法：`paper-quality.js` 新增 `checkProsePointers({text, records})`（复用 `checkEvidencePointers` 的解析与 `MEMBER_FILE` 扫描，纯函数），pack 暴露 `flow.prosePointers(text)`，`packs/v5r/tools.js` 的 `part` 在 `recordPart` 之前扫描 `part/solution/methods/rules/limits` 五个正文字段并具名拒（`VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`，hint 写"正文指针按【记录 id】解析，不按文件名解析；先拿 id 再拼路径"）。
 4. **参数名混淆的拒文在说一个没人传的参数**（D4，低）：`review` 的形参是 `deliverable: true|false`（`final` 才是 `decision:"deliverable"|"revise"`），第一次诚实的 `review {decision:"deliverable"}` 被回 `deliverable must be true or false`。修法：`review` 开头识别"`decision` 在位、`deliverable` 缺位"并具名拒：`review takes \`deliverable: true|false\`, not \`decision:"<x>"\` — \`decision\` belongs to \`final\``，hint 给出 `deliverable:true` 的完整调用。
 5. **同一实例的自读被说成"更旧"**（D5，低）：并发写同刻，`records.status` 的 `foldWrites.pending:1` 旁边计数已经包含那一行，`foldWritesMeans` 却写"`pending > 0` 时读到的是更旧的陈述"。修法：`kernel/index.js` 的 `recordsFoldStatus().means` 改成"**本实例**已经算上（内存先落地），另一个实例才在拉折入之前读到旧状态；两边的 join point 都是 `flushRecordsFold()`"——一个能被自己推翻的句子不该留在回执里。
-6. **回滚写不进去：一次 UPDATE 被它自己的旧指纹去重掉了**（D1 的第三层，本轮收口时才发现——写测试才暴露）。`kit/paper.js` 的 D1 修法是"编译失败就把状态写回 awaiting-editor"，可这条回写本身在真实内核上**静默失效**：`kernel/records.js#put` 从不刷新 `byFingerprint` 索引，所以状态行从 awaiting-editor 写成 finalized 之后，索引里**旧 body 的指纹仍指向同一个 id**；回滚把旧 body 写回时算出的指纹正好命中它，`put` 走进 dedupe 分支回 `{deduplicated:true}` 并直接 return——**一行都没写**，盘上仍是 `finalized`。于是回执说"没有定稿"、`status` 说"已定稿"，同一份记录两个真相。修法两层：① `put` 里 UPDATE 不再参与 dedupe（`!isUpdate && fpIndex.has(fp)`）并删掉被改写行自己的陈旧指纹（dedupe 是"新增内容"的策略，不是"替换内容"的），② `kit/paper.js` 的回滚在 `before.hadFinal` 为假或值为 `undefined` 时**删掉** `final` 键（`state.final = undefined` 序列化时消失，写回的 body 与定稿前逐字节相同，正是撞上陈旧指纹的原因）。
+6. **回滚写不进去：一次 UPDATE 被它自己的旧指纹去重掉了**（D1 的第三层，本轮收口时才发现——写测试才暴露）。`packs/research-core/paper-flow.js` 的 D1 修法是"编译失败就把状态写回 awaiting-editor"，可这条回写本身在真实内核上**静默失效**：`kernel/records.js#put` 从不刷新 `byFingerprint` 索引，所以状态行从 awaiting-editor 写成 finalized 之后，索引里**旧 body 的指纹仍指向同一个 id**；回滚把旧 body 写回时算出的指纹正好命中它，`put` 走进 dedupe 分支回 `{deduplicated:true}` 并直接 return——**一行都没写**，盘上仍是 `finalized`。于是回执说"没有定稿"、`status` 说"已定稿"，同一份记录两个真相。修法两层：① `put` 里 UPDATE 不再参与 dedupe（`!isUpdate && fpIndex.has(fp)`）并删掉被改写行自己的陈旧指纹（dedupe 是"新增内容"的策略，不是"替换内容"的），② `packs/research-core/paper-flow.js` 的回滚在 `before.hadFinal` 为假或值为 `undefined` 时**删掉** `final` 键（`state.final = undefined` 序列化时消失，写回的 body 与定稿前逐字节相同，正是撞上陈旧指纹的原因）。
 ### 277.4 机器化
 
 - 新套件 `tests/vmu-run177-final-rollback.test.mjs`：**47 PASS / 0 FAIL**（6 节）。§0 四条源码口径（`phaseOf` + `phaseOf(t) === 'compile'`、`final` 投影四字段、`review takes \`deliverable: true|false\``、pack 走 `checkProsePointers`）；§1 编译**真跑且失败**⇒ `ok:true` / `finalized:false` / `pdf.code:VMU_PACK_V5R_CORE_PAPER_PDF_FAILED` / `rolledBack{finalized→awaiting-editor}` / `reviseAvailable:true` / 状态回 awaiting-editor / 无 `final` 戳 / 之后 `revise` 真能退回 writing；§2 修好正文后同一篇**真定稿**（fail → revise → 修 → PDF）；§3 无 LaTeX 面仍定稿且自报 `pdfEnvironmentMissing`（环境缺口 ≠ 正文坏了）；§4 工具面：投影带 `pdfEnvironmentMissing` + 显式 `rolledBack:null` + `reviseAvailable:false`，`review {decision}` 被具名拒且 hint 可执行，改正后被接受；§5 正文指针在 `part` 这一步就被解析（编造的 `run177-not-a-record.md#二` 具名拒、消息点名 `no-such-record`、hint 说按记录 id 解析；改成真 id 后同一段正文被接受）。§6 **一次 UPDATE 必须真的写**（真内核装配）：先写 v1、再更新到 v2（`deduplicated:false` 且盘上是 v2）、再把 v1 写回去（`deduplicated:false` 且盘上真的回到 v1——这就是回滚走的那一次写），而同一内容作为**新行**添加时 dedupe 仍然生效（`deduplicated:true`）。
@@ -13218,7 +13218,7 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 1. **`body` 里的正文没人查**（F1/D3，本轮最重）。`vibe_v5_paper {action:"part", body:"…见 Members/r-1/Propos/run23-not-a-record.md#二…"}` 回 `ok:true`、`part.recordId:"rec-700"`——编造的指针被**静默接受**；同一段文字放进 `solution` 才回 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`。根因：RUN 177 加的写入点扫描是 `const proseText = ['part', 'solution', 'methods', 'rules', 'limits']`，而 `recordPart` 取的正文是 `str(args.body || args.solution || '')`——**`body` 排在第一位，却没在扫描列表里**。一个形参名漏掉，等于给规则开了一道静默的后门。修法：扫描列表加 `'body'`（并排在 `solution` 之前，因为它是被优先消费的那个），注释点名「列表必须与 `recordPart` 实际消费的形参同集合」。
 2. **一张票被读成两个人**（F2，中）。同一个读数里，`voters` 的会话后缀在两次投票之间换了拼写：r-acad 投票时是 `r-1@<子会话>` / `r-2@<子会话>`，r-2 投票后另两条变成 `r-1@<根会话>`，`close` 后全部变成 `member@<根会话>`；而 `votesCast:3` 从第一票起就是对的。根因：耐久 fold 累积**每一位成员的每一次判定**（早先会话 + 现在），旧的循环取「fold 返回的最后一行」，于是同一个人按行的顺序变成两个 voter。修法：一个成员只留**最新**一行（按 `at` 取最大，`if (prev && atOf(prev) > atOf(row)) continue`），并让读数自报时间（新增 `votersAsOf` = 用到的最新行时刻），`votersMeans` 改成一句话说清「一人一行，最新判定胜出」。
 3. **同一件事的第二个读者在说反话**（F5，中）。`vibe_v5_overview` 报 `leadership{code:"chair-seated-but-leaderId-empty", consistent:false, leaderId:"", seatedChairs:["r-acad"]}`，同时提示词策略**回退到就座主席**——于是「本所当前没有在册院士」这句话只出现在读数里，不出现在行为里。修法：`leadership.js` 的读数新增 `effectiveLeaderId`（声明的设置 → 就座主席 → 无）与 `leaderIdSource`（`'setting'|'seat'|'none'`）与 `charterNamesLeader`（章程是否已经点名某席）；`consistent` 语义**不动**（它说的是「声明的设置对不对」，不是「本所有没有首领」），warning 保留（设置确实还空着）但 note 不再声称本所无首领。
-4. **`editor` 只留了角色词，来源没落盘**（F6，轻）。`paper status` 印 `editor:"academician"`，与 `start` 回执的 `editor:{value, source}` 无法对读——一个默认值和一个被人点名的值在 `status` 上长得一样。修法：`kit/paper.js` 的 `start` 把 `editorSource`（`'default'|'argument'|'argument-normalised'`）写进 state；`paper status` 新增 `editorReading{value, source, isRoleWord, seat, means}`，`isRoleWord` 说明 `academician`/`office` 是角色词、`seat` 给出这一稿实际由谁签。
+4. **`editor` 只留了角色词，来源没落盘**（F6，轻）。`paper status` 印 `editor:"academician"`，与 `start` 回执的 `editor:{value, source}` 无法对读——一个默认值和一个被人点名的值在 `status` 上长得一样。修法：`packs/research-core/paper-flow.js` 的 `start` 把 `editorSource`（`'default'|'argument'|'argument-normalised'`）写进 state；`paper status` 新增 `editorReading{value, source, isRoleWord, seat, means}`，`isRoleWord` 说明 `academician`/`office` 是角色词、`seat` 给出这一稿实际由谁签。
 5. **`limit:0` 的提示在教一个已经做过的人再试一次**（minor 2，轻）。`vibe_v5_read_library {track:"verified", limit:0}` 回 `total:12, returned:0, truncated:true`（这是**只读计数**的形状），而 hint 说「传 limit 提高上限」——调用方刚传的就是文档写的最小值，这句提示解释不了自己。修法：读面新增 `countOnly` 与 `countOnlyMeans`（「limit:0 只读计数：total 是本轨命中数，returned 恒为 0，要取行就给正数 limit」），hint 在 `limit:0` 时换成这句话。**注意**：`vibe_vmu_records {action:"list", limit:0}` 是**另一个**语义（取全量），本轮一度把两个面当成一个面改了，回滚后两个面各自说自己的话。
 
 ### 278.4 机器化
@@ -13669,7 +13669,7 @@ RUN 185（`b81204d4`）把每次关会的票板读成**一行耐久账**（`clos
 
 1. **`wakes` 有写者了**：`kernel/members.js` 新增 `noteWake(id)`（自增并回 `{ok,id,wakes}`，永不抛）；`kernel/turn/index.js` 的选项加 `onTurnOpen`，在 `open()` 里登记 `woken`/`counts.opened` 之后回调；`kernel/index.js` 的 `createTurnOrchestrator({...})` 把它接到 `members.noteWake`。**接缝选在 turn 打开处**，因为那正是「这个席位被叫醒」的唯一时刻——不是 `wake()`，那是消息投递。
 2. **`requiredLines` 成为读面**：`packs/v5r/paper-quality.js` 导出 `verifiedRequirements({ view, codes })`，逐条给出 `requiredLine`/`requiredLineTruncated`/`requiredLineFull`/`requiredLineMath`/`requiredLineIdentifier` 与**三分支 `writeAs`**（标识符纯文本、配对 `$…$`、原样）；`packs/v5r/paper.js` 的 `flow.requiredLines` 与 `packs/v5r/tools.js` 的 `paper status` 都打印它。
-3. **`warnings` 带轮号**：`kit/paper.js` 的 cap 分支写入 `state.forcedAfterCapRound = state.round` 并把每条 warning 前缀成 `（第 N 轮）…（这是 HISTORY…）`；meta 带 `forcedAfterCapRound`；`paper status` 加 `warningsMeans`（「compare `forcedAfterCapRound` with the current `round`」）。
+3. **`warnings` 带轮号**：`packs/research-core/paper-flow.js` 的 cap 分支写入 `state.forcedAfterCapRound = state.round` 并把每条 warning 前缀成 `（第 N 轮）…（这是 HISTORY…）`；meta 带 `forcedAfterCapRound`；`paper status` 加 `warningsMeans`（「compare `forcedAfterCapRound` with the current `round`」）。
 4. **`summary` 指向冻结账**：`tools/meeting.js` 的 `summary` 分支加 `accountPointer`（`kernel.closureFreezeView({ meeting })` ⇒ `closureAccount` 为 `latest` 或 `null` + `closureAccountMeans` 两句），返回 `Object.assign({ok,action}, summaryOut, closurePointer, accountPointer)`。**没有**动 `detail:"closure"`（那个面有 `< 1500` 字符 pin）。
 5. **`type` 与 `kind` 被解释**：convene 回执加 `typeMeans`（type 决定 procedure、kind 是 board label、缺省 `sync` 是**填进去的值**）与 `kindIsLabelOnly: true`。
 6. **结题骨架投真票板**：`packs/v5r/meeting-procedures.js` 的 `CLOSURE_PROCEDURE` 第 3 步改成 `step(3,'take-the-vote','vibe_vmu_vote', …)`，描述与工具列表都写明「`vibe_v5_poll_*` 不计入 `closureVote`」。
@@ -13871,13 +13871,13 @@ run 36（基线 `805c18fe`）**8/8 复验实测到**、主线结题出 PDF（107
 
 | 现场 | 说过的话 | 机制实际 |
 | --- | --- | --- |
-| 论文处于 `reviewing` 时调 `part` | `kit/paper.js` 的 hint 教「由定稿代表用 `final{decision:"revise"}` 退回写作」 | 该状态**拒**这条调用；同一篇的 `status.reachableMoves` 只列 `review`/`advance`，真正的回头路是 `advance`（有审稿人没答 deliverable 就回 writing，实测回执 `from:"reviewing" to:"writing"`、`refusers:["r-1"]`） |
+| 论文处于 `reviewing` 时调 `part` | `packs/research-core/paper-flow.js` 的 hint 教「由定稿代表用 `final{decision:"revise"}` 退回写作」 | 该状态**拒**这条调用；同一篇的 `status.reachableMoves` 只列 `review`/`advance`，真正的回头路是 `advance`（有审稿人没答 deliverable 就回 writing，实测回执 `from:"reviewing" to:"writing"`、`refusers:["r-1"]`） |
 | 召集辩论时交了 `lean_job` | `subjectGate.proofBasis` 为 `null`、`note` 为 `null` | 闸**确实核了**（`proofVia:"lean-passed"`、`proofChecked:true`），但唯一该说出「依据是什么」的字段在最该说话的那一次退化成空值 |
 | 论文定稿提示词 | 「**pdf 需要内核的 LaTeX 编译执行器**，本内核尚无此能力」 | 同一部署 `xelatex` 可用：`pdf.produced:true`、`pdfBytes:107427`、磁盘同字节 |
 
 ### 293.2 修法
 
-1. `vibe-math-vmu/kit/paper.js:767` 的 `part` 状态拒绝改成**按状态分叉**的 hint：`awaiting-editor` 时才教 `final{decision:"revise"}`；其余（`reviewing`）明说「这个状态接受的移动是 `vibe_v5_paper { action:"advance" }` —— 它收这一轮，若有审稿人没答 deliverable 就把论文送回 writing；editor 的门只在 awaiting-editor 开」。RUN 193 的注释写明了案由与实测回执字段。
+1. `vibe-math-vmu/packs/research-core/paper-flow.js:767` 的 `part` 状态拒绝改成**按状态分叉**的 hint：`awaiting-editor` 时才教 `final{decision:"revise"}`；其余（`reviewing`）明说「这个状态接受的移动是 `vibe_v5_paper { action:"advance" }` —— 它收这一轮，若有审稿人没答 deliverable 就把论文送回 writing；editor 的门只在 awaiting-editor 开」。RUN 193 的注释写明了案由与实测回执字段。
 2. `vibe-math-vmu/packs/v5r/verification-gates.js` 的 `evidenced` 放行分支补 `proofBasis: verifiedHit ? 'verified-row' : 'lean-passed'`，并把 `declared` 情形的 `note` 从 `null` 改成「说清依据与一致点」的句子（同时点明 `proofContentChecked` 不在此列，避免把「一致」读成「核了内容」）。声明层分支（`declaration-only`）一字未动。
 3. `vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js:123` 的产物段改成**条件式能力陈述**：pdf 由内核的 LaTeX 编译执行器产出（引擎顺序）；可用时回执写 `pdf.produced:true` 与 `pdfBytes`（并给 `engine`），不可用时**具名说明为什么没产出**；末句「**以回执为准，不要预先假定不可用**」。
 
@@ -13983,7 +13983,7 @@ run 37（`slvp163-ws`，`durationSec 1306`、`tokenTotal 13 650 147/40M`、`tren
 
 ### 295.2 五处修法（+2 处提示词）
 
-1. **`kit/paper.js` 的 `compiledPdfRow` 取最新行**：原来是 `for (const row of cand) … return`，取列表**第一行**；
+1. **`packs/research-core/paper-flow.js` 的 `compiledPdfRow` 取最新行**：原来是 `for (const row of cand) … return`，取列表**第一行**；
    `compile` 每次写**新行**（同标题新 id），所以定稿后再编译永远读旧账。改为遍历全部候选、按
    `[Number(row.updatedAt) Number(row.rev)]` 取最大；**平手取列表里更靠后的那一行**（列表从旧到新）。
 2. **定稿记下自己那次编译**：`recordFinal` 成功分支写 `state.finalPdfRecordId` / `state.finalPdfBytes`
@@ -13996,7 +13996,7 @@ run 37（`slvp163-ws`，`durationSec 1306`、`tokenTotal 13 650 147/40M`、`tren
    `null`——它是**设计**，不是缺陷。
 5. **`kernel/turn/index.js` 的 `withScope`**：`Object.assign({}, r, { executedMeans: EXECUTED_MEANS, scope: … })`，
    一次挂上，`drive` 的**所有**返回路径都带「executed 数的是回复字段，空列表不等于成员没干活」。
-6. **`kit/paper.js` 的 `advance` 一致分支**：`refusers: []` + `refusersMeans`。
+6. **`packs/research-core/paper-flow.js` 的 `advance` 一致分支**：`refusers: []` + `refusersMeans`。
 7. **`packs/v5r/paper-quality.js` 的两处 `EVIDENCE_MISSING`**：`gate: 'evidence'`、`nextGate: 'required-line'`、
    `missingMeans`（说清 `missing` 是「没解析成功的记录 id」列表，`emptyParts` 是「根本没交证据的部分」列表），并把
    hint 里的例子从文件卡改成 `rec-<n>`。
@@ -14183,7 +14183,7 @@ audit-face-actions / audit-doc-actions / audit-vmu-docs 全族），再跑 run �
    有计数。
 4. **边界不是笔误**（`vibe-math-vmu/tools/meeting.js`）：原语会议上的 `minutes`/`verbatim` 改判 `VMU_REGISTRY_BOUNDARY`
    （同一文件 `:49` 起对别的动词早已如此），message/hint 一字未改。
-5. **`advance` 分歧分支补齐同形字段**（`vibe-math-vmu/kit/paper.js`）：回 writing 与 capped 两个分支都加
+5. **`advance` 分歧分支补齐同形字段**（`vibe-math-vmu/packs/research-core/paper-flow.js`）：回 writing 与 capped 两个分支都加
    `unanimous:false` + `refusersMeans`（「NOT empty: …」并说下一步：回 writing / 交编辑并留痕），与一致分支的
    `refusers:[]` + `refusersMeans` 同构。
 6. **定稿论文不再被劝 `advance`**（同文件 `recordPart` 的阶段拒绝）：三元里补 `finalized` 分支 —— 「已定稿：任何新部分都写不进去，
@@ -14259,7 +14259,7 @@ recorded NO verbatim line`、`refused('VMU_REGISTRY_BOUNDARY'`、两条 `refuser
 
 - **2.4 一条裁决两个名字**：`vibe_v5_record_proposition` 的 p=1 需要一条 `debate_ruling`。包自己打印的 `correction.call` 把裁决写成 `meeting:"m-deb"`，而门禁 `p1Intent` 只读 `ballotId`——run 38 的读者为了「既不违反文档、又能过闸」，**两个键都写**。写进去之后，回执只说 `p1Route:"debate"`，说不出**是哪一条裁决**决定了这张卡。
 - **2.3 空格不是议程**：`vibe_v5_meeting { agenda: "   " }` 照样开会。议程在现场会被存成会议 `materials`，`status`/`summary`/会议板都读它——一个只有空格的议程等于「一场没人说得出目的的会」。
-- **2.5 一个槽位**：活提示词教「每一轮写你的部分」，但实现是**一位成员一个槽位**（`kit/paper.js` 的 `a member holds ONE part slot`）：同一成员再调 `part` 是**替换**自己那一段，不是追加第二段。run 38 的成员按提示词理解成「三次 part = 三段」，第三次之后发现前两段没了。
+- **2.5 一个槽位**：活提示词教「每一轮写你的部分」，但实现是**一位成员一个槽位**（`packs/research-core/paper-flow.js` 的 `a member holds ONE part slot`）：同一成员再调 `part` 是**替换**自己那一段，不是追加第二段。run 38 的成员按提示词理解成「三次 part = 三段」，第三次之后发现前两段没了。
 - **2.6 派给做不到的席位**：主席把「形式化复核」派给 `r-temp`。`seat-faces.js` 的 A8 表里 temp 席**没有**五个 `lean_*`、也不写研究库，而 `vibe_v5_assign` 的回执一个字都没提——被派的人只能回一句「我跑不了 Lean」，**派活的人是在派完之后才知道的**。
 
 ### 298.2 四处修法（都在回执侧，不动机制）
@@ -14288,7 +14288,7 @@ recorded NO verbatim line`、`refused('VMU_REGISTRY_BOUNDARY'`、两条 `refuser
 - 生成物：`update-doc-counts --write`（`JOBS total=748 suites=640 probes=108`）→ `regen-all --write` 17/17 → `--check 17/17 in sync`。
 - 四门禁：`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
 - 全量 T1：`/d/_tmp/t1-r441-run199.log` 是**混合树**的一轮（190 PASS/4 FAIL 时被 kill，见 §299.4 的诚实记录）；RUN 198+RUN 199 合并树的干净全量见 §299.4。
-- **一次未见过的红（诚实记录）**：RUN 197 那次全量 T1（`/d/_tmp/t1-r433-run197b.log`，`TOTAL 747 PASS 746 FAIL 1`）红在 `tests/vmu-run155-audit-fixes.test.mjs` §2「final 成功编译的 pdf 块也带 produced:true」，异常是 `TypeError: Cannot read properties of undefined (reading 'missing')`（`final` 回执里没有 `final` 块）。**单跑 3/3 绿、在本套 79 条定向回归里绿、在起一个 614 s 的 mutants 邻居压着连跑 10 次也 10/10 绿**，没有复现。它落在本轮改动**之外**（`vmu-run155` 量的是 `compile`/`final` 的 pdf 形状，本轮没动 `kit/paper.js`），因此按「未复现的负载敏感红」记录，留给下一次全量 T1 观察——**不写成已修**。
+- **一次未见过的红（诚实记录）**：RUN 197 那次全量 T1（`/d/_tmp/t1-r433-run197b.log`，`TOTAL 747 PASS 746 FAIL 1`）红在 `tests/vmu-run155-audit-fixes.test.mjs` §2「final 成功编译的 pdf 块也带 produced:true」，异常是 `TypeError: Cannot read properties of undefined (reading 'missing')`（`final` 回执里没有 `final` 块）。**单跑 3/3 绿、在本套 79 条定向回归里绿、在起一个 614 s 的 mutants 邻居压着连跑 10 次也 10/10 绿**，没有复现。它落在本轮改动**之外**（`vmu-run155` 量的是 `compile`/`final` 的 pdf 形状，本轮没动 `packs/research-core/paper-flow.js`），因此按「未复现的负载敏感红」记录，留给下一次全量 T1 观察——**不写成已修**。
 
 ### 298.5 未闭合（下一轮输入）
 
@@ -14321,7 +14321,7 @@ recorded NO verbatim line`、`refused('VMU_REGISTRY_BOUNDARY'`、两条 `refuser
 ### 299.2 六处修法
 
 1. **1.2 一个读者，两处调用**（`vibe-math-vmu/packs/v5r/paper-quality.js`）：`statementOfCard` 原是 `checkQuality` 的局部函数，读面 `verifiedRequirements` 只读 `item.statement` —— 而 `view.verified()` 的 items **没有** `statement` 字段，所以读面「按构造」恒 null。现在提成模块级 `statementOfCardOf(recordsFace, cardId)`，读面先取 `view.records` 再回退到卡，并新增 `requiredLineFullWhy`（三分支：未截断 / 有整句 / 卡上也没有可读 statement 行）。
-2. **1.3 三个事实三个名字**（`vibe-math-vmu/kit/paper.js`）：`refusers` 只收 `deliverable !== true && source !== 'none' && source !== 'durable-other-round'`，另外两个事实各自成列 —— `stale`（行属于另一轮）与 `notYetReviewed`（一行都没有），并带 `staleMeans`/`notYetReviewedMeans`/`pendingMeans`；一致分支的条件从「refusers 空」改成「三者皆空」。分歧与 capped 两个分支同样回三列，capped 的 warning 分开写「真拒收 N 位、未表态 M 位」。
+2. **1.3 三个事实三个名字**（`vibe-math-vmu/packs/research-core/paper-flow.js`）：`refusers` 只收 `deliverable !== true && source !== 'none' && source !== 'durable-other-round'`，另外两个事实各自成列 —— `stale`（行属于另一轮）与 `notYetReviewed`（一行都没有），并带 `staleMeans`/`notYetReviewedMeans`/`pendingMeans`；一致分支的条件从「refusers 空」改成「三者皆空」。分歧与 capped 两个分支同样回三列，capped 的 warning 分开写「真拒收 N 位、未表态 M 位」。
 3. **1.4 结论不再被一个空串占位**（同文件 `recordFinal`）：`deliverable` 且未传 `conclusion` 而 `note` 非空 ⇒ `conclusion` 取 `note`，并新增 `conclusionSource: 'conclusion'|'note'|'none'` 与 `conclusionMeans`（note 是短笺、conclusion 是定稿结论，**两者不是同义词**）。
 4. **2.1 两条投递路径都有标签**（`vibe-math-vmu/kernel/turn/index.js:2321` 那条 `VMU_TURN_NO_PENDING_MEMBER`）：补 `CALLER PATH (the only one where this channel works)` 与 `DELEGATED PATH (activation/one-shot)`，并明说 delegated 那条是**预期**拒绝、成员把报告作为自己会话的 FINAL TEXT 交回。
 5. **2.2 `op:"reply"` 是报告通道**（`vibe-math-vmu/tools/turn.js`）：报文改成「`op:"reply"` IS the TOOL-REPORT channel，而这次调用还带了 `reply` 字符串，那属于 the OTHER channel —— 一个回合不能用两个通道回答」；hint 给「只发 report」与「只发文本」两种形状。
@@ -14459,9 +14459,9 @@ recorded NO verbatim line`、`refused('VMU_REGISTRY_BOUNDARY'`、两条 `refuser
    解析不到 ⇒ `VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`；解析到但 `voted !== true` ⇒ `VMU_PACK_V5R_CORE_P1_RULING_UNVOTED`
    （两条 hint 分别指向真票箱与 `vibe_v5_fidelity_conclude`）；解析成功则把读数挂进 `evidence.debate.ruling`，
    经 `verification-gates.js` 的 `routed('debate', …)` 原样进回执 `p1RulingReading`。
-2. **回合前进要说回合数**（`kit/paper.js` 打回 writing 的分支）：`const roundFrom = state.round` 取在自增之前，
+2. **回合前进要说回合数**（`packs/research-core/paper-flow.js` 打回 writing 的分支）：`const roundFrom = state.round` 取在自增之前，
    回执带 `roundFrom`/`roundTo`/`roundMeans`（`the round ADVANCED (2 → 3) … not a retry of round 2`）。
-3. **被闸拦下的定稿也要有账**（`kit/paper.js` 的 consult 闸）：`gate.error.final = { ok:false, finalized:false,
+3. **被闸拦下的定稿也要有账**（`packs/research-core/paper-flow.js` 的 consult 闸）：`gate.error.final = { ok:false, finalized:false,
    blockedBy:'office-consult', by, decision, consult:{ requestId, definition }, means }` 后才 `throw`——
    宿主的 `refusalFacts` 会把错误自有的可 JSON 化字段搬进回执，所以不需要改宿主。
 4. **首写为什么是 rev 2**（`packs/v5r/tools.js` 的 `settleRulingOnCard`/创建路径）：`settlement.revMeans` 说明 rev 是记录版本号、
@@ -14624,12 +14624,12 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 304.1 **账从哪来。** 第 41 次真机跑完（主线结题 `Paper/paper-p1/paper-p1.pdf` 177 327 B，`DRIVE exit=0`，5 个会话 0 个红检）。它的 `FEEDBACK40` 记了十条读数缺陷，其中八条是「回执里已经有一个数/一条路，但没有说清它属于哪一刻、哪一种原因」，这一轮清这八条；`1.1`（会议裁决写不回卡片）、`2.2`（同源矛盾）与 `1.6`（论文 state 行被覆写）留到下一轮。
 
 304.2 **八处修法（都在真机现场量过）。**
-- **`advance` 的回合读数**（`kit/paper.js`）：原来只有「不一致被打回」那一支带 `roundFrom`/`roundTo`/`roundMeans`，另外三支移动时一个字都不说，于是「刚离开 reviewing 进 awaiting-editor」的论文读起来像「还在第 1 轮、什么都没动」。新增一个 `roundReading(roundFrom, fromStage, toStage)`，三支移动分支（`writing→reviewing`、`reviewing→awaiting-editor` 的一致支与顶格支）都摊进去；句子明说「the ROUND did not move (still N) while the paper moved A → B」，并解释**stage 动了、round 没动**是读数而不是缺字段。
+- **`advance` 的回合读数**（`packs/research-core/paper-flow.js`）：原来只有「不一致被打回」那一支带 `roundFrom`/`roundTo`/`roundMeans`，另外三支移动时一个字都不说，于是「刚离开 reviewing 进 awaiting-editor」的论文读起来像「还在第 1 轮、什么都没动」。新增一个 `roundReading(roundFrom, fromStage, toStage)`，三支移动分支（`writing→reviewing`、`reviewing→awaiting-editor` 的一致支与顶格支）都摊进去；句子明说「the ROUND did not move (still N) while the paper moved A → B」，并解释**stage 动了、round 没动**是读数而不是缺字段。
 - **互审覆盖**（同文件）：收轮时新增 `crossReview` 块，由 `crossReviewCoverage(state)` 算出 `parts[{author, reviewer, wrotePart}]`、`uncovered`、`uncoveredMeans`（空列表也带一句「empty ON PURPOSE」）。同时 `recordReview` 开始核 `of` 是否等于该论文分配的 `reviewOf[member]`，不等就具名拒 `VMU_INVALID_ARGUMENT`，message 同时点名「你写了谁」与「该写谁」，hint 直接给出该发的那个参数。
 - **单人论文提前拒**（同文件）：`participants.length < 2` 时不再先搬 `writing→reviewing` 再在下一轮拒，而是在**任何写入之前**拒 `VMU_PACK_V5R_CORE_PAPER_STATE`，带上 `crossReviewPossible:false` 和「互审 with one participant 是自审」。
 - **`proofPointerMeans` 分因**（`packs/v5r/tools.js` 的召集分支）：`exists:false` 原来只有一句「不在 library root 里」，而现场那次指针明明 `insideLibrary:true`、只是文件还没写。改成按 `resolvePointer` 的 `reason` 分成四句（`missing` / `absolute` / `escapes` / `empty`），`missing` 那句明确说「well formed、在 root 内、只是那个路径还没有文件」。
 - **票板与辩论**：`poll_open` 的拒绝 hint 补一句「CLOSING THE MEETING ENDS THE DEBATE」，把退路写在拒绝里。
-- **定稿被拦的 hint 指真面**（`kit/paper.js` 四处）：原来写 kit 方法 `recordConsult(...)`，调用方根本够不着；改成 `vibe_v5_paper { action: "consult", target, member, answer }`，并保留 `recordConsult` 字样（kit 层就是这个函数），免得旧 pin 断。
+- **定稿被拦的 hint 指真面**（`packs/research-core/paper-flow.js` 四处）：原来写 kit 方法 `recordConsult(...)`，调用方根本够不着；改成 `vibe_v5_paper { action: "consult", target, member, answer }`，并保留 `recordConsult` 字样（kit 层就是这个函数），免得旧 pin 断。
 - **证据的两种合法拼法**（`prompts/v5r-paper-prompts.js`）：教学里只写了 `rec-<n>`，第二种（名字就是记录 id 的文件卡 `Members/<成员>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md`）从没写，两种成员都靠猜；现在两条并列写死，并把「文件卡不是证据」收窄成「自己起的名字不算」。
 - **promote 的 warrant**：`vibe_v5_verified_promote` 的 description 补「ON THE lean-conformance ROUTE `warrant` IS REQUIRED TOO」，缺 warrant 的拒绝 hint 也补同义句。
 
@@ -14637,7 +14637,7 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 
 304.4 **一次自查推翻（落盘后立刻实测）。** `roundReading` 第一版按**回合号**选句子（`roundTo === 1` 就说「opened the first cycle」），于是「reviewing → awaiting-editor 收掉第一轮」也被说成「开了第一轮」——数字相等不等于含义相同。改成按 **stage** 选句子（从 `writing` 出去的才叫开第一轮），并把这条写进 §1j 的 pin 说明里。
 
-304.5 **装载事实（写测试必用）。** `vibe_v5_paper { action: "status" }` 的论文实体在回执的 `paper` 键下（不是 `state`）；会议召集要求该成员**真的在 roster 里**（`handle.kernel.members.hire({ id, slot, institution })`，否则 `VMU_NO_SUCH_OBJECT`），且只有 `type: "debate"` 才带 `subjectGate`（`ordinary` 会拒「takes no object」），`subjectGate` 在回执顶层；`kit/paper.js` 的 `reviewTargetFor` 是「按参与顺序取下一个写过 part 的人」，所以测试应当读回执的 `reviewOf` 而不是自己算。
+304.5 **装载事实（写测试必用）。** `vibe_v5_paper { action: "status" }` 的论文实体在回执的 `paper` 键下（不是 `state`）；会议召集要求该成员**真的在 roster 里**（`handle.kernel.members.hire({ id, slot, institution })`，否则 `VMU_NO_SUCH_OBJECT`），且只有 `type: "debate"` 才带 `subjectGate`（`ordinary` 会拒「takes no object」），`subjectGate` 在回执顶层；`packs/research-core/paper-flow.js` 的 `reviewTargetFor` 是「按参与顺序取下一个写过 part 的人」，所以测试应当读回执的 `reviewOf` 而不是自己算。
 
 304.6 **未闭合。** `FEEDBACK40` 的 `1.1`（辩论裁决定下来的数字写不进 p=1 卡）、`2.2`（`verdict_final` 的 `correction.shapeMeans` 与 1.1 同源）与 `1.6`（论文 state 行被覆写、写作阶段快照不可复核）仍未做；本轮修复**尚未真机复验**。
 
@@ -14678,7 +14678,7 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 306.1 **账从哪来。** 第 43 次真机（`FEEDBACK42`，主线结题 `Paper/paper-sumsq-paper-43` 118 841 B）。七条读数缺陷的共同形状是**回执对「谁」和「哪一个」不作声**：`paper start` 收了三个名册里不存在的参与者、`advance` 关掉写作门却不说关了谁的门、蓝图作者座席恒 `null`、蓝图 `state` 被读成有节点计数、`final` 的 `pdf` 块不给 `recordId`、`moved:true` 与 `roundMoved:false` 并列时解释埋在长句里、`sections` 与 `parts` 同名不同物。
 
 306.2 **八处修法。**
-- **1.3 名册核**：`vibe-math-vmu/kit/paper.js` 的 `start()` 在空名册豁免之后引入 `const startRoster = rosterOf()`，把不在册的 id 收成 `unknown` 并具名拒——`VMU_NO_SUCH_OBJECT`、message 列出 `unknown`、hint 列出「名册 id@slot」并说「要加人先 hire」。**这是闸不是披露**：一张由无法寻址的成员署名的论文，事后没人能审、也没人能追问。
+- **1.3 名册核**：`vibe-math-vmu/packs/research-core/paper-flow.js` 的 `start()` 在空名册豁免之后引入 `const startRoster = rosterOf()`，把不在册的 id 收成 `unknown` 并具名拒——`VMU_NO_SUCH_OBJECT`、message 列出 `unknown`、hint 列出「名册 id@slot」并说「要加人先 hire」。**这是闸不是披露**：一张由无法寻址的成员署名的论文，事后没人能审、也没人能追问。
 - **1.4 锁门先说**：`advance()` 的 writing 分支在任何写状态之前算 `unwrittenParts`（还没写过 `part` 的参与者）与 `partsLockedAfterMoveMeans`（空 ⇒ 「这一刀不锁任何人」；非空 ⇒ 点名 + 明说「`part` 会按名被拒（`VMU_PACK_V5R_CORE_PAPER_STATE`），修复方式是某成员提 `review({ decision:false })` 再 `advance`，而每次弹回**抬高轮次**」），回执带 `partsLockedAfterMove` 与两条 means。披露而不是闸：论文本来就该能关门，但关门这一刀要说出它锁谁。
 - **2.5 `stageMoved`**：`paper.js` 六处 `moved:` 回执并列 `stageMoved`（真移动 `true`、`moved:false` 处 `false` 并带 `stageMovedMeans`），让「阶段有没有动」不必从 `roundMeans` 的长句中挖。
 - **2.4 `recordId`**：`packs/v5r/tools.js` 的 `projectPdfBlock` 补 `recordId` 与 `recordIdMeans`（同一个投影同时供 `final` 与 `compile` 用），并说明 `status.pdfCompiled.finalPdfRecordId` 才是指定稿那一行——两个 id 才能比较。
@@ -14857,7 +14857,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 2. **串化的对象要按对象说**：`verdicts` 若是 `/^[[{]/` 开头的字符串，message 说「a STRING that reads as a SERIALIZED OBJECT/ARRAY」，并解释「the tool schema turns an object into text, and an object is NOT read as a tally」。
 3. **`close` 回答「有没有票被计入」**（`vibe-math-vmu/tools/meeting.js`）：新增 `counted = Number(closeClosureVote.votesCast) > 0` 与 `countedMeans`（counted answers ONE question: did the CLOSURE reading hold any vote at the instant of this close）。
 4. **`final` 回答「阶段动没动」**：新增 `stageMoved = finalized.moved === true || finalized.finalized === true` 与三支 `stageMovedMeans`（成功 ⇒ 「the STAGE moved to finalized (awaiting-editor → finalized)；`moved` 答的是更窄的问题」）。
-5. **修复路径必须是能用的调用**（`vibe-math-vmu/kit/paper.js`）：`partsLockedAfterMoveMeans` 里指路的 `review({ decision: false })` 改成 `review({ deliverable: false })`——这正是 1.1 那个洞。
+5. **修复路径必须是能用的调用**（`vibe-math-vmu/packs/research-core/paper-flow.js`）：`partsLockedAfterMoveMeans` 里指路的 `review({ decision: false })` 改成 `review({ deliverable: false })`——这正是 1.1 那个洞。
 6. **第二次 hire 说清 `institution` 的读法**：refuse 的 hint 追加「`institution` is read ONLY on the FIRST hire of a seat」。
 7. **会议票箱被引到裁决时，指名它属于哪个面**：`rulingNameResolution` 的 unknown 分支用 `kernel.liveList().ballots` 判 `meetingBallot`，`means` 分两支（「is NOT a poll box this gate can look up — it is a MEETING ballot … name the MEETING … never the box id」）。
 8. **`P1_RULING_UNRESOLVED` 的 hint 按 `meetingBallot` 指路**：`meeting:"<meeting id>"`。
@@ -15042,7 +15042,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 | 2.2 | `vibe_v5_paper` 的 `body` 说明 | 追加「这道闸是**出现即命**：正文任何位置（含括注、注释、解释性的一句话）出现该形状路径都会被解析；要把文件卡路径从正文里**删掉**，不是换成记录 id 后再提一次」 |
 | 2.3 | `vibe_v5_hire` 的 tool description | 前移「`institution` **NEVER written on this face** — the FIRST hire also answers `institutionIgnored:true`」 |
 | 2.4 | `vibe-math-vmu/tools/meeting.js` 关会回执 | 增加 `closureVoteHadVotes`（与 `counted` 同值）：一个读起来像「有没有票」的名字，而不是一个读起来像「关会成没成」的名字 |
-| 2.5 | `vibe-math-vmu/kit/paper.js` 新增 `consultPrediction(state)` | policy 非 required ⇒ `officeConsultPending:false` + 「finalization will NOT wait」；已答复 ⇒ false + `officeConsultAnsweredBy`/`officeConsultRequestId`；否则 true + means 点名 `vibe_v5_paper { action:"consult", target:"…", member:"<office id>", answer:"…" }` 并明说「不要为此翻设置」。展开进 `writing→reviewing` 与 `reviewing→awaiting-editor` 两处 advance 回执 |
+| 2.5 | `vibe-math-vmu/packs/research-core/paper-flow.js` 新增 `consultPrediction(state)` | policy 非 required ⇒ `officeConsultPending:false` + 「finalization will NOT wait」；已答复 ⇒ false + `officeConsultAnsweredBy`/`officeConsultRequestId`；否则 true + means 点名 `vibe_v5_paper { action:"consult", target:"…", member:"<office id>", answer:"…" }` 并明说「不要为此翻设置」。展开进 `writing→reviewing` 与 `reviewing→awaiting-editor` 两处 advance 回执 |
 
 #### 312.3 机器化
 
@@ -15113,8 +15113,8 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 | --- | --- | --- |
 | 1.1 | `packs/v5r/tools.js` `verdict_final` | `tally` 加 `agreed`/`anyAsserted`/`note`，顶层同三字段 + `agreeMeans`（「two DIFFERENT questions: did they agree, and did anyone assert this number」） |
 | 1.2 | `packs/v5r/tools.js` 卡回执 | `lockNote` 按 `pointerCheck.resolved !== true` 分支：推迟时印「this card is NOT locked … the rule-L14 lock is DEFERRED … correct the pointer freely」，解析成功时才印 LOCKED |
-| 1.3a | `kit/paper.js` `advance` | `moved:false` 分支也展开 `consultPrediction(state)` |
-| 1.3b | `kit/paper.js` `recordFinal` 成功返回 | 加 `officeConsultPending:false` + `officeConsultPendingMeans`（BY CONSTRUCTION） |
+| 1.3a | `packs/research-core/paper-flow.js` `advance` | `moved:false` 分支也展开 `consultPrediction(state)` |
+| 1.3b | `packs/research-core/paper-flow.js` `recordFinal` 成功返回 | 加 `officeConsultPending:false` + `officeConsultPendingMeans`（BY CONSTRUCTION） |
 | 1.3c | `packs/v5r/tools.js` `final` 投影 | 投影层原本把这别名丢了（kit 有、面没有）⇒ 投影同样印 `officeConsultPending` + means |
 | 2.1 | `packs/v5r/tools.js` hire | 描述与二次 hint 改成「`institution` 在这个面**永不写**；传了才 `institutionIgnored:true`，不传是 `false`」 |
 | 2.2 | `kernel/meetingverdict.js` | 模板去掉「参与辩论的」；`rulePropositionProbability({ provenance })` 加 `notice.provenance`，`typed>0` 时在正文追加「上述 N 条裁决中有 K 条是主席代为记录的，不是辩论记录」 |
@@ -15431,7 +15431,7 @@ run 53（基线 `5bee438c`，结题 PDF 64 212 B）复验 RUN 215 的四条修�
 
 ### 318.3 四处修法
 
-1. `vibe-math-vmu/kit/paper.js`：新增 `TEX_MATH_GLYPH`（`≥`→`\geq`、`≤`→`\leq`、`∎`→`\blacksquare` 等 13 个 unicode 数学符号）与 `texMath` 计数器；LaTeX 化分两个域——成对 `$` 之间走 `repairInMath`（只换符号，不转义 `^`/`_`），`$` 之外走 `repairInText`（换符号后仍按原规则转义），`textasciicircum` 的计数（`proseCarets`/`proseUnderscores`）与成对 `$` 的计数（`inlineMathSpans`）分别进 `math`。`PaperTex` 拆成 `PaperTexBody({target}) → {tex, math}` 与 `PaperTex = PaperTexBody(...).tex`，**同一次遍历**既写 `.tex` 又产生读数，两者不可能互相矛盾。`render()` 与 `compilePdf()` 的成功回执都带 `math`，其 `means` 对「有转义」与「无转义」两支分别说：有转义时明说 `READS AS TEXT in the PDF instead of as mathematics`。
+1. `vibe-math-vmu/packs/research-core/paper-flow.js`：新增 `TEX_MATH_GLYPH`（`≥`→`\geq`、`≤`→`\leq`、`∎`→`\blacksquare` 等 13 个 unicode 数学符号）与 `texMath` 计数器；LaTeX 化分两个域——成对 `$` 之间走 `repairInMath`（只换符号，不转义 `^`/`_`），`$` 之外走 `repairInText`（换符号后仍按原规则转义），`textasciicircum` 的计数（`proseCarets`/`proseUnderscores`）与成对 `$` 的计数（`inlineMathSpans`）分别进 `math`。`PaperTex` 拆成 `PaperTexBody({target}) → {tex, math}` 与 `PaperTex = PaperTexBody(...).tex`，**同一次遍历**既写 `.tex` 又产生读数，两者不可能互相矛盾。`render()` 与 `compilePdf()` 的成功回执都带 `math`，其 `means` 对「有转义」与「无转义」两支分别说：有转义时明说 `READS AS TEXT in the PDF instead of as mathematics`。
 2. `vibe-math-vmu/packs/v5r/tools.js`：`case 'render'` 的投影与 `case 'compile'` 的 `projectPdfBlock` 都转发 `math`（kit 的新字段不会自动出现在工具面回执里——RUN 212 的教训在这里第二次生效）。
 3. `vibe-math-vmu/packs/v5r/blueprint.js`：`bodyPrefixDroppedMeans` 加 `target === null` 支（「this call STARTED revision N … nothing was compared」）；新增 `continuedBase{requested, actual, continued, revision, why, means}` 进两条写入回执，`means` 明写「`continued:false` is a FACT about this call, not a failure」。
 4. `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_record_proposition`：新增 `proofGate{locked, why, nextMove, means}`——锁上时 `locked:true`；未锁时 `locked:false` 且 `why` 点名不解析的指针、`nextMove` 说唯一可达的动作（`REGISTER A NEW CARD`，记录面每次写都铸新行，旧行不能改指针）、`means` 明写 `read proofGate.locked, not `ok``；不声明 `proof_state` 的卡 `proofGate:null`。
@@ -15518,7 +15518,7 @@ run 55 把 RUN 217 的五条修法全部真触发，同时量到五处「回执�
 **320.2 五处修法**
 
 1. `vibe-math-vmu/packs/v5r/tools.js`：蓝图 propose 分支读 `const namedDraft = str(args.draft || '').trim()` 并把它作为 `draft: namedDraft` 转进去；描述补一句说明：`draft` 是可选的、指的是要续写的那份**开放**草案。
-2. `vibe-math-vmu/kit/paper.js`：`final` 在 roster 查询**之前**先判空签名 —— `if (str(member).trim() === '')` ⇒ `final needs a SIGNER: this face does not infer the caller, so member must name the member in the chair seat ("<chair id>" holds it)`，hint 明说 `an empty member is a MISSING SIGNATURE, not a roster miss`，并给出唯一修法（同一调用里传 `member`）。
+2. `vibe-math-vmu/packs/research-core/paper-flow.js`：`final` 在 roster 查询**之前**先判空签名 —— `if (str(member).trim() === '')` ⇒ `final needs a SIGNER: this face does not infer the caller, so member must name the member in the chair seat ("<chair id>" holds it)`，hint 明说 `an empty member is a MISSING SIGNATURE, not a roster miss`，并给出唯一修法（同一调用里传 `member`）。
 3. `vibe-math-vmu/packs/v5r/paper-quality.js`：`writeAs` 改成 `pair $…$ around the MATH parts and leave the words outside as prose: BOTH forms pass the content gate, but only a span between two $…$ is typeset as mathematics — a raw ^ or _ outside math mode is escaped and READS AS TEXT in the PDF, so passing the gate is not the same as being typeset`；新增 一个「汉字/全角区段」正则常量 + `function mathWrapped(line)`（只把公式段包成 `$…$`，中文留在外面），`requiredLineMath` 改用它；hint 补「只把公式部分写成配对 `$…$`，过闸不等于排得出来」。
 4. `vibe-math-vmu/host.js`：`vibe_vmu_records prune` 新增 `ids`（按 id 只清指定行）+ `selection: byIds ? 'ids' : 'keep'`、`keep: byIds ? null : wantKeep`、`idsRequested`/`idsNotFound`/`selectionMeans`/`idsNotFoundMeans`；一个 id 都不匹配时具名拒 `none of the ids named`，hint 只在按位置时提示 `keep`。
 5. `vibe-math-vmu/kernel/meetings.js`：chair 闸 hint 改成「★ That single turn is NOT a small unlock」并列出该回合能做完的整条链 + 「RECOMPUTE the chain afterwards」。
@@ -15783,7 +15783,7 @@ A. `vibe-math-vmu/host.js` 的 prune：新增 `headerFactsOf(row)`（读行头 `
 
 B. `vibe-math-vmu/packs/v5r/blueprint.js` 的 `adoptBlueprint`：`wantedPath` 改成可赋值，缺 path 时从被采纳的草案行读 `fields.path`（`pathFrom:'draft'`），两者都没有才具名拒（`adopting a blueprint needs the draft it adopts (or, failing that, the path)`）。`vibe-math-vmu/packs/v5r/tools.js` 的 `toolBlueprint` 同步放宽前置校验，并把 `pathSource` 加一支 `'draft'`；注意传给 kit 的是**用户真的传了的那个形参**（`pathFromArg`），否则 `pathFrom` 会对一条没人传的路径说「argument」。
 
-C. `vibe-math-vmu/kit/paper.js` 的 `escText`：认 `$$…$$` 为显示公式，输出 `\[ … \]`，计数进 `math.displayMathSpans`；落单的 `$$` 计 `unpairedDisplayMarkers` 并在 `displayMathMeans` 里点名（不再静默转义）；「无需修复」的判定加 `unpairedDisplayMarkers === 0`。
+C. `vibe-math-vmu/packs/research-core/paper-flow.js` 的 `escText`：认 `$$…$$` 为显示公式，输出 `\[ … \]`，计数进 `math.displayMathSpans`；落单的 `$$` 计 `unpairedDisplayMarkers` 并在 `displayMathMeans` 里点名（不再静默转义）；「无需修复」的判定加 `unpairedDisplayMarkers === 0`。
 
 D. `vibe-math-vmu/packs/v5r/tools.js` 的 p=1 写回：并列打印这张卡自己的 `proofGate`，并给 `p1ProofUnresolved`（`proofGate.locked !== true` 即 true）与 `p1ProofMeans`（明说「p=1 在这里只代表成员同意且记录已打补丁，不代表找到、读过或验证过证明文件」）。
 
@@ -17798,7 +17798,7 @@ RUN 255 第一次以「零 token 模拟优先」为主线：不跑真机，先�
 **会议：延长等待、通知行内容、负等待。** 修前：`extendWall` 只接受 open/recess，到点缺人的 `waiting` 主席无法延长（矩阵 F-MX-01）；预约 notice 行只有主席/标题/时间/attend，缺类型/议题/席位（F-MX-02）；`waitedMs = now - waitStartedAt` 在提前 proceed 时为 **−60 001**（F-MX-03）。修后：`kernel/meetings.js:3647` 的 `wait()` 与 `:3922` 的 extend 回执给出 `before/after{startsInMs,waitDeadlineIso}`、`extendedByMs`、`extensionsUsed`、`extensionsLeft`、`VMU_EXTEND_CEILING`；notice 行四要素与邮件正文同一取字段函数；等待量非负、提前量另立 `earlyByMs`；矩阵测试的 `KNOWN_DEFECTS` 白名单删除，31 格改正面断言。`lateAdmission` 缺省从 open 改 chair：策略理由写在 `vibe-math-vmu/kernel/meetings.js:652` 的注释里，解析在 `:666` 的 `lateAdmissionOf`；迁移规则是「会议实体记了策略照读、没记的按 chair」。判据：`tests/vmu-run256-meeting-wait-extend.test.mjs`（**36/0**）、`tests/sim-meeting-matrix.test.mjs`（31 格全绿）、`tests/vmu-run225-late-admission.test.mjs`（`node --test` pass 1 fail 0）。
 **邮件面：拒绝的 facts 不许在工具面被吞。** 修前：内核把双结算具名成 `VMU_MAILBOX_ALREADY_ACKED` 并带 `ackedAt/ackedBy/settledBy/alreadyAcked`，`vibe-math-vmu/tools/mailbox.js` 的 catch 只传 `enforced`/`enforcedScope`，facts 全丢，与 `docs/03` R97 承诺相反；`status().notice.unackedRows` 旧名实为全所各箱合计（run 74 实测某箱 2 条被读成 19）。修后：`vibe-math-vmu/tools/mailbox.js:96-102` 收齐 receipt 键（真不存在时给空对象而非 undefined），`unackedRowsAllBoxes`/`perBox` 正名并保留一句兼容；`docs/03` §8 补三条不变量。判据：`tests/vmu-run256-mail-tool-facts.test.mjs`（**34/0**）。
 **蓝图：hint 教的动作必须能过它自己后面的门。** 修前：adopt 拒绝的 hint 教 text-only `propose`，而 fs-first 下它 `filed:false`、永不追加 authors ⇒ 照 hint 走永远过不了 NEEDS_CODESIGN 门，是死循环（`packs/v5r/blueprint.js:361-363` 的注释原样记下这条旧 bug）。修后：`packs/v5r/blueprint.js:368` 的 `resumeDraftHintOf(record)` 是唯一 hint 源，拒绝路径 `:1162-1163`（`refuse(BLUEPRINT_NEEDS_CODESIGN, message, resume.hint)`）、`draftMdMissing` 的 `:1768` 与 note `:1797-1804` 都取它，文本是可复制一步式（先 fs 写 `<draftMdPath>`，再带同一 `mdPath` 重新 propose），并满足「照 hint 机械调用 ⇒ ok:true 且过 NEEDS_CODESIGN」。判据：`tests/vmu-run256-blueprint-hint.test.mjs`（`[run256] assertions=64`，0 红）。
-**读数形状与 id：同一事实三种回执形状。** 修前：「LaTeX 缺失」在 `final` 埋在 `receipt.final.{toolchainAbsent,pdfEnvironmentMissing,finalized}`，在 `compile` 是顶层 `code` 且无 `toolchainAbsent`，在 `status()` 是空数组；`vibe_vmu_records` 没有 `get` 动作（任务书写的 get 实际是 `expand`）；`records.list` 混入图书馆 `ruling-*` 卡（track undefined）；consult id 由标题铸造（`consult-端到端占位论文-1`）。修后：`vibe-math-vmu/packs/v5r/tools.js:6164` 的 `environmentReadingsOf` 与 `:6189` 的 `environmentReadingsAt` 一处产出、三处同形（调用点 `:6192`/`:6385`）；records 的未知动作 hint 点名替代；`records.list` 的 `excluded` 在 `vibe-math-vmu/kernel/records.js:1264` 起新增 `untracked`/`untrackedIds`，`:1337-1344` 只在「裸 list」且未开 `includeUntracked` 时把无 track 行排除并报数；id 改为「前缀 + 单调序号 + 4 位摘要」不含标题（`vibe-math-vmu/kit/paper.js:52`，`consult-nnnn-<hex4>`，默认由序号+标题算出、随机只走显式注入）。判据：`tests/vmu-run256-reading-shapes.test.mjs`（**66/0**，14:2x 复跑；首采 65/1，红的正是源码字面 pin 指旧签名，TB-2634 收口后转绿）。
+**读数形状与 id：同一事实三种回执形状。** 修前：「LaTeX 缺失」在 `final` 埋在 `receipt.final.{toolchainAbsent,pdfEnvironmentMissing,finalized}`，在 `compile` 是顶层 `code` 且无 `toolchainAbsent`，在 `status()` 是空数组；`vibe_vmu_records` 没有 `get` 动作（任务书写的 get 实际是 `expand`）；`records.list` 混入图书馆 `ruling-*` 卡（track undefined）；consult id 由标题铸造（`consult-端到端占位论文-1`）。修后：`vibe-math-vmu/packs/v5r/tools.js:6164` 的 `environmentReadingsOf` 与 `:6189` 的 `environmentReadingsAt` 一处产出、三处同形（调用点 `:6192`/`:6385`）；records 的未知动作 hint 点名替代；`records.list` 的 `excluded` 在 `vibe-math-vmu/kernel/records.js:1264` 起新增 `untracked`/`untrackedIds`，`:1337-1344` 只在「裸 list」且未开 `includeUntracked` 时把无 track 行排除并报数；id 改为「前缀 + 单调序号 + 4 位摘要」不含标题（`vibe-math-vmu/packs/research-core/paper-flow.js:52`，`consult-nnnn-<hex4>`，默认由序号+标题算出、随机只走显式注入）。判据：`tests/vmu-run256-reading-shapes.test.mjs`（**66/0**，14:2x 复跑；首采 65/1，红的正是源码字面 pin 指旧签名，TB-2634 收口后转绿）。
 **提示词教材：一条事实只能有一个来源。** 修前：提示词写「缺省 open」而内核已翻 chair，`scripts/audit-prompt-facts.mjs` 首跑以 1 字符之差抓到这条相反事实（`docs/acceptance/sim-audit-prompts.md` §12）；prereview P0-3 还抓出提示词教「内核替你物化草案」（当时的 `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:887`，`D:/_tmp/audit16/prereview.md`）。修后：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:941` 写「缺省 chair」，同文件 `:883`/`:886` 改教「默认什么都不写、`draftMdMissing:true`、只有 `materialize:true` 才物化」，内核默认在 `vibe-math-vmu/kernel/meetings.js:670`（`lateAdmissionOf` 的迁移回退）；`scripts/audit-prompt-facts.mjs` 把 16 条断言型事实逐条钉到代码 `file:line`（装配后文本 → 真值），`--mutants` 三个 truth-side 注入各自只红自己、装配 sha256 不变；装配文本 75 350 → 75 218 字符（`docs/acceptance/sim-audit-prompts.md` §11.4），三份 normal 合计 73 931 字符（−1.91%，§13）。判据：`tests/vmu-run256-prompts-facts.test.mjs`（**107/0**）、`tests/vmu-run239-prompts.test.mjs`（**145/0**）、`tests/vmu-run256-prompt-timing.test.mjs`（**24/0**）。
 
 **351.4 判据工程：把「读自己写的字」改成「读外部源」。** 本轮新增的判据里，量外部源的是多数：`audit-prompt-facts.mjs` 量代码行与装配文本（16 条，每条带 `file:line`）；`prompt-timing-map.md` 的 12 行 T1–T12 用「探针键名」而不是散文片段，改名或增行会红；`sim-vs-real` 量 21 527 条真机回执；`audit-clock-purity.mjs` 量 197 个文件的墙钟读点（`findings=0`、`allowed=39`、`legacy=26`，带 mutant 证明扫描器不瞎）。被判成假判据并改掉的有五处：①`expectedRefusals` 从「谓词全赦免」变账本——一条声明只赦免一条实际拒绝，`declared-but-never-hit` 单列，「全赦免」注入必须 exit 1；②A2 序列化泄漏判据从 `includes('undefined')` 变值级——`scripts/sim/audit/receipts.mjs:56` 的 `leaks()` 递归取值、`:70` 的 `__test` 暴露给它自己测，三种坏形状（undefined / `[object Object]` / NaN）各一例再加散文负例；③`tests/audit-receipt-fields.mjs:59` 的 6 行窗口是同一族脆弱判据——它按行距找字段声明，正文插一个字段就整体位移；本轮新增的回执判据改判字段值与形状，不判行距（该文件本身本轮无改动，风险依旧在）；④源码字面 pin 被等价重排就红：`tests/vmu-run256-reading-shapes.test.mjs` 钉 `const consultRequestId = (seq) => {`，TB-2634 只是给这个函数加注入参数（行为不变），pin 立刻红——判据在量「源码的写法」而不是「行为」；⑤`tests/vmu-run255-feedback74.test.mjs` 曾用裸 `settings:{}` 断言 `loop.deliveryTimeoutMs===1800000`，量的是自己写的字面量，P0-1 因此长期假绿；现在该文件 `:271-284` 改为从 `SETTING_DEFS` 读声明值、并显式断言 `!== 180000`（注释原样写着「from a naked settings object measured the kernel literal against itself」）。还有一处是规则台账：`docs/acceptance/rules-ledger.json` 93 条里 **89 条**的 `live` 证据是文档引用、只有 4 条由测试或回执满足，而 `check-rules-coverage` 的第四问正是读这个字段 ⇒ 只能说「92/93 有落点」，不能说「93 条都被证明」（`D:/_tmp/audit15/rules-recheck.md` §1-5）。
@@ -17827,7 +17827,7 @@ RUN 255 第一次以「零 token 模拟优先」为主线：不跑真机，先�
 4. **TB-2618 已交付、真机配置形态未抽样**：`vibe-math-vmu/kernel/pack.js`/`kernel/index.js` 的「声明面在 createKernel 前折叠」任务板 `task-99` completed，套件 `tests/vmu-run256-pack-declarations.test.mjs` 在树里；本机未单独复跑（采样口径见 351.5），部署级 config 的真实组合留真机抽样。
 5. **TB-2621 状态板未接论文/蓝图**：`vibe-math-vmu/kernel/turn/index.js` 的 `statusReadingsFor`（`:2125`）与 `composeStatusBlock`（`:1690`）仍只组装任务/记录读数，e2e 里论文三态的提示词同 sha；下一步 TB-2621（`task-102` pending）。
 6. **TB-2632 已交付、真机未验**：`kernel/turn/index.js:777-783` 的 `deliveryCodeThrough` 只对 `VMU_TURN_DELIVERY_SHAPE`/`VMU_TURN_DELIVERY_NO_PAYLOAD` 原样 rethrow，其余仍重标 `VMU_ENGINE_UNAVAILABLE`（`task-112` completed，套件 `vmu-run256-delivery-code-passthrough` 在树里）；但真机适配器真走到这两个码的样本还没有，下一步真机抽样。
-7. **TB-2634 已交付**：`vibe-math-vmu/kit/paper.js:52` 的 `consultRequestId` 改成注入式摘要（`(seq, { seed, rand })`，同序号+标题+可选注入口不改字面），`tests/vmu-run256-reading-shapes.test.mjs` 复跑 66/0；留的是全树其它 `Math.random` 站点只报告不改（写域限制）。
+7. **TB-2634 已交付**：`vibe-math-vmu/packs/research-core/paper-flow.js:52` 的 `consultRequestId` 改成注入式摘要（`(seq, { seed, rand })`，同序号+标题+可选注入口不改字面），`tests/vmu-run256-reading-shapes.test.mjs` 复跑 66/0；留的是全树其它 `Math.random` 站点只报告不改（写域限制）。
 8. **8% 冗余目标未达**：实测 −1.91%（73 931 字符），再降必须改规则原文，需 Lead 授权；下一步 TB-2615 轮 D。
 9. **真机侧抽样未做**：seam 176.4 s 杀回合没有计时实测。prereview P0-2 的三个旧套件（`tests/vmu-b4-b5-blueprint.test.mjs`、`tests/vmu-run129-codesign-cross-kernel.test.mjs`、`tests/vmu-run215-feedback51.test.mjs`）本次复跑 3 pass 0 fail（迁移到显式 `materialize:true` 的写法），P0-3 旧句 `grep '内核把草案物化' vibe-math-vmu/packs/v5r/prompts/*.js` 0 命中；但「`proposeBlueprint` 默认 fs-first 是否保留」是产品口径，仍待 Lead 裁定。
 10. **`<TBD>` 清单**（Lead 收口要补）：全量 T1 收口实测 **TOTAL 836 PASS 836 FAIL 0**（suites 751 · probes 85，concurrency 3，wall 567.8 s，`GATE_RELEASE=1` 冷跑）；`node scripts/regen-all.mjs --check` **17/17 in sync**；`node scripts/update-doc-counts.mjs --write` 后 **JOBS total=836 suites=751 probes=85、`tests/*.mjs`=431（322 suites + 109 probes/scripts）**；TB-2609 已被 TB-2653（放行闸）与 TB-2681（PREFLIGHT 第十步 portability）吸收、板条 task-88 已 complete；TB-2610 仍 planned（「会议全链路七条真机证据」并入第 75 次真机 brief，板条 task-125）；TB-2611 两半都已交付（提示词半 task-96、投递降级半 TB-2645/task-126）；TB-2621 仍 planned（状态板接论文/蓝图读数并入 TB-2648 语料迁移与 TB-2664）；**prereview P0-2 的「默认 fs-first 是否保留」裁定：保留**——fs-first 是默认（`filed:false` + `draftMdMissing:true`），`materialize:true` 是显式退路，理由见 RUN 256 / TB-2622 与 §354.1⑦。
@@ -17872,7 +17872,7 @@ RUN 255 第一次以「零 token 模拟优先」为主线：不跑真机，先�
 | 2631 | compare strict 只对语义未归因失败 | `scripts/sim/compare/run.mjs` | `sim-compare-strict`（exit 0） | delivered |
 | 2632 | 适配器故障码原样透传 | `vibe-math-vmu/kernel/turn/index.js` | `vmu-run256-delivery-code-passthrough` | delivered |
 | 2633 | 提示词 × 真回执 47 对对照审计（只读） | `docs/acceptance/prompt-vs-receipts.md`、`scripts/audit-prompt-facts.mjs` | `vmu-run257-prompt-receipt-parity` | delivered |
-| 2634 | id 铸造禁用 `Math.random`（确定性） | `vibe-math-vmu/kit/paper.js`、`kernel/ids.js` | `vmu-run257-deterministic-ids` | delivered |
+| 2634 | id 铸造禁用 `Math.random`（确定性） | `vibe-math-vmu/packs/research-core/paper-flow.js`、`kernel/ids.js` | `vmu-run257-deterministic-ids` | delivered |
 
 TB-2636…TB-2640（时钟 legacy、compare 同 shape、论文面承诺、abandon 结算、全量门禁预扫）已在本轮收口时立项，对应 `task-117`/`task-118`/`task-119`/`task-120`/`task-121`，不属于本节 2601–2634 的覆盖范围，列此只示边界。
 
@@ -18347,7 +18347,7 @@ tests/vmu-run259-audit14.test.mjs expected 0 got 1`），而且在人工加压�
 | A2 | parked 一情两名 | `t-7` 未答时再 `step` ⇒ `code:"VMU_TURN_ALREADY_PARKED"`，`parkedFacts` 无 `parkedReason`；任务书 V8 期望 `VMU_TURN_PARKED_NEEDS_OWNER` + `parkedReason` | `vibe-math-vmu/kernel/turn/index.js:2573-2624`：两个码各自带 `PARKED_ALREADY_REASON` / `PARKED_NEEDS_OWNER_MEANS` |
 | A3 | 蓝图读数恒 null，且「没人提过」与「解析器没接上」共用一句 why | `liveReadings.blueprint={value:null,why:"…records.mdParse 没有注入…"}`，状态块连 `[蓝图]` 行都没有；根因不是解析器缺失，是 `STATUS_BOARD_READ_OPS` 只声明 `['list','get']` 而 `facesFrom` 只按声明绑定 | `vibe-math-vmu/kernel/turn/index.js:24-29`（内核自带 `mdParseText` 兜底）、`:1945-1985`（`no-current-blueprint` 与 `md-parser-unavailable` 分开） |
 | A4 | 结题票入口一名三写 | 任务书 `set_solved`、回执登记字段 `vote_solved`、会议骨架教 `vibe_vmu_vote`；照任务书字面写 ⇒ 整轮被判未知字段 | `vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js:125`：`vote_solved` 是唯一入口，`set_solved` 只以否定形式出现 |
-| A5 | round 递增静默作废上轮评审票 | round 2 的 `rec-32`/`rec-29` 在 round 3 被读成 `stale:["r-acad"]`、不计入；三次 `advance` 有两次因此回退 | `vibe-math-vmu/kit/paper.js:1038` 的 `perRoundReviewCoverageOfState`：回执带 `missing`/`invalidatedByRound`（各自带 `why:'previous-round'`） |
+| A5 | round 递增静默作废上轮评审票 | round 2 的 `rec-32`/`rec-29` 在 round 3 被读成 `stale:["r-acad"]`、不计入；三次 `advance` 有两次因此回退 | `vibe-math-vmu/packs/research-core/paper-flow.js:1038` 的 `perRoundReviewCoverageOfState`：回执带 `missing`/`invalidatedByRound`（各自带 `why:'previous-round'`） |
 | A6 | 互审段装配出来是空模板 | 作者渲染成字面量 `(unspecified)`、两条虚线之间 0 字符；而同一时刻 `paper status` 的 `reviewOf` 已配对、`parts.r-2=rec-10` 正文可读 | `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:546-558`：注入作者 id 与 part recordId，再加三步取料（status → expand → 逐条判断） |
 | A7 | `review` 不在 phase 闭集 | `phase:"review"` ⇒ `VMU_INVALID_ARGUMENT`「unknown phase: review」；闭集只认全名 | pack 用 `extraPhases:['heartbeat','paper-write','paper-review','paper-final']` 追加；提示词写明「`review`/`write`/`final` 是过程词不是 phase」（`tests/vmu-run77-prompt-phase-and-votes.test.mjs:2-4`、`:37`） |
 | A8 | 主席席 `op:"prompt"` 被拒 | `code:"VMU_NOT_PERMITTED"`「a member turn cannot run the institute turn engine (op: prompt)」；装配文本只有 office 能读 | 判为**任务书口径错**而非机制缺陷：只读面继续拒绝 step/abandon/prompt（`tests/vmu-run75-attend-receipt-budget.test.mjs:356-359`），第 77 次任务书改成「装配文本由所办派单后回读」 |
@@ -18575,7 +18575,7 @@ TB-2741 的十条更正净 −66 字符（三席 normal 78 144→78 078），账
 ### 355.15.6 未闭合与交付读数
 
 - **TB-2739（本批 Lead 自做，impl-a 两次静默死亡后改派）五格全落地**：A 归属同源 `tests/vmu-run79-written-from-fold.test.mjs` 48/0；B `op` 缺失不许静默按 status 答复 `tests/vmu-run79-step-not-status.test.mjs` 52/0（真机三条参数逐条重放，`VMU_TURN_OP_MISSING`，守卫在成员闸与队列之前）；C `op:"prompt"` 认 `member`（`promptFor:{member,turnId,turnMember,means}`，交叉指定具名拒 + `REACHABLE INSTEAD:`）`tests/vmu-run79-prompt-member.test.mjs` 23/0；D `detail:"closure"` 已带 `closureVote.notEligible`（1 546 B vs board 7 509 B）`tests/vmu-run79-closure-detail.test.mjs` 12/0；E 状态板自报见 355.15.2 的 V3 处置。
-- **TB-2743（已交付）**：`toolchainProbe` 三值 `ran-present`/`ran-absent`/`not-run`——`not-run` 明说「这一轮没问引擎问题 ≠ 工具链没装」（`vibe-math-vmu/packs/v5r/tools.js:6454`、`:6483-6492`）；`pdfCompiled.produced:false` 必有 `blockedBy` 具名（`not-finalized`/`no-parts`/`toolchain-absent`）+ `blockedByMeans`（`vibe-math-vmu/packs/v5r/tools.js:6885-6903`）；互审票绑 `judgedPartFingerprint`/`judgedPartRound`，陈旧票进 `staleReviews` 并具名（`vibe-math-vmu/kit/paper.js:989`、`:1068-1073`、`:1130-1151`）。判据 `tests/vmu-run79-review-fingerprint.test.mjs` 80/0。这条判据同时把一件真事钉住：第 79 次现场第 2 轮的互审票判的是第 1 轮的正文（指纹未变），旧实现把这票算作覆盖——现在它会具名拒并给 `REACHABLE INSTEAD:`（让对应席对新正文再投一次），`tests/vmu-v5r-tools.test.mjs` 的 advance 场景因此要在第 2 轮真的产出正文（362/0）。
+- **TB-2743（已交付）**：`toolchainProbe` 三值 `ran-present`/`ran-absent`/`not-run`——`not-run` 明说「这一轮没问引擎问题 ≠ 工具链没装」（`vibe-math-vmu/packs/v5r/tools.js:6454`、`:6483-6492`）；`pdfCompiled.produced:false` 必有 `blockedBy` 具名（`not-finalized`/`no-parts`/`toolchain-absent`）+ `blockedByMeans`（`vibe-math-vmu/packs/v5r/tools.js:6885-6903`）；互审票绑 `judgedPartFingerprint`/`judgedPartRound`，陈旧票进 `staleReviews` 并具名（`vibe-math-vmu/packs/research-core/paper-flow.js:989`、`:1068-1073`、`:1130-1151`）。判据 `tests/vmu-run79-review-fingerprint.test.mjs` 80/0。这条判据同时把一件真事钉住：第 79 次现场第 2 轮的互审票判的是第 1 轮的正文（指纹未变），旧实现把这票算作覆盖——现在它会具名拒并给 `REACHABLE INSTEAD:`（让对应席对新正文再投一次），`tests/vmu-v5r-tools.test.mjs` 的 advance 场景因此要在第 2 轮真的产出正文（362/0）。
 - **TB-2742（已交付）**：任务书模板三处更正 + `docs/acceptance/run79-verification.md`；模板第 22 行的 `vibe_v5_hire` 示例补齐四必填参（`to`/`slot`/`purpose`/`initial_task`），`tests/check-task-brief.test.mjs` 54/0 证明了「示例本身就是判据输入」。
 - **TB-2741（已交付）**：十条提示词更正，`tests/vmu-run79-prompt-corrections.test.mjs` 11/0；本批 355.15.3 的两句事实与一个括注是它的净零预算的补账。
 

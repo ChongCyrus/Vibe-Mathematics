@@ -60,10 +60,6 @@ const ALLOWED = Object.freeze([
     test: (file) => file === 'vibe-math-vmu/kernel/clockguard.js',
   },
   {
-    why: 'kernel/paper.js: the single NAMED fallback body (PAPER_WALL_CLOCK counts it; clockSource() reports injected:false)',
-    test: (file, line) => file === 'vibe-math-vmu/kernel/paper.js' && /^\s*return Date\.now\(\)\s*$/.test(line),
-  },
-  {
     why: 'blueprint.js: the single NAMED fallback body of wallClockReadingOf (WALL_CLOCK_READS counts it; receipts carry atSource:"wall-clock")',
     test: (file, line) => file === 'vibe-math-vmu/packs/v5r/blueprint.js' && /^\s*return Date\.now\(\)\s*$/.test(line),
   },

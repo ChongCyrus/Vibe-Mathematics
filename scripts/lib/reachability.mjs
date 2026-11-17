@@ -33,13 +33,10 @@ export const PLUGIN_ENTRY_FILES = Object.freeze([
 
 /** Modules that are unreachable ON PURPOSE, each with the reason a reader needs. Shrink-only: an entry that becomes
  *  reachable again must be deleted, because a stale exemption silently re-authorises the defect. */
-export const KNOWN_UNMOUNTED = Object.freeze({
-  'kernel/paper.js':
-    'NOT CONSTRUCTED by any live path (`createPaper(` appears only in tests and scripts). The v5r paper runs through ' +
-    '`packs/v5r/paper.js` → `kit/paper.js`, which reads none of its `vmu.paper.*` keys ⇒ those keys are INERT on the ' +
-    'mounted path. Kept because its tests are the reference implementation of the office-consult gate; deleting it is ' +
-    'a separate decision, and must not be replaced by "nobody noticed".',
-})
+export const KNOWN_UNMOUNTED = Object.freeze({})
+// ★ TB-2794 Step 1: the former entry here was `kernel/paper.js` (a dead duplicate of the mounted paper flow). It is now
+// DELETED: the live flow lives in packs/research-core/paper-flow.js (institution policy in packs/v5r/paper.js), so the
+// list is EMPTY and the reachability gate has nothing to excuse.
 
 /**
  * ★★★ TB-2792 / C#1: THE PACK MODULES ARE PART OF THE ENTRY SURFACE — THE LOADER IMPORTS THEM AT RUNTIME.

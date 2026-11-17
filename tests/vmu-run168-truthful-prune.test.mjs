@@ -100,7 +100,7 @@ const readFold = async (path) => JSON.parse(String(await readFile(path, 'utf8'))
   const records = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
   const index = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
   const host = readFileSync(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
-  const paper = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const paper = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const tools = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   ok(/staleLiveRows: 0/.test(records) && /shared\.staleLiveRows \+= 1/.test(records),
     '§0 synchronize COUNTS the live fold rows it refuses to adopt over a local trash')

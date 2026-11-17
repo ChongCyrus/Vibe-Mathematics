@@ -6,7 +6,7 @@
     "filesEntries": 819
   },
   "note": "Frozen baseline of unregistered tests/scripts code that predates the widened membership criterion (task-156 / TB-2674). SHRINK-ONLY: delete a line when its file is registered or removed; never add a file that appeared after generatedAt. Regenerated only in a Lead-triggered close-out window.",
-  "sha256OfPaths": "f7af7f605a0b6d12661bcdbb5d64d4d6cd7d428851ed37583a890a00494cbbb1",
+  "sha256OfPaths": "6a5f5c0bb95b93739d968ff376050f2ed9266c61a9ee62cc690869c5a1f4840b",
   "paths": [
     "scripts/sim/audit/all.mjs",
     "scripts/sim/audit/prompt-budget.mjs",
@@ -161,9 +161,7 @@
     "tests/vmu-pack-prompts.test.mjs",
     "tests/vmu-pack-tool-args.test.mjs",
     "tests/vmu-panel.test.mjs",
-    "tests/vmu-paper-consult.test.mjs",
     "tests/vmu-paper-office-consult.test.mjs",
-    "tests/vmu-paper.test.mjs",
     "tests/vmu-planned-codes.test.mjs",
     "tests/vmu-prompt-agent-scope.test.mjs",
     "tests/vmu-prompt-closure-channel.test.mjs",

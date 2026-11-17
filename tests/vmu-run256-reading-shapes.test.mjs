@@ -45,7 +45,7 @@ const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const HOST = join(REPO, 'vibe-math-vmu', 'host.js')
-const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 
 let passed = 0
 let failed = 0
@@ -318,7 +318,7 @@ ok(HOST_SRC.includes('pass one of: list｜get｜expand｜append｜status｜prune
 ok(!KIT_SRC.includes("'consult-' + str(state.target)"),
   '★★★ 反：id 不再由标题原文铸造（consult-<title>-<n> 的表达式已消失）')
 ok(!KIT_SRC.includes('id: ' + "'consult-'"),
-  '★★ 反：kit/paper.js 里没有第二个按标题拼 id 的点')
+  '★★ 反：packs/research-core/paper-flow.js 里没有第二个按标题拼 id 的点')
 
 // Windows keeps handles on the member tree for a moment; cleanup is best effort under D:/_tmp.
 try { process.chdir(prevCwd) } catch { /* the temp tree is what matters */ }

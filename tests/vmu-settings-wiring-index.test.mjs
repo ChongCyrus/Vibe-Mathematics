@@ -53,8 +53,9 @@ const ANCHORS = [
   { key: 'vmu.turn.maxParallel', verdict: WIRED, carrier: 'packs/v5r/prompts/v5r-blocks-b.js', why: 'template-placeholder read by a pack prompt' },
   // declared, named nowhere a runtime can read it
   { key: 'vmu.a11y.enabled', verdict: NOT_WIRED, carrier: null, why: 'declared but no reader' },
-  // the only reader is a kernel module the assembly never loads
-  { key: 'vmu.paper.maxSections', verdict: NOT_WIRED_UNREACHABLE, carrier: 'kernel/paper.js', why: 'sole reader is unloadable' },
+  // ★ TB-2794 R2: kernel/paper.js was DELETED; the mounted reader is now the v5r policy shell (the flow receives the
+  // resolved cap and doesn't name the key, so the carrier must be the shell) — the anchor's DOCUMENTED shape follows reality.
+  { key: 'vmu.paper.maxSections', verdict: WIRED, carrier: 'packs/v5r/paper.js', why: 'read by the v5r paper policy shell after the kernel face moved out' },
 ]
 
 for (const a of ANCHORS) ok(defined.has(a.key), 'A: the anchor key exists in settings/schema.js :: ' + a.key)
@@ -86,8 +87,8 @@ for (const a of ANCHORS) {
   if (a.carrier === null) ok(c === null, 'A: a key with no reader names no carrier :: ' + a.key, String(c))
   else ok(typeof c === 'string' && c.split(/[\\/]/).join('/').endsWith(a.carrier), 'A: the carrier names the real reader :: ' + a.key, String(c))
 }
-ok(hasConsumer('vmu.paper.maxSections') === false,
-  'A: hasConsumer separates a reachable reader from an unreachable one')
+ok(hasConsumer('vmu.paper.maxSections') === true,
+  'A: hasConsumer separates a reachable reader (this key) from an unreachable one')
 
 // ── B. the generator's own summary algebra (spawned, so the CLI path is exercised too) ─────────────
 const run = spawnSync(process.execPath, [GEN, '--json'], { cwd: REPO, encoding: 'utf8', timeout: 300000 })

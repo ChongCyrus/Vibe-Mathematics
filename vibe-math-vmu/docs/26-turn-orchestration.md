@@ -1942,7 +1942,7 @@ Criteria that this round adds:
 ## ROUND 95 — 闸门开在最贵的那一步之前，字段名要说它数的是什么（F-95a / F-95b）
 
 - **判据一：同一份合同，越早拒越好。** `part` 收下 evidence 却把第一次解析留到 `render` 的质检闸，结果是：论文写完、互审完、所办咨询完、定稿完，才在最后一步被告知「你引的那条记录不存在」。证据指针现在**写入当刻**就被 `paper-quality.js#checkEvidencePointers` 解析（同一份 `MEMBER_FILE`/`TRACK_OF_CATEGORY`/`recordOf`，不写第二份解析器），坏指针当场具名拒 —— 而「无证据」仍归交付门（≥1 条、每条有指纹），草稿照旧可自由渲染。
-- **判据二：回执字段的名字必须说清它数的是什么。** `render` 的 `wrote:["md","tex","meta"]` 是 paper 轨的**记录种类**，不是磁盘文件；`.tex` 要等 `compile` 才进 `Paper/<id>/`。字段名不变，另加 `wroteWhere{records,disk,means}` 把「写在哪」讲明 —— 读者不必再去读 `kit/paper.js` 才能消解一个自相矛盾的观测。
+- **判据二：回执字段的名字必须说清它数的是什么。** `render` 的 `wrote:["md","tex","meta"]` 是 paper 轨的**记录种类**，不是磁盘文件；`.tex` 要等 `compile` 才进 `Paper/<id>/`。字段名不变，另加 `wroteWhere{records,disk,means}` 把「写在哪」讲明 —— 读者不必再去读 `packs/research-core/paper-flow.js` 才能消解一个自相矛盾的观测。
 - **判据三：拒绝要能指明「下一个动作」。** 坏指针的 hint 不是「检查你的 evidence」，而是「先用 `vibe_v5_record_proposition` 建记录，再用它产生的指针重写这一段」，因为那正是唯一的出路。
 
 ## ROUND 96 — 拒绝要说清「是哪个动词」，值要说清「谁在回答」
@@ -2658,7 +2658,7 @@ BAD_JSON=0`，`slv-inspect` 0 RED，`tokenTotal 8.54M/24M`，113 call，694 s）
 `vibe_v5_meeting` 没有 `open` 动作（代理自身操作问题）。另有环境事实：该轮代理的宿主 `pwsh` 全程不可用
 （`0xC0000142`），取证改走文件工具与 Python 计算面——属宿主侧，不是 vmu 机制。
 
-修法：`vibe-math-vmu/kit/paper.js` 的 `advance` 新增 `readReview()`（缓存没有就读磁盘上本轮的评审行，命中即自愈缓存、
+修法：`vibe-math-vmu/packs/research-core/paper-flow.js` 的 `advance` 新增 `readReview()`（缓存没有就读磁盘上本轮的评审行，命中即自愈缓存、
 标 `source:"durable"`，回执带 `reviewsRead`）；到上限后给 `REPAIR_ROUNDS = 2` 个修复轮（`final{revise}` 真能打回 writing），
 用完才拒并点名三条真实出口；`readState` 接受 `paper-<x>`；`consultGate` 三支补 `target/paperId`；`compile` 成功回执补
 `produced/argv/outDir/sourceName` 且 pdf 成功时 `missing` 不再含 `pdf`；`packs/v5r/paper.js` 的 `maxRounds` 改为每次现读
@@ -2675,7 +2675,7 @@ tarball 起 run 5 续跑同一个所，验「评审不再凭空丢、到上限�
 run153 的 16 处**源码文本** pin 是自证式、其中一条恰好掩盖了空 argv；`tally-…` 长得像记录 id 却没有任何记录写在它名下。
 小账：裸记录 id 只认数字结尾、`…#证明` 的锚点被当成 id。
 
-修法：`vibe-math-vmu/kit/paper.js` 的失败对象带上真 argv；`packs/v5r/tools.js` 新增**一份** `projectPdfBlock(pdf, target)`
+修法：`vibe-math-vmu/packs/research-core/paper-flow.js` 的失败对象带上真 argv；`packs/v5r/tools.js` 新增**一份** `projectPdfBlock(pdf, target)`
 （成功/失败同 22 键）供 `final` 与 `compile` 共用，compile 失败改为**回执**，`catch` 逐字段显式投影（`Error.message`
 不可枚举，展开 `e` 会丢话）；结算改走 `records.supersede`（保留 id/slug/createdAt，新版本条目），无该能力才回退 `put`
 并在回执里**明说**整条被重建；`warrantFor` 加 `durable`、`tally` 加 `isRecordId:false`——不伪造一条像卡的记录，而是说清
@@ -2700,7 +2700,7 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 
 修法全在回执与可达性上：`packs/v5r/tools.js` 的 `final` 投影补 `moved/from/to` 与修复轮四读数、`vibe_v5_lean_run` 声明并
 转发 `jobId`、`toolPaper` 支持「无 `target` 的 status 列出所有论文」并给 `pdfMeans`、`projectPdfBlock` 的 `engine` 回退
-`triedEngines` 并加 `engineSource`；`kit/extras.js` 把 `jobId` 转给 `lean.submit`；`kit/paper.js` 新增 `folderOf()` 统一
+`triedEngines` 并加 `engineSource`；`kit/extras.js` 把 `jobId` 转给 `lean.submit`；`packs/research-core/paper-flow.js` 新增 `folderOf()` 统一
 `outDir`/`sourceName`/`folder` 并让 `start` 自报 `id`；`kernel/panel.js` 的 `board()` 行回显 `subgoal`/`status`（未设置给 `null`）。
 机器化：新 `tests/vmu-run156-run5-fixes.test.mjs` **42/0**（含「上限 3、round=1<cap 的 revise 不得自称 repair」的独立反向对照、
 `jobId` 在真装配的 JSON-Schema `parameters.properties` 里、`board` 的 `null` 不编造、`engine` 三字段互相印证、slug 四处一致）。
@@ -2782,7 +2782,7 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
    （闭包里的 `requireMeeting` 不在公开 API 上，第一版探针静默答 null —— 探针必须打公开面）。
 4. **note 从读到的字段拼**（`packs/v5r/verification-gates.js`）：`debateSubjectGate` 允许分支按
    `proofState === PROOF_STATE_COMPLETE` 拆两支；`fidelityAsked` 的拒绝语点名形参 `fidelity`。
-5. **工物行按 state 的规范 target 拼**（`kit/paper.js` + `packs/v5r/tools.js`）：`PaperArtifacts` 的 `canon` 取
+5. **工物行按 state 的规范 target 拼**（`packs/research-core/paper-flow.js` + `packs/v5r/tools.js`）：`PaperArtifacts` 的 `canon` 取
    `found.state.target`，回执加 `requestedTarget`/`missingMeans`（缺的是 ARCHIVE ROW，不是造不出来）。
 
 机器化：`tests/vmu-run161-audit8-fixes.test.mjs` 35/0；T1 TOTAL 642  PASS 642  FAIL 0  (suites 578 · probes 64)；
@@ -2798,9 +2798,9 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 ARTEFACT，而 `render` 写的 meta 行 body 也复制了 `id`/`target`/`status`；「按铸造 id 找」的回落分支遍历整条轨，
 于是解析到产物行（`reviews:{}`、没有 consult 台账）。
 
-1. **身份只认 STATE 行**（`kit/paper.js`）：`stateRows()` 按标题 `|state` 结尾 / `kind === 'paper-state'` 过滤；
+1. **身份只认 STATE 行**（`packs/research-core/paper-flow.js`）：`stateRows()` 按标题 `|state` 结尾 / `kind === 'paper-state'` 过滤；
    发号与铸造 id 回落都只看它 —— 产物行再也顶替不了论文。
-2. **互审闸与 `advance` 读同一份真相**（`kit/paper.js`）：`reviewRowOf()` 按
+2. **互审闸与 `advance` 读同一份真相**（`packs/research-core/paper-flow.js`）：`reviewRowOf()` 按
    `recordName(state.target,'review|'+member)` 找 durable `paper-review` 行（`updatedAt` 最新、校验 `body.member`）；
    缓存不足时按 participants 逐人自愈；拒绝语同时报 `crossReviewers` 与 `reviewsOnDisk`。
 3. **词表补上代理撞出来的五件事**（`packs/v5r/tools.js` + `kit/extras.js`）：`part` 是每参与者一节、第二次**替换**；
@@ -3175,7 +3175,7 @@ end (107427-byte PDF, byte-identical on disk) and measured all eight checks, the
 the field that reports its basis as `null`, and a prompt that told the reader LaTeX was unavailable while the same
 deployment was compiling with `xelatex`.
 
-1. `kit/paper.js:767` — the `part` refusal now branches on the stage. `awaiting-editor` keeps
+1. `packs/research-core/paper-flow.js:767` — the `part` refusal now branches on the stage. `awaiting-editor` keeps
    `final{decision:"revise"}`; `reviewing` says the accepted move is `vibe_v5_paper { action:"advance" }`, that advance
    collects the round, and that a reviewer who did not answer `deliverable` is what sends the paper back to writing.
    The editor door opens only at `awaiting-editor`.
@@ -3431,7 +3431,7 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 ## ROUND 208（★ 移动要说「回合有没有动」，收轮要说「谁读了谁的」）
 
 - **账从哪来**：第 41 次真机 `FEEDBACK40` 八条读数缺陷。判据是同一句：「回执里已经有一个数/一条路，但没说它属于哪一刻、哪一种原因」。
-- **八处修法**：`kit/paper.js` 的 `advance` 三支移动分支共用 `roundReading(...)`（stage 动了、round 没动要明说）；收轮带 `crossReview.parts/uncovered/uncoveredMeans`，`recordReview` 核 `of === reviewOf[member]`；单人论文在写入前拒（`crossReviewPossible:false`）；召集的 `proofPointerMeans` 按 `missing|absolute|escapes|empty` 分句；`poll_open` 拒绝补「关会即结束辩论」；定稿被拦的 hint 改指 `vibe_v5_paper { action: "consult" }`；证据教学并列两种合法拼法；promote 的 lean-conformance 路线补 `warrant` 必填。
+- **八处修法**：`packs/research-core/paper-flow.js` 的 `advance` 三支移动分支共用 `roundReading(...)`（stage 动了、round 没动要明说）；收轮带 `crossReview.parts/uncovered/uncoveredMeans`，`recordReview` 核 `of === reviewOf[member]`；单人论文在写入前拒（`crossReviewPossible:false`）；召集的 `proofPointerMeans` 按 `missing|absolute|escapes|empty` 分句；`poll_open` 拒绝补「关会即结束辩论」；定稿被拦的 hint 改指 `vibe_v5_paper { action: "consult" }`；证据教学并列两种合法拼法；promote 的 lean-conformance 路线补 `warrant` 必填。
 - **为什么 `roundReading` 按 stage 而不是回合号选句子**：第一版按 `roundTo === 1` 说「opened the first cycle」，把「reviewing → awaiting-editor 收掉第一轮」也说成开轮；数字相等不等于含义相同，句子必须跟着 stage。
 - **机器化**：`tests/vmu-run203-feedback40.test.mjs` 5/0（两次移动的回合读数、`crossReview` 覆盖、`of` 错配具名拒且不写盘、单人提前拒且 status 未变、指针 means 分因）；`tests/vmu-run200-pointer-resolution.test.mjs` §0i 因召集分支改成「先解析一次再入回执」而拆成两条 pin。
 - **未闭合**：FEEDBACK40 的 1.1（会议裁决写不回 p=1 卡）、2.2（同源 `shapeMeans`）、1.6（论文 state 行被覆写）与真机复验。
@@ -3447,7 +3447,7 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 ## ROUND 210（RUN 205：名字要在名册上，关门要说锁谁，座位与节点要如实）
 
 - **账从哪来**：第 43 次真机（`FEEDBACK42`，`Paper/paper-sumsq-paper-43` 118 841 B）。七条都是「回执对谁和哪一个不作声」：`paper start` 收了名册外的参与者、`advance` 关门不点谁的门、蓝图作者座席恒 `null`、`blueprint state` 被读成有节点数、`final.pdf` 不给 `recordId`、`moved` 与 `roundMoved` 并排解释埋长句、`sections` 与 `parts` 同名不同物。
-- **修法**：`kit/paper.js` 的 `start()` 名册具名拒（`VMU_NO_SUCH_OBJECT`，空名册仍豁免）；`advance()` writing 分支算 `unwrittenParts` 并给 `partsLockedAfterMove`/`Means`（点名 + 修复路径 + 弹回抬轮次的代价，**披露而非闸**）；六处 `moved:` 并列 `stageMoved`；`packs/v5r/tools.js` 的 `projectPdfBlock` 补 `recordId`/`recordIdMeans`、`case 'sections'` 补 `sectionsMeans`（OUTLINE ≠ `status.parts`）、`propose` 用 `seatOfMemberId` 写真实座席、`state` 补 `nodes: null` + `nodesMeans`。
+- **修法**：`packs/research-core/paper-flow.js` 的 `start()` 名册具名拒（`VMU_NO_SUCH_OBJECT`，空名册仍豁免）；`advance()` writing 分支算 `unwrittenParts` 并给 `partsLockedAfterMove`/`Means`（点名 + 修复路径 + 弹回抬轮次的代价，**披露而非闸**）；六处 `moved:` 并列 `stageMoved`；`packs/v5r/tools.js` 的 `projectPdfBlock` 补 `recordId`/`recordIdMeans`、`case 'sections'` 补 `sectionsMeans`（OUTLINE ≠ `status.parts`）、`propose` 用 `seatOfMemberId` 写真实座席、`state` 补 `nodes: null` + `nodesMeans`。
 - **两处 pin 传染**：假名册的 G7 ⑤ 夹具（`members.roster: () => [{id:'acad'}]`）点名 `r-1`/`r-2` ⇒ 补 stub 名册；`vmu-run155` 的 25 键投影 pin ⇒ 27 键。**夹具的名册是前提，字段集 pin 必须跟着投影走。**
 - **机器化**：`tests/vmu-run205-feedback42.test.mjs` 5/0（§0 pin、§1 名册拒与成功、§2 锁门披露与 `review(false)` 回写、§3 OUTLINE 说明、§4 座席与 `nodes:null`）。
 - **未闭合**：`FEEDBACK42 1.1` 跨内核设置两读、`1.7` 围栏失败与已落盘动作分开报；本轮未真机复验。
@@ -3582,7 +3582,7 @@ run 54（`task-sim54.txt`、`slvp183-ws`、1803 s、PDF 73 532 B）量到三笔�
 
 修法（四处 + 一条教学）：
 
-1. `vibe-math-vmu/kit/paper.js`：`TEX_MATH_GLYPH`（`≥`→`\\geq`、`∎`→`\\blacksquare` 等 13 个）+ `texMath` 计数，`repairInMath` 与 `repairInText` 分域处理（成对 `$` 之间只换符号、不转义 `^`/`_`；之外照旧转义但先换符号），`proseCarets`/`proseUnderscores`/`inlineMathSpans`/`glyphsRepaired` 进 `math`；`PaperTexBody({target}) → {tex, math}` 与 `PaperTex` 同源，`render` 与 `compilePdf` 回执都带 `math`，`means` 在有转义时明说 `READS AS TEXT in the PDF instead of as mathematics`。
+1. `vibe-math-vmu/packs/research-core/paper-flow.js`：`TEX_MATH_GLYPH`（`≥`→`\\geq`、`∎`→`\\blacksquare` 等 13 个）+ `texMath` 计数，`repairInMath` 与 `repairInText` 分域处理（成对 `$` 之间只换符号、不转义 `^`/`_`；之外照旧转义但先换符号），`proseCarets`/`proseUnderscores`/`inlineMathSpans`/`glyphsRepaired` 进 `math`；`PaperTexBody({target}) → {tex, math}` 与 `PaperTex` 同源，`render` 与 `compilePdf` 回执都带 `math`，`means` 在有转义时明说 `READS AS TEXT in the PDF instead of as mathematics`。
 2. `vibe-math-vmu/packs/v5r/tools.js`：`case 'render'` 与 `case 'compile'` 的**投影**都转发 `math`（kit 的新字段不会自动出现在工具面回执里）。
 3. `vibe-math-vmu/packs/v5r/blueprint.js`：`bodyPrefixDroppedMeans` 加 `target === null` 支（「this call STARTED revision N … nothing was compared」）+ `continuedBase{requested, actual, continued, revision, why, means}`。
 4. `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_record_proposition`：`proofGate{locked, why, nextMove, means}`（未锁时 `nextMove` 指 `REGISTER A NEW CARD`，`means` 明写 `read proofGate.locked, not `ok``）。
@@ -3615,7 +3615,7 @@ Repairs (commit after §320):
 
 - `packs/v5r/tools.js`: the blueprint propose branch reads `namedDraft = str(args.draft || '').trim()` and forwards it as
   `draft: namedDraft`; the description says what `draft` means (which OPEN draft to continue).
-- `kit/paper.js`: `final` decides the unsigned case BEFORE the roster lookup
+- `packs/research-core/paper-flow.js`: `final` decides the unsigned case BEFORE the roster lookup
   (`if (str(member).trim() === '')` ⇒ `final needs a SIGNER`, hint: `an empty member is a MISSING SIGNATURE, not a
   roster miss`).
 - `packs/v5r/paper-quality.js`: `writeAs` separates the two facts ("BOTH forms pass the content gate, but only a span
@@ -3781,7 +3781,7 @@ already known but never printed.
 2. **`blueprint adopt` reads the path off the draft it adopts.** `vibe-math-vmu/packs/v5r/blueprint.js` fills a missing
    `path` from the drafted row (`pathFrom: 'draft'`) and only refuses when neither the draft nor the argument names one.
    The face passes the argument the caller actually gave, so `pathFrom` never claims "argument" for a path nobody typed.
-3. **Display math is recognised.** `vibe-math-vmu/kit/paper.js` turns `$$…$$` into `\[ … \]` and counts
+3. **Display math is recognised.** `vibe-math-vmu/packs/research-core/paper-flow.js` turns `$$…$$` into `\[ … \]` and counts
    `math.displayMathSpans`; an unpaired `$$` is counted in `unpairedDisplayMarkers` and named in `displayMathMeans` rather
    than silently escaped into text glyphs.
 4. **A p=1 write-back names the card's own gate.** The receipt now carries `p1ProofGate`, `p1ProofUnresolved` and

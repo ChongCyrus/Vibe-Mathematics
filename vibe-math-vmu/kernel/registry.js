@@ -71,7 +71,7 @@ export function createRegistry({ services = {}, tools = {}, clock = () => new Da
     packContractVersion: PACK_CONTRACT_VERSION,
 
     /** Publish a service or tool. Re-publication is a conflict, never a silent override (O4). */
-    register(name, impl, { apiVersion: version, kind = 'service', description = null } = {}) {
+    register(name, impl, { apiVersion: version, kind = 'service', description = null, providedBy = null } = {}) {
       if (typeof name !== 'string' || !NAME.test(name)) {
         throw refuse('VMU_INVALID_ARGUMENT', 'a registered name must be a dotted identifier: ' + String(name))
       }
@@ -84,7 +84,10 @@ export function createRegistry({ services = {}, tools = {}, clock = () => new Da
         throw refuse('VMU_INVALID_ARGUMENT', 'service ' + name + ' must declare an integer apiVersion',
           'per-service versioning is the public contract (D13-O3)')
       }
-      const record = { name, kind, apiVersion: v, description: description || (impl && impl.description) || null, at: clock(), impl: impl || {} }
+      const record = { name, kind, apiVersion: v, description: description || (impl && impl.description) || null, at: clock(), impl: impl || {},
+        // ★ TB-2794 Step 0: a service CONTRIBUTED by a pack (or declared module) names its provider, so status can answer
+        // "who supplies this face" and an unload can prove it removed exactly what it added. null = the kernel itself.
+        providedBy: providedBy === null || providedBy === undefined ? null : String(providedBy) }
       entries.set(name, record)
       return { ok: true, name, kind, apiVersion: v, packContractVersion: PACK_CONTRACT_VERSION }
     },
@@ -175,11 +178,30 @@ export function createRegistry({ services = {}, tools = {}, clock = () => new Da
       }
     },
 
+    /**
+     * ★ TB-2794 Step 0: retract a CONTRIBUTED service (pack/module unload). Only an entry whose providedBy is non-null
+     * may be removed — a kernel-local service is not a pack's to delete, and an alias that still targets the name makes
+     * removal a refusal (remove the alias first), never a dangling published name (O4: no silent shadowing).
+     */
+    unregister(name) {
+      const key = String(name)
+      const entry = entries.get(key)
+      if (!entry) throw refuse('VMU_NO_SUCH_OBJECT', 'no service is published under that name: ' + key,
+        'retract only a CONTRIBUTED service; the published names are: ' + ([...entries.keys()].join(', ') || '(none)'))
+      if (entry.providedBy === null) throw refuse('VMU_NOT_PERMITTED', 'service ' + key + ' is published by the KERNEL, not by a pack: a pack unload may not remove it',
+        'retract only entries whose providedBy is a pack/module id (status().services[].providedBy says which)')
+      const aliasesOnIt = [...aliases.values()].filter((a) => a.to === key)
+      if (aliasesOnIt.length > 0) throw refuse('VMU_MIDDLEWARE_FAILED', 'service ' + key + ' is still the target of alias(es): ' + aliasesOnIt.map((a) => a.from).join(', '),
+        'remove those aliases first (unload does it in reverse order), so a published name never dangles')
+      entries.delete(key)
+      return { ok: true, name: key, removed: true, providedBy: entry.providedBy }
+    },
+
     /** Observability (R11): the published surface, the alias table and the deprecation notices. */
     status() {
       return {
         packContractVersion: PACK_CONTRACT_VERSION,
-        services: [...entries.values()].map((e) => ({ name: e.name, kind: e.kind, apiVersion: e.apiVersion })),
+        services: [...entries.values()].map((e) => ({ name: e.name, kind: e.kind, apiVersion: e.apiVersion, providedBy: e.providedBy })),
         aliases: [...aliases.values()].map((a) => Object.assign({}, a, { impl: undefined })),
         deprecatedInUse: [...aliases.values()].filter((a) => a.deprecated).map((a) => a.from),
       }

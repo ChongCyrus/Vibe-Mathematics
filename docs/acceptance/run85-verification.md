@@ -3,7 +3,7 @@
 > **这是记录，不是证据。** 证据在 7 份 session journal、`run88.*` 驱动日志、`slvp268-ws/` 的磁盘与独立复核（audit8）里；本页把读数、V1–V22 判定、缺陷去向与未闭合事项留档。
 > 依据可信度：**【A8】** audit8 独立复核（自解 journal / 自算 V16 逐请求 / 直读 `state.json` 与产品源码）> **【R】** run-lane 第一手证据（`run88-evidence/`）> **【D】** 本页亲验（复跑 `wc -l`/`sha256sum`/`json.load`）> **【O】** office 自报（**被审对象**，本轮 9 处需纠正/降级）。
 >
-> 一句话结论：**`DRIVER EXIT=0`、TB-2766 v3 收尾链 PASS；论文链全程未到 `awaiting-editor`、无 final 成功、无 render、无 PDF。** 两次 `final` 均在 `kit/paper.js:1784` 的**状态前置门**被 `VMU_PACK_V5R_CORE_PAPER_STATE` 具名拒（`gates[]` 在其后才构造，回执无 `gates`/`primaryGate`/`gatePriority`）。**V16 PASS**（非 resume 41/41 相等；resume 17 行三条件全满足：caption 诚实句、`wireStaleRisk:true`、两处 `toolFacePull` 三字段）；**V22 PASS（正面）**（三节正文均有 `证据等级：draft`，`evidenceGrades.fromBody` 一致），但**缺行拒收门从未运行**（`NO-EVIDENCE/RUN-DID-NOT-REACH`）；**V14/V15/V20 与 V21 全部 `NO-EVIDENCE/RUN-DID-NOT-REACH`**（交付结论按任务书 §7 = **FAIL**）；**V17 记 `RULE-UNREACHABLE`**——任务书场景在状态机上自相矛盾（`part` 在 awaiting-editor 被拒；正常 unanimity 路径 cross-review 门必 ok:true），**唯一可达路径是 round≥cap 的 forcedAfterCap 支，本轮未用**（cap 路径可补测，TB-2788）。结题 **3/4**（r-acad/r-2/r-3 赞成，**r-1 有资格但四次具名弃权**，r-temp 无票权）。预算：驱动 done 行 **115.03 min（120 min 内）**，wall clock **122.0 min**；首波 9 个成员回合 **61.1 min = 51% 墙钟**，paper start 迟到 **+74 min**。
+> 一句话结论：**`DRIVER EXIT=0`、TB-2766 v3 收尾链 PASS；论文链全程未到 `awaiting-editor`、无 final 成功、无 render、无 PDF。** 两次 `final` 均在 `packs/research-core/paper-flow.js:1784` 的**状态前置门**被 `VMU_PACK_V5R_CORE_PAPER_STATE` 具名拒（`gates[]` 在其后才构造，回执无 `gates`/`primaryGate`/`gatePriority`）。**V16 PASS**（非 resume 41/41 相等；resume 17 行三条件全满足：caption 诚实句、`wireStaleRisk:true`、两处 `toolFacePull` 三字段）；**V22 PASS（正面）**（三节正文均有 `证据等级：draft`，`evidenceGrades.fromBody` 一致），但**缺行拒收门从未运行**（`NO-EVIDENCE/RUN-DID-NOT-REACH`）；**V14/V15/V20 与 V21 全部 `NO-EVIDENCE/RUN-DID-NOT-REACH`**（交付结论按任务书 §7 = **FAIL**）；**V17 记 `RULE-UNREACHABLE`**——任务书场景在状态机上自相矛盾（`part` 在 awaiting-editor 被拒；正常 unanimity 路径 cross-review 门必 ok:true），**唯一可达路径是 round≥cap 的 forcedAfterCap 支，本轮未用**（cap 路径可补测，TB-2788）。结题 **3/4**（r-acad/r-2/r-3 赞成，**r-1 有资格但四次具名弃权**，r-temp 无票权）。预算：驱动 done 行 **115.03 min（120 min 内）**，wall clock **122.0 min**；首波 9 个成员回合 **61.1 min = 51% 墙钟**，paper start 迟到 **+74 min**。
 
 ---
 
@@ -41,7 +41,7 @@
 | 1 | §一 元数据：`tokenTotal/cap`、`toolCalls`、`transcriptEvents` 三项写「不可达」，并用「起 = `vibe_v5_start` 回执时刻 / 时长 ≈115–125 min / **超 120 min 预算**」下结论 | 驱动 done 行就在磁盘（office 运行期不可见可理解，但写「无 done 行」不准确）：`durationSec 6902` = **115.03 min**（按驱动口径**在 120 min 内**）；wall LAUNCHED→EXIT = **122.0 min**。「超 120」是**猜测**且与 durationSec 冲突；「起」用了开所时刻（23:16:13）而非运行起点（23:09:38） | **P2（口径错 + 猜测）** |
 | 2 | §一 会话数：「成员子会话 5 个…另有 5 席初建」 | **7 个 journal 会话**（5 席位 + 驱动 root + PREFLIGHT 探针）；「5 席初建」与会话混为一谈 | P3 |
 | 3 | §一 轮次：「`turns:9`→最终 `turns:22`」并标来源 `vibe_vmu_turn{op:"status"}.turns` | 全 run 只调过 3 次 turn status（00:18:55 board、00:19:48 detail:full 被拒、00:20:02 全量），**最后读数就是 9**；22 这个数字本身对（按 journal `turn/start` 数出成员回合=22），但**来源标注是错的** | P3（来源错） |
-| 4 | FEEDBACK85 F85-2：「cross-review 与 glyph-coverage 同屏 ok:false **在本部署不可达**」 | **结论过头**：正常 unanimity 路径确实不可达，但 `round≥cap` 的 `forcedAfterCap` 支（`kit/paper.js:1635-1673`）允许非一致进 awaiting-editor，届时 cross-review 可为 false ⇒ 该现象**可达**（只是任务书没写、status 没披露）。应降级为「正常路径不可达 + cap 路径可达但未文档化」 | **P2（结论过头）** |
+| 4 | FEEDBACK85 F85-2：「cross-review 与 glyph-coverage 同屏 ok:false **在本部署不可达**」 | **结论过头**：正常 unanimity 路径确实不可达，但 `round≥cap` 的 `forcedAfterCap` 支（`packs/research-core/paper-flow.js:1635-1673`）允许非一致进 awaiting-editor，届时 cross-review 可为 false ⇒ 该现象**可达**（只是任务书没写、status 没披露）。应降级为「正常路径不可达 + cap 路径可达但未文档化」 | **P2（结论过头）** |
 | 5 | FEEDBACK85 F85-1：「产品根本没有 `detail:"full"`」 | 表述不准：`vibe_vmu_turn` 只接受 `closure|board`（`tools/turn.js:333-338`），但 **`vibe_vmu_status { detail:"full"|"settings" }` 存在**（`host.js:527/544/618`）；office 只试了 `vibe_vmu_turn` | P2（表述错） |
 | 6 | §三 V21 格引 `voteStaleness.means:"staleness NOT JUDGED…"` | **非逐字引用**：磁盘原文是 `"staleness NOT JUDGEABLE: votes dated (2026-11-13T16:36:32.394Z) but no finalized paper on file (not \"fresh\")"`；三个值对、means 被改写 ⇒ 应贴原文或标「【转述】」（§9.2 纪律） | P3（引用不逐字） |
 | 7 | §二 说「论文链未 finalized/render ⇒ 按 §7 记 FAIL」，但 V14/V15/V20 格判 `NO-EVIDENCE（RUN-DID-NOT-REACH）` | **两套口径打架**：正确写法是**两句都写**——交付结论 FAIL；各 V 点证据判 `NO-EVIDENCE/RUN-DID-NOT-REACH`（§7：`RUN-DID-NOT-REACH` 只用于规则不可达） | P3（口径不一） |
@@ -76,13 +76,13 @@
 - **FINAL #1 — 00:52:34，`ea8afd1c` seq 395(call)/396(result)**：`{"ok":false,"code":"VMU_PACK_V5R_CORE_PAPER_STATE","message":"the paper is not awaiting its editor (now: writing)","hint":"…a paper in \"writing\" needs its parts first…then advance() moves it to reviewing","memberActed":false,"actedForMember":"r-acad","callerMember":"r-acad","receiptMeta":{…"originalBytes":864}}`。
 - **FINAL #2 — 00:56:50，seq 467(call)/468(result)**：`{"ok":false,"code":"VMU_PACK_V5R_CORE_PAPER_STATE","message":"the paper is not awaiting its editor (now: reviewing)","hint":"…a paper in \"reviewing\" needs every part reviewed by a member who is NOT its author…advance() only moves the flow, it does not review for you","memberActed":false,…"originalBytes":933}}`。
 - 两次都**没有** `gates[]`/`primaryGate`/`gatePriority`/`stage`/`detail`；两次 `message` 的 `now:` **不同**（writing / reviewing）。`VMU_PAPER_GLYPH_UNCOVERED` 在 final 回执中 **0 次**。
-- 产生点：`kit/paper.js:1784` 的状态前置门（`recordFinal` 开头）；`gates[]` 在其后 `1838` 才构造 ⇒ **状态门与 gates 是先后关系**，不到 `awaiting-editor` 永远看不到 gates。
+- 产生点：`packs/research-core/paper-flow.js:1784` 的状态前置门（`recordFinal` 开头）；`gates[]` 在其后 `1838` 才构造 ⇒ **状态门与 gates 是先后关系**，不到 `awaiting-editor` 永远看不到 gates。
 
 **V17 = NO-EVIDENCE / RULE-UNREACHABLE（结构性）**
 
-1. `part` 只在 `writing` 接受（`kit/paper.js:929`）⇒ 任务书「advance 到 awaiting-editor 后 r-1 用 part 重写」**无法按序执行**。
-2. 正常 unanimity 路径下，advance 到 awaiting-editor 的前提是 `requireCrossReview` 通过（`kit/paper.js:1596/1267`）⇒ final 时 cross-review 门**必然** ok:true ⇒「cross-review 与 glyph-coverage 同屏 ok:false」不可能由正常路径产生。
-3. **唯一可达路径**：`round ≥ roundsCap()`（默认 3，`kit/paper.js:128/169`）时 `advance(reviewing)` **不要求 unanimity**，直接 `forcedAfterCap` 进 awaiting-editor（`1635/1663`）⇒ 此时 final 的 cross-review 可 false、glyph 门也可 false。**本轮未用**（终局 writing/round3，只差 2 次 advance）。
+1. `part` 只在 `writing` 接受（`packs/research-core/paper-flow.js:929`）⇒ 任务书「advance 到 awaiting-editor 后 r-1 用 part 重写」**无法按序执行**。
+2. 正常 unanimity 路径下，advance 到 awaiting-editor 的前提是 `requireCrossReview` 通过（`packs/research-core/paper-flow.js:1596/1267`）⇒ final 时 cross-review 门**必然** ok:true ⇒「cross-review 与 glyph-coverage 同屏 ok:false」不可能由正常路径产生。
+3. **唯一可达路径**：`round ≥ roundsCap()`（默认 3，`packs/research-core/paper-flow.js:128/169`）时 `advance(reviewing)` **不要求 unanimity**，直接 `forcedAfterCap` 进 awaiting-editor（`1635/1663`）⇒ 此时 final 的 cross-review 可 false、glyph 门也可 false。**本轮未用**（终局 writing/round3，只差 2 次 advance）。
 4. 另一口径漏洞：`vmu.paper.officeConsult="required"`（advance 回执 `officeConsultPending:true`）⇒ 第一次到 gates 的 final 至少含 **3 项**失败（cross-review/glyph/office-consult），任务书写「两个 blocker」也不对。
 ⇒ 记 **`RULE-UNREACHABLE`**（按本轮任务书不可执行），但**cap 路径可补测**（TB-2789 的 V17 新口径按「先互审一致 → 断言 glyph 门」设计，避开原矛盾；TB-2788 负责 status 披露 cap）。
 
@@ -182,7 +182,7 @@
 
 | 来源 | 摘要 | 去向 |
 |---|---|---|
-| **D1 / P1（任务书）** | V17 的场景在状态机上自相矛盾：①`part` 在 awaiting-editor 被拒（`kit/paper.js:929`）；②正常 unanimity 路径下 cross-review 门必 ok:true；③`officeConsult="required"` 时第一次 final 至少 3 个 blocker（任务书写「两个」） | **TB-2789（第 86 次任务书）V17 新口径**：先互审一致到 awaiting-editor（不真拒收）→ 首次 final 前把 `⨀` 写进某一节正文（`part` 只在 writing 期写，故必须在 advance 之前就写）→ 期望 `gates[]` 只有 **glyph-coverage ok:false、其它门 ok**、顶层 code=`VMU_PAPER_GLYPH_UNCOVERED` → 改写 → 二次 final 成功 → render |
+| **D1 / P1（任务书）** | V17 的场景在状态机上自相矛盾：①`part` 在 awaiting-editor 被拒（`packs/research-core/paper-flow.js:929`）；②正常 unanimity 路径下 cross-review 门必 ok:true；③`officeConsult="required"` 时第一次 final 至少 3 个 blocker（任务书写「两个」） | **TB-2789（第 86 次任务书）V17 新口径**：先互审一致到 awaiting-editor（不真拒收）→ 首次 final 前把 `⨀` 写进某一节正文（`part` 只在 writing 期写，故必须在 advance 之前就写）→ 期望 `gates[]` 只有 **glyph-coverage ok:false、其它门 ok**、顶层 code=`VMU_PAPER_GLYPH_UNCOVERED` → 改写 → 二次 final 成功 → render |
 | **D2 / P1（产品披露）** | `paper status` 不披露 `roundsCap`/`atCap`/`forcedAfterCap`，「只差 2 次 advance」不可见；`advance` capped 行为只有事后回执才看得到 | **TB-2788**（`paper-status-cap-disclosure`：`roundsCap`/`atCap`/`forcedAfterCapAvailable`/`nextMoves` + final 状态门拒带 `currentStage`/`nextMoves`） |
 | **D3 / P2（测量口径）** | done 行 `durationSec/transcriptEvents/toolCalls` 是 **root 会话口径**且与 wall 不同（115.03 vs 122.0）；直接制造「超 120 / 不可达」两种误读 | **TB-2788 必做 3**（doc 写明口径 + metadata 补 `wallClockSec`） |
 | **D4 / P3（读数）** | `evidenceGrades.parts[].recordId` 为 `null`（应给该节 part 行 id） | **TB-2788 必做 2** |
@@ -208,11 +208,11 @@
 
 ## 10 教训
 
-1. **「状态门」先于「gates」是设计，不是缺陷**：`final` 在 writing/reviewing 被 `VMU_PACK_V5R_CORE_PAPER_STATE` 拒时**永远看不到 `gates[]`**（`kit/paper.js:1784` 在 1838 之前）；要测 gates 必须先把论文送到 awaiting-editor（或走 cap 强制路径）。**任务书不能假设「final 一定给 gates」。**
+1. **「状态门」先于「gates」是设计，不是缺陷**：`final` 在 writing/reviewing 被 `VMU_PACK_V5R_CORE_PAPER_STATE` 拒时**永远看不到 `gates[]`**（`packs/research-core/paper-flow.js:1784` 在 1838 之前）；要测 gates 必须先把论文送到 awaiting-editor（或走 cap 强制路径）。**任务书不能假设「final 一定给 gates」。**
 2. **时间最大杠杆还是「首波回合」**：9 个成员回合 61.1 min（51% 墙钟），r-2 一次 `rounds:2` 就 21.4 min；**立所回合内就 `paper start`、三席 founding part 各 1 回合、不要 rounds:2** 可省 30+ min（TB-2789 的时间盒）。
 3. **让互审一致而不是真拒收**：一次 bounce ≈ 2 次 advance + 3 席重审/重写 ≈ 20–25 min；「真拒收」只放在 V17 专项（而且要在 advance 之前把字符写进正文，`part` 只在 writing 期可写）。
 4. **两个时长口径必须写清**：done 行 115.03 min（root 会话/驱动口径）vs wall 122.0 min；`transcriptEvents`/`toolCalls` 也是 root 口径。**报告不写作用域就会得出相反结论**（office 因此误报「超 120」）。
-5. **「可达/不可达」要看源码**：F85-2 的「cap 路径不可达」结论过头——`forcedAfterCap` 支存在（`kit/paper.js:1635/1663`），只是未文档化。**判 NO-EVIDENCE 前先确认产品有没有合法出路。**
+5. **「可达/不可达」要看源码**：F85-2 的「cap 路径不可达」结论过头——`forcedAfterCap` 支存在（`packs/research-core/paper-flow.js:1635/1663`），只是未文档化。**判 NO-EVIDENCE 前先确认产品有没有合法出路。**
 6. **引用必须逐字**：V21 的 `voteStaleness.means` 被改写（「NOT JUDGED」vs 原文「NOT JUDGEABLE」）——报告纪律缺陷（TB-2778）在本轮再次出现。
 
 ---
@@ -231,4 +231,4 @@
 
 ## 12 结论一句话
 
-**RUN 85 attempt-1（build `365bbe5f`，`DRIVER EXIT=0`，驱动 115.03 min / wall 122.0 min）交付 FAIL：论文链从未到 `awaiting-editor`，两次 `final` 都在 `kit/paper.js:1784` 的状态前置门被 `VMU_PACK_V5R_CORE_PAPER_STATE` 拒（writing / reviewing），`gates[]` 从未构造，无 render、无 PDF、无 `reopen-closure` ⇒ V14/V15/V20/V21 均 `NO-EVIDENCE/RUN-DID-NOT-REACH`，V17 记 `RULE-UNREACHABLE`（任务书场景在状态机自相矛盾；cap 强制路径存在但本轮未用、可补测）。正面结果：**V16 PASS**（非 resume 41/41；resume 17 行 caption 诚实句 + `wireStaleRisk:true` + 两处 `toolFacePull` 三字段齐；`wireCaptured` 是累计计数、`lastWireCapturedCount` 才是名集计数）与 **V22 PASS（正面）**（三节正文 `证据等级：draft` 与 `evidenceGrades.fromBody` 一致；缺行拒收门未运行）。结题 3/4：r-1 有资格但四次具名弃权（时序异议）。根因是**首波成员回合吃 51% 墙钟 + paper start 迟到 +74 min + 一次互审 bounce**；下一轮按 TB-2789 的时间盒（7 验点、`final` 于 +90 min 前发起、立所回合内 `paper start`、三席 founding part 各 1 回合）重跑，并按 TB-2788 披露 cap 出路。**
+**RUN 85 attempt-1（build `365bbe5f`，`DRIVER EXIT=0`，驱动 115.03 min / wall 122.0 min）交付 FAIL：论文链从未到 `awaiting-editor`，两次 `final` 都在 `packs/research-core/paper-flow.js:1784` 的状态前置门被 `VMU_PACK_V5R_CORE_PAPER_STATE` 拒（writing / reviewing），`gates[]` 从未构造，无 render、无 PDF、无 `reopen-closure` ⇒ V14/V15/V20/V21 均 `NO-EVIDENCE/RUN-DID-NOT-REACH`，V17 记 `RULE-UNREACHABLE`（任务书场景在状态机自相矛盾；cap 强制路径存在但本轮未用、可补测）。正面结果：**V16 PASS**（非 resume 41/41；resume 17 行 caption 诚实句 + `wireStaleRisk:true` + 两处 `toolFacePull` 三字段齐；`wireCaptured` 是累计计数、`lastWireCapturedCount` 才是名集计数）与 **V22 PASS（正面）**（三节正文 `证据等级：draft` 与 `evidenceGrades.fromBody` 一致；缺行拒收门未运行）。结题 3/4：r-1 有资格但四次具名弃权（时序异议）。根因是**首波成员回合吃 51% 墙钟 + paper start 迟到 +74 min + 一次互审 bounce**；下一轮按 TB-2789 的时间盒（7 验点、`final` 于 +90 min 前发起、立所回合内 `paper start`、三席 founding part 各 1 回合）重跑，并按 TB-2788 披露 cap 出路。**

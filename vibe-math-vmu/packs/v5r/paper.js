@@ -2,7 +2,7 @@
  * packs/v5r/paper.js — PHASE 8 / B-4 step 2: THE THIN SHELL (policy + forwarding).
  *
  * WHAT THIS FILE IS NOW: the paper FLOW (state machine, fingerprint verification, artefact assembly, the kernel-LaTeX
- * compile path) lives in `vibe-math-vmu/kit/paper.js` as `createPaperFlow({...})`. This file keeps ONLY the institution's
+ * compile path) lives in `packs/research-core/paper-flow.js` as `createPaperFlow({...})`. This file keeps ONLY the institution's
  * policy and forwards:
  *   · PAPER_SECTIONS / PAPER_MAX_ROUNDS / PAPER_ENGINE_ORDER / PAPER_REPAIR_CORE — the institution's outline, round cap,
  *     engine preference and package set (they must NOT move into the kit: the kit never invents institution semantics);
@@ -13,7 +13,7 @@
  * (start / recordPart / recordReview / advance / pass / recordFinal / PaperMd / PaperTex / PaperArtifacts / render /
  * compilePdf / sections / state) is the kit's implementation with this policy applied.
  */
-import { createPaperFlow } from '../../kit/paper.js'
+import { createPaperFlow } from '../research-core/paper-flow.js'
 // ★ E1＋E3 (phase 12): the record-backed sections and the quality gate live in their own module because the export
 // surface below is PINNED (`tests/vmu-v5r-tools.test.mjs` ⑦h) — new machinery may never widen it. This file imports and
 // wires; `paper-quality.js` owns the reads, the fills and the four refusal codes.
@@ -43,12 +43,13 @@ export const PAPER_ARTIFACTS = Object.freeze(['md', 'tex', 'pdf', 'meta'])
 export const PAPER_TRACK = 'paper'
 export const PAPER_CODES = Object.freeze({
   STATE: 'VMU_PACK_V5R_CORE_PAPER_STATE',
+  INVALID: 'VMU_INVALID_ARGUMENT',
   FINGERPRINT: 'VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH',
   PDF_NEEDS_KERNEL: 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
   EXECUTOR: 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING',
   PDF_FAILED: 'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED',
   // ★ E4 — the pre-finalisation office consult. These are INSTITUTION codes (registered in docs/03 §8), passed into the
-  // kit because the kit invents no codes: the gate is declared here, the mechanism that runs it lives in kit/paper.js.
+  // kit because the kit invents no codes: the gate is declared here, the mechanism that runs it lives in packs/research-core/paper-flow.js.
   OFFICE_CONSULT_REQUIRED: 'VMU_OFFICE_CONSULT_REQUIRED',
   OFFICE_CONSULT_TIMEOUT: 'VMU_OFFICE_CONSULT_TIMEOUT',
 })
@@ -122,7 +123,7 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
     // ★ E4: who may answer the pre-finalisation consult — the institution's office (see PAPER_CONSULT_ROLES).
     consultRoles: PAPER_CONSULT_ROLES,
     sections: PAPER_SECTIONS,
-    // ★ THE MAPPING IS POLICY (kit/paper.js §PaperMd): one entry per section, '' = that section owns no single part-field.
+    // ★ THE MAPPING IS POLICY (packs/research-core/paper-flow.js §PaperMd): one entry per section, '' = that section owns no single part-field.
     // 序号对应 PAPER_SECTIONS：0 标题|1 引言|★2 完整解法|★3 命题|4 子问题|★5 有价值之物|★6 规律|★7 局限|★8 证据
     sectionFields: Object.freeze(['title', '', 'solution', '', '', 'methods', 'rules', 'limits', 'evidence']),
     // ★★ RUN 154 (H2b): a READER, not a snapshot. `vibe_v5_set { key: "vmu.paper.maxRounds", value: 6 }` used to be
@@ -130,6 +131,14 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
     // The flow now asks this function at every gate: a positive setting widens the cap immediately; unset/0 keeps the
     // declared outline cap (PAPER_MAX_ROUNDS) — and the flow's own cap message names that, rather than pretending the
     // kernel-face meaning of 0 (unlimited) is being honoured here.
+    // ★ TB-2794 R2: `vmu.paper.maxSections` keeps a REAL semantic reader on the mounted path — the flow refuses starting a
+    // paper whose declared section list exceeds the institution's cap. Dynamic (read per call), like maxRounds.
+    maxSections: () => {
+      let raw = null
+      try { raw = (kernel && typeof kernel.settingsSnapshot === 'function' ? kernel.settingsSnapshot() : {})['vmu.paper.maxSections'] } catch { raw = null }
+      const n = Number(raw)
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
+    },
     maxRounds: () => {
       let raw = null
       try { raw = (kernel && typeof kernel.settingsSnapshot === 'function' ? kernel.settingsSnapshot() : {})['vmu.paper.maxRounds'] } catch { raw = null }
@@ -137,6 +146,13 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
       return Number.isFinite(n) && n > 0 ? n : PAPER_MAX_ROUNDS
     },
     engineOrder: PAPER_ENGINE_ORDER,
+    // ★ TB-2794 Step 1: the kernel LaTeX engine no longer reads `vmu.paper.latexCommand/TimeoutMs`; the INSTITUTION policy
+    // reads its own declared keys and hands them to the flow (behaviour unchanged on the mounted path).
+    latex: () => {
+      let snap = {}
+      try { snap = kernel && typeof kernel.settingsSnapshot === 'function' ? kernel.settingsSnapshot() : {} } catch { snap = {} }
+      return { command: snap['vmu.paper.latexCommand'], timeoutMs: snap['vmu.paper.latexTimeoutMs'] }
+    },
     repairCore: PAPER_REPAIR_CORE,
     track: PAPER_TRACK,
     codes: PAPER_CODES,
@@ -154,7 +170,7 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
   // track's p=1 rows). The fill is applied to THE MARKDOWN THIS PACK PRODUCES (`flow.PaperMd`), and every empty source is
   // rendered as a NAMED sentence instead of a blank line (see `paper-quality.js §RECORD_SECTIONS.legalEmpty`).
   //
-  // WHERE THE FILL REACHES NOW (updated this round): `kit/paper.js` takes a `mdFill` seam, so `flow.PaperMd` (the tool
+  // WHERE THE FILL REACHES NOW (updated this round): `packs/research-core/paper-flow.js` takes a `mdFill` seam, so `flow.PaperMd` (the tool
   // receipt), `PaperTex` and the `.md`/`.tex` written by `render` all carry the record-backed sections. `PaperMdRaw` is the
   // unfilled base and exists ONLY so `sectionAudit` can report what the fill did without filling twice.
   const filledMd = (args = {}) => fillRecordSections({ md: flow.PaperMdRaw(args), sections: PAPER_SECTIONS, view: recordsView(), codes: QUALITY_CODES })
@@ -184,7 +200,7 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
   /** ★ E3 — the quality verdict WITHOUT refusing (the reviewer/the editor may ask before committing). */
   flow.qualityGate = (args = {}) => {
     const target = args && args.target !== undefined ? args.target : args
-    // `kit/paper.js`'s own `state()` read returns `{ state, row }` (the state machine + its records row); accept both
+    // `packs/research-core/paper-flow.js`'s own `state()` read returns `{ state, row }` (the state machine + its records row); accept both
     // shapes so a caller may hand over either the kit's read or a bare state object.
     const read = flow.state(target)
     const state = read && read.state ? read.state : read

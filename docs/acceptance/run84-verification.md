@@ -201,8 +201,8 @@ chair 全部 `final` 4 条（原文核过）：
 | 来源 | 摘要 | 去向 |
 |---|---|---|
 | **N1 / P0** | V16 残 14 例：新回合首请求是 `resume`（不重新 assemble 系统提示），块沿用上一回合 58/48 vs wire 79/69；caption「同一来源」是假话；TB-2780 的 capture 未生效且 `wireCaptured` 在 `turn status full` 完全不可观测 | **TB-2784**（P0；写域 `host.js`/`kernel/index.js`/packs status/`tests/vmu-host.test.mjs`/docs/03） |
-| **N2 / P1** | `final` 门次序让字符门结构性不可达（互审一致门先拒，`gates` 不分屏）；⨀ 只能靠 revise 后改写删除 | **TB-2785**（`gates[]` 一次给全 + 顶层 code 取最高优先级；写域 `kit/paper.js`/packs/`tests/**`/docs/03） |
-| **N3 / P1** | `evidenceGrades` 从证据卡算、不读 part 正文；缺具名等级行没有任何门能发现 ⇒ V22 被假 PASS | **TB-2786**（`fromBody`/`bodyGradeLine` + `final` 具名拒 `VMU_PAPER_GRADE_LINE_MISSING`；写域 `kit/paper.js`/packs/`tests/**`/docs/03） |
+| **N2 / P1** | `final` 门次序让字符门结构性不可达（互审一致门先拒，`gates` 不分屏）；⨀ 只能靠 revise 后改写删除 | **TB-2785**（`gates[]` 一次给全 + 顶层 code 取最高优先级；写域 `packs/research-core/paper-flow.js`/packs/`tests/**`/docs/03） |
+| **N3 / P1** | `evidenceGrades` 从证据卡算、不读 part 正文；缺具名等级行没有任何门能发现 ⇒ V22 被假 PASS | **TB-2786**（`fromBody`/`bodyGradeLine` + `final` 具名拒 `VMU_PAPER_GRADE_LINE_MISSING`；写域 `packs/research-core/paper-flow.js`/packs/`tests/**`/docs/03） |
 | **N4 / P2** | `voteStaleness.finalizedAt` 取 paper-state 行（12:36:57.336）而任务书要 paper-pdf 行（12:38:08.217），差 70.9 s | **待归并**（TB-2782 续；本轮 PASS 不受影响；下轮 V21 判据在 TB-2787 已写「两口径都贴」） |
 | **N5 / P2** | `reopen-closure` 称旧票留档，但终态 `closure_votes` 无 window:1 行——归档不可从 vmu 面读回 | **待归并**（需核查多内核 fold 并写是否丢行，或提供归档读面） |
 | **N6 / P3** | `evidenceGrades.*.facts.proofState` 对 r3-p1 读 `null`，卡本身 `proofState:"complete"`（自报）——"未验证=null" 与 "未读到=null" 不可区分 | 并入 TB-2786 |

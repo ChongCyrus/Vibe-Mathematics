@@ -3,7 +3,7 @@
 > 批次：phase 12 台账 E 组两行 ⚠️。写于工作树 HEAD 由 Lead 统一提交之前；行号是**当前工作树快照**（pack 侧
 > 正被并行改写，引用前请以 `git grep -n` 复核）。
 > 本批可写面：`vibe-math-vmu/packs/v5r/paper.js`、新文件 `vibe-math-vmu/packs/v5r/paper-quality.js`、新测试、
-> `package.json#files`、`installer.js`。**未改** `kit/paper.js`、`packs/v5r/tools.js`、提示词、`kernel/**`、`tools/**`。
+> `package.json#files`、`installer.js`。**未改** `packs/research-core/paper-flow.js`、`packs/v5r/tools.js`、提示词、`kernel/**`、`tools/**`。
 
 ## 0. 判据（台账原文→本批要证的东西）
 
@@ -23,7 +23,7 @@ mdChars = 460
 
 原因在结构上，不在内容上：`vibe-math-vmu/packs/v5r/paper.js:83`
 `sectionFields: ['title','','solution','','','methods','rules','limits','evidence']` —— 下标 1/3/4 是空串，
-`kit/paper.js:526` 的 `PaperMd` 遇到 `if (!field) continue` 就整节空过。所以这 3 节**永远**是空标题，
+`packs/research-core/paper-flow.js:526` 的 `PaperMd` 遇到 `if (!field) continue` 就整节空过。所以这 3 节**永远**是空标题，
 与研究所里有没有 verified 卡无关。
 
 ## 2. E1 承载：九节从记录库取值（已落地）
@@ -48,14 +48,14 @@ mdChars = 460
 
 ## 3. E1 的**未达成**部分（具名，卡在 kit 缝）—— 这是本批最重要的一条
 
-`kit/paper.js` 里 `render`（`:608`）、`PaperTex`（`:560`）、`PaperArtifacts`（`:583`）、`recordFinal` 回执
+`packs/research-core/paper-flow.js` 里 `render`（`:608`）、`PaperTex`（`:560`）、`PaperArtifacts`（`:583`）、`recordFinal` 回执
 **都用 kit 内部的闭包 `PaperMd`**（`:526`），不是 flow 对象上那个方法。因此：
 
 - `flow.PaperMd` / `flow.sectionAudit` / 质量闸看到的是**填充版**；
 - 而 `flow.render` 写进 `Paper/` 的 `.md`/`.tex` 产物仍是**未填充版**（3 节依旧空）。
 
 我没有用「在 pack 里重写一遍渲染器」来绕过：那会造出第二个渲染权威（红线①/②），且 pack 侧改不动
-`PaperTex`/`compilePdf` 的闭包依赖。**请求的最小 kit 缝**（约 12 行，全部在 `kit/paper.js`）：
+`PaperTex`/`compilePdf` 的闭包依赖。**请求的最小 kit 缝**（约 12 行，全部在 `packs/research-core/paper-flow.js`）：
 
 1. `createPaperFlow({ …, sectionFills = null })` 增加一个可选入参（默认 `null` ⇒ 行为完全不变）；
 2. 闭包 `PaperMd`（`:526`）在每节标题后，若 `sectionFills && sectionFills[i]` 存在则追加该文本（否则维持现状）；
@@ -107,7 +107,7 @@ E3-a 自由文本证据过闸；E3-b 引用了不存在的 id ⇒ 拒且消息�
 
 ## 7. 未做（具名）
 
-1. **kit 缝**（§3）：渲染产物（`.md`/`.tex`）的 3 节填充要等 `kit/paper.js` 的 `sectionFills` 入参。消费者已存在
+1. **kit 缝**（§3）：渲染产物（`.md`/`.tex`）的 3 节填充要等 `packs/research-core/paper-flow.js` 的 `sectionFills` 入参。消费者已存在
    （`tools.js:1820`），所以这不是「无消费者的机制」，而是被写面挡住的一步。
 2. 九节里另外 6 节仍来自参与者字段（`sectionFields` 的 title/solution/methods/rules/limits/evidence）——
    台账没有要求它们改成记录驱动，本批不动。

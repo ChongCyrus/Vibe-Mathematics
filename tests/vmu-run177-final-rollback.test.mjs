@@ -2,7 +2,7 @@
 // tests/vmu-run177-final-rollback.test.mjs — RUN 177 (real machine, run 22 / FEEDBACK22 D1/D4).
 //
 // THE DEFECT THIS PINS (measured on the real machine, run 22, build 2c8ffef5 + RUN 176):
-//   RUN 176 taught `kit/paper.js#recordFinal` to refuse to finalise a paper whose compile really ran and failed —
+//   RUN 176 taught `packs/research-core/paper-flow.js#recordFinal` to refuse to finalise a paper whose compile really ran and failed —
 //   `finalized:false` + `rolledBack{from,to}` + `reviseAvailable:true`, then `final {decision:"revise"}` reopens
 //   writing. On the real machine the paper finalised anyway. Root cause: the LaTeX face reports `tried` as STRUCTURED
 //   entries (`{engine, phase, code}`), so the classification `String(t).includes(':compile')` was the string
@@ -17,7 +17,7 @@
 //   parameter the caller never passed.
 //
 // WHAT RUN 177 CHANGES:
-//   · `kit/paper.js`: `phaseOf(t)` reads `{phase}` from an object entry and keeps the old `engine:phase[:code]`
+//   · `packs/research-core/paper-flow.js`: `phaseOf(t)` reads `{phase}` from an object entry and keeps the old `engine:phase[:code]`
 //     reading for a bare string; `reachedCompile` is `phaseOf(t) === 'compile'`. The env-gap branch (EXECUTOR_MISSING
 //     / NO_ENGINE / probe-only) still finalises, and now says so with `pdfEnvironmentMissing`.
 //   · `packs/v5r/tools.js`: the `final` projection carries `rolledBack{from,to,keptEarlierFinal}`, `reviseAvailable`,
@@ -35,7 +35,7 @@ import { mkdtemp, mkdir } from 'node:fs/promises'
 import { tmpRoot as __tmpRoot, mkScratch, scratchPath, tmpRoot } from './_lib/scratch.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const PACK_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')

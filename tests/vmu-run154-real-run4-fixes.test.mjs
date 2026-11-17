@@ -15,7 +15,7 @@
 //   G9 `VMU_OFFICE_CONSULT_REQUIRED` 的回执里没有 `target` 字段，答复得先撞一次「no target was given」。
 //
 // 修法（全部落在机制/句子的所有者上）：
-//   `vibe-math-vmu/kit/paper.js`  readState 接受 `paper-<x>` 拼写（H3）
+//   `vibe-math-vmu/packs/research-core/paper-flow.js`  readState 接受 `paper-<x>` 拼写（H3）
 //                                advance 的评审判定先读磁盘 `paper-review` 行（本轮），命中即自愈缓存（H1）
 //                                MAX_ROUNDS 常量 → `roundsCap()`（每次闸点现读）+ `REPAIR_ROUNDS` 修复轮（H2/H2b 下游）
 //                                consultGate 三支拒绝都带 `target`/`paperId`（G9）
@@ -34,7 +34,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '..')
-const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const PACK_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const KIT_SRC = readFileSync(KIT, 'utf8')
@@ -141,7 +141,7 @@ function backToAwaiting(flow, T) {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 console.log('§0 源码口径：RUN 154 的六处机制改动都在所有者上')
 {
-  ok(KIT_SRC.includes('RUN 154'), 'kit/paper.js 带 RUN 154 注记')
+  ok(KIT_SRC.includes('RUN 154'), 'packs/research-core/paper-flow.js 带 RUN 154 注记')
   ok(KIT_SRC.includes('let word = str(target)') && KIT_SRC.includes('/^paper-/'), 'H3：readState 认 `paper-<x>` 拼写')
   ok(KIT_SRC.includes('const readReview = (member) =>') && KIT_SRC.includes("source: 'durable'"), 'H1：advance 有磁盘评审行的回读（durable 来源）')
   ok(KIT_SRC.includes('const roundsCap = () =>') && KIT_SRC.includes('const REPAIR_ROUNDS = 2'), 'H2：轮数上限是现读的函数 + 修复轮预算')
@@ -226,7 +226,7 @@ console.log('§2 H1：缓存丢了评审条目，磁盘上的评审行仍然作�
     const dir = mkdtempSync(join(tmpdir(), 'run154-lamp-'))
     try {
       cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
-      const kitPath = join(dir, 'vibe-math-vmu', 'kit', 'paper.js')
+      const kitPath = join(dir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
       const src = readFileSync(kitPath, 'utf8')
       const from = "if (judged.partChanged) return out(false, 'part-text-changed')"
       ok(src.indexOf(from) !== -1, 'lamp-setup：指纹绑定判据存在')

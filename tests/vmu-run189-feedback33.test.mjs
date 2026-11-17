@@ -24,7 +24,7 @@ const KERNEL = readFileSync(join(ROOT, 'vibe-math-vmu', 'kernel', 'index.js'), '
 const MEETING = readFileSync(join(ROOT, 'vibe-math-vmu', 'tools', 'meeting.js'), 'utf8')
 const QUALITY = readFileSync(join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js'), 'utf8')
 const PAPER = readFileSync(join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js'), 'utf8')
-const KITPAPER = readFileSync(join(ROOT, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+const KITPAPER = readFileSync(join(ROOT, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
 const PROCEDURES = readFileSync(join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'meeting-procedures.js'), 'utf8')
 
 const ok = (cond, msg, extra) => assert.ok(cond, msg + (extra === undefined ? '' : '\n' + JSON.stringify(extra, null, 2)))

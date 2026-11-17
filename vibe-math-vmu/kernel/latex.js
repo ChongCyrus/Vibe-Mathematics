@@ -77,7 +77,6 @@ export function glyphLossReading ({ logText = '', texText = '' } = {}) {
 }
 
 export function createLatexFace(opts = {}) {
-  const readKey = (k) => (opts.settings && typeof opts.settings.get === 'function' ? opts.settings.get(k) : (opts.settings || {})[k])
   const spawn = typeof opts.spawn === 'function' ? opts.spawn : null
   const spawnHandle = typeof opts.spawnHandle === 'function' ? opts.spawnHandle : null
   const clock = typeof opts.clock === 'function' ? opts.clock : () => Date.now()
@@ -94,19 +93,17 @@ export function createLatexFace(opts = {}) {
   // ★ LIVE RUN 133 (F-133a): `vmu.paper.latexCommand` is an ABSOLUTE PATH override for the engine. When it is set, it is the
   // ONLY candidate - the whole point is that the binary is not reachable by bare name. An empty/whitespace value means "no
   // override", so a finished deployment that never set it keeps probing the declared order exactly as before.
+  // ★ TB-2794 Step 1: THIS ENGINE READS NO `vmu.paper.*` KEY. The engine order / absolute command / timeout are POLICY
+  // supplied by the caller (research-core passes them through the paper flow; v5r reads its own settings). The kernel face
+  // keeps only the generic compile primitive: injected spawn, argv, sandboxed output dir, named refusals.
   const commandOverride = () => {
-    let raw = null
-    try { raw = readKey('vmu.paper.latexCommand') } catch { raw = null }
-    if (raw === undefined || raw === null) return null
-    const s = String(raw).trim()
-    return s === '' ? null : s
+    const raw = opts.command === undefined || opts.command === null ? null : String(opts.command).trim()
+    return raw === null || raw === '' ? null : raw
   }
   const engineOrder = () => {
     const override = commandOverride()
-    if (override && !(Array.isArray(opts.engineOrder) && opts.engineOrder.length > 0)) return [override]
-    const declared = readKey('vmu.paper.latexEngineOrder')
-    const fromOpt = Array.isArray(opts.engineOrder) ? opts.engineOrder : null
-    const raw = fromOpt || (Array.isArray(declared) ? declared : null)
+    if (override) return [override]
+    const raw = Array.isArray(opts.engineOrder) ? opts.engineOrder : null
     if (!raw || raw.length === 0) return ['pdflatex', 'xelatex']
     const out = []
     for (const e of raw) { const s = String(e || '').trim(); if (s && !out.includes(s)) out.push(s) }
@@ -115,7 +112,7 @@ export function createLatexFace(opts = {}) {
   const timeoutMs = (requested) => {
     const n = Number(requested)
     if (Number.isFinite(n) && n > 0) return Math.floor(n)
-    const d = Number(readKey('vmu.paper.latexTimeoutMs'))
+    const d = Number(opts.timeoutMs)
     return Number.isFinite(d) && d > 0 ? Math.floor(d) : 120000
   }
 
@@ -154,7 +151,8 @@ export function createLatexFace(opts = {}) {
     // reads as a path instead of reading `\paper` as a control sequence.
     if (!isAbsolute(outDir)) outDir = resolve(outDir).replace(/\\/g, '/')
     else if (/^[A-Za-z]:/.test(outDir)) outDir = outDir.replace(/\\/g, '/')
-    const engines = Array.isArray(args.engineOrder) && args.engineOrder.length ? args.engineOrder.map(String) : engineOrder()
+    const callCommand = typeof args.command === 'string' && args.command.trim() !== '' ? args.command.trim() : null
+    const engines = callCommand ? [callCommand] : (Array.isArray(args.engineOrder) && args.engineOrder.length ? args.engineOrder.map(String) : engineOrder())
     const ms = timeoutMs(args.timeoutMs)
     let texFile = file
     if (source) {

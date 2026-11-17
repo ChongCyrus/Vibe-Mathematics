@@ -98,7 +98,7 @@
       "status": "fixed",
       "owner": "md-lane",
       "source": "TB-2634/task-115",
-      "evidence": "vibe-math-vmu/kit/paper.js:29 (RUN 257 comment: a minted id is not an external input); tests/vmu-run257-deterministic-ids.test.mjs passes; the sim gate determinism segment now runs the same corpus twice and compares it byte for byte.",
+      "evidence": "vibe-math-vmu/packs/research-core/paper-flow.js:29 (RUN 257 comment: a minted id is not an external input); tests/vmu-run257-deterministic-ids.test.mjs passes; the sim gate determinism segment now runs the same corpus twice and compares it byte for byte.",
       "proof": {
         "cmd": "node tests/vmu-run257-deterministic-ids.test.mjs",
         "expect": 0,

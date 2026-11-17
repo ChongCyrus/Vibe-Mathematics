@@ -43,7 +43,7 @@ const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const PAPER_PACK = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')
 // the gate temp root may not exist yet (another lane's clean-temp can remove it mid-session); mkdtemp needs the parent
 await mkdir(__tmpRoot(), { recursive: true }).catch(() => {})
-const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const QUALITY = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')
 
 let passed = 0
@@ -310,7 +310,7 @@ has(PAPER_PACK_SRC, "export const PAPER_STATES = Object.freeze(['writing', 'revi
   '★★ 正(F72-9 取证)：状态枚举只有这四个词（发布的终态叫 finalized，没有 published）')
 ok(!PAPER_PACK_SRC.includes("'published'") && !PAPER_PACK_SRC.includes("'complete'"),
   '★★ 反(F72-9 取证)：paper.js 里没有 published/complete 这两个状态词 —— 教它的人教错了，不是代码少了分支')
-has(KIT_PAPER_SRC, "state.status = 'finalized'", '★★ 正(F72-9 取证)：终态的写入点在 kit/paper.js（定稿那一刻写状态）')
+has(KIT_PAPER_SRC, "state.status = 'finalized'", '★★ 正(F72-9 取证)：终态的写入点在 packs/research-core/paper-flow.js（定稿那一刻写状态）')
 
 // ── §4. THE ENGINE-ABSENT BRANCH: the environment question is named, never merged into `missing` ──────────────
 console.log('=== 4. 没有 LaTeX 的机器：定稿照旧发生，但读数必须说明缺的是【环境】 ===')
@@ -525,10 +525,10 @@ console.log('=== 6. TB-2772：final 检测到缺字 ⇒ ok:false + VMU_PAPER_GLY
   // ③ anti-lamp: boot a COPY whose kit no longer refuses ⇒ the same final comes back ok:true (the gate is load-bearing)
   const copyRoot = await mkdtemp(join(__tmpRoot(), 'run252-glyph-lamp-'))
   cpSync(join(REPO, 'vibe-math-vmu'), join(copyRoot, 'vibe-math-vmu'), { recursive: true })
-  const kitCopy = join(copyRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kitCopy = join(copyRoot, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
   const kitSrc = await readFile(kitCopy, 'utf8')
   const guard = 'const glyphUncovered = !!(gateCompiled && gateCompiled.ok === true && gateCompiled.glyphLossDetected === true)'
-  ok(kitSrc.includes(guard), 'lamp-setup：字符门的谓词在 kit/paper.js 里按名字可定位')
+  ok(kitSrc.includes(guard), 'lamp-setup：字符门的谓词在 packs/research-core/paper-flow.js 里按名字可定位')
   let mutatedKit = kitSrc.split(guard).join('const glyphUncovered = false')
   mutatedKit = mutatedKit.split('if (pdf && pdf.ok === true && pdf.glyphLossDetected === true) {').join('if (false) {')
   await writeFile(kitCopy, mutatedKit, 'utf8')
@@ -636,7 +636,7 @@ console.log('=== 7. TB-2774：readReview / coverage / voidReviews 同一行不�
     // contradiction (same fingerprint, stale wording) — so the assertion above is red-worthy.
     const lampRoot = await mkdtemp(join(__tmpRoot(), 'tb2774-lamp1-'))
     cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
-    const kitP = join(lampRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+    const kitP = join(lampRoot, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
     const kitS = await readFile(kitP, 'utf8')
     const oldFresh = "const fresh = bound ? !partChanged : !roundChanged"
     ok(kitS.includes(oldFresh), 'lamp1-setup：单谓词行可定位')
@@ -1021,7 +1021,7 @@ console.log('=== 13. TB-2785：final 一次评估全部门（gates[]），字符
   // readings — which is exactly the 84th-run shape, so the same-screen assertions above are load-bearing.
   const lampRoot = await mkdtemp(join(__tmpRoot(), 'tb2785-lamp-'))
   cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
-  const kitP = join(lampRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kitP = join(lampRoot, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
   const kitS = await readFile(kitP, 'utf8')
   const nark = "      try { requireCrossReview(state, 'final') } catch (e) { crossError = e }"
   ok(kitS.includes(nark), 'lamp-setup：门评估块可定位')
@@ -1095,7 +1095,7 @@ console.log('=== 14. TB-2786：part 正文缺「证据等级」行 ⇒ final 具
   // finalises, i.e. the gate is what catches the 84th run's false premise.
   const lamp2Root = await mkdtemp(join(__tmpRoot(), 'tb2786-lamp-'))
   cpSync(join(REPO, 'vibe-math-vmu'), join(lamp2Root, 'vibe-math-vmu'), { recursive: true })
-  const kit2 = join(lamp2Root, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kit2 = join(lamp2Root, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
   const kit2s = await readFile(kit2, 'utf8')
   const mut = "const gradeMissing = gradeAudit.filter((g) => g.bodyGradeLine === null)"
   ok(kit2s.includes(mut), 'lamp1-setup：grade 门可定位')
@@ -1204,7 +1204,7 @@ console.log('=== 15. TB-2788：status 披露 roundsCap/atCap/forcedAfterCapAvail
   // (the audit8 dead-end shape), so the assertions above are load-bearing.
   const lampRoot = await mkdtemp(join(__tmpRoot(), 'tb2788-lamp-'))
   cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
-  const kitP = join(lampRoot, 'vibe-math-vmu', 'kit', 'paper.js')
+  const kitP = join(lampRoot, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
   const kitS = await readFile(kitP, 'utf8')
   const facts = "{ currentStage: state.status, nextMoves: nextMovesOf(state), ...capNow }"
   ok(kitS.includes(facts), 'lamp-setup：状态门拒的 facts 可定位')

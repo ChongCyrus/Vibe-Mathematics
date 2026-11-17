@@ -21,7 +21,7 @@ const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const MAILBOX_SRC_PATH = join(REPO, 'vibe-math-vmu', 'kernel', 'mailbox.js')
 const PACK_TOOLS_PATH = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const LATEX_SRC_PATH = join(REPO, 'vibe-math-vmu', 'kernel', 'latex.js')
-const KIT_PAPER_PATH = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT_PAPER_PATH = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 
 let passed = 0
 let failed = 0

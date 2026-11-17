@@ -222,7 +222,7 @@
 ★★ **要判定得看成员那一轮的完整 transcript** —— ★ 而真机报告说"成员完整 transcript 未逐条人工读" ⇒ ★ **这是下一轮要补的证据**，★ 不是靠猜能定的。
 ### §6.19 已修 #16（★ hint 指向读者看不到的字段）
 
-★ **根因**（`kit/paper.js:384`）：★ PDF 失败的 hint 写 **"把 `stderrTail` 交给人看"**。
+★ **根因**（`packs/research-core/paper-flow.js:384`）：★ PDF 失败的 hint 写 **"把 `stderrTail` 交给人看"**。
 ★★ 而 `:405` **确实把 `failure.stderrTail` 挂在这条错误上** ⇒ ★ **错误对象上有它**。
 ★★★ **问题在【回执层】**：★ 工具回执**只转述 code/message/hint**，★ **宿主不转述自定义错误字段** ⇒ ★ **读者被指向一个已经被压平掉的字段**。
 ★ **修法**：★ hint 现在说**回执带什么**（★ `code/message/hint`）、★ **`stderrTail` 在哪**（★ 这条错误上，★ 宿主不转述）、★ **以及能做什么**（★ 把 message 交给人，★ 或手工重跑该 `.tex`）—— ★ **不再指向一个读者拿不到的名字**。
@@ -233,7 +233,7 @@
 ★ **另**：★ 本轮查过 **#15**（★ 提示词要求 `v5_meeting summary/close`）—— ★ **静态提示词里没有这句**（★ 应来自运行期拼装）⇒ ★ **未找到廉价修法，留待下一轮**；★ 不写"已处理"。
 ### §6.21 #23（PDF 三种错误码无法判断）—— ★ **根因查到，改动回退**
 
-**根因（★ 查到行）**：★ `kit/paper.js:328` 的 `PaperArtifacts` **静态断言**：★
+**根因（★ 查到行）**：★ `packs/research-core/paper-flow.js:328` 的 `PaperArtifacts` **静态断言**：★
 `code: PDF_NEEDS_KERNEL` ＋ `why: 'this kernel has no xelatex/pdflatex/latexmk face (measured: kernel/ has no such spawn caller)'`。
 ★★★ **那是一个【关于运行期事实的静态宣称】** —— ★ 而且是**一次测量写死在字符串里**。
 ★★ 真机里：★ `env probe` **探到了 xelatex**、★ 代理去 render、★ 拿到一个 PDF 码 ★ **却无法判断是"引擎没接"还是"编译报错"** —— ★ **正是这个分支制造的歧义**。
@@ -380,7 +380,7 @@ return kernel.toolsView({ member, agent })
 ★★ **注意仍未验的**：★ 这是**代码级**修复，★ **真机里"投票后 `summary().for > 0`"要等下一次完整 SLV**（★ 那正是目标 5 的意义）。
 ### §6.37 #31（★ 论文渲染）—— ★ **三个报告点在【同一段 10 行】里，根因精确**
 
-**根因（★ `kit/paper.js:281-290` 的 `PaperMd`）**：
+**根因（★ `packs/research-core/paper-flow.js:281-290` 的 `PaperMd`）**：
 ```js
 for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
   lines.push('', '## ' + SECTIONS[i])
@@ -402,7 +402,7 @@ for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
 ★★ **便宜且确定的那半可先做**：★ `PaperTex` 里把 `**x**` 转成 `\textbf{x}`（★ 一行），★ **能立刻止住"`**` 漏进 tex"**。
 ### §6.38 ★★★ 已修 #31 的两条真缺陷
 
-**① 全文复制进每一节** —— `kit/paper.js` 的 `PaperMd` **不再嵌套**：
+**① 全文复制进每一节** —— `packs/research-core/paper-flow.js` 的 `PaperMd` **不再嵌套**：
 ★★ **根因是【粒度】**：★ 一个 part 是**一组字段**（`title/solution/methods/rules/limits/evidence`），★ **而一个节至多拥有其中一个**；★ 旧代码把**整份 part** 塞进**每一个节**。
 ★ **修法（★ 而映射是【策略】）**：★ `createPaperFlow` 新增 **`sectionFields`**（★ 每节一项，`''` = 该节不拥有单一字段），★ **由 pack 提供**：★
 `packs/v5r/paper.js` ⇒ `sectionFields: ['title','','solution','','','methods','rules','limits','evidence']`

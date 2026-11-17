@@ -17,7 +17,8 @@
 
 import { pathToFileURL } from 'node:url'
 import { resolve, join } from 'node:path'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
@@ -154,8 +155,12 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
 expectThrow(() => m.assertDeclared('vmu.nope.x'), 'VMU_INVALID_ARGUMENT', 'undeclared key refused by name')
 expectThrow(() => m.validateValue('vmu.nope.x', 1), 'VMU_INVALID_ARGUMENT', 'validating an undeclared key is refused')
 ok(m.assertDeclared('vmu.limits.maxLiveMembers').def === 0, 'a declared key returns its definition')
-expectThrow(() => m.resolveSettings([{ 'vmu.typo.key': 1 }]), 'VMU_INVALID_ARGUMENT',
-  'a layer carrying an undeclared key is refused, never merged')
+// ★ C#3 residue (TB-2792 round 7): an undeclared key in an UNREGISTERED non-framework namespace is the PRECISE
+// named code (`VMU_SETTING_NAMESPACE_UNKNOWN`) — a typo inside a FRAMEWORK namespace stays VMU_INVALID_ARGUMENT.
+expectThrow(() => m.resolveSettings([{ 'vmu.typo.key': 1 }]), 'VMU_SETTING_NAMESPACE_UNKNOWN',
+  'a layer carrying a key in an unknown namespace is refused by the namespace code, never merged')
+expectThrow(() => m.resolveSettings([{ 'vmu.turn.typoKey': 1 }]), 'VMU_INVALID_ARGUMENT',
+  'a typo inside a FRAMEWORK namespace is still the plain undeclared-key refusal')
 
 // ---- 3. shape and domain refusals (R11) --------------------------------------------------------
 expectThrow(() => m.validateValue('vmu.limits.maxLiveMembers', -1), 'VMU_INVALID_ARGUMENT', 'negative natural refused')
@@ -256,12 +261,62 @@ ok(r.provenance['vmu.core.enabled'] === undefined, 'provenance is absent for unt
   const screened = m.screenSettings({ 'vmu.c3test.mode': 'b' })
   eq(JSON.stringify(screened.accepted), JSON.stringify({ 'vmu.c3test.mode': 'b' }),
     'C#3: the pack key is ACCEPTED by the same screen every framework key goes through')
+  // ★ C#3 residue: the SAME owner re-registering its own key is an UPDATE (with `updatedFrom`), not a duplicate refusal —
+  // a DIFFERENT owner is the refusal. Both facts are asserted; neither is silent.
+  const upd = m.registerPackSettings({ pack: 'c3-test-pack', namespace: 'vmu.c3test', defs: [{ key: 'vmu.c3test.mode', type: 'enum', domain: ['a', 'b'], def: 'a', hot: m.HOT.H1, who: 'office', doc: 'updated declaration' }] })
+  ok(upd.ok === true && upd.updated.includes('vmu.c3test.mode') && Array.isArray(upd.updatedFrom) && upd.updatedFrom[0].key === 'vmu.c3test.mode' && upd.updatedFrom[0].previous.doc === 'C#3 测试命名空间的一个键',
+    'C#3: 同一 pack 重注册自己的 key = 「更新」，回执 `updatedFrom` 带出旧声明', upd)
+  eq(m.SETTING_DEFS.find((d) => d.key === 'vmu.c3test.mode').type, 'enum', 'C#3: 更新真的替换了声明（type 由 string -> enum）')
   let dup = null
-  try { m.registerPackSettings({ pack: 'c3-test-pack', namespace: 'vmu.c3test', defs: [{ key: 'vmu.c3test.mode', type: 'string', def: '', hot: m.HOT.H1, who: 'office', doc: 'x' }] }) } catch (e) { dup = e }
-  eq(dup && dup.code, 'VMU_SETTING_NAMESPACE_CONFLICT', 'C#3: a duplicate key is refused by name (no silent merge)')
+  try { m.registerPackSettings({ pack: 'another-pack', namespace: 'vmu.c3test', defs: [{ key: 'vmu.c3test.mode', type: 'string', def: '', hot: m.HOT.H1, who: 'office', doc: 'x' }] }) } catch (e) { dup = e }
+  eq(dup && dup.code, 'VMU_SETTING_NAMESPACE_CONFLICT', 'C#3: 另一个 owner 的重复 key 仍具名拒（没有静默合并）')
   let outside = null
   try { m.registerPackSettings({ pack: 'c3-test-pack', namespace: 'vmu.c3test', defs: [{ key: 'vmu.records.tracks', type: 'stringList', def: [], hot: m.HOT.H1, who: 'office', doc: 'x' }] }) } catch (e) { outside = e }
   eq(outside && outside.code, 'VMU_INVALID_ARGUMENT', 'C#3: a pack may not declare a framework key (outside its namespace refused)')
+
+  // ★★★ C#3 RESIDUE (TB-2792 round 7): REGISTER -> READ -> RETRACT -> READ IS A NAMED REFUSAL (and the lamp: without
+  // the retraction the OLD value would still be readable, which is exactly the stale-global defect).
+  const reg2 = m.registerPackSettings({ pack: 'c3-retract-pack', namespace: 'vmu.c3retract', defs: [
+    { key: 'vmu.c3retract.mode', type: 'enum', domain: ['a', 'b'], def: 'a', hot: m.HOT.H1, who: 'office', doc: 'C#3 retraction 测试键' },
+  ] })
+  eq(JSON.stringify(m.screenSettings({ 'vmu.c3retract.mode': 'b' }).accepted), JSON.stringify({ 'vmu.c3retract.mode': 'b' }),
+    'C#3 retract 正例①：注册后该键按同一 screen 被接受')
+  // 反灯（控制）：不撤时旧值仍可读 —— 证明下面的判据不是恒真
+  eq(JSON.stringify(m.resolveSettings([{ 'vmu.c3retract.mode': 'b' }]).values['vmu.c3retract.mode']), JSON.stringify('b'),
+    'C#3 retract 反灯（控制）：不 retract ⇒ 旧值仍可读（判据不是恒真）')
+  const retraction = m.retractPackSettings({ namespace: 'vmu.c3retract', reason: 'test' })
+  ok(retraction.ok === true && retraction.removedCount === 1 && retraction.removed[0].key === 'vmu.c3retract.mode' && retraction.retracted.includes('vmu.c3retract'),
+    'C#3 retract 正例②：retract 具名回执（removed/retracted），键从声明表撤除', retraction)
+  let readAfter = null
+  try { m.resolveSettings([{ 'vmu.c3retract.mode': 'b' }]) } catch (e) { readAfter = e }
+  eq(readAfter && readAfter.code, 'VMU_SETTING_NAMESPACE_UNKNOWN',
+    'C#3 retract 正例③：撤销后读该键 ⇒ 具名 VMU_SETTING_NAMESPACE_UNKNOWN（不是静默旧值）')
+  const screenedAfter = m.screenSettings({ 'vmu.c3retract.mode': 'b' })
+  eq(JSON.stringify(screenedAfter.rejected.map((r) => r.code)), JSON.stringify(['VMU_SETTING_NAMESPACE_UNKNOWN']),
+    'C#3 retract 正例④：screen 面同样具名拒（config 路径与 resolve 路径同码）')
+  const reReg = m.registerPackSettings({ pack: 'c3-retract-pack', namespace: 'vmu.c3retract', defs: [
+    { key: 'vmu.c3retract.mode', type: 'enum', domain: ['a', 'b'], def: 'a', hot: m.HOT.H1, who: 'office', doc: '重新注册' },
+  ] })
+  ok(reReg.ok === true && reReg.added.includes('vmu.c3retract.mode') && JSON.stringify(m.screenSettings({ 'vmu.c3retract.mode': 'b' }).accepted) === JSON.stringify({ 'vmu.c3retract.mode': 'b' }),
+    'C#3 retract 正例⑤：重新注册后命名空间复活（撤销不是永久墓碑）')
+  // AUTO-RETRACT seam used by pack unload: manifest id 'c3-retract-pack' does not match the namespace token, but the
+  // matcher also accepts the `vmu.<token>` / `vmu.<token>-…` relation, so a pack's own id form is covered.
+  ok(typeof m.retractPackSettingsForPackId === 'function', 'C#3: unload helper exists (pack unload calls it)')
+  const byId = m.retractPackSettingsForPackId('vmu.c3retract')
+  ok(byId.ok === true && byId.matched.length === 0, 'C#3: unload helper matches by namespace token/id relation only (no false positive on a full key)', byId)
+  const byRel = m.retractPackSettingsForPackId('c3retract-pack')
+  ok(byRel.ok === true && byRel.matched.includes('vmu.c3retract') && byRel.removedCount === 1,
+    'C#3: unload helper 以 manifest/request id 关联到命名空间并撤销（pack 卸载自动撤的判据）', byRel)
+
+  // ★ C#4 residue: `vmu.turn.protocolPath` — framework default is NEUTRAL, the v5r institution carries the path.
+  eq(m.SETTING_DEFS.find((d) => d.key === 'vmu.turn.protocolPath').def, '',
+    'C#4: framework vmu.turn.protocolPath default is NEUTRAL (empty — the framework names no protocol document)')
+  eq(V5R_SETTING_DEFAULTS['vmu.turn.protocolPath'], 'Shared/Protocol.md',
+    'C#4: the v5r PACK supplies its own protocolPath (behaviour unchanged under v5r)')
+  const layered = m.resolveSettings([{ ...V5R_SETTING_DEFAULTS }], { onInvalid: 'reject' })
+  eq(layered.values['vmu.turn.protocolPath'], 'Shared/Protocol.md',
+    'C#4: 挂 v5r 后该键解析回 Shared/Protocol.md（defaults 层生效）')
+
   const unknownNs = m.screenSettings({ 'vmu.nosuchnamespace.key': 1 })
   eq(unknownNs.rejected[0] && unknownNs.rejected[0].code, 'VMU_SETTING_NAMESPACE_UNKNOWN',
     'C#3: an UNKNOWN namespace is refused by its own name (not the generic undeclared)', unknownNs.rejected[0])
@@ -306,6 +361,70 @@ if (SELF_PROBE) {
   ok(failed > 0, 'self-probe: the deliberately broken carrier/resolver produced failures', failed)
   console.log('=== VMU SETTINGS SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
+}
+
+
+// ── C#15 (ROUND-7) + C#23 profile wiring ────────────────────────────────────────────────────────────────────────
+{
+  const schema = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href)
+  const kernelMod = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
+  // C#15a: tri-state, not "0 = unlimited"
+  const unset = schema.limitsReadings({})
+  ok(unset.limits.toolCallsPerTurnCap.state === 'unset-default' && unset.limits.toolCallsPerTurnCap.effective === null,
+    'C15-1 ★★ 未设置的四键 ≠ 不限：state="unset-default"、effective=null（默认 0 不是任何人写下的决定）', unset.limits.toolCallsPerTurnCap)
+  ok(unset.warnings.length === 4 && unset.warnings.every((w) => w.code === 'VMU_LIMIT_UNSET' && typeof w.means === 'string'),
+    'C15-2 ★ 未设置时四个键各有一条具名警告（不阻断；不是静默）', unset.warnings)
+  const explicitZero = schema.limitsReadings({ 'vmu.limits.toolCallsPerTurnCap': 0, 'vmu.limits.maxLiveMembers': 12 })
+  ok(explicitZero.limits.toolCallsPerTurnCap.state === 'explicit-unlimited' && explicitZero.limits.toolCallsPerTurnCap.effective === null,
+    'C15-3 ★★★ 显式写 0 ⇒ state="explicit-unlimited"（唯一的「不限」来源，可审计）', explicitZero.limits.toolCallsPerTurnCap)
+  ok(explicitZero.limits.maxLiveMembers.state === 'finite' && explicitZero.limits.maxLiveMembers.effective === 12,
+    'C15-4 ★ 显式有限值 ⇒ state="finite"/effective=12', explicitZero.limits.maxLiveMembers)
+  ok(explicitZero.limits.toolCallsPerTurnCap.enforcement === 'advisory' && explicitZero.limits.maxLiveMembers.enforcement === 'blocking'
+    && explicitZero.limits.memoryCeilingMb.enforcement === 'blocking' && explicitZero.limits.wallClockMs.enforcement === 'advisory',
+    'C15-5 ★★★ enforcement 如实：maxLiveMembers/memoryCeilingMb 是 blocking，toolCallsPerTurnCap/wallClockMs 是 advisory（不假装强制）',
+    Object.fromEntries(Object.entries(explicitZero.limits).map(([k, v]) => [k, v.enforcement])))
+  // C#15b: the 1M token default carries a NAMED long-run warning; explicit 80M / explicit 0 do not
+  const tokUnset = schema.tokenBudgetReading({})
+  ok(tokUnset.state === 'unset-default' && tokUnset.warning && tokUnset.warning.code === 'VMU_BUDGET_TOKENS_DEFAULT'
+    && /80,?000,?000|80000000/.test(String(tokUnset.warning.means)),
+    'C15-6 ★★★ 默认 1M tokens（未设）⇒ 具名启动警告 VMU_BUDGET_TOKENS_DEFAULT（真实长跑 30–73M，必须显式设或 0=不限；不阻断）', tokUnset.warning && tokUnset.warning.means)
+  const tok80 = schema.tokenBudgetReading({ 'vmu.budget.tokens': 80000000 })
+  const tokZero = schema.tokenBudgetReading({ 'vmu.budget.tokens': 0 })
+  ok(tok80.warning === null && tok80.state === 'finite' && tokZero.warning === null && tokZero.state === 'explicit-unlimited',
+    'C15-7 ★ 显式 80M 或显式 0=不限 ⇒ 无警告（只有「未设」才警告）', { tok80: tok80.state, tokZero: tokZero.state })
+  // C#23: explicit profile is ENFORCED at boot; undeclared profile stays backward-compatible
+  let profileErr = null
+  try { kernelMod.createKernel({ settings: { 'vmu.core.profile': 'minimal' } }) } catch (e) { profileErr = e }
+  ok(!!profileErr && profileErr.code === 'VMU_SETTING_PROFILE_INCOMPLETE' && /vmu\.core\.enabled/.test(String(profileErr.message)),
+    'C23-1 ★★★ 显式 profile="minimal" 且缺必设键 ⇒ boot 处具名拒 VMU_SETTING_PROFILE_INCOMPLETE（assertProfile 真有生产调用点）', profileErr && { code: profileErr.code, message: profileErr.message })
+  const minimal = {
+    'vmu.core.profile': 'minimal', 'vmu.core.enabled': true, 'vmu.turn.deliveryTimeoutMs': 120000,
+    'vmu.budget.tokens': 80000000, 'vmu.limits.toolCallsPerTurnCap': 256,
+  }
+  let booted = null
+  try { booted = kernelMod.createKernel({ settings: minimal }) } catch (e) { booted = e }
+  ok(booted && booted.settingsView && booted.settingsView()['vmu.core.profile'] === 'minimal',
+    'C23-2 ★★ 显式 minimal + 4 必设键 ⇒ 正常 boot，status 可读到 profile="minimal"', booted && booted.settingsView && booted.settingsView()['vmu.core.profile'])
+  let noProfile = null
+  try { noProfile = kernelMod.createKernel({ settings: {} }) } catch (e) { noProfile = e }
+  ok(noProfile && noProfile.settingsView, 'C23-3 ★ 未声明 profile ⇒ 不强制（向后兼容）', noProfile && typeof noProfile)
+  // C#23 反灯: copy tree, remove the assertProfile call -> the same invalid declaration boots silently (old shape)
+  {
+    const ldir = mkdtempSync(join(tmpdir(), 'vmu-profile-lamp-'))
+    try {
+      cpSync(resolve(REPO, 'vibe-math-vmu'), join(ldir, 'vibe-math-vmu'), { recursive: true })
+      const kp = join(ldir, 'vibe-math-vmu', 'kernel', 'index.js')
+      const src = readFileSync(kp, 'utf8')
+      const from = "if (Object.prototype.hasOwnProperty.call(settings, 'vmu.core.profile')) assertProfile(settings, settings['vmu.core.profile'])"
+      ok(src.indexOf(from) !== -1, 'C23 lamp-setup: the boot-time profile assertion exists')
+      writeFileSync(kp, src.replace(from, '/* lamp: profile assertion removed */'))
+      const lampKernel = await import(pathToFileURL(kp).href + '?c23lamp=1')
+      let lampErr = null
+      let lampBoot = null
+      try { lampBoot = lampKernel.createKernel({ settings: { 'vmu.core.profile': 'minimal' } }) } catch (e) { lampErr = e }
+      ok(!lampErr && lampBoot, 'C23 lamp RED-worthy: 去掉 boot 处 assertProfile ⇒ 缺键的 minimal 也静默启动（「未接线」的旧形状）', { lampErr: lampErr && lampErr.code })
+    } finally { rmSync(ldir, { recursive: true, force: true }) }
+  }
 }
 
 console.log('=== VMU SETTINGS: ' + passed + ' passed, ' + failed + ' failed ===')

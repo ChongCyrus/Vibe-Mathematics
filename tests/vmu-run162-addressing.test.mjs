@@ -26,7 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
-const PAPER_KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const PAPER_KIT = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const EXTRAS = join(REPO, 'vibe-math-vmu', 'kit', 'extras.js')
 const PAPER_KIT_SRC = readFileSync(PAPER_KIT, 'utf8')

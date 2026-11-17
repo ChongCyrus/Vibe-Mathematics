@@ -269,10 +269,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【顺手形式化（{{ setting:vmu.turn.formalModeLabel }}）】只对**长期复用**的对象/定义/引理开 Lean：先 `vibe_v5_lean_lib` 查重，',
-        '定义用 `kind:\'def\'`、已成立的引理用 `kind:\'lemma\'`，跑通（`vibe_v5_lean_run` 或 `run=true`）再 `vibe_v5_lean_archive` 归档；',
-        '复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（框架已把库根加进编译搜索路径）或 `vibe_v5_lean_read` 取原文。',
-        '判断标准：有价值或可能复用 / 较为关键 / 你有把握。**没把握的先别入库**（进 Proved/ 的会被当成已核对引理）——记 blocked 写清难点；',
-        '编译默认后台跑（leanAsync），**在作业落地为“通过”之前，不得把该对象当成已通过**。非验证轮不必每次都开 Lean：先把数学做对。',
+        '定义用 kind=def、已证引理用 kind=lemma，跑通后再归档；',
+        '判断标准：有价值/可能复用/较关键/你有把握；**没把握的先别入库**（进 Proved/ 会被当成已核对引理）——记 blocked 写清难点；',
+        '编译后台跑：**在作业落地为“通过”之前，不得把该对象当成已通过**；非验证轮先把数学做对。',
       ].join('\n'),
     },
   },
@@ -318,11 +317,17 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     name: 'v5r-reply-min-shape',
     order: 796.5,
     range: 'pack',
-    kind: 'shared',
+    kind: 'role',
     texts: {
-      shared: [
-        '【回执最小形状】一个已登记字段也要成句：键 + 值（如 `{"say":"…"}`），只写键不算回执。',
-        '最小合法形状可直接照抄：`{"op":"reply","report":{"say":"…","solved":false}}`（`op:"reply"` 由所办代转时用；成员/临时工不要自己调，回复正文围栏即可）。没有可用形状的键不要写——会被具名跳过。',
+      academician: [
+        '【回执最小形状】围栏写**字段本身**，不是工具参数：' + String.fromCharCode(96) + '{"say":"…","solved":false}' + String.fromCharCode(96) + '（一个字段也要成句）；**围栏不要写 ' + String.fromCharCode(96) + 'op' + String.fromCharCode(96) + '**；所办代转才用 ' + String.fromCharCode(96) + 'vibe_vmu_turn {op:"reply", member, report:{…}}' + String.fromCharCode(96) + '。',
+        '只有**所办代转**时才用工具调用参数 `vibe_vmu_turn {op:"reply", member, report:{…}}`——那是调用参数，不是围栏形状；成员/临时工永远写字段。',
+      ].join('\n'),
+      researcher: [
+        '【回执最小形状】回复正文围栏里写**字段本身**：最小合法形状 `{"say":"…","solved":false}`（一个已登记字段也要成句：键 + 值）；**围栏里不要写 `op`**（那是所办代转的工具参数，不是回复字段）。',
+      ].join('\n'),
+      temp: [
+        '【回执最小形状】回复正文围栏里写**字段本身**：最小合法形状 `{"say":"…","solved":false}`（一个已登记字段也要成句：键 + 值）；**围栏里不要写 `op`**（那是所办代转的工具参数，不是回复字段）。',
       ].join('\n'),
     },
   },
@@ -444,11 +449,11 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       academician: [
-        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。你可以维持、修改或反驳任何人的看法。',
+        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。**注意**：Lean 通过只指**编译通过**，不代表命题为真，仍需保真收口。你可以维持、修改或反驳任何人的看法。',
         '若你认为某条"已通过"的结论其实不成立（或代码与命题不符），**不要用弃权来卡住流程**——给 `vibe_v5_verdict` 一个你相信的概率并写清理由，框架会记为 pending、撤回该条证明并写入形式化待办。只有你确实无法判断时，才给一个严格介于 0 与 1 之间的值。',
       ].join('\n'),
       researcher: [
-        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。你可以维持、修改或反驳任何人的看法。',
+        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。**注意**：Lean 通过只指**编译通过**，不代表命题为真，仍需保真收口。你可以维持、修改或反驳任何人的看法。',
         '若你认为某条"已通过"的结论其实不成立（或代码与命题不符），**不要用弃权来卡住流程**——给 `vibe_v5_verdict` 一个你相信的概率并写清理由，框架会记为 pending、撤回该条证明并写入形式化待办。只有你确实无法判断时，才给一个严格介于 0 与 1 之间的值。',
       ].join('\n'),
       temp: [
@@ -801,7 +806,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // 「本回合没有绑定会议」and the grid says「未提供」- a hole a reader can SEE, which is the honest form of "no meeting".
       meeting: [
         '议程：{{ setting:vmu.turn.meetingAgenda }}（类型：{{ setting:vmu.turn.meetingType }}，主席：{{ setting:vmu.turn.meetingChair }}）。本轮绑定该会议：回复第一句请写明会 id（{{ setting:vmu.turn.meetingId }}）。',
-        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：**只有主席能调** `vibe_v5_meeting_round`（其他席位请主席推进）绑定下一回合；不要猜 id，也别把发言/投票押上去。',
+        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：**只有主席能推进**——其他席位请主席把下一回合绑定到那场会；不要猜 id，也别把发言/投票押上去。',
       ].join('\n'),
     },
   },
@@ -860,12 +865,23 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     derivedFrom: 'corpus',
     order: 763.5,
     range: 'pack',
-    kind: 'shared',
+    kind: 'role',
     scope: Object.freeze({ phase: Object.freeze(['meeting']), meetingId: 'required' }),
     texts: {
-      shared: [
-'**若本回合绑定了会议**：议程与类型由本轮会议帧给出，按议程发言、需要时举手。**若没有会议 id（本回合未绑定）**：不要举手、不要填 input——发言用工具 `vibe_v5_say`（回执里的 say 不会投递）。',
+      academician: [
+        '**若本回合绑定了会议**：议程与类型由本轮会议帧给出，按议程发言、需要时举手。**若没有会议 id（本回合未绑定）**：不要举手、不要填 input——发言用工具 `vibe_v5_say`（回执里的 say 不会投递）。',
         '  · 判据：帧里**给了会 id** 才是绑定会议。绑定时回执的 `say` 不进会议楼层——发言填回执的 `input` 字段，对全所说话或私信一律用 `vibe_v5_say`；帧里没有会 id 就是未绑定，`say` 只留在回执 notes 里不投递。',
+        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：**只有主席能调** `vibe_v5_meeting_round`（其他席位请主席推进）绑定下一回合；不要猜 id，也别把发言/投票押上去。',
+      ].join('\n'),
+      researcher: [
+        '**若本回合绑定了会议**：议程与类型由本轮会议帧给出，按议程发言、需要时举手。**若没有会议 id（本回合未绑定）**：不要举手、不要填 input——发言用工具 `vibe_v5_say`（回执里的 say 不会投递）。',
+        '  · 判据：帧里**给了会 id** 才是绑定会议。绑定时回执的 `say` 不进会议楼层——发言填回执的 `input` 字段，对全所说话或私信一律用 `vibe_v5_say`；帧里没有会 id 就是未绑定，`say` 只留在回执 notes 里不投递。',
+        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：**下一步只有主席能推进**——请主席把下一回合绑定到那场会；不要猜 id，也别把发言/投票押上去。',
+      ].join('\n'),
+      temp: [
+        '**若本回合绑定了会议**：议程与类型由本轮会议帧给出，按议程发言、需要时举手。**若没有会议 id（本回合未绑定）**：不要举手、不要填 input——发言用工具 `vibe_v5_say`（回执里的 say 不会投递）。',
+        '  · 判据：帧里**给了会 id** 才是绑定会议。绑定时回执的 `say` 不进会议楼层——发言填回执的 `input` 字段，对全所说话或私信一律用 `vibe_v5_say`；帧里没有会 id 就是未绑定，`say` 只留在回执 notes 里不投递。',
+        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：**下一步只有主席能推进**——请主席把下一回合绑定到那场会；不要猜 id，也别把发言/投票押上去。',
       ].join('\n'),
     },
   },
@@ -1111,7 +1127,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ role: Object.freeze(['chair', 'member']) }),
     texts: {
       shared: [
-"【形式化开关 `vmu.math.formalVerify` 三档】`off`＝零策略（默认）｜`encourage`＝鼓励（做了就归档；没做就用 `vibe_v5_lean_archive { kind:\"blocked\", name, note:\"<难点>\" }` 登记，回执 `formal` **只收 {statement, proof}**，不要用来写难度判断）｜`require`＝强制（缺 Lean 结果或 blocked 记录则裁定**不生效**，对象留原轨进待办）。这个键由**所办**改；`leanInitiative` 只是回显。",
+        "【形式化开关 `vmu.math.formalVerify`】`off`＝零策略（默认）｜`encourage`＝鼓励（做了归档；没做用 `vibe_v5_lean_archive { kind:\"blocked\", name, note:\"<难点>\" }` 登记，回执 `formal` **只收 {statement, proof}**）｜`require`＝强制（缺结果或 blocked 记录则裁定不生效、对象留原轨进待办）。键由**所办**改。",
       ].join('\n'),
     },
   },

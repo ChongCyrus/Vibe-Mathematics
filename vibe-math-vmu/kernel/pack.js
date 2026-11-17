@@ -17,6 +17,17 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+// ★ C#3 residue (TB-2792 round 7): pack settings registrations are retracted when the pack unloads. Imported lazily
+// (inside unload) so this pure module keeps its no-top-level-imports shape and an older settings module cannot break it.
+let settingsRetractor = null
+const retractSettingsForPack = async (id) => {
+  if (settingsRetractor === null) {
+    try { const mod = await import('../settings/schema.js'); settingsRetractor = typeof mod.retractPackSettingsForPackId === 'function' ? mod.retractPackSettingsForPackId : false } catch { settingsRetractor = false }
+  }
+  if (settingsRetractor === false) return { ok: false, code: 'VMU_SETTING_RETRACT_UNAVAILABLE', message: 'settings/schema.js exposes no retractPackSettingsForPackId', matched: [], removedCount: 0 }
+  return settingsRetractor(id, { reason: 'pack-unload' })
+}
+
 /**
  * PHASE 6 (goal-3 audit P1): one counter for topic ownership. The owner is per APPLY (`pack-id#N`), not per pack id,
  * so two kernels that apply the same pack in one process each hold their own declaration and one unload cannot revoke
@@ -289,6 +300,16 @@ export function validatePack(manifest) {
   if (typeof manifest.id !== 'string' || !ID.test(manifest.id)) problems.push('id must be a kebab-case identifier')
   if (manifest.version !== undefined && !/^\d+\.\d+\.\d+/.test(String(manifest.version))) problems.push('version must look like semver')
   if (manifest.requires !== undefined && !Array.isArray(manifest.requires)) problems.push('requires must be a list of { service, minVersion }')
+  // ★ TB-2794 Step 0: a manifest may CONTRIBUTE services (the research faces are moving out of the kernel one at a time).
+  // Shape is checked here (create must be a function, version an int) so a typo is a PLAN problem, not a half-applied pack.
+  if (manifest.services !== undefined) {
+    if (!Array.isArray(manifest.services)) problems.push('services must be an array of { name, apiVersion, create }')
+    else for (const svc of manifest.services) {
+      if (!svc || typeof svc.name !== 'string' || !/^vmu.[a-z][a-z0-9_]*(?:.[a-z][a-z0-9_]*)*$/.test(svc.name)) problems.push('a contributed service needs a dotted vmu.<area> name: ' + JSON.stringify(svc && svc.name))
+      if (!Number.isInteger(svc && svc.apiVersion) || svc.apiVersion < 1) problems.push('contributed service ' + String(svc && svc.name) + ': apiVersion must be an integer >= 1')
+      if (typeof (svc && svc.create) !== 'function') problems.push('contributed service ' + String(svc && svc.name) + ': create must be a function (kernel, settings, log) => impl')
+    }
+  }
   const prefix = 'VMU_PACK_' + String(manifest.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_'
   for (const code of manifest.codes || []) {
     if (!String(code).startsWith(prefix)) problems.push('code ' + code + ' must be ' + prefix + '<REASON> (R-d)')
@@ -693,6 +714,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     for (const r of m.rules || []) actions.push({ kind: 'rule', id: r.id })
     for (const mm of m.middleware || []) actions.push({ kind: 'middleware', id: mm.id, form: mm.kind || 'module' })
     for (const pp of m.promptPolicies || []) actions.push({ kind: 'prompt-policy', id: pp.id, form: 'pipeline', consumer: typeof onPromptPolicy === 'function' ? 'onPromptPolicy' : null })
+    for (const svc of m.services || []) actions.push({ kind: 'service', name: svc.name, apiVersion: svc.apiVersion })
     for (const a of m.aliases || []) actions.push({ kind: 'alias', from: a.from, to: a.to })
     for (const c of m.codes || []) actions.push({ kind: 'code', code: c })
     // PHASE 6 / P0-10: a declared tool is an ACTION of this pack, so plan() shows it before apply publishes it.
@@ -1021,6 +1043,24 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           undo.push(() => { if (typeof dispose === 'function') dispose() })
         }
       }
+      // ★ TB-2794 Step 0: SERVICES CONTRIBUTED BY THE PACK. Applied before aliases (an alias may target a contributed face),
+      // each entry goes through the ONE kernel seam (provideService), and the undo entry retracts it on unload. A face the
+      // kernel still constructs locally is REFUSED by provideService (VMU_SERVICE_CONFLICT): no dual implementation.
+      for (const svc of manifest.services || []) {
+        if (!kernel || typeof kernel.provideService !== 'function') {
+          throw refuse('VMU_ENGINE_UNAVAILABLE', 'pack ' + manifest.id + ' declares services but this assembly has no service-contribution seam',
+            'construct the kernel through kernel/index.js (it exposes provideService/retractService)')
+        }
+        const impl = svc.create({ kernel, settings: settingsNow(), log: (msg) => { try { if (kernel && typeof kernel.noteLog === 'function') kernel.noteLog(String(msg)) } catch { /* best effort */ } } })
+        if (!impl || typeof impl !== 'object') {
+          throw refuse('VMU_INVALID_ARGUMENT', 'pack ' + manifest.id + ' service ' + svc.name + ' create() did not return an implementation object',
+            'create({kernel, settings, log}) must return the service instance (an object of methods)')
+        }
+        const provided = kernel.provideService({ name: svc.name, apiVersion: svc.apiVersion, impl, by: manifest.id })
+        undo.push(() => { try { return kernel.retractService({ name: svc.name, by: manifest.id }) } catch { /* unload must still proceed; the failure is not silent because the next status shows it */ } })
+        if (toolFaceReceipt === null) toolFaceReceipt = null
+        void provided
+      }
       // Aliases LAST: a pack may alias a service that its own slot/track declarations bring into
       // existence, and publication follows declaration (kernel/index.js declareSlots).
       for (const a of manifest.aliases || []) {
@@ -1049,6 +1089,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         promptPolicies: (Array.isArray(manifest.promptPolicies) ? manifest.promptPolicies : []).map((p) => p.id),
         // TB-2649: what the fold DID for this manifest (folded keys) and what it could not (named unsupported keys).
         declarations: declarationFacts,
+        services: (manifest.services || []).map((svc) => ({ name: svc.name, apiVersion: svc.apiVersion })),
         ...(toolFaceReceipt ? { toolFaces: toolFaceReceipt } : {}) }
     },
 
@@ -1060,11 +1101,14 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       for (const undoOne of record.undo.slice().reverse()) {
         try { await undoOne() } catch (e) { failures.push(String(e && e.message)) }
       }
+      // ★ C#3 residue: the pack's SETTINGS NAMESPACE registration is part of what unload leaves behind otherwise.
+      let settingsRetraction = null
+      try { settingsRetraction = await retractSettingsForPack(id) } catch (e) { failures.push('settings-retract: ' + String((e && e.message) || e)) }
       applied.delete(id)
       appliedExcludes.delete(id)
       settingsResolution.delete(id)
       if (kernel.notePackUnloaded) kernel.notePackUnloaded(id)
-      return { ok: failures.length === 0, id, reversed: record.actions.length, failures, residueFree: failures.length === 0 }
+      return { ok: failures.length === 0, id, reversed: record.actions.length, settingsRetraction, failures, residueFree: failures.length === 0 && (settingsRetraction === null || settingsRetraction.ok !== false) }
     },
 
     /** Observability (R11): what is applied, what each pack changed, and every key's SOURCE LAYER (D-02). */

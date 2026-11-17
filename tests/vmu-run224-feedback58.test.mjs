@@ -29,7 +29,7 @@ const TMP = __tmpRoot() + '/r224'
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
 const SRC_BLUEPRINT = readFileSync(join(VMU, 'packs', 'v5r', 'blueprint.js'), 'utf8')
 const SRC_HOST = readFileSync(join(VMU, 'host.js'), 'utf8')
-const SRC_PAPER = readFileSync(join(VMU, 'kit', 'paper.js'), 'utf8')
+const SRC_PAPER = readFileSync(join(VMU, 'packs', 'research-core', 'paper-flow.js'), 'utf8')
 
 let passed = 0
 let failed = 0

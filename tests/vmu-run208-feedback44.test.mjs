@@ -21,7 +21,7 @@ const ENTRY = join(ROOT, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 const PACK = read('vibe-math-vmu/packs/v5r/tools.js')
 const MEETING = read('vibe-math-vmu/tools/meeting.js')
-const PAPER = read('vibe-math-vmu/kit/paper.js')
+const PAPER = read('vibe-math-vmu/packs/research-core/paper-flow.js')
 
 const ok = (cond, msg, extra) => assert.ok(cond, msg + (extra === undefined ? '' : '\n' + JSON.stringify(extra, null, 2)))
 const has = (hay, needle, msg) => ok(String(hay).includes(needle), msg + ' — missing: ' + needle)

@@ -84,7 +84,7 @@ const idsOf = (list) => (Array.isArray(list && list.items) ? list.items : []).ma
   const records = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
   const index = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
   const paperPack = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js'), 'utf8')
-  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const tools = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   ok(/existingRow\.track !== track/.test(records) && /retrackedFrom/.test(records) && /counters\.retracked \+= 1/.test(records),
     '§0 a re-put under ANOTHER track MOVES the index row and counts the move (one id, one track)')

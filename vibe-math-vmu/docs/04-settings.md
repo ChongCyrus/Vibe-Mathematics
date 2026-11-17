@@ -180,7 +180,7 @@ export const SettingsJsonSchema = toJsonSchema()   // 单向派生；文档/门�
 >
 > ★ **四档的判读** ✓：**`✅ 已接线` ＝ 现在改就有效** ✓；**`⚠️ 未接线（读取者不可达）` ＝ 唯一的读取者在**装配时不被加载**的模块里 ⇒ **改了同样不会有行为变化** ✓（★ 与下一档的区别：**这不是"没人读"，是"读它的代码根本不会跑"** —— 载体列仍点名那个模块，好让这个判断可以被查而不必被相信 ✓）；**`⚠️ 未接线` ＝ 键已声明、当前无读取者** ✓（★ **接上消费者即生效** ✓，见下方"转正"四步 ✓）；**`planned` ＝ 设计阶段登记** ✓（★ **连默认值都还没有** ✓，元数据以来源卷为准 ✓）。
 >
-> ★★ **判"接线"之前先判"可达"** ✓：`✅ 已接线` 要求那个读取者在 **从插件入口可达的装配**里 ✓ —— 实测过两个反例：`kernel/paper.js`（`createPaper(` 只出现在测试与脚本里，装配时**不被加载**；v5r 的论文实际走 `packs/v5r/paper.js` → `kit/paper.js`）与 `kernel/grant.js`（4 个 `vmu.grant.*` 键，`createGrant(` 只出现在一个测试文件里）。**在加上这一判之前，表里这 17 个键写着 `✅ 已接线`** ⇒ 照着表设 `vmu.paper.officeConsult='required'` 的人会以为有一道具名拒在守着定稿，而那条路径**从不执行** ✗。★ **这 17 个里有 5 个已经转正**：咨询闸（`officeConsult` 及其时限/处置/豁免四键）已长到**装配里真的会跑**的 `kit/paper.js` 上，所办何时该被问由 pack 声明（`packs/v5r/paper.js` 的 `consultRoles`），本表这 5 行因此变成 `✅ 已接线 / kit/paper.js`；剩下 12 个（`kernel/paper.js` 的投稿/渲染类 8 个 ＋ `kernel/grant.js` 的 4 个）仍是「读取者不可达」，其中 grant 那条已裁定**删除**（规则集不要求，留着只会让读者以为「临时授权」这道门存在）。门禁：`tests/vmu-kernel-reachability.test.mjs`（★ 每个 kernel 模块必须从插件入口可达，或列进 `scripts/lib/reachability.mjs` 的 `KNOWN_UNMOUNTED` 并写明理由与测量方式；列表只减不增）+ 本表生成器共用同一份可达图 ✓。
+> ★★ **判"接线"之前先判"可达"** ✓：`✅ 已接线` 要求那个读取者在 **从插件入口可达的装配**里 ✓ —— 实测过两个反例：`kernel/paper.js`（`createPaper(` 只出现在测试与脚本里，装配时**不被加载**；v5r 的论文实际走 `packs/v5r/paper.js` → `packs/research-core/paper-flow.js`）与 `kernel/grant.js`（4 个 `vmu.grant.*` 键，`createGrant(` 只出现在一个测试文件里）。**在加上这一判之前，表里这 17 个键写着 `✅ 已接线`** ⇒ 照着表设 `vmu.paper.officeConsult='required'` 的人会以为有一道具名拒在守着定稿，而那条路径**从不执行** ✗。★ **这 17 个里有 5 个已经转正**：咨询闸（`officeConsult` 及其时限/处置/豁免四键）已长到**装配里真的会跑**的 `packs/research-core/paper-flow.js` 上，所办何时该被问由 pack 声明（`packs/v5r/paper.js` 的 `consultRoles`），本表这 5 行因此变成 `✅ 已接线 / packs/research-core/paper-flow.js`；剩下 12 个（`kernel/paper.js` 的投稿/渲染类 8 个 ＋ `kernel/grant.js` 的 4 个）仍是「读取者不可达」，其中 grant 那条已裁定**删除**（规则集不要求，留着只会让读者以为「临时授权」这道门存在）。门禁：`tests/vmu-kernel-reachability.test.mjs`（★ 每个 kernel 模块必须从插件入口可达，或列进 `scripts/lib/reachability.mjs` 的 `KNOWN_UNMOUNTED` 并写明理由与测量方式；列表只减不增）+ 本表生成器共用同一份可达图 ✓。
 >
 > ★ **转正流程**（实现阶段按此走 ✓）：① 手写核心表加真元数据 ＋ 写真正的消费者 ✓；② 把来源卷里对应条目标为已实现 ✓；③ 重生成 ⇒ `generate-planned-settings.mjs --check` 会要求"**已实现的键不得留在 planned 里**" ✓；④ 重生成设置表 ⇒ 该行变 `✅ 已接线` ✓。
 
@@ -268,6 +268,8 @@ vmu.packs.active: [v5r]
 > ★★ **当前实现状态（写清，不当承诺）**：本表**由生成器派生**（`scripts/generate-vmu-settings-table.mjs`），该列判据＝"该键**字面量**是否出现在运行时源码（`kernel/**`、`packs/**`、入口、宿主适配器）里"，**目前只有两档** ⇒ **第三档 `❓` 是本卷定义的判据，落地须改生成器**；★ **实测依据（不许手改表）**：手改该列任一格 ⇒ `audit-vmu-docs` **变红**并提示 `node scripts/generate-vmu-settings-table.mjs --write`（R32 实测；该门跑的就是这个生成器的 `--check`）⇒ **规则＝改判据（生成器），不是改格子** ✓。
 > ★ **已知需要 `❓` 的实例（范围＋残差口径；R32 普查）**：**范围**＝§11 全部 **1226 行**；其中"接线"格含 `未接线` 的 **119 行**。**残差 A＝16 行**（键字面量**出现在运行时源码里**、但只落在**声明样**位置 ⇒ 值得人眼复核，**未必都错**）；**残差 B＝1 行**（`vmu.turn.selfCheck`：字面量连生成器的"声明行"过滤都通过、行仍标未接线）。★ **"靠派生名消费"这类机械判据看不见** —— 我**只逐一手核过两行**（`vmu.meetings.minutesDetail`：消费者 `kernel/meetings.js:925` 的 `K.minutesDetail`；`vmu.meetings.budgetOnExceed`：`kernel/meetingmarker.js:162/163/227` 的 `K.budgetOnExceed`），**其余【未核】** ✓（**"没核"就写"没核"**）。
 
+> ★★ **C#15 / ROUND-7（长跑预算）**：`vmu.budget.tokens` 的声明默认 **1,000,000** 是**安全默认，不是长跑预算**——真实 run 消耗 30–73M tokens。未显式设置该键时 `budget.status().tokenBudget` 带具名警告 `VMU_BUDGET_TOKENS_DEFAULT`（advisory，不阻断）：真实长跑必须显式设（如 `80000000`）或显式写 `0`＝不限；显式值/显式 0 都不产生该警告。`vmu.limits.*` 四键的 `0` 也只有**显式写下**才是「不限」（`state:"explicit-unlimited"`），未设置是 `unset-default`，见 `limitsReadings()` 与 `budget.status().limits`；`enforcement` 如实区分 `blocking`（maxLiveMembers/memoryCeilingMb）与 `advisory`（toolCallsPerTurnCap/wallClockMs）。
+
 > ★★ **勘误（C#14，2026-11-17 真值批；P0-c 落地后复核）**：下表 `vmu.budget.tokens` 一行的 `✅ 已接线` **现在成立**——P0-c 已把模型 token 用量接进 budget：宿主在**回合边界**（`vibe-math-vmu/vibe-math-vmu.js` 的 `refreshModelUsage`）与每次 `vibe_vmu_status` 读取时，读 `sessions.list()[].projections.values.tokenUsage`，把 **root 会话 + 其直接成员子会话** 的累计用量按**增量** `budget.charge({ scope:"model-usage", kind:"tokens", amount:<delta> })` 记入内核 budget；`vmu.budget.tokens > 0` 因此成为 `model-usage` 作用域的默认上限，超限由 budget 服务以 `VMU_RESOURCE_BUDGET` **具名拒**（回执 `usage` 块给出 `usageWired`/`inputTokens`/`outputTokens`/`totalTokens`/`chargedTokens`/`tokensLimit`/`failure`/`chargeFailure`/`means`；`usageWired:false` 明说「不可得」，**不写成 0**）。
 >
 > **已知边界（如实）**：① 只计 root + **直接**子会话；**孙会话（成员子会话再开的子会话）与多内核实例各自的账本不在本轨**——`usage.means` 明写该口径；② 无 sessions 服务 ⇒ `usageWired:false` + `failure`；无 budget 服务 ⇒ 读得到但 `chargeFailure` 明说「未记入」，**不静默封顶**；③ 这个键是「作用域默认上限」，不是全局单账；④ 若 impl-lane 的 C#14 残余修复再扩大覆盖范围，按它最终的事实更新本节。
@@ -277,12 +279,12 @@ vmu.packs.active: [v5r]
 | 键 | 必设 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 载体（首个**提到**它的运行时代码；消费点可能在其下游） | 说明 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `vmu.core.enabled` | ★ minimal | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 内核总开关（关闭＝完全不介入） |
-| `vmu.core.profile` | — | enum | `research` | `minimal`∣`research` | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ C#23：部署自述的运行 profile。minimal = 只要求 4 个必设键（见 SETTING_PROFILES；缺一即 VMU_SETTING_PROFILE_INCOMPLETE 具名拒），research = 全量目录的完整机构（默认）。profile 是**声明**，不是权限：机制开关仍由各键自己决定 |
+| `vmu.core.profile` | — | enum | `research` | `minimal`∣`research` | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | ★ C#23：部署自述的运行 profile。minimal = 只要求 4 个必设键（见 SETTING_PROFILES；缺一即 VMU_SETTING_PROFILE_INCOMPLETE 具名拒），research = 全量目录的完整机构（默认）。profile 是**声明**，不是权限：机制开关仍由各键自己决定 |
 | `vmu.core.logLevel` | — | enum | `info` | `debug`∣`info`∣`warn`∣`error` | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | 日志级别（不进模型上下文） |
-| `vmu.limits.toolCallsPerTurnCap` | ★ minimal | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 单回合工具调用上限；0＝不限 |
-| `vmu.limits.maxLiveMembers` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 在活成员上限；0＝不设（机器强制） |
-| `vmu.limits.memoryCeilingMb` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/guard.js` | 宿主进程 RSS 上限（超限拒绝新建成员；框架无法测量自己的"净"内存，故此处是宿主进程口径）；0＝不设 |
-| `vmu.limits.wallClockMs` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 阶段墙钟硬上限（框架侧上限，不是用户可设的截止时刻） |
+| `vmu.limits.toolCallsPerTurnCap` | ★ minimal | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 单回合工具调用上限。★ C#15：0 只有在**显式写下**时才是「不限」（explicit-unlimited）；未设置 ≠ 不限（状态 unset-default，见 limitsReadings 与 status）。本键在 build 中是 advisory（没有阻断消费者），如实标注 |
+| `vmu.limits.maxLiveMembers` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 在活成员上限；0 只有在显式写下时才是「不限」（未设置 ≠ 不限；状态见 limitsReadings）。本键 machine-enforced（blocking） |
+| `vmu.limits.memoryCeilingMb` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/guard.js` | 宿主进程 RSS 上限（超限拒绝新建成员；框架无法测量自己的"净"内存，故此处是宿主进程口径）。0 只有在显式写下时才是「不设」；未设置 ≠ 不限（状态见 limitsReadings）。blocking |
+| `vmu.limits.wallClockMs` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 阶段墙钟上限（框架侧口径，不是用户可设的截止时刻）。0 只有在显式写下时才是「不限」；未设置 ≠ 不限（见 limitsReadings）。本键在 build 中是 advisory（没有阻断消费者），如实标注 |
 | `vmu.limits.maxParallel` | — | int ≥1 | `3` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | 并发上限（P3：吸收 v5r 的 maxParallel；机器强制） |
 | `vmu.records.tracks` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 记录分轨。★ C#4：框架默认【中性】——不写任何 pack 的轨名（空列表＝没有轨）；机构自己的轨名由 pack 在自己的 settings 声明里提供（v5r 提供 progress/routes/obstacles/rejected/state… 全套）。这样任何 pack 都不再继承 v5r 政策 |
 | `vmu.records.headListAt` | — | int ≥0 | `7` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 头部列表最多返回多少行（0＝全部）；被截断时按 docs/07 §4.4 计数 |
@@ -337,7 +339,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.replyCatalogue` | — | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
 | `vmu.turn.replyLimitChars` | — | number | `2000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | 回合回复正文被回执原样保留的字符上限（默认 2000，允许 500–200000）；超出部分是**截断**而不是丢弃——全文写进 `Members/<member>/Turns/<turn>.md`，回执带 `replyFullPath`/`replyFullSha256`/`replyFullBytes`；调大它会让每回合回执变大，慎用 |
 | `vmu.turn.unknownReplyFieldMode` | — | enum | `ignore-named` | `ignore-named`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。 |
-| `vmu.turn.protocolPath` | — | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
+| `vmu.turn.protocolPath` | — | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | protocol path named by the compact reply catalogue (relative to the session working directory). ★ C#4 residue (TB-2792 round 7): the FRAMEWORK default is NEUTRAL (empty = this framework names no protocol document); an institution that HAS one declares it in its own settings defaults (v5r: packs/v5r/settings/defaults.json = Shared/Protocol.md) |
 | `vmu.blueprint.staleAfterMs` | — | number | `2592000000` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | 蓝图「按时更新」窗口（毫秒）：现行版超过这个年龄即逾期（提示，不是拒绝；默认 30 天；最小 0＝任何年龄都算逾期，便于演练） |
 | `vmu.blueprint.requireOutline` | — | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | 蓝图修订是否要求带有序 outline（G8「由粗到细」：depth 1=粗、2=细）。默认 false；true 时缺 outline 只提示（回执 outlineRequired:true 并具名说明），不拒绝写入——规则靠可读结构落地，不靠门 |
 | `vmu.turn.verifyTarget` | — | string | `(unspecified)` | — | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | the object under a truth ballot (verify phase) |
@@ -1060,15 +1062,15 @@ vmu.packs.active: [v5r]
 | `vmu.activity.wakeOn` | — | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/activity.js` | 构造期注册的唤醒总线条目（**H2**：条目在构造时注册 ⇒ 下次会话生效，回执不得声称即时）。默认空＝不额外挂任何条目。 |
 | `vmu.activity.maxWaiters` | — | int ≥0 | `128` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 同时等待者上限（超出具名拒）。 |
 | `vmu.activity.noPeerShortCircuit` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 无活跃同伴时是否立即返回 noProgress（true＝短路，对齐 v5r）。 |
-| `vmu.paper.latexEngineOrder` | — | string[] | `[pdflatex,xelatex]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/latex.js` | PHASE 7：LaTeX 引擎探测顺序（数组）。★ 这是【pack/部署的政策数据】，内核只按传入顺序试，不硬编码“中文优先”；中文优先的顺序应写在 pack 的 settings/defaults.json 里 |
-| `vmu.paper.latexTimeoutMs` | — | int ≥0 | `120000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/latex.js` | PHASE 7：一次 LaTeX 编译的预算（毫秒）；超时以具名码返回，不静默失败 |
-| `vmu.paper.latexCommand` | — | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/latex.js` | PHASE 7：LaTeX 引擎的**绝对路径覆盖**（默认空＝按包名在 PATH 上探测）。读者：`kernel/latex.js` 的引擎链；非空时该命令是唯一的引擎候选（不再按 `latexEngineOrder` 探测），常用于「装了但不在 PATH」 |
-| `vmu.paper.officeConsult` | — | enum | `required` | `off`∣`required` | 会话 | H1 | office | ✅ 已接线 | `kit/paper.js` | office 定稿咨询门总开关（`off`＝零机制，不闸任何定稿）；`required` 时未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`。读者：定稿路径（`kernel/paper.js`／human 面）。 |
-| `vmu.paper.officeConsultOn` | — | enum | `finalize` | `finalize`∣`finalize-or-submit` | 会话 | H1 | office | ✅ 已接线 | `kit/paper.js` | 何时必须征询：`finalize`＝只卡定稿（对齐 v5r 的 `finalizePaperByOffice`／`notePaperConsult`）；`finalize-or-submit`＝投稿前也要问。 |
-| `vmu.paper.officeConsultTimeoutMs` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kit/paper.js` | 等待咨询答复的时限（0＝无限等／挂起）。超时处置见 `vmu.paper.officeConsultOnTimeout`，**绝不默认放行**。 |
-| `vmu.paper.officeConsultOnTimeout` | — | enum | `hold` | `hold`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kit/paper.js` | 咨询超时处置：`hold`＝挂起等待（默认，与 human 面同口径）；`refuse`＝具名拒。**没有 default-allow 这一档**。 |
-| `vmu.paper.officeConsultExemptRoles` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kit/paper.js` | 豁免角色：**默认为空＝不豁免任何人**（Lead F4 裁决：v5r 的 C-30 原场景正是"office 自己定稿前也必须先咨询所内"，把 office 默认豁免掉等于没实现那条；"默认不豁免"是保守侧，与 `hold` 同一纪律）。部署要豁免就显式声明角色。 |
-| `vmu.paper.finalizer` | — | enum | `editor` | `editor`∣`contributor`∣`any` | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 定稿权限**规则**（不是角色名！v5r 的 `paperEditor:'academician'` 是**机构角色**；本键是**规则**，v5r 等价＝`editor` ＋创建时把 paper 的 `editor` 指定为主持人）。★ 轮 8：域外值 ⇒ **具名拒** `VMU_INVALID_ARGUMENT`（列出声明的域），**绝不静默回落** ✗✓；读者＝`kernel/paper.js` 的 `cfg()`。 |
+| `vmu.paper.latexEngineOrder` | — | string[] | `[pdflatex,xelatex]` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | PHASE 7：LaTeX 引擎探测顺序（数组）。★ 这是【pack/部署的政策数据】，内核只按传入顺序试，不硬编码“中文优先”；中文优先的顺序应写在 pack 的 settings/defaults.json 里 |
+| `vmu.paper.latexTimeoutMs` | — | int ≥0 | `120000` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v5r/paper.js` | PHASE 7：一次 LaTeX 编译的预算（毫秒）；超时以具名码返回，不静默失败 |
+| `vmu.paper.latexCommand` | — | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v5r/paper.js` | PHASE 7：LaTeX 引擎的**绝对路径覆盖**（默认空＝按包名在 PATH 上探测）。读者：`kernel/latex.js` 的引擎链；非空时该命令是唯一的引擎候选（不再按 `latexEngineOrder` 探测），常用于「装了但不在 PATH」 |
+| `vmu.paper.officeConsult` | — | enum | `required` | `off`∣`required` | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | office 定稿咨询门总开关（`off`＝零机制，不闸任何定稿）；`required` 时未咨询即定稿 ⇒ 具名拒 `VMU_OFFICE_CONSULT_REQUIRED`。读者：定稿路径（`kernel/paper.js`／human 面）。 |
+| `vmu.paper.officeConsultOn` | — | enum | `finalize` | `finalize`∣`finalize-or-submit` | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | 何时必须征询：`finalize`＝只卡定稿（对齐 v5r 的 `finalizePaperByOffice`／`notePaperConsult`）；`finalize-or-submit`＝投稿前也要问。 |
+| `vmu.paper.officeConsultTimeoutMs` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | 等待咨询答复的时限（0＝无限等／挂起）。超时处置见 `vmu.paper.officeConsultOnTimeout`，**绝不默认放行**。 |
+| `vmu.paper.officeConsultOnTimeout` | — | enum | `hold` | `hold`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | 咨询超时处置：`hold`＝挂起等待（默认，与 human 面同口径）；`refuse`＝具名拒。**没有 default-allow 这一档**。 |
+| `vmu.paper.officeConsultExemptRoles` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | 豁免角色：**默认为空＝不豁免任何人**（Lead F4 裁决：v5r 的 C-30 原场景正是"office 自己定稿前也必须先咨询所内"，把 office 默认豁免掉等于没实现那条；"默认不豁免"是保守侧，与 `hold` 同一纪律）。部署要豁免就显式声明角色。 |
+| `vmu.paper.finalizer` | — | enum | `editor` | `editor`∣`contributor`∣`any` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 定稿权限**规则**（不是角色名！v5r 的 `paperEditor:'academician'` 是**机构角色**；本键是**规则**，v5r 等价＝`editor` ＋创建时把 paper 的 `editor` 指定为主持人）。★ 轮 8：域外值 ⇒ **具名拒** `VMU_INVALID_ARGUMENT`（列出声明的域），**绝不静默回落** ✗✓；读者＝`kernel/paper.js` 的 `cfg()`。 |
 | `vmu.math.jobs.logMax` | — | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
 | `vmu.math.jobs.persist` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js`（R202：回执写的是镜像，不是造一张卡；三态计数 persisted/unwired/failed 在回执与 status().receipts 上）。 |
 | `vmu.meetings.tier` | — | enum | `formal` | `formal`∣`light` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
@@ -1079,10 +1081,10 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.attendDeniedSeats` | — | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 不参与会议的席位（席别名；空＝不按席别限制）。★ 两个消费者、两种读取时点：①`kernel/meetings.js` 的 `attend()` 读**启动快照**（`:468` 的 `K.attendDeniedSeats`）；②`tools/meeting.js` 的 `nonAttendingSeatGateOf()` 读**实时** `kernel.settingOf()`（举手邀请等席位门）。命中即 VMU_NOT_PERMITTED 并点名该键与席位。热点改这个键后两扇门的生效时点不同，改配置后以回执的 `seatPolicy` 为准（audit10 G4 记录在案）。 |
 | `vmu.prompt.compactThreshold` | — | int ≥0 | `66` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 上下文占比达到该值 ⇒ 组装时注入 [CONTEXT COMPACT] 指示。**百分数 0–100，不是 0–1**。v5r `compactThreshold:66`（`:1078`；`:449` 明写 never clamp to 0-1；`:9869` 拒 ≤0）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.contextPct`）。 |
 | `vmu.prompt.compactAfterRounds` | — | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.round`）。 |
-| `vmu.paper.finalPaper` | — | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：`kernel/paper.js` 的 `finalize({auto:true})`（false ⇒ 具名拒，不静默改成手动）。 |
-| `vmu.paper.format` | — | enum | `both` | `both`∣`md`∣`tex` | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 成品形态（both|md|tex）。v5r `paperFormat:'both'`（`:1164`；消费点 `:8252`）。读者：`kernel/paper.js` 的 `cfg()`＋`finalize()`（进 `artifact` 与 `register` 请求）。 |
-| `vmu.paper.language` | — | enum | `zh` | `zh`∣`en` | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 成品语言（zh|en）。v5r `paperLanguage:'zh'`（`:1165`；消费点 `:8251`）。读者：与 `vmu.paper.format` 同一处。 |
-| `vmu.paper.compilePdf` | — | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 检测到 LaTeX 引擎时编译 PDF。v5r `paperCompilePdf:true`（`:1166`；消费点 `:8258`；`:8820` 明写 format=md 时**不得**因缺 tex 报警 ⇒ `pdf = compilePdf && format !== 'md'`）。读者：与 `vmu.paper.format` 同一处。 |
+| `vmu.paper.finalPaper` | — | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：`kernel/paper.js` 的 `finalize({auto:true})`（false ⇒ 具名拒，不静默改成手动）。 |
+| `vmu.paper.format` | — | enum | `both` | `both`∣`md`∣`tex` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 成品形态（both|md|tex）。v5r `paperFormat:'both'`（`:1164`；消费点 `:8252`）。读者：`kernel/paper.js` 的 `cfg()`＋`finalize()`（进 `artifact` 与 `register` 请求）。 |
+| `vmu.paper.language` | — | enum | `zh` | `zh`∣`en` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 成品语言（zh|en）。v5r `paperLanguage:'zh'`（`:1165`；消费点 `:8251`）。读者：与 `vmu.paper.format` 同一处。 |
+| `vmu.paper.compilePdf` | — | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 检测到 LaTeX 引擎时编译 PDF。v5r `paperCompilePdf:true`（`:1166`；消费点 `:8258`；`:8820` 明写 format=md 时**不得**因缺 tex 报警 ⇒ `pdf = compilePdf && format !== 'md'`）。读者：与 `vmu.paper.format` 同一处。 |
 | `vmu.members.maxTempPerMember` | — | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 同一雇佣者名下**同时在册**的临时成员上限。v5r `maxTempPerMember:3`（`:1075`；消费点 `:8920-8924`：`perCap = max(1, floor(value||3))`、按 `hiredBy` 计数、超限 `V5_MEMBER_LIMIT` 并回报 current/limit）。vmu 映射（vmu 无 kind:temp）：**仍在试用期**（`confirmedAt === null`）的成员按接纳人 `by` 分组。读者：`kernel/recruit.js` 的 `accept()`。 |
 | `vmu.tasks.memberMayRejectAssign` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tasks.js` | 成员可否对被分派**表示异议**（记录＋广播，**任务仍执行**）。v5r `memberMayRejectAssign:true`（`:1066`；消费点 `:9555-9562`：``reject_assign && params.memberMayRejectAssign`` ⇒ 广播给 voters，原文"任务仍会执行"）。读者：`kernel/tasks.js` 的 `objectAssign()`；★ false 时 vmu **具名拒**（v5r 是静默忽略该字段 —— 刻意更严，不许静默）。 |
 | `vmu.meetings.orderMode` | — | enum | `fifo` | `fifo`∣`round-robin`∣`chair`∣`random` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值 |
@@ -1315,9 +1317,6 @@ vmu.packs.active: [v5r]
 | `vmu.migration.rollbackPointDensity` | — | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.stepBatch` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.notify.crossInstitution` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 已接线（notify.js 读取）；默认值取自模块源码 |
-| `vmu.paper.maxRounds` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kit/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
-| `vmu.paper.maxSections` | — | int ≥0 | `0` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
-| `vmu.paper.requireAllSections` | — | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.partnership.crossBorderApproverRoles` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
 | `vmu.partnership.crossBorderGate` | — | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据） |
 | `vmu.partnership.invoiceTaxSlots` | — | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据） |
@@ -1510,7 +1509,10 @@ vmu.packs.active: [v5r]
 | `vmu.names.warn` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.notes.linkKinds` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.packs.searchPaths` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
-| `vmu.paper.retentionMs` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **已穷尽**：`paper.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.paper.maxRounds` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 03（共见 3 卷：03、10、26），尚未实现（元数据以各卷为准） |
+| `vmu.paper.maxSections` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v5r/paper.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.paper.requireAllSections` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
+| `vmu.paper.retentionMs` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.preserve.migrateAfterYears` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.preserve.pdfProfile` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.prompt.compatMode` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、13），尚未实现（元数据以各卷为准） |
@@ -1580,7 +1582,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1151** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1148** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1655,7 +1657,7 @@ vmu.packs.active: [v5r]
 | `vmu.pack.*` | 4 |
 | `vmu.packs.*` | 5 |
 | `vmu.panel.*` | 4 |
-| `vmu.paper.*` | 17 |
+| `vmu.paper.*` | 14 |
 | `vmu.partnership.*` | 6 |
 | `vmu.paths.*` | 2 |
 | `vmu.pointer.*` | 1 |

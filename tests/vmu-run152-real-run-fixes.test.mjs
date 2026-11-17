@@ -49,7 +49,7 @@ function seedVotingBallot(kernel, tag) {
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
-const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const PACK_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const LEADERSHIP = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'leadership.js')

@@ -92,7 +92,7 @@
     },
     {
       "ruleId": "F2",
-      "file": "vibe-math-vmu/kit/paper.js",
+      "file": "vibe-math-vmu/packs/research-core/paper-flow.js",
       "anchor": "if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant",
       "replaceWith": "if (false) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant",
       "expectRed": {
@@ -400,7 +400,7 @@
     },
     {
       "ruleId": "F4",
-      "file": "vibe-math-vmu/kit/paper.js",
+      "file": "vibe-math-vmu/packs/research-core/paper-flow.js",
       "anchor": "    return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,\n      error: refuse(CODES.OFFICE_CONSULT_REQUIRED,",
       "replaceWith": "    return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,\n      error: refuse(CODES.OFFICE_CONSULT_TIMEOUT,",
       "expectRed": {

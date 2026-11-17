@@ -55,6 +55,9 @@ const WORKSPACE = 'e2e 读取本套件自己刚写出的【工作区产物】；
 const LEGACY_E2E = '★ legacy-preset 套件：G4 将随五个预设一起归档；若保留，必须逐个转 requireFile（本轮已列入报告 ⑦）'
 const OPTIONAL = Object.freeze({
   'scripts/build-preset-rows.mjs:ternary-read-empty': OWN_OUTPUT,
+  // TB-2794 Step 1: kernel/paper.js is DELETED; this optional probe keeps the gate able to read FINALIZERS if an old tree
+  // still has it. The absence is the expected state (the face moved to packs/research-core), named — not a silent degrade.
+  'scripts/audit-pack-value-domain.mjs:ternary-read-empty': '迁移兼容探测：kernel/paper.js 已删除，读它只为老树仍存在时取 FINALIZERS；缺失是合法状态（该面已迁 packs/research-core），不是静默降级',
   'scripts/generate-coverage-debt.mjs:ternary-read-empty': OWN_OUTPUT,
   'scripts/generate-pack-prompts.mjs:ternary-read-empty': OWN_OUTPUT,
   'scripts/generate-planned-settings.mjs:ternary-read-empty': OWN_OUTPUT,

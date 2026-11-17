@@ -544,7 +544,7 @@ const phaseOf = (kind, text) => {
     //     section, so the captured 「你是本所的院士。」 can no longer match.
     //   · C2 the same block told every seat it cannot vote or hire/fire; rights are per seat (packs/v5r/seat-faces.js), so the
     //     live line names which seat may hire/fire and vote.
-    //   · C5 the review cap can force finalisation (kit/paper.js forcedAfterCap), so the live deliverable line adds the caveat;
+    //   · C5 the review cap can force finalisation (packs/research-core/paper-flow.js forcedAfterCap), so the live deliverable line adds the caveat;
     //     the captured sentence asserted unanimity unconditionally.
     //   · ROUND 133/136: the LaTeX note now names `vmu.paper.latexCommand` (the key kernel/latex.js actually reads) and drops the
     //     `latexmk --version` probe the face never runs; the captured note promised a key that did not exist.

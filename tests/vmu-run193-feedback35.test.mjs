@@ -16,7 +16,7 @@ import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8')
-const PAPER = read('vibe-math-vmu/kit/paper.js')
+const PAPER = read('vibe-math-vmu/packs/research-core/paper-flow.js')
 const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
 const PAPER_PROMPTS = read('vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js')
 

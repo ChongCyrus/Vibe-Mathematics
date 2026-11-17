@@ -208,7 +208,10 @@ console.log('=== 5. ★ REGRESSION WITNESS (the blind spot that let the 319-key 
   ok(Array.isArray(unenforced.declarations) && unenforced.declarations.every((d) => d.key && d.reason),
     'W9. ★ and every declared key whose own default contradicts its declaration is NAMED too (count printed)', unenforced.declarations.length)
   const planned = unenforced.types.find((t) => t.type === 'planned')
-  ok(planned === undefined || planned.count === 113, 'W10. the `planned` count is the measured 113 keys (G5: storeBackend moved to planned)', planned && planned.count)
+  // ★ TB-2794 Step 1 (paper dead face removed): the three vmu.paper.maxRounds/maxSections/requireAllSections keys lost their
+  // only reader with kernel/paper.js, so the generator now honestly classifies them as `planned` too — the measured count is
+  // 116, not 113 (a pinned number that no longer matches the tree would be a claim, not a measurement).
+  ok(planned === undefined || planned.count === 116, 'W10. the `planned` count is the measured 116 keys (113 + the 3 paper keys whose dead-face reader was deleted)', planned && planned.count)
 }
 
 console.log('=== 6. ★ COVERAGE GATE: every declared type is either JUDGED or NAMED (a new case-less type reddens this) ===')

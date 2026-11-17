@@ -8,6 +8,7 @@
 // fairnessPolicy …) is re-resolved from settings at startup and is deliberately not part of the snapshot; only
 // what was SPENT is restored, because that is the fact a restart cannot recompute.
 import { checkSnapshot } from './resume.js'
+import { limitsReadings, tokenBudgetReading } from '../settings/schema.js'
 
 export const apiVersion = 1
 
@@ -143,7 +144,20 @@ export function createBudget({ clock = () => Date.now(), log = () => {}, setting
     return out
   }
   const viewOf = (s) => ({ scope: s.scope, limits: { ...s.limits }, used: { ...s.used }, reserved: { ...s.reserved }, warnings: s.warnings, paused: s.paused, perTaskShare: s.perTaskShare, openedAt: s.openedAt })
-  const status = () => ({ scopes: scopes.size, kinds: KINDS.slice(), policy: cfg(), paused: [...scopes.values()].filter((s) => s.paused).map((s) => s.scope) })
+  // ★ C#15 (ROUND-7): the four vmu.limits.* keys are a TRI-STATE reading plus the honest enforcement label; the token
+  // budget's UNSET state carries the long-run startup warning (1M is a safety default, not a 30–73M token run budget).
+  // ★ C#15: COMPACT projection for the status/receipt surface (the long `means` sentences live in schema.js readings and
+  // docs; a status summary has a size ceiling, and a receipt must not grow by prose it can point at).
+  const status = () => {
+    const lr = limitsReadings(settings)
+    const tb = tokenBudgetReading(settings)
+    return Object.assign({ scopes: scopes.size, kinds: KINDS.slice(), policy: cfg(), paused: [...scopes.values()].filter((s) => s.paused).map((s) => s.scope) }, {
+      limits: Object.fromEntries(Object.entries(lr.limits).map(([k, v]) => [k, { state: v.state, enforcement: v.enforcement }])),
+      limitWarnings: lr.warnings.map((w) => w.key),
+      tokenBudget: { state: tb.state, value: tb.value, warning: tb.warning === null ? null : tb.warning.code },
+      limitsMeans: 'C#15: state/ enforcement per key; 0=unlimited only when explicit; details in schema.limitsReadings()',
+    })
+  }
   const list = () => { const all = [...scopes.values()].map(viewOf); const kept = all.slice(0, listCap); return { items: kept, total: all.length, dropped: all.length - kept.length } }
 
   /**

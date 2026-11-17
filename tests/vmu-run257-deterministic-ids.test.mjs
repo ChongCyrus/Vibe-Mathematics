@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tests/vmu-run257-deterministic-ids.test.mjs — RUN 257 / TB-2634: AN ID MINTED FROM `Math.random()` IS NOT REPRODUCIBLE.
 //
-// The defect (found by sim-lane in TB-2605): `vibe-math-vmu/kit/paper.js` minted consult request ids as
+// The defect (found by sim-lane in TB-2605): `vibe-math-vmu/packs/research-core/paper-flow.js` minted consult request ids as
 // `consult-<seq4>-<rand4>` where `rand4` came from `Math.floor(Math.random() * 16)`. Consequences:
 //   ① the same input minted a DIFFERENT id on every run ⇒ two corpora over the same calls disagreed byte-for-byte;
 //   ② TB-2602's "two runs, identical sha256" and TB-2605's determinism gate went randomly red — today green, tomorrow red;
@@ -32,13 +32,11 @@ import { requireFile } from './_lib/require-file.mjs'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '..')
-const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
-const KERNEL_PAPER = join(REPO, 'vibe-math-vmu', 'kernel', 'paper.js')
+const KIT = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const KIT_SRC = readFileSync(KIT, 'utf8')
-// ★ AUDIT-NO-SILENT-READS: this was `existsSync(...) ? readFileSync(...) : ''`. kernel/paper.js MUST exist (the
-// claim "kernel/paper.js also reads no Math.random" is only about a real file, never about an empty string), so a
-// missing file is a NAMED refusal, not a silent weakening of §1 into "no hits in ''".
-const KERNEL_PAPER_SRC = requireFile(KERNEL_PAPER, 'the kernel-side paper module whose Math.random-free claim §1 makes')
+// ★ TB-2794 Step 1: the kernel-side paper module was DELETED with the dead face; its Math.random-free claim moved WITH the
+// code to packs/research-core/paper-flow.js (KIT_SRC below). There is no second "kernel-side" module to require — a
+// required-file entry for a deleted module would be a test keeping a corpse on life support.
 
 let passed = 0
 let failed = 0
@@ -51,14 +49,13 @@ const ok = (cond, label, detail) => {
 const eq = (actual, expected, label) => ok(Object.is(actual, expected), label + ' (expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual) + ')')
 
 // ── 0. THE SOURCE READS NO RANDOM SOURCE ───────────────────────────────────────────────────────────────────────────────
-console.log('=== 0. 源码判据：kit/paper.js 与 kernel/paper.js 里 Math.random 0 命中 ===')
+console.log('=== 0. 源码判据：packs/research-core/paper-flow.js 里 Math.random 0 命中（paper 流程已全部迁出 kernel） ===')
 // Count only CODE lines: the RUN 257 header/comment legitimately NAMES Math.random to explain why it is gone, and a pin
 // that fails on its own explanation would push the next maintainer to delete the explanation rather than keep the code
 // clean. That is why this counts stripped-comment lines, exactly like the census in §5.
 const codeLinesOf = (src) => src.split('\n').filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
 const mathRandomHits = (src) => codeLinesOf(src).filter((line) => /Math\s*\.\s*random\s*\(/.test(line)).length
-eq(mathRandomHits(KIT_SRC), 0, '★★★ kit/paper.js 不再读 Math.random（真实读文件，不是快照）')
-eq(mathRandomHits(KERNEL_PAPER_SRC), 0, '★★ kernel/paper.js 也不读 Math.random')
+eq(mathRandomHits(KIT_SRC), 0, '★★★ packs/research-core/paper-flow.js 不再读 Math.random（真实读文件，不是快照）')
 ok(!codeLinesOf(KIT_SRC).some((line) => /Math\.floor\(Math\.random\(\)\s*\*\s*16\)/.test(line)), '★★★ 旧的随机后缀表达式已消失（Math.floor(Math.random()*16) 0 命中）')
 ok(/export const consultRequestId = \(seq, \{ seed = '', rand = null \} = \{\}\)/.test(KIT_SRC),
   '★★ 单一实现：consultRequestId(seq, { seed, rand }) 是唯一铸造处（可注入，缺省确定）')
@@ -238,7 +235,7 @@ for (const root of censusRoots) {
   }
 }
 const kitHits = hits.filter((h) => /(^|[/\\])kit[/\\]paper\.js:/.test(h))
-eq(kitHits.length, 0, '★★★ 普查里 kit/paper.js 0 命中（本任务写域已清）')
+eq(kitHits.length, 0, '★★★ 普查里 packs/research-core/paper-flow.js 0 命中（本任务写域已清）')
 const knownReportOnly = [/kernel[/\\]lean\.js:/, /kernel[/\\]mathjobs\.js:/, /kernel[/\\]records\.js:/, /kernel[/\\]store\.js:/]
 const unexplained = hits.filter((h) => !knownReportOnly.some((re) => re.test(h)))
 eq(unexplained.length, 0, '★★ 普查里除"已具名报告的产品代码站点"外没有新命中（发现即报告，不顺手改）', unexplained)

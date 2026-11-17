@@ -1,6 +1,6 @@
 // tests/vmu-paper-consult-tool.test.mjs — PHASE 12 / E4: THE OFFICE CONSULT NEEDS A REACHABLE ANSWERING DOOR.
 //
-// THE DEFECT THIS PINS (the quieter half of red line ④, "没有消费者就不给机制"): `kit/paper.js` grew the pre-finalisation
+// THE DEFECT THIS PINS (the quieter half of red line ④, "没有消费者就不给机制"): `packs/research-core/paper-flow.js` grew the pre-finalisation
 // consult — `consultGate` arms on `vmu.paper.officeConsult="required"`, `recordFinal` refuses without an answer, and
 // `recordConsult`/`consultState` were exported and unit-tested (`tests/vmu-paper-office-consult.test.mjs` calls the
 // subsystem DIRECTLY). But `vibe_v5_paper`'s action table only had start/part/review/advance/final/render/status/compile/
@@ -346,7 +346,7 @@ try {
   {
     const lampDir = join(base, 'f4-lamp')
     cpSync(join(REPO, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
-    const kitPath = join(lampDir, 'vibe-math-vmu', 'kit', 'paper.js')
+    const kitPath = join(lampDir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
     const src = readFileSync(kitPath, 'utf8')
     const from = 'const openedByThisCall = awaiting === null'
     ok(src.indexOf(from) !== -1, 'F-4 lamp-setup：openedByThisCall 的判定点存在')

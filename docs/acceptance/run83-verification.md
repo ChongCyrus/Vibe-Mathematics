@@ -92,7 +92,7 @@
 | ⑥ 二次 `final` | +2185.0 s | 268→269 | `ok:true` + 嵌套 `final:{ok:true, finalized:true, complete:true}`；顶层 `complete:true`、`glyphLossDetected:false`、`missingCharacterCount:0`、`glyphsUnrepaired:[]`、`toolchainProbe:"ran-present"`、`latexAvailable:true` |
 | ⑦ `render` | +2189.2 s | 275→276 | `ok:true, renderOk:true, complete:true, recordIds:{md:"rec-48",tex:"rec-49",meta:"rec-50"}`, `wroteToLedger:["md","tex","meta"]`, `qualityGate:{checked:true,ok:true}` |
 
-- **U+2A00 确为替换表外字符**：`kit/paper.js` 的 `TEX_MATH_GLYPH` 表键不含 `⨀`（表键 = ≥ ≤ ≠ ≈ ∎ ∞ ∈ ⊆ ⇒ → ± × · ÷ ℤ ∀ ∣ ∩ ∪ ⋯ 等；`MATH_GLYPH_RE` 由该表派生）⇒ 未被修掉；拒收回执 hint 亦自述「替换表未收录」。
+- **U+2A00 确为替换表外字符**：`packs/research-core/paper-flow.js` 的 `TEX_MATH_GLYPH` 表键不含 `⨀`（表键 = ≥ ≤ ≠ ≈ ∎ ∞ ∈ ⊆ ⇒ → ± × · ÷ ℤ ∀ ∣ ∩ ∪ ⋯ 等；`MATH_GLYPH_RE` 由该表派生）⇒ 未被修掉；拒收回执 hint 亦自述「替换表未收录」。
 - **缺 `reviseAvailable`（D2 / F83-02）**：拒收回执（2688 字符全文）检索 `reviseAvailable`/`refreshAvailable`/`revise` **均 ABSENT**，顶层键为 ok/tool/action/code/message/hint/target/stage/finalized/rolledBack/glyphLossDetected/missingCharacterCount/glyphsUnrepaired/glyphLossCode/logPath/glyphLossMeans/final/means/memberActed/actedForMember/callerMember/memberActedMeans/receiptMeta ⇒ 该子键 **`NO-EVIDENCE/PRODUCT-MISSING`**（LOW；退稿路径本身可用——`final{decision:"revise"}` 回执里 `reviseAvailable` 存在）。
 - **样本偏差（如实记）**：任务书要求「把拒收安排成**第一次** `final{deliverable}`」，本 run 第一次被 `VMU_OFFICE_CONSULT_REQUIRED` 拒、字形拒收发生在**第二次**；不影响 V17 结论，但样本与任务书口径不同（consult 闸闭环原文齐：`consult_state` → office `consult`（root callSeq 201）→ 重试成功）。
 

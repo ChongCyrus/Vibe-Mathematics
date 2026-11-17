@@ -2,7 +2,7 @@
 // tests/vmu-run156-run5-fixes.test.mjs — ★ RUN 156：第五次真机跑（续跑，tarball `d8e1b71c`，jsonl
 // `full-1031-060959.jsonl`，代理报告 `FEEDBACK4.md` / `SIM-REPORT4.md`）里的四条新缺陷 + 一条上一轮漏修。
 //
-//   ① repair 回执缺字段   `kit/paper.js` 的 `recordFinal` 早就 return `repair/repairs/repairBudget/cap`，但
+//   ① repair 回执缺字段   `packs/research-core/paper-flow.js` 的 `recordFinal` 早就 return `repair/repairs/repairBudget/cap`，但
 //                        `packs/v5r/tools.js` 的 `final` 投影把它们全丢了 ⇒ 调用方只能再调一次 `status` 才知道
 //                        这次的 revise 是「修复轮」。真机回执原文：`{"ok":true,"finalized":false,"final":null,"missing":[],"consult":null,"pdf":null}`。
 //   ② N1 Lean 新作业不可达 工作区已有 `Formal/Jobs/lean-1..6` 时，自动号连续撞号，拒绝语让传 `jobId`——
@@ -25,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
-const KIT = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const EXTRAS = join(REPO, 'vibe-math-vmu', 'kit', 'extras.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const PANEL = join(REPO, 'vibe-math-vmu', 'kernel', 'panel.js')

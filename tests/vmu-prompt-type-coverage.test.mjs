@@ -165,7 +165,7 @@ const isCorrectedTeachingLedger = (l) =>
   // The capture stays as the capture; the divergence is declared here, exactly like class 5-8 above.
   /^你是本所的院士。/.test(l) ||
   /^你没有表决权及hire\/fire权限/.test(l) ||
-  // 9. G7 AUDIT #2 (C5, rule L56): :550 asserted 「全体参与成员…表示可交付」 even on the capped path, where kit/paper.js
+  // 9. G7 AUDIT #2 (C5, rule L56): :550 asserted 「全体参与成员…表示可交付」 even on the capped path, where packs/research-core/paper-flow.js
   //    goes to the editor with warnings. The live line now says that out loud, so the capture can no longer match.
   /^全体参与成员已在互审中表示/.test(l) ||
   // ★ ROUND-2 (2026-11-17): the seat-permission / read-face / reply-channel fixes changed these captured lines BY

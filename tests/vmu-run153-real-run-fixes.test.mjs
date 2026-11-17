@@ -51,7 +51,7 @@ function seedVotingBallot(kernel, tag) {
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
-const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')
+const KIT_PAPER = join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
 const TOOLS = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
 const EXTRAS = join(REPO, 'vibe-math-vmu', 'kit', 'extras.js')
 const LATEX = join(REPO, 'vibe-math-vmu', 'kernel', 'latex.js')
@@ -277,7 +277,9 @@ try {
   {
     const PQ = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')).href)
     const QUALITY_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js'), 'utf8')
-    const KERNEL_PAPER_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'paper.js'), 'utf8')
+    // ★ TB-2794 Step 1: the consult gate moved with the flow (kernel/paper.js deleted) — the receipt shape is asserted on the
+    // MOUNTED flow, which is where the refusal is actually produced.
+    const FLOW_PAPER_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
     const MC_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'math-computation.js'), 'utf8')
 
     // G6 — a bare record id is a legal evidence pointer (the appendix indexes BY ID), and a bare id that names no
@@ -312,7 +314,7 @@ try {
       '§3i ★★ G8 追加规则本身没被偷偷改掉（文档契约 "[command, ...cli.argv, <archived script>]" 仍然成立）')
 
     // G9 — the consult-required refusal names the paper the answer must address.
-    ok(/target: p\.id, paperId: p\.id/.test(KERNEL_PAPER_SRC),
+    ok(FLOW_PAPER_SRC.includes('target: str(state.target), paperId: str(state.id)'),
       '§3j ★★★ G9 `VMU_OFFICE_CONSULT_REQUIRED` 回执带 `target`（真机里所办答复先撞一次 no target was given）')
   }
 } finally {

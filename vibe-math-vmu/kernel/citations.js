@@ -1,6 +1,6 @@
 // vmu kernel · citations — the bibliography face: the declared style, the fields an entry must carry, the priority order of
 // identifiers, and whether an entry without any identifier may exist at all
-// （docs/07 the citation table; kernel/library.js owns records and kernel/paper.js owns the paper, neither is redefined here）.
+// （docs/07 the citation table; kernel/library.js owns records and packs/research-core/paper-flow.js owns the paper flow, neither is redefined here）.
 //
 // WHAT IT IS: it turns an entry into the declared style, refuses an entry that is missing a declared field or carries no
 // identifier under the default rule, and chooses the identifier to key on by the DECLARED priority rather than by whichever

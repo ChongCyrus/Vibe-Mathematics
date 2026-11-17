@@ -20,7 +20,7 @@
 //   · `host.js`             `records status` carries `lastRefusal` + `lastRefusalMeans`.
 //   · `packs/v5r/paper-quality.js`  `safeForm` only recommends `$…$` when the line has NO identifier; a truncated name
 //     asks for the PREFIX (never the ellipsis), and each missing item names `requiredLine(Truncated|Math|Identifier)`.
-//   · `kit/paper.js`        a compile that really RAN and FAILED rolls the finalisation back (`finalized:false`,
+//   · `packs/research-core/paper-flow.js`        a compile that really RAN and FAILED rolls the finalisation back (`finalized:false`,
 //     `rolledBack`, `reviseAvailable:true`); a missing LaTeX FACE is an environment gap and still finalises; a
 //     `finalized` paper with no PDF row can be repaired by `final {decision:"revise"}`.
 //
@@ -80,11 +80,11 @@ const pdfRow = (kernel, title, body) => kernel.records.put({
 {
   const tools = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   const host = readFileSync(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
-  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')
+  const kit = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
   const quality = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js'), 'utf8')
   ok(/const matchTitle = \(t\) => \{/.test(tools) && /if \(stateTarget !== '' && title\.endsWith\('\|' \+ stateTarget \+ '\|pdf'\)\) return 'target'/.test(tools) && /matchedBy: matchTitle\(ledger\.title\)/.test(tools),
     '§0 the compile ledger is matched by BOTH spellings of a paper’s name, and the receipt says which one hit (F3)')
-  ok(/typeof paper\.compiledPdfRow === 'function' \? paper\.compiledPdfRow\(got\.state\)/.test(tools) && /compiledPdfRow: \(state\) => compiledPdfRow\(state\)/.test(readFileSync(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js'), 'utf8')),
+  ok(/typeof paper\.compiledPdfRow === 'function' \? paper\.compiledPdfRow\(got\.state\)/.test(tools) && /compiledPdfRow: \(state\) => compiledPdfRow\(state\)/.test(readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')),
     '§0 …and it OPENS the candidate rows instead of parsing metadata-only `body` fields (run 21’s silent false)')
   ok(/lastRefusal: st\.lastRefusal === undefined \? null : st\.lastRefusal/.test(host) && /lastRefusalMeans/.test(host),
     '§0 the records status carries the LAST refusal, not only its count (F4)')

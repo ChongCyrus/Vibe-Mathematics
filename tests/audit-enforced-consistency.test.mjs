@@ -41,7 +41,6 @@ import { createChat } from '../vibe-math-vmu/kernel/chat.js'
 import { createMathAdapters } from '../vibe-math-vmu/kernel/mathadapters.js'
 import { createActivity } from '../vibe-math-vmu/kernel/activity.js'
 import { createBallot } from '../vibe-math-vmu/kernel/ballot.js'
-import { createPaper } from '../vibe-math-vmu/kernel/paper.js'
 import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createFormal } from '../vibe-math-vmu/kernel/formal.js'
@@ -609,17 +608,6 @@ const REFUSAL_SCENARIOS = [
   { module: 'mathadapters', call: 'plan(no settings/seams)', settings: {},
     make: () => createMathAdapters({ clock: CLOCK, log: () => {} }),
     run: (a) => a.plan() },
-  // ROUND 3 · C-30: `paper.js` entered the "mentions enforced in CODE" list with the office-consultation gate.
-  // It is a REAL refusal path (the gate refuses by NAME and carries the keys it evaluated), so an envelope
-  // exemption would be a false exemption - the shape below is MEASURED in tests/vmu-paper-consult.test.mjs:35-80
-  // (thrown `VMU_OFFICE_CONSULT_REQUIRED` with `enforced` = the five `vmu.paper.officeConsult*` keys).
-  { module: 'paper', call: 'finalize(no consultation)', settings: { 'vmu.paper.finalizer': 'editor' },
-    make: (settings) => createPaper({ clock: CLOCK, log: () => {}, settings }),
-    run: (p) => {
-      const started = p.start({ title: 'T', sections: ['intro'], contributors: { intro: 'm-1' }, editor: 'ed' })
-      p.contribute({ paperId: started.paperId, section: 'intro', by: 'm-1' })
-      return p.finalize({ paperId: started.paperId, by: 'ed' })
-    } },
   // ROUND 2 (target 5, N2): the durable-job faces carry REAL enforcement too — a declared setting decides
   // whether a submit is accepted, so they are scenarios (measured), not envelope exemptions:
   //   · mathjobs.submit with vmu.math.computation='off'  ⇒ VMU_MATH_UNSUPPORTED_OP, enforced=[vmu.math.computation]

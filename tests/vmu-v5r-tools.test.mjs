@@ -617,7 +617,7 @@ try {
   try { await paper.recordFinal({ target: TARGET, member: 'r-1', decision: 'deliverable' }) } catch (e) { finalBad = e }
   ok(finalBad && finalBad.code === 'VMU_NOT_PERMITTED', '★ recordFinal: 反 — a non-chair member cannot finalise (the academician does)', finalBad && finalBad.code)
   // ★ E4 — "定稿前必须问所办" now REALLY EXECUTES ON THIS PATH. The live v5r settings declare
-  // `vmu.paper.officeConsult="required"` and the gate lives in kit/paper.js `recordFinal` (kernel/paper.js carries a gate
+  // `vmu.paper.officeConsult="required"` and the gate lives in packs/research-core/paper-flow.js `recordFinal` (kernel/paper.js carries a gate
   // too but nothing constructs it, so it never ran — that unreachable guard was the defect). Asserting it HERE, on the
   // assembled path, is what makes "已接线" a measured fact instead of a table cell.
   let consultBad = null
@@ -740,7 +740,7 @@ try {
   const rev2 = await dispatchMod.dispatchPaperReply({ phase: 'paper-review', turn: 't-rev-2', member: 'r-2', flat: { kernel }, reply: { paper_review: { target: T2, deliverable: true, comments: '可以' } } })
   ok(rev1.ok === true && rev2.ok === true, '★ review replies are dispatched to paper.recordReview', { r1: rev1.ok, r2: rev2.ok })
   paper.advance({ target: T2 })
-  // ★ E4: the FINAL reply now goes through the office-consult gate (kit/paper.js), so the dispatcher must refuse it by
+  // ★ E4: the FINAL reply now goes through the office-consult gate (packs/research-core/paper-flow.js), so the dispatcher must refuse it by
   // name until the office answers — and the refusal must be VISIBLE through paperDispatchStatus(), never swallowed.
   const finBlocked = await dispatchMod.dispatchPaperReply({ phase: 'paper-final', turn: 't-fin-0', member: 'r-chair', flat: { kernel },
     reply: { paper_final: { target: T2, decision: 'deliverable', note: '一致', conclusion: '结论' } } })
@@ -1598,13 +1598,14 @@ try {
   ok(addedLines.length === 2 && addedLines.filter((line) => /vibe_v5_[a-z0-9_]+/.test(line)).length === 0,
     '★★ the added sentences mention NO tool name (the bullet derivation and the prose⊆bullet assertion stay untouched)', addedLines.length)
 
-  // ── ⑦h PHASE 8 / B-4 WIRING: packs/v5r/paper.js is a THIN SHELL over kit/paper.js ─────────────────────────────
+  // ── ⑦h PHASE 8 / B-4 WIRING: packs/v5r/paper.js is a THIN SHELL over packs/research-core/paper-flow.js ─────────────────────────────
   // The hard judges of this step: no local flow implementation left, the kit is imported, and the institution POLICY
   // (sections / round cap / engine order / repair set) is still declared in the pack — the kit must not own it.
   console.log('=== 7h. B-4 WIRING: paper.js is a policy shell ===')
   const paperSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js'), 'utf8')
-  ok(/from '\.\.\/\.\.\/kit\/paper\.js'/.test(paperSrcW) && /createPaperFlow\(/.test(paperSrcW),
-    '★★ the pack IMPORTS the kit flow and calls its factory (deleted cannot mean forgot to import)', null)
+  // ★ TB-2794 Step 1: the generic flow moved from kit/ to packs/research-core/; the policy shell imports it from there.
+  ok(/from '\.\.\/research-core\/paper-flow\.js'/.test(paperSrcW) && /createPaperFlow\(/.test(paperSrcW),
+    '★★ the pack IMPORTS the research-core paper flow and calls its factory (deleted cannot mean forgot to import)', null)
   const paperImpls = ['function writeState(', 'function readState(', 'function requireState(', 'function readPartVerified(',
     'function advance(', 'function pass(', 'async function recordFinal(', 'function PaperMd(', 'function PaperTex(',
     'function PaperArtifacts(', 'function render(', 'async function compilePdf(', 'function recordPart(', 'function recordReview(']
@@ -1621,12 +1622,12 @@ try {
   const paperFlow = paperModW.createPaperSubsystem({ kernel: v5rBoot.handle.kernel })
   const flowMethods = ['start', 'recordPart', 'recordReview', 'advance', 'pass', 'recordFinal', 'PaperMd', 'PaperTex', 'PaperArtifacts', 'render', 'compilePdf', 'sections', 'state']
   ok(flowMethods.filter((m) => typeof paperFlow[m] === 'function').length === flowMethods.length,
-    '★★ the subsystem still exposes all 13 methods (the shell forwards the kit flow)', flowMethods.length)
+    '★★ the subsystem still exposes all 13 methods (the shell forwards the research-core paper flow)', flowMethods.length)
 
   // ── ⑦h-bis G7 ⑤: the paper PDF failure message renders engine RECORDS readably ─────────────────────────────
   console.log('=== 7h-bis. G7 ⑤: the paper PDF failure names engines readably ===')
   {
-    const { createPaperFlow } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'paper.js')).href)
+    const { createPaperFlow } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')).href)
     const { PAPER_CODES, PAPER_ENGINE_ORDER } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href)
     const rows = new Map()
     let seq = 0

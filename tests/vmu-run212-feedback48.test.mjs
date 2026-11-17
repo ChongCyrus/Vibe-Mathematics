@@ -21,7 +21,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const ENTRY = join(ROOT, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 const PACK = read('vibe-math-vmu/packs/v5r/tools.js')
-const PAPER_KIT = read('vibe-math-vmu/kit/paper.js')
+const PAPER_KIT = read('vibe-math-vmu/packs/research-core/paper-flow.js')
 const VERDICT = read('vibe-math-vmu/kernel/meetingverdict.js')
 
 // The aggregator is a PURE calculator, so the sentence it renders is read directly instead of through a mailbox.

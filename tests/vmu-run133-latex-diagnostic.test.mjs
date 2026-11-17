@@ -13,8 +13,9 @@
 //          collapsed compiler line - bounded, single line - while the full tail stays on the thrown error.
 import { createLatexFace, LATEX_CODES } from '../vibe-math-vmu/kernel/latex.js'
 import { createPaperSubsystem } from '../vibe-math-vmu/packs/v5r/paper.js'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -37,11 +38,26 @@ console.log('=== §1. the setting is DECLARED (a teaching sentence may only name
     '★★ and it says, in the same breath, WHAT the key does (the only engine candidate) and HOW to set it (an executable call) - a name without a call is still a dead end')
 }
 
+// ★ TB-2794 Step 1: the engine must NOT read a paper setting itself; the institution policy is injected by the flow shell.
+{
+  const latexSrc = readFileSync(join(ROOT, 'vibe-math-vmu', 'kernel', 'latex.js'), 'utf8')
+  const latexCode = latexSrc.split('\n').map((line) => line.replace(/\/\/.*$/, '')).join('\n')   // a historical comment is not a read
+  ok(latexCode.includes('vmu.paper.') === false,
+    '★★ the kernel LaTeX engine reads NO vmu.paper.* key (policy is injected; the old settings read is gone)', /vmu.paper.[A-Za-z]+/.exec(latexCode) || null)
+  const v5rPaperSrc = readFileSync(join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js'), 'utf8')
+  ok(v5rPaperSrc.includes('latex: () =>') && v5rPaperSrc.includes('vmu.paper.latexCommand') && v5rPaperSrc.includes('vmu.paper.latexTimeoutMs'),
+    '★★ the v5r shell READS its own latex policy keys and injects them through the flow latex seam')
+  const flowSrc = readFileSync(join(ROOT, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js'), 'utf8')
+  ok(/ENGINE_ORDER[state.lang]/.test(flowSrc),
+    '★★ the flow defaults the engine order to the institution policy map keyed by the paper language (G3 regression guard)')
+}
+
 console.log('=== §2. the kernel face honours the override as the ONLY candidate ===')
 {
   const calls = []
   const face = createLatexFace({
-    settings: { get: (k) => (k === 'vmu.paper.latexCommand' ? 'D:/texlive/2025/bin/windows/xelatex.exe' : undefined) },
+    // ★ TB-2794 Step 1: the kernel engine reads NO `vmu.paper.*` key; the institution policy is injected by the caller.
+    command: 'D:/texlive/2025/bin/windows/xelatex.exe',
     spawn: async (req) => {
       calls.push(req.command)
       if (req.args.includes('--version')) return { exitCode: 0, stdout: 'XeTeX 3.141592653', stderr: '' }
@@ -61,13 +77,9 @@ console.log('=== §3. an empty override keeps the declared order (finished deplo
 {
   const calls = []
   const face = createLatexFace({
-    settings: {
-      get: (k) => {
-        if (k === 'vmu.paper.latexCommand') return ''
-        if (k === 'vmu.paper.latexEngineOrder') return ['xelatex', 'pdflatex']
-        return undefined
-      },
-    },
+    // ★ TB-2794 Step 1: an EMPTY command means "no override"; the order is the policy array handed in by the caller.
+    command: '',
+    engineOrder: ['xelatex', 'pdflatex'],
     spawn: async (req) => {
       calls.push(req.command)
       if (req.command === 'xelatex') return { exitCode: 0, stdout: 'xetex', stderr: '' }
@@ -124,6 +136,27 @@ console.log('=== §4. a refused compile hands the caller ONE line of what the co
   ok(msg.length <= 900, '★ bounded overall: face code + engines + one excerpt, well under the receipt budget', msg.length)
   ok(String(err && err.hint || '').indexOf('vmu.paper.latexCommand') !== -1,
     '★ and the hint names the setting that can point at an absolute engine path (F-133a) along with the stderrTail location', String(err && err.hint).slice(0, 80))
+}
+
+// ── §LAMP: the per-call override is load-bearing — remove it in a COPY and the override assertion goes red ──────────
+{
+  const dir = mkdtempSync(join(tmpdir(), 'vmu-r133-lamp-'))
+  try {
+    cpSync(join(ROOT, 'vibe-math-vmu', 'kernel', 'latex.js'), join(dir, 'latex.js'))
+    const lp = join(dir, 'latex.js')
+    const src = readFileSync(lp, 'utf8')
+    // remove the OPTION-carrying override (the injected policy path), not just the per-call one
+    const marker = "const raw = opts.command === undefined || opts.command === null ? null : String(opts.command).trim()"
+    ok(src.includes(marker), '§LAMP-setup the injected override is locatable')
+    writeFileSync(lp, src.split(marker).join('const raw = null'), 'utf8')
+    const { createLatexFace: lampFace } = await import(pathToFileURL(lp).href + '?lamp=' + Date.now())
+    const calls = []
+    const face = lampFace({ command: 'OVERRIDE-ONLY', spawn: async (req) => { calls.push(req.command); if (req.args.includes('--version')) return { exitCode: 0, stdout: 'x', stderr: '' }; return { exitCode: 0, stdout: '', stderr: '' } },
+      fs: { writeText: async () => {}, readBytes: async () => ({ length: 1 }), exists: async () => true } })
+    await face.check({ source: 'x', outDir: 'out' })
+    ok(calls.every((c) => c !== 'OVERRIDE-ONLY') && calls.length > 0,
+      '§LAMP(RED-worthy) without the per-call override the injected command is not the only engine candidate', calls)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 }
 
 console.log('\n' + (failed === 0 ? 'ALL GREEN' : 'FAILURES') + ': ' + passed + ' passed, ' + failed + ' failed')

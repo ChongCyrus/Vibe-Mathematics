@@ -831,7 +831,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三档"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::【形式化开关 `vmu.math.formalVerify`】`off`＝零策略（默认）｜`encourage`＝鼓励（做了归档"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"key\":\"vmu.math.formalVerify\",\"value\":\"encourage\""
@@ -1758,8 +1758,8 @@
       "text": "合作撰写：分派各自内容并合并",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kit/paper.js::round: part.round, at: state.round, title: part.title",
-        "vibe-math-vmu/kit/paper.js::const SECTIONS = sections, SECTION_FIELDS = sectionFields, ROUNDS_OPTION = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes"
+        "vibe-math-vmu/packs/research-core/paper-flow.js::round: part.round, at: state.round, title: part.title",
+        "vibe-math-vmu/packs/research-core/paper-flow.js::const SECTIONS = sections, SECTION_FIELDS = sectionFields, ROUNDS_OPTION = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
@@ -1805,7 +1805,7 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::四项质量要求"
       ],
       "mechanism": [
-        "vibe-math-vmu/kit/paper.js::OFFICE_CONSULT_REQUIRED"
+        "vibe-math-vmu/packs/research-core/paper-flow.js::OFFICE_CONSULT_REQUIRED"
       ],
       "tool": [
         "vibe_v5_paper"

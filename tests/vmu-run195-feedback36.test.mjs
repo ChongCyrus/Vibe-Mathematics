@@ -26,7 +26,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const ENTRY = join(ROOT, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
-const PAPER = read('vibe-math-vmu/kit/paper.js')
+const PAPER = read('vibe-math-vmu/packs/research-core/paper-flow.js')
 const TOOLS = read('vibe-math-vmu/packs/v5r/tools.js')
 const TURN = read('vibe-math-vmu/kernel/turn/index.js')
 const MEETING = read('vibe-math-vmu/tools/meeting.js')

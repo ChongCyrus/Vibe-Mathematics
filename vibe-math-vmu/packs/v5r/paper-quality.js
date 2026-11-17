@@ -17,7 +17,7 @@
  *   · NOTHING here invents a track, a kind or an id space: every read goes through `kernel.records`（list/get）and
  *     the pack's existing `verified` read face (`./verified.js`), which is the one authority for "what a verified row
  *     means";
- *   · every code is a `VMU_PACK_` code declared HERE by the institution and passed to `kit/paper.js` as `codes`
+ *   · every code is a `VMU_PACK_` code declared HERE by the institution and passed to `packs/research-core/paper-flow.js` as `codes`
  *     (`kit` never invents codes). `VMU_PACK_*` codes are the pack family that `tests/audit-vmu-docs` exempts from the
  *     kernel code table (`:232`), so this file adds no docs/03 registration burden;
  *   · no filesystem, no clock, no spawn: the fills are a pure function of (md, records view) and the gate is a pure

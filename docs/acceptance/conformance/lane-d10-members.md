@@ -94,7 +94,7 @@ Lead 的 R16 判据升级：一条"已接线"的结论，**光有"字符串出�
 | A2 表决席位读点 | `kernel/meetings.js:132`（`eligibleSeats`） | ✅ | `vibe-math-vmu.js → kernel/index.js → kernel/meetings.js` |
 | A2/A3 设置声明 | `settings/schema.js:1101` | ✅ | `vibe-math-vmu.js → settings/schema.js` |
 | A3 start 的默认/域 | `packs/v5r/tools.js`（`toolStart`） | ✅ | 同第一行 |
-| ★ 反例（对照） | `kernel/paper.js`（`vmu.paper.*` 10 键） | ❌ | 不在图内（`KNOWN_UNMOUNTED`：`createPaper(` 只出现在测试/脚本；v5r 论文走 `packs/v5r/paper.js → kit/paper.js`，不读这些键） |
+| ★ 反例（对照） | `kernel/paper.js`（`vmu.paper.*` 10 键） | ❌ | 不在图内（`KNOWN_UNMOUNTED`：`createPaper(` 只出现在测试/脚本；v5r 论文走 `packs/v5r/paper.js → packs/research-core/paper-flow.js`，不读这些键） |
 | ★ 反例（对照） | `kernel/grant.js`（`vmu.grant.*` 4 键） | ❌ | 不在图内（登记为无消费者，待删/待接） |
 
 **读法（诚实边界，抄自 `scripts/lib/reachability.mjs:9-16`）**：可达 = 「加载器至少有一条 import 路径能看见它」，**不**证明模块被构造、被调用，也不证明键值改变行为——那三件事属 `audit-settings-wired` 与行为套件（例：`tests/vmu-a2a3-seats-and-bounds.test.mjs` 证明了 `toolStart` 的域**真的**改结果）。可达性是最便宜的一半，但它是"接线"声称的**下界**：文件都不在装配里，读点必然是死的。

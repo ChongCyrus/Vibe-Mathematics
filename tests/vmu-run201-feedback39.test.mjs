@@ -24,7 +24,7 @@ const ENTRY = join(ROOT, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
 const PACK = read('vibe-math-vmu/packs/v5r/tools.js')
 const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
-const PAPER = read('vibe-math-vmu/kit/paper.js')
+const PAPER = read('vibe-math-vmu/packs/research-core/paper-flow.js')
 
 const ok = (cond, msg, extra) => assert.ok(cond, msg + (extra === undefined ? '' : '\n' + JSON.stringify(extra, null, 2)))
 const has = (hay, needle, msg) => ok(String(hay).includes(needle), msg + ' — missing: ' + needle)
@@ -189,7 +189,7 @@ test('RUN 201 §3 — advance says the ROUND advanced; a gate-blocked final stil
       const lampDir = mkdtempSync(join(tmpdir(), 'run201-lamp-'))
       try {
         cpSync(join(ROOT, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
-        const kitPath = join(lampDir, 'vibe-math-vmu', 'kit', 'paper.js')
+        const kitPath = join(lampDir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
         let mut = readFileSync(kitPath, 'utf8')
         const p1 = "if (judged.partChanged) return out(false, 'part-text-changed')"
         const p2 = 'if (crossEarlier && judgedEarlier.bound === true && !judgedEarlier.partChanged) {'

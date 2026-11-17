@@ -22,6 +22,7 @@
 //
 // Run: node tests/vmu-run236-frame-and-progress.test.mjs   Last line: N passed, M failed
 
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -115,10 +116,23 @@ try {
       '§1c ★ the frame names the REAL binding (m1), not an empty setting', frame)
     ok(typeof frame === 'string' && frame.includes('投到'),
       '§1d and says where this turn\'s speech actually goes')
-    ok(typeof frame === 'string' && frame.includes('vibe_v5_meeting_round'),
-      '§1e and names the working route to bind a different meeting for the NEXT turn')
+    // ★ TB-2794 (round-7 prompt audit): meeting_round is CHAIR-ONLY. A member frame must NOT teach it (it would be
+    // ACL-refused); the member is told the chair owns the binding instead.
+    ok(typeof frame === 'string' && frame.includes('vibe_v5_meeting_round') === false &&
+      frame.includes('由主席把下一回合绑定'),
+      '§1e ★ a MEMBER frame does NOT teach the chair-only binding call; it says the chair owns that step', frame && frame.slice(0, 200))
     ok(typeof frame === 'string' && frame.includes('〔未提供：vmu.turn.meetingId〕') === false,
       '§1f the old empty-setting hole is gone from the frame')
+  }
+  // ── §1h THE CHAIR FRAME KEEPS THE BINDING ROUTE (the seat that MAY call it) ─────────────────────────────────
+  {
+    console.log('§1h the CHAIR frame keeps the binding call it is permitted to use')
+    const b = await boot(await mkRoot())
+    await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
+    const opened = await b.K.turn.step({ members: ['r-acad'], phase: 'meeting', why: 'run236 chair frame probe', meeting: 'm1' })
+    const frame = frameTextOf(opened)
+    ok(typeof frame === 'string' && frame.includes('vibe_v5_meeting_round'),
+      '§1h ★ the chair frame TEACHES vibe_v5_meeting_round (the chair is the seat allowed to call it)', frame && frame.slice(0, 200))
   }
 
   // ── §2 WITH NO BINDING THE FRAME SAYS THE SPEECH IS NOT DELIVERED ───────────────────────────────────────────
@@ -211,6 +225,31 @@ try {
       '§4g the WHOLE text travels in the body (both lines survive)', full && full.body)
     ok(full && full.bodyTruncated === false, '§4h and the body was not truncated', full && full.bodyTruncated)
   }
+  // ── §LAMP: remove the seat condition in a COPY ⇒ the member frame teaches the chair-only call again (red) ────
+  {
+    console.log('§LAMP the seat condition is load-bearing')
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-r236-lamp-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true, filter: (src) => !/[\/]docs([\/]|$)/.test(src) })
+      const tp = join(dir, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
+      const src = readFileSync(tp, 'utf8')
+      const marker = "String(turn.role || '').toLowerCase() === 'chair'"
+      ok(src.includes(marker), '§LAMP-setup the seat condition is locatable')
+      writeFileSync(tp, src.split(marker).join('true'), 'utf8')
+      const lampEntry = (await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?lamp=' + Date.now())).apply
+      const state = { specs: [] }
+      const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
+      const handle = lampEntry(ctx, { clock: () => 1000, packs: ['v5r'], root: join(dir, 'root'), deliverMode: 'caller' })
+      await handle.ready()
+      await handle.kernel.store.open()
+      await handle.kernel.members.hire({ id: 'r-1', slot: 'member' })
+      const opened = await handle.kernel.turn.step({ members: ['r-1'], phase: 'meeting', why: 'lamp', meeting: 'm1' })
+      const frame = frameTextOf(opened)
+      ok(typeof frame === 'string' && frame.includes('vibe_v5_meeting_round'),
+        '§LAMP(RED-worthy) without the seat condition the MEMBER frame teaches the chair-only call again', frame && frame.slice(0, 160))
+    } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10 }).catch(() => {}) }
+  }
+
 } finally {
   for (const r of roots) { try { await rm(r, { recursive: true, force: true }) } catch { /* best effort */ } }
 }
