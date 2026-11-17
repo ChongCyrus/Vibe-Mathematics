@@ -169,8 +169,10 @@ try {
   {
     // ★ ROUND-2 P1-8: the historical capture pair and two duplicate fact lines were MERGED into one accurate
     // paragraph (the capture taught a shape the dispatcher cannot deliver). The pin follows the merged text.
-    const block = blocksB.CHARTER_BLOCKS_B.find((s) => String((s.texts && s.texts.shared) || '').includes('回执字段（7 常用'))
-    const text = String((block && block.texts && block.texts.shared) || '')
+    // ROUND-5: the reply spec is role-bound (texts.academician/researcher/temp; no texts.shared). The merged paragraph
+    // is asserted on the MEMBER copy — that is the seat the capture pair used to mislead.
+    const block = blocksB.CHARTER_BLOCKS_B.find((s) => String((s.texts && s.texts.researcher) || '').includes('回执字段（7 常用'))
+    const text = String((block && block.texts && block.texts.researcher) || '')
     ok(text.includes('回执字段（7 常用') && !text.includes('（release等）') && !text.includes('上面这句是捕获原文'),
       '§5a. 捕获旧句已合并成准确段落（不再有 release等/捕获原文 历史行）')
     ok(text.includes('**不是回执字段**') && text.includes('vibe_v5_task_update') && text.includes('VMU_TURN_FIELD_NOT_APPLICABLE'),

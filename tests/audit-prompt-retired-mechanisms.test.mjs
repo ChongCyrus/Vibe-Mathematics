@@ -54,7 +54,7 @@ ok(all.includes('只收 {statement, proof}') && !all.includes('formal:{decision'
 
 // (3) reply transport: the single fenced JSON body is the channel; op:"reply" is office-only; no ```json template.
 ok(!all.includes('```json'), 'no hand-written ```json template is taught')
-ok(all.includes('json 围栏') || all.includes('JSON 的 "input"'), 'the fenced-JSON channel is still taught')
+ok(all.includes('回执**即本次回复的正文**') || /代码围栏|json 围栏/.test(all), 'the fenced-JSON channel is still taught (the reply body itself carries the single fenced JSON)')
 ok(/op:"reply"/.test(all) && /所办代转/.test(all), 'op:"reply" is taught as the office relay path, not the member path')
 
 // (4) m: it is the quorum size, never a vote count.

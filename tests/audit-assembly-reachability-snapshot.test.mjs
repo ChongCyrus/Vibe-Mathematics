@@ -26,7 +26,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PLUGIN_ENTRY_FILES, walkAssembly } from '../scripts/lib/reachability.mjs'
+import { PLUGIN_ENTRY_FILES, runtimePackEntryFiles, walkAssembly } from '../scripts/lib/reachability.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
@@ -91,9 +91,12 @@ const { entries, reachable } = walkAssembly(VMU)
 const entryNames = entries.map(relName).sort()
 const currentNames = [...reachable].map(relName).sort()
 
-ok(PLUGIN_ENTRY_FILES.length === 8, 'fixture: the shared entry list is the 8 files the host loads', PLUGIN_ENTRY_FILES.length)
-ok(entries.length === PLUGIN_ENTRY_FILES.length,
-  'fixture: EVERY declared entry file exists on disk (a missing entry would silently narrow the graph)', { found: entries.length, declared: PLUGIN_ENTRY_FILES.length })
+// TB-2792 / C#1: the ENTRY SURFACE is now the eight plugin entry files PLUS the pack modules the loader imports at
+// runtime ( — enumerated by the same helper the loader's resolution mirrors). The walk seeds both.
+ok(PLUGIN_ENTRY_FILES.length === 8 && typeof runtimePackEntryFiles === 'function', 'fixture: the shared entry list is the 8 files the host loads', PLUGIN_ENTRY_FILES.length)
+const declaredEntryCount = PLUGIN_ENTRY_FILES.length + runtimePackEntryFiles(VMU).length
+ok(entries.length === declaredEntryCount,
+  'fixture: EVERY declared entry file exists on disk (the 8 plugin entries + the runtime-discovered pack modules)', { found: entries.length, declared: declaredEntryCount })
 ok(entryNames.length > 0, 'fixture: the entry list is non-empty before comparing it', entryNames.length)
 ok(currentNames.length > 0, 'fixture: the reachable set is non-empty before comparing it (an empty walk is a broken walk)', currentNames.length)
 

@@ -441,13 +441,48 @@ import { V5R_CORRECTION_SECTIONS } from './v5r-corrections.js'
  * the one section that simply NAMES the phase, which the charter headings do not. PLUS the assistant's reporting duty,
  * which is what turns "主动向院士汇报" from persona prose into a duty a member is told every round.
  */
+
+/** ROUND-5: the temp seat gets its own DELIVERY teaching (how to return an opinion), separate from the tool catalogue
+ *  because that catalogue has a strict one-line-per-tool invariant (tests/vmu-run247). Role-scoped: temp only. */
+export const v5rTempDeliverySection = Object.freeze({
+  name: 'v5r-temp-delivery',
+  order: 606,
+  range: 'pack',
+  source: 'v5r-fixture:temp-delivery',
+  scope: Object.freeze({ role: 'temp' }),
+  text: [
+    '【临时工的交付】结论、依据（记录 id/文件/页码）、不确定点三段写进回执 `progress`；对全所用 `vibe_v5_say`，私信带 `to`。',
+    '你没有表决权：不投 `vote_solved`、不调裁决工具；接到任务先复述验收标准，卡住写「已试/卡点/建议」并上报。',
+    '发现重复劳动或冲突在群聊说出；交回时点名用过的来源与版本，过期读数写「截至 <时刻>」。',
+    '· 接到任务先复述验收标准给派活者确认；不清楚就问，别自己改方向。',
+    '· 发现重复劳动或冲突，先在群聊说出来；你的产出只算证据，不算定论——标清楚「初步/已核对」。',
+    '· 意见与核对结论写进回执 `progress`（`{"track":"progress","text":"…"}`），或自己的工作目录；对全所说话用 `vibe_v5_say`（会议轮才进楼层），私信用 `vibe_v5_say {"to":"<id>","text":"…"}`。',
+    '· 交回派活者时写三段：**结论**（核对/发现了什么）、**依据**（记录 id、文件路径、定理或页码）、**不确定点**（哪里没把握、需要谁复核）。',
+    '· 你没有表决权：不投 `vote_solved`、不调任何裁决工具；需要裁决时把证据交主席。',
+    '· 接活时先问清三件事：要核对的对象（记录 id/文件路径）、验收标准、交回截止；缺哪项就在回执 progress 里点名问派活者。',
+    '· 你的工作方式是**只读观察 + 核对**：可以读任何人的库、任务板与会议纪要，但只写自己的回执 progress 与工作目录，不改别人的卡与文件。',
+    '· 发现与任务卡/引理不一致时，给「证据 + 复现步骤 + 影响范围」三段；拿不准就标「疑似」，不要下结论。',
+    '· 交回格式：第一行写结论（通过/有偏差/无法核对），随后列证据（记录 id/页码/文件路径），最后写建议下一步与需要谁复核。',
+    '· 同一问题连续两轮没进展：停手，把已试路线、卡点、下一步建议写进 progress 并上报，不要空转。',
+    '· 被要求核对一条「已通过」结论时：只核对**来源链**（谁签的、依据哪份文件/记录、是否过期），不复算他人推导；来源链断在哪一段就写哪一段。',
+    '· 被要求做临时计算/查表时：写清输入、口径、工具与输出，附一条可重放的命令或记录 id；数值结果标明精度与截断方式。',
+    '· 对全所可见的结论用 `vibe_v5_say` 发一次即可，不要多轮刷屏；私事走私信，不占群聊。',
+    '· 你不参与表决与定论：即使你认为结论有误，也只用证据说话，把「应否重开验证」交给主席决定。',
+    '· 交回前自检：结论在第一行、证据可回查（记录 id/路径/页码）、未核对的假设已写明；缺一项就先补。',
+    '· 收到撤回或改派：先确认「哪条结论被撤回、谁授权、影响哪些下游引用」，三点写进 progress 再行动。',
+    '· 纪要/卡片版本冲突时以卡片与记录本为准，并在回执里点名冲突的文件与时刻。',
+    '· 卡点涉及权限或工具面缺失：写「需要谁开什么面」上报，不要尝试绕过工具面。',
+    '· 交回后如被追问，先复述对方的验收标准再补证据；两轮无回应主动问一次，别静默等待。',
+  ].join('\n'),
+})
+
 const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, ...CHARTER_LEADERLESS_SECTIONS, v5rRoleSection,
   // ★ PHASE 7 round 10: BOTH fixture variants are DECLARED here; `decideSections` (the pack's prompt policy) enables
   // exactly one per assembly, according to `vmu.v5r.fixtureMode`. Declaring both is what makes the switch possible at
   // CALL time; the mutual exclusion lives in the policy, not in which sections exist.
   v5rFixtureConstraint, v5rFixtureTools,
   // PHASE 7 / goal 2: the per-role TOOL DISCOVERY sections (non-source-derived, role-scoped, unique markers).
-  v5rToolSectionAcademician, v5rToolSectionResearcher, v5rToolSectionTemp,
+  v5rToolSectionAcademician, v5rToolSectionResearcher, v5rToolSectionTemp, v5rTempDeliverySection,
   // ★ PHASE 9 / round 5: the host renders 【本轮你实际能调用的工具】 INTO these placeholders, one per role (three unique
   // names — duplicate section names are a named pack conflict), so the correction sits right after the static list.
   v5rEffectiveToolsChair, v5rEffectiveToolsMember, v5rEffectiveToolsTemp,

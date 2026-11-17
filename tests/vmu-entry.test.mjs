@@ -904,6 +904,128 @@ if (SELF_PROBE) {
     JSON.stringify(after))
 }
 
+// ── 6b. TB-2792 / C#1: THE ENTRY NAMES NO PACK; THE PACK BRINGS ITS OWN DECLARATIONS ────────────────────────────────
+// The audit (C#1) measured `vibe-math-vmu.js` statically importing v5r's prompt switch / notice block / phases / reply
+// fields and keeping a `PACK_RUNTIME` table keyed by 'v5r' — so a SECOND pack meant editing the framework entry. The
+// acceptance this block pins:
+//   ① the entry source has NO static import of any pack folder (and no pack-id table): "comment out the import and it
+//     still starts" is proven structurally — there is nothing to comment out;
+//   ② with NO pack the entry still starts (one tool, discovery empty, zero mechanism unchanged);
+//   ③ with the v5r pack declared, its DATA (phases/replyFields) is scanned and its HOOKS (sectionPolicy/noticeBlock) are
+//     collected, i.e. the behaviour the old static table provided still arrives — from the pack.
+{
+  const src = await readFile(ENTRY, 'utf8')
+  const codeOnly = src.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n')
+  ok(!/from\s+'\.\/packs\//.test(codeOnly) && !/PACK_RUNTIME\s*=\s*Object\.freeze/.test(codeOnly),
+    '★★★ C#1：entry 不再静态 import 任何 pack 目录、也不再持有 PACK_RUNTIME 表（"注释掉 v5r import 仍能启动"因此是结构性的）',
+    (codeOnly.match(/from\s+'\.\/packs\/[^']+'/g) || []).slice(0, 3))
+
+  const noneHost = fakeCtx()
+  const none = entry.apply(noneHost.ctx, { clock })
+  await new Promise((r) => setTimeout(r, 0))
+  const noneRuntime = typeof none.packRuntime === 'function' ? none.packRuntime() : null
+  ok(noneRuntime && noneRuntime.data.length === 0 && noneRuntime.contributions.length === 0 &&
+    noneHost.state.specs.map((s) => s.name).join(',') === 'vibe_vmu_status',
+    '★★★ C#1：无 pack 声明时 entry 照常启动（恰好一个 status 工具、发现面为空 = 零机制不变）',
+    { runtime: noneRuntime, specs: noneHost.state.specs.map((s) => s.name) })
+
+  const packHost = fakeCtx()
+  const packRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-c1-'))
+  const withPack = entry.apply(packHost.ctx, { clock, root: packRoot, packs: ['v5r'] })
+  await new Promise((r) => setTimeout(r, 120))
+  const discovered = typeof withPack.packRuntime === 'function' ? withPack.packRuntime() : null
+  ok(discovered && discovered.data.length === 1 && discovered.data[0].requestId === 'v5r' &&
+    discovered.data[0].phases.includes('heartbeat') && discovered.data[0].replyFields.includes('paper_claim'),
+    '★★★ C#1（DATA）：pack 的 runtime.json 被 entry 同步扫描到（phases / replyFields 来自 pack 自己）',
+    discovered && discovered.data)
+  ok(discovered && discovered.contributions.length === 1 && discovered.contributions[0].id === 'v5r' &&
+    discovered.contributions[0].sectionPolicy === true && discovered.contributions[0].noticeBlock === true &&
+    discovered.noticeBlockLive === true && discovered.sectionPoliciesLive >= 1,
+    '★★★ C#1（HOOKS）：pack 模块的 PACK_CONTRIBUTION 被收集（sectionPolicy + noticeBlock 生效，且是 LIVE 读取）',
+    discovered && { contributions: discovered.contributions, noticeBlockLive: discovered.noticeBlockLive, sectionPoliciesLive: discovered.sectionPoliciesLive })
+  ok(withPack.packErrors().length === 0 && discovered.errors.length === 0,
+    '★★ C#1：v5r 正常挂载时无具名错误（数据/hook 两条发现路径都干净）',
+    { packErrors: withPack.packErrors(), dataErrors: discovered && discovered.errors })
+
+  // ④ a BROKEN runtime.json is a NAMED refusal on the same receipt, never a silent skip
+  const brokenRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-c1-broken-'))
+  await mkdir(join(brokenRoot, 'packs', 'broken-pack'), { recursive: true })
+  await writeFile(join(brokenRoot, 'packs', 'broken-pack', 'runtime.json'), '{ not json')
+  const brokenHost = fakeCtx()
+  const broken = entry.apply(brokenHost.ctx, { clock, root: brokenRoot, packs: ['broken-pack'], packDirs: [join(brokenRoot, 'packs')] })
+  await new Promise((r) => setTimeout(r, 0))
+  const brokenRuntime = typeof broken.packRuntime === 'function' ? broken.packRuntime() : null
+  ok(brokenRuntime && brokenRuntime.errors.length === 1 && brokenRuntime.errors[0].code === 'VMU_PACK_RUNTIME_DATA_INVALID',
+    '★★ C#1 反：坏的 runtime.json 被具名记录（VMU_PACK_RUNTIME_DATA_INVALID），不是静默跳过',
+    brokenRuntime && brokenRuntime.errors)
+}
+
+// ── 6c. TB-2792 / C#1 PRECEDENCE: an EXPLICIT setting must beat a pack default ──────────────────────────────────────
+// MEASURED REGRESSION (sim actions-extra, F/task/advance): the C#1 runtime.json folded the v5r pack's `phases` into the
+// kernel's construction-time `stages` option, and that option OVERRIDES the deployment's explicit `vmu.tasks.stages` —
+// so `stages: ['draft','verify','done']` became the pack's `heartbeat/paper-write/…` and `advance to "verify"` answered
+// `VMU_INVALID_ARGUMENT` (`declared: heartbeat, …`). The rule that must hold: **explicit setting > pack default**;
+// a pack's phases are ADDITIVE (`extraPhases`), never an override.
+{
+  const stageHost = fakeCtx()
+  const stageRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-stages-'))
+  const stagesHandle = entry.apply(stageHost.ctx, {
+    clock, root: stageRoot, packs: ['v5r'], vmu: { 'vmu.tasks.stages': ['draft', 'verify', 'done'] },
+  })
+  await new Promise((r) => setTimeout(r, 150))
+  const stageCall = async (name, args) => {
+    const spec = stageHost.state.specs.find((s) => s.name === name)
+    if (!spec) return { missingSpece: name }
+    return JSON.parse(await spec.execute(args, {}))
+  }
+  const created = await stageCall('vibe_vmu_task', { action: 'create', title: 'precedence probe', objective: 'precedence probe' })
+  const advanced = created && created.ok === true
+    ? await stageCall('vibe_vmu_task', { action: 'advance', id: created.id, to: 'verify' })
+    : null
+  ok(advanced && advanced.ok === true && advanced.stage === 'verify',
+    '★★★ C#1 优先级：显式设置 `vmu.tasks.stages: [draft,verify,done]` 覆盖 v5r pack 默认 —— `advance to "verify"` 是 ok（sim actions-extra 回归的判据）',
+    { created: created && { ok: created.ok, id: created.id, code: created.code }, advanced: advanced && { ok: advanced.ok, stage: advanced.stage, code: advanced.code, hint: advanced.hint } })
+  const stagesResolved = stagesHandle.kernel.status({ detail: 'full' }).settings.resolved['vmu.tasks.stages']
+  ok(stagesResolved && Array.isArray(stagesResolved.value) && stagesResolved.value.includes('verify') && stagesResolved.value.includes('draft'),
+    '★★ 同一事实的第二面：resolved settings 里的 stages 仍是显式值（pack 默认没有替换它）',
+    stagesResolved && stagesResolved.value)
+
+  // ★ 反灯（真变异）：把「pack phases 折进 construction stages」这条错优先级改回去 ⇒ 上面那条判据红。
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-entry-c1-lamp-'))
+  try {
+    const { cp, writeFile: wf } = await import('node:fs/promises')
+    const copy = join(dir, 'vibe-math-vmu')
+    await cp(join(REPO, 'vibe-math-vmu'), copy, { recursive: true, filter: (src) => !/[\\/]docs([\\/]|$)/.test(src) })
+    const copyEntry = join(copy, 'vibe-math-vmu.js')
+    const src = await readFile(copyEntry, 'utf8')
+    const anchor = '  const runtimeDataManifests = runtimePackData\n    .filter((d) => d.replyFields.length > 0)\n    .map((d) => ({ id: d.id, replyFields: d.replyFields }))'
+    ok(src.indexOf(anchor) !== -1, 'C#1 lamp: precedence mutation point present')
+    await wf(copyEntry, src.replace(anchor, '  const runtimeDataManifests = runtimePackData\n    .filter((d) => d.replyFields.length > 0 || d.phases.length > 0)\n    .map((d) => ({ id: d.id, replyFields: d.replyFields, phases: d.phases }))'))
+    const lampEntry = await import(pathToFileURL(copyEntry).href + '?c1lamp=1')
+    const lampHost = fakeCtx()
+    const lampRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-c1-lamp-root-'))
+    const lampHandle = lampEntry.apply(lampHost.ctx, {
+      clock, root: lampRoot, packs: ['v5r'], vmu: { 'vmu.tasks.stages': ['draft', 'verify', 'done'] },
+    })
+    await new Promise((r) => setTimeout(r, 150))
+    const lampCall = async (name, args) => {
+      const spec = lampHost.state.specs.find((s) => s.name === name)
+      if (!spec) return { missingSpec: name }
+      return JSON.parse(await spec.execute(args, {}))
+    }
+    const lampCreated = await lampCall('vibe_vmu_task', { action: 'create', title: 'lamp', objective: 'lamp' })
+    const lampAdvanced = lampCreated && lampCreated.ok === true
+      ? await lampCall('vibe_vmu_task', { action: 'advance', id: lampCreated.id, to: 'verify' })
+      : null
+    ok(lampAdvanced && lampAdvanced.ok === false && lampAdvanced.code === 'VMU_INVALID_ARGUMENT' && /verify/.test(String(lampAdvanced.message || '')),
+      '★★ 反灯（把 pack phases 折进 construction stages = pack 默认优先）⇒ `advance to "verify"` 又被拒，判据红（正是 sim 回归形状）',
+      lampAdvanced && { ok: lampAdvanced.ok, code: lampAdvanced.code, message: lampAdvanced.message, hint: lampAdvanced.hint })
+  } finally {
+    const { rm } = await import('node:fs/promises')
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

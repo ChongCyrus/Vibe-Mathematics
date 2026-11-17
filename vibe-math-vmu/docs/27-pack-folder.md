@@ -26,6 +26,7 @@ vibe-math-vmu/
   packs/
     v5r/                      ← ★★★ 整合包文件夹（一个机构一个文件夹）
       index.js                ← 清单：id / version / middleware / defaults / contributes
+      runtime.json            ← ★ TB-2792 / C#1：这个包的【建内核前声明】纯数据（phases / replyFields）；entry 按 id 同步扫描它，不再静态 import 本包
       settings/defaults.js    ← ★ 这个包【想要的】默认值（用户设置优先）
       settings/defaults.json  ← 同一份默认值的【纯数据视图】（插件在建内核前按目录名读）
       notices.js              ← 这个包的通知措辞（四种形态）
@@ -121,6 +122,82 @@ vibe-math-vmu/
 
 ★ 插件**先试文件夹**（`./packs/<名>/index.js` ✓），★ **只在 `ERR_MODULE_NOT_FOUND` 时**回退到旧的扁平模块 ✓。
 ★★ **为什么只吞那一个码**：★ **若吞掉一切，pack 内部的真错误（语法错、导入错）就会被当成"没有文件夹"** ✓ ⇒ **静默加载旧包** ✗ —— ★ **那正是最坏的失败形态** ✓。
+
+---
+
+## 5.1 ★★★ 第三方 pack 接入步骤（TB-2792 / C#1：entry **不再点名任何 pack**）
+
+> ★ **判据（改前）**：`vibe-math-vmu.js` 静态 `import` 了 v5r 的 `decideSections`／`inboxBlock`／`V5R_PHASES`／`V5R_REPLY_FIELDS`，
+> 并持有一张 `PACK_RUNTIME = { v5r: … }` 表 ⇒ **挂第二个 pack 必须改框架 entry**（C#1 FAIL）。
+> ★ **判据（改后）**：entry 里**没有任何 pack id、也没有任何 `./packs/…` 静态 import**（`grep` 可证）；pack 的两个来源都被
+> entry **通用地**发现：**DATA 同步扫描** ＋ **HOOKS 随模块装载收集**。第三方接入**只加文件、不改 entry**。
+
+### 步骤 0：文件夹形状（`packs/<id>/`，id 由 `config.packs` / `vmu.packs.active` 写）
+
+```
+packs/<id>/
+  index.js        ← 导出清单（交给 loader 校验/应用）＋ ★ `PACK_CONTRIBUTION`（本包的两个运行时钩子）
+  runtime.json    ← ★ 【建内核前】必须知道的纯数据：phases / replyFields（看下面「为什么必须是数据」）
+  settings/…      ← 本包想要的设置默认值（defaults.json 是纯数据视图，插件在建内核前按目录名读）
+  middleware/…    ← 本包贡献的策略（module 形状，见 §4.1）
+  prompts/…       ← 提示词正文（段 / 绑定 / 覆盖）
+```
+
+### 步骤 1：写 `runtime.json`（**数据**：entry 在 `createKernel` 之前同步读它）
+
+```json
+{
+  "schema": 1,
+  "id": "<id>",
+  "phases": ["<本包新增的 phase 名>"],
+  "replyFields": [
+    { "field": "<回执字段名>", "face": "<服务名>", "op": "<方法名>", "shape": "string", "textCoercion": "string", "text": "<一句话：谁在什么时机带这个字段>" }
+  ]
+}
+```
+
+- **为什么是文件而不是模块导出**：回合循环的 **reply 字段表是构造期快照**（`kernel/turn/index.js#resolveOwners` 在
+  `createTurnOrchestrator` 里合并一次），而 `apply()` 必须**同步**返回 handle（宿主与既有套件都这样用）⇒ 数据必须能同步读到。
+- **进两台名册**：`packs/<id>/**/*.json` 属 §6.1 的「pack 纯数据」⇒ 同时进 `package.json#files` 与 `installer.js` 的 `PRESETS[].files`。
+- **聚合是同一套 fold seam**：扫描到的数据被折进 `config.packManifests` 同一个 `foldPackDeclarations`（`kernel/pack.js`）——
+  **没有第二套注册机制**，`validatePack` 的拒绝形状、`unsupportedByManifest` 的具名、`VMU_PACK_DECLARATION_TOO_LATE` 的时序闸全部照旧。
+- **坏数据不静默**：JSON 解析失败/形状不对 ⇒ `VMU_PACK_RUNTIME_DATA_INVALID`，进 `handle.packRuntime().errors` 与
+  `packReport.errors`（`packErrors` 同一张表）。
+
+### 步骤 2：导出 `PACK_CONTRIBUTION`（**钩子**：函数不能进 JSON）
+
+```js
+export const PACK_CONTRIBUTION = Object.freeze({
+  id: '<id>',
+  sectionPolicy,   // 本包的段策略组合器（prompt 装配期调用；会被 composePromptPolicies 组合）
+  noticeBlock,     // 本包的新到消息渲染器（缺省用框架自带的 kernelNoticeBlock）
+})
+```
+
+- entry 在**既有的异步 pack 装载路径**里收集它（`await import('./packs/' + id + '/index.js')` → `registerPackContribution`）：
+  `sectionPolicy` 进 `builtinPromptPolicies`（dispatcher **每次装配都重读**，所以晚于 `createKernel` 装载也生效）；
+  `noticeBlock` 进一个 **LIVE wrapper**（声明了 pack 时交给内核的是包装器，未声明 pack 时仍交 `null`，零机制路径逐字不变）。
+- **不导出也能用**：只带数据的 pack 完全合法（无 `PACK_CONTRIBUTION` ⇒ 只有 phases/replyFields 生效）。
+
+### 步骤 3：声明（三选一，都是部署侧配置，**不改 entry**）
+
+| 声明处 | 写法 | 适用 |
+|---|---|---|
+| `config.packs` | `packs: ['<id>']` | 随包出货的 pack（入口按 `./packs/<id>/` 解析） |
+| `vmu.packs.active`（设置） | `["<id>"]` | 运行期开关（同一套装载路径，source 记 `vmu.packs.active`） |
+| `config.packDirs` ＋ 内联声明 | `packDirs: ['/abs/path/to/packs']`，或 `config.packs` 里直接放**内联对象**（带 `id`/`phases`/`replyFields`） | 仓外/第三方 pack，或不想落文件的部署 |
+
+### 步骤 4：验收（本仓的机器判据）
+
+```bash
+node tests/vmu-entry.test.mjs     # §6b：entry 无静态 pack import；无 pack 仍启动；v5r 的 DATA+HOOKS 被发现；坏 data 具名
+node tests/vmu-turn.test.mjs      # 回合行为不变（replyFields / phases 生效）
+node tests/vmu-v5r-tools.test.mjs # 工具面行为不变
+node scripts/preflight.mjs && node scripts/regen-all.mjs --check
+```
+
+★ **边界（如实）**：`config.packs` 的**字符串 id** 仍按 `./packs/<id>/index.js` 解析（随包目录）；**仓外** pack 用
+`config.packDirs`（数据） ＋ 内联对象/自定义装载器（代码）——entry 不猜外部绝对路径，也不为某个 pack 增加 if。
 
 ---
 

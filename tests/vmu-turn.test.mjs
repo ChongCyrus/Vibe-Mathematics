@@ -1131,14 +1131,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 {
   const lq = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }) })
   const q1 = lq.notify("r-1", "[形式化结果] p-9 passed")
-  const a1 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 5, statusBlock: "[状态] x" }).turn)
-  const a2 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 6, statusBlock: "[状态] x" }).turn)
+  const a1 = await lq.assemble(lq.open({ member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "normal", round: 5, statusBlock: "[状态] x" }).turn)
+  const a2 = await lq.assemble(lq.open({ member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "normal", round: 6, statusBlock: "[状态] x" }).turn)
   ok(q1.ok === true && a1.text.includes("[形式化结果] p-9 passed") && a2.text.includes("[形式化结果] p-9 passed") === false,
     "T114. **** a queued notice is announced EXACTLY ONCE: it reaches the next prompt and is gone from the one after, so it can neither repeat nor be lost",
     { queued: q1.queued })
   lq.notify("r-2", "notice for r-2")
-  const a3 = await lq.assemble(lq.open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
-  const a4 = await lq.assemble(lq.open({ member: "r-2", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
+  const a3 = await lq.assemble(lq.open({ member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
+  const a4 = await lq.assemble(lq.open({ member: "r-2", role: "member", roleLabel: '常驻研究员', phase: "normal", round: 7, statusBlock: "[状态] x" }).turn)
   ok(a3.text.includes("notice for r-2") === false && a4.text.includes("notice for r-2"),
     "T115. **** and notices are PER MEMBER: someone else round never carries it",
     { leaked: a3.text.includes("notice for r-2") })
@@ -1165,7 +1165,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // produces NOTHING - not a disabled notice, which would change the prompt words - while ON restores it unchanged.
 {
   const mkS = (settings) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings })
-  const base = { member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 3, statusBlock: "[状态] x" }
+  const base = { member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "normal", round: 3, statusBlock: "[状态] x" }
   const on = mkS({})
   const aOn = await on.assemble(on.open(base).turn)
   const off = mkS({ "vmu.pointer.propagation": false, "vmu.turn.selfCheck": false, "vmu.turn.feedback": false })
@@ -1192,7 +1192,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // and the loop enables exactly one, plus an ask that states speaking is optional and silence is never a vote.
 {
   const mM = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: { "vmu.turn.invitedBy": "acad", "vmu.turn.invitedWhy": "needs the lemma" } })
-  const aM = await mM.assemble(mM.open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
+  const aM = await mM.assemble(mM.open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", meeting: "m-test", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
   ok(aM.ok === true && aM.text.includes("受邀发言") && aM.text.includes("acad") && aM.text.includes("needs the lemma") && aM.text.includes("不计票") === true,
     "T122. **** the INVITED-TEMP state arrives with its inviter and reason, and states that the speech is minutes only, never a vote, and does not block",
     { chars: aM.text.length })
@@ -1203,7 +1203,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // meeting round that names NO state gets none of the three, because guessing which one applies would put words in
   // the prompt that the caller never asked for.
   const declaredMeetingStates = CHARTER_SECTIONS.filter((s) => String(s.name).startsWith('v5r-meeting-')).map((s) => s.name).sort()
-  const unnamed = await mM.assemble(mM.open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", round: 2, statusBlock: "[状态] x" }).turn)
+  const unnamed = await mM.assemble(mM.open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", meeting: "m-test", round: 2, statusBlock: "[状态] x" }).turn)
   ok(declaredMeetingStates.length === 4 && unnamed.text.includes('受邀发言') === false && unnamed.text.includes('第一位发言者') === false && aM.text.includes('第一位发言者') === false,
     'T124. **** all three speaker states and the ask are DECLARED, and a meeting round that names NO state gets NONE of them - the loop refuses to guess which situation applies',
     { declared: declaredMeetingStates })
@@ -1214,24 +1214,24 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // an unrecognised state rather than silently rendering the first speaker.
 {
   const mkM = () => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: { "vmu.turn.invitedBy": "acad", "vmu.turn.invitedWhy": "w" } })
-  const invited = await mkM().assemble(mkM().open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
+  const invited = await mkM().assemble(mkM().open({ member: "t-1", role: "temp", roleLabel: '临时工', phase: "meeting", meeting: "m-test", meetingState: "invited", round: 2, statusBlock: "[状态] x" }).turn)
   ok(invited.ok === true && invited.text.includes("受邀发言") && invited.text.includes("第一位发言者") === false && invited.text.includes("其他成员本次会议已发表的意见") === false,
     "T125. **** the INVITED state is injected ALONE: the first-speaker and the others-inputs states are absent, which is what mutually exclusive means",
     { chars: invited.text.length })
-  const first = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "meeting", meetingState: "first", round: 2, statusBlock: "[状态] x" }).turn)
+  const first = await mkM().assemble(mkM().open({ member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "meeting", meeting: "m-test", meetingState: "first", round: 2, statusBlock: "[状态] x" }).turn)
   ok(first.text.includes("第一位发言者") && first.text.includes("受邀发言") === false && first.text.includes("### 其他成员本次会议已发表的意见") === false,
     "T126. **** and the FIRST-SPEAKER state is injected alone, with the speaking model it carries",
     { chars: first.text.length })
-  const others = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "meeting", meetingState: "others", round: 2, statusBlock: "[状态] x" }).turn)
+  const others = await mkM().assemble(mkM().open({ member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "meeting", meeting: "m-test", meetingState: "others", round: 2, statusBlock: "[状态] x" }).turn)
   ok(others.text.includes("### 其他成员本次会议已发表的意见") && others.text.includes("第一位发言者") === false,
     "T127. **** and the OTHERS state forwards the inputs without claiming to be first",
     { chars: others.text.length })
-  const normal = await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
+  const normal = await mkM().assemble(mkM().open({ member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
   ok(normal.text.includes("受邀发言") === false && normal.text.includes("第一位发言者") === false && normal.text.includes("### 其他成员本次会议已发表的意见") === false,
     "T128. **** and OUTSIDE the meeting phase none of the three appears at all, because they are states of a meeting rather than of every round",
     { chars: normal.text.length })
   let sErr = null
-  try { await mkM().assemble(mkM().open({ member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "meeting", meetingState: "nope", round: 2, statusBlock: "[状态] x" }).turn) } catch (e) { sErr = e }
+  try { await mkM().assemble(mkM().open({ member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "meeting", meeting: "m-test", meetingState: "nope", round: 2, statusBlock: "[状态] x" }).turn) } catch (e) { sErr = e }
   ok(sErr !== null && sErr.code === "VMU_INVALID_ARGUMENT",
     "T129. **** while an unrecognised state is REFUSED by name rather than silently rendered as the first speaker",
     { code: sErr && sErr.code })
@@ -1241,7 +1241,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
 // the meeting states it is ALWAYS shown, so the default is the not-attempted branch rather than nothing.
 {
   const mkF = (settings) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }), settings: settings || {} })
-  const base = { member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", round: 3, statusBlock: "[状态] x" }
+  const base = { member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "normal", round: 3, statusBlock: "[状态] x" }
   const p1 = await mkF({ "vmu.turn.formalProof": "Formal/p-9.lean" }).assemble(mkF({ "vmu.turn.formalProof": "Formal/p-9.lean" }).open({ ...base, formalStatus: "passed" }).turn)
   ok(p1.ok === true && p1.text.includes("Lean 通过（Formal/p-9.lean）") && p1.text.includes("未尝试") === false && p1.text.includes("阻塞（") === false,
     "T130. **** the PASSED branch is shown alone, naming the proof file - the same exclusive pattern as the meeting states",
@@ -1272,7 +1272,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // The authored role section is contributed by the PACK rather than by CHARTER_SECTIONS, so the assertion assembles
   // from the pack declaration - which is also what a real round does, and therefore the stronger place to check it.
   const loopR = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: collectPackSections([PACK]), bindings: PACK.bindings, clock: () => "2026-01-01T00:00:00.000Z" }) })
-  const aR = await loopR.assemble(loopR.open({ member: "r-1", role: "researcher", roleLabel: "常驻研究员", phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
+  const aR = await loopR.assemble(loopR.open({ member: "r-1", role: "member", roleLabel: "常驻研究员", phase: "normal", round: 2, statusBlock: "[状态] x" }).turn)
   ok(aR.text.includes("【本轮面向的成员】代号：r-1 ｜角色：常驻研究员 ｜阶段：normal"),
     "T135. **** the DISPLAY LINE names the human role, not the binding key: role selects sections, roleLabel is what a reader sees",
     { line: "roleLabel" })
@@ -1320,7 +1320,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     deliver: async () => "```json\n{\"task_create\":{\"title\":\"t-1\"}}\n```",
     faces: { "vmu.tasks": { create: refuser } },
   })
-  const baseN = { member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", statusBlock: "[状态] x" }
+  const baseN = { member: "r-1", role: "member", roleLabel: '常驻研究员', phase: "normal", statusBlock: "[状态] x" }
   const r1 = await loopN.run({ ...baseN, round: 1 })
   ok(r1.ok === true && r1.refused.length === 1 && r1.refused[0].field === "task_create" && r1.refused[0].code === "V5_TASK_STALE_REVISION",
     "T142. **** a refused dispatch is REPORTED on the receipt rather than silently counted as executed",

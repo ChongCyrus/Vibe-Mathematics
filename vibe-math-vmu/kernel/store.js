@@ -29,6 +29,7 @@
 import { mkdir, readFile, writeFile, rename, copyFile, access } from 'node:fs/promises'
 import { join } from 'node:path'
 import { statSync, readFileSync, openSync, closeSync, writeSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -252,7 +253,9 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     // `fresh` because the last stamp also said `missing` would hide exactly the case this check exists for.
     if (now === 'missing') { stamp = 'missing'; return { reloaded: false, why: 'missing' } }
     if (now === stamp) return { reloaded: false, why: 'fresh' }
-    const loaded = parseFold(readFileSync(file, 'utf8'), file)
+    const raw = readFileSync(file, 'utf8')
+    lastPersistHash = sha256Hex(Buffer.from(raw, 'utf8'))
+    const loaded = parseFold(raw, file)
     fold = loaded
     stamp = now
     stats.reloads += 1
@@ -294,7 +297,43 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   let fold = null
   let chain = Promise.resolve()
   const listeners = new Map()
-  const stats = { opens: 0, writes: 0, patches: 0, migrations: 0, subscriptions: 0, reloads: 0, lockWaits: 0, lockSkips: 0, writeRetries: 0, writeRetryGiveUps: 0, writeRootGone: 0, lastReloadAt: null }
+  const stats = { opens: 0, writes: 0, patches: 0, migrations: 0, subscriptions: 0, reloads: 0, lockWaits: 0, lockSkips: 0, writeRetries: 0, writeRetryGiveUps: 0, writeRootGone: 0, lastReloadAt: null,
+    // ★ TB-2791 §B: content-resync observability — reads, hash-cache hits (no parse needed) and full parses.
+    casReads: 0, casHashHits: 0, casParses: 0, adopts: 0, fingerprintCacheHits: 0 }
+
+  // ★★★ TB-2791 §B-1: ADOPTING THE DISK FOLD IS A RELOAD, NOT AN ASSIGNMENT. The kernel hydrates its Map projections
+  // (members/meetings/ballotbox/...) from `onReload` hooks; the CAS content check used to do `fold = disk; adoptStamp()`
+  // directly, so a CAS write could absorb ANOTHER kernel's update into the fold while the projections stayed old — and,
+  // because the stamp was adopted too, nothing re-fired until a later external write. Every internal adoption now goes
+  // through this seam: it fires the hooks and counts the reload, exactly like `reloadIfStale` does.
+  const sha256Hex = (buf) => createHash('sha256').update(buf).digest('hex')
+  let lastPersistHash = null // sha256 of the bytes THIS instance last wrote (or loaded): a cheap "is the file already my fold?" token
+  const adoptDiskFold = (disk, meta = {}) => {
+    fold = disk
+    adoptStamp()
+    stats.adopts += 1
+    stats.reloads += 1
+    stats.lastReloadAt = clock()
+    const stampNow = stamp
+    for (const cb of reloadHooks.slice()) {
+      try { cb({ why: meta.why || 'adopted', stamp: stampNow, file, key: meta.key === undefined ? null : meta.key }) } catch { /* a hook never breaks a read */ }
+    }
+    return fold
+  }
+
+  // ★ TB-2791 §B-2: VALUE-IDENTITY FINGERPRINT CACHE. `fingerprint()` sorts every object's keys on a ~350 KB value — the
+  // CAS path used to compute it up to three times per write (caller token, disk compare, second defence). A fold value is
+  // replaced (new object) on every write, so caching by object identity is exact: a stale value can never be served.
+  const fingerprintCache = new Map()
+  const fingerprintOfKey = (key) => {
+    const value = fold.keys[key]
+    if (value === undefined) return null
+    const hit = fingerprintCache.get(key)
+    if (hit && hit.value === value) { stats.fingerprintCacheHits += 1; return hit.fp }
+    const fp = fingerprint(value)
+    fingerprintCache.set(key, { value, fp })
+    return fp
+  }
 
   const runExclusive = (fn) => {
     const next = chain.then(fn, fn)
@@ -311,8 +350,9 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
 
   const persist = async () => {
     const tmp = tmpFile()
+    const text = JSON.stringify(fold, null, 2) + '\n'
     try {
-      await writeFile(tmp, JSON.stringify(fold, null, 2) + '\n', 'utf8')
+      await writeFile(tmp, text, 'utf8')
       await rename(tmp, file) // atomic: the visible file is always a complete document
     } catch (e) {
       // the temp copy is evidence of a write that did NOT land; leaving it behind would be a leak, not a record
@@ -330,6 +370,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       throw e
     }
     adoptStamp()
+    lastPersistHash = sha256Hex(Buffer.from(text, 'utf8'))
     stats.writes++
   }
 
@@ -340,8 +381,9 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
    */
   const resyncFromDisk = () => {
     try {
-      fold = parseFold(readFileSync(file, 'utf8'), file)
-      adoptStamp()
+      const raw = readFileSync(file, 'utf8')
+      lastPersistHash = sha256Hex(Buffer.from(raw, 'utf8'))
+      adoptDiskFold(parseFold(raw, file), { why: 'write-retry-resync' })
     } catch {
       stamp = null
     }
@@ -371,12 +413,23 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       const memoryValue = fold.keys[key]
       let diskValue
       try {
-        const disk = parseFold(readFileSync(file, 'utf8'), file)
-        diskValue = disk.keys[key]
-        // adopt the file's view AFTER a successful read, so the compare below and the following compute() both build on
-        // the real durable value (not on a projection that may be one same-tick write behind).
-        fold = disk
-        adoptStamp()
+        const bytes = readFileSync(file)
+        stats.casReads += 1
+        const digest = sha256Hex(bytes)
+        if (lastPersistHash !== null && digest === lastPersistHash) {
+          // ★ TB-2791 §B-2: the file is BYTE-IDENTICAL to what this instance last persisted/loaded, so the in-memory fold
+          // IS the disk truth — no decode, no JSON.parse. This is a CONTENT equality check (sha256 of the bytes), NOT the
+          // unreliable mtime+size inference: a same-size same-tick write by another kernel changes the digest.
+          stats.casHashHits += 1
+          diskValue = fold.keys[key]
+        } else {
+          const raw = bytes.toString('utf8')
+          lastPersistHash = digest
+          const disk = parseFold(raw, file)
+          stats.casParses += 1
+          adoptDiskFold(disk, { why: 'cas-content-resync', key })
+          diskValue = fold.keys[key]
+        }
       } catch (e) {
         if (memoryValue === undefined && opts.expectFingerprint === null) { diskValue = undefined } else {
           throw refuse('VMU_STORE_FAILED',
@@ -396,7 +449,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     // (second line of defence for callers that passed `expectFingerprint` AFTER the content check above adopted the
     // durable fold; identical rule, and it also covers a key that is absent from the file: null is the absent-token.)
     if (opts.expectFingerprint !== undefined) {
-      const memFp = fold.keys[key] === undefined ? null : fingerprint(fold.keys[key])
+      const memFp = fingerprintOfKey(key)
       if (memFp !== opts.expectFingerprint) {
         throw refuse('VMU_STORE_CONFLICT',
           'concurrent write refused: the durable value of "' + key + '" changed since this writer read it (expected fingerprint ' + JSON.stringify(opts.expectFingerprint) + ', current ' + JSON.stringify(memFp) + ')',
@@ -530,6 +583,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
         let loaded
         try {
           const raw = await readFile(file, 'utf8')
+          lastPersistHash = sha256Hex(Buffer.from(raw, 'utf8'))
           loaded = JSON.parse(raw)
         } catch (e) {
           if (e && e.code === 'ENOENT') {
@@ -585,7 +639,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       if (!fold) throw refuse('VMU_STORE_FAILED', 'store is not open')
       assertKey(key)
       reloadIfStale('fingerprint')
-      return fold.keys[key] === undefined ? null : fingerprint(fold.keys[key])
+      return fingerprintOfKey(key)
     },
 
     /** Register a callback that runs after EVERY reload this instance performs. Returns its disposer. */

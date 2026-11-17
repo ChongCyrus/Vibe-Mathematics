@@ -58,10 +58,10 @@ const PHASES = ['founding', 'normal', 'checkpoint', 'heartbeat', 'verify', 'meet
 // "reachable with the right call", which is the honest form of the claim.
 const INPUT_VARIANTS = {
   founding: [
-    { member: 'acad', role: 'academician', roleLabel: '院士' },
-    { member: 'r-1', role: 'researcher', roleLabel: '研究员' },
-    { member: 'r-2', role: 'researcher', roleLabel: '研究员' },
-    { member: 'r-3', role: 'researcher', roleLabel: '研究员' },
+    { member: 'acad', role: 'chair', roleLabel: '院士' },
+    { member: 'r-1', role: 'member', roleLabel: '研究员' },
+    { member: 'r-2', role: 'member', roleLabel: '研究员' },
+    { member: 'r-3', role: 'member', roleLabel: '研究员' },
     { member: 't-1', role: 'temp', roleLabel: '临时工' },
   ],
   // `paper-review` is handled below with a second loop: its reviewer is a SETTING, not a turn field.
@@ -80,13 +80,13 @@ for (const phase of PHASES) {
   const parts = []
   for (const v of variants) {
     const a = await loop.assemble(loop.open(Object.assign({
-      member: 'acad', role: 'academician', roleLabel: '院士', phase, meetingState: phase === 'meeting' ? 'first' : undefined,
+      member: 'acad', role: 'chair', roleLabel: '院士', phase, meeting: phase === 'meeting' ? 'm-test' : undefined, meetingState: phase === 'meeting' ? 'first' : undefined,
       roster: 'acad、r-1、r-2、r-3', quorum: 3, statusBlock: '[状态] x', round: 3,
     }, v)).turn)
     parts.push(String(a.text))
   }
   if (phase === 'paper-review') {
-    const a2 = await loopAlt.assemble(loopAlt.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase, roster: 'acad、r-1、r-2', quorum: 2, statusBlock: '[状态] x', round: 3 }).turn)
+    const a2 = await loopAlt.assemble(loopAlt.open({ member: 'acad', role: 'chair', roleLabel: '院士', phase, meeting: phase === 'meeting' ? 'm-test' : undefined, roster: 'acad、r-1、r-2', quorum: 2, statusBlock: '[状态] x', round: 3 }).turn)
     parts.push(String(a2.text))
   }
   ours[phase] = parts.join('\n')

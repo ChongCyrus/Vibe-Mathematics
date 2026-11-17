@@ -213,6 +213,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     order: 707,
     range: 'pack',
     kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair', 'member']) }),
     texts: {
       shared: [
         "【三、院士与常驻研究员的资料库、progress 与卡片格式】",
@@ -342,7 +343,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · 用 `vibe_v5_verdict` 给出你的判断：一个 [0,1] 的数值概率与理由。1 = 绝对为真；0 = 绝对为假；介于之间 = 不确定；裁决规则是**全体一致时取该值，否则取全组平均概率**。",
         "  · 进入 Verified/ 的门：概率必须为 **1**，且这个 1 必须有**具名凭据**——你一个人在初评里写下的 1 不算数；凭据是三项之一：辩论裁决集合全体一致为 1；该命题已在 verified 轨有 conclusion:true 行；Lean 通过**且**辩论已裁定代码与所需一致。缺凭据的 1 会被具名拒绝（`VMU_PACK_V5R_P1_NEEDS_DEBATE`），Verified/ 的写入只有 `vibe_v5_verified_promote` 一个入口（`VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`）。",
         "  · 参考文献中的命题可直接进 Verified（不经辩论）：写卡带 `literature_ref:\"<作者, 出处, 定理/页码>\"` 且 `p:1`，再用 `vibe_v5_verified_promote`（`warrant_kind:\"literature\"`、`literature_ref` 同一句引用）入轨；引用要具体到定理/页码，不要写「见文献」。",
-        "  · 另一件事是**表决**（议题办不办、会议能不能开）：那用法定票数 m = min(所办设定的上限, 在册有表决权人数)，以每轮状态块里的读数为准。",
+        "  · 另一件事是**表决**（议题办不办、会议能不能开）：用法定票数 m = min(所办设定的上限, 在册有表决权人数)，读状态块的 `[表决] 法定票数 m = N` 行。**定论口径**：`quorumRule` 默认 m-unanimous（`defaultTally` 要全体一致）；**未投满或票分裂 ⇒ undecided**。",
         "  · 表决分两段：先【独立初评】（看不到别人意见），未定论再进入【公开辩论】（意见公开，可引用、反驳、修改后重投）；辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）：它定这场会议最多被提几次动议（**任何 kind 的动议都计入**，程序动议会吃掉一轮辩论），默认 3，到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。",
         "  · 仍未定论的对象**留在原库中**，附裁决读数与完整辩论记录，不被强判真假；日后可再次提议验证。",
         "  · **永远不要为了让流程往前走而投出你不相信的 1 或 0。** 诚实的「不确定」远好过虚假的「一致」。",
@@ -594,13 +595,11 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         // phase. Round 415 transcribed it into THIS variant as well, and the acceptance ratio did not move by a single
         // line, which was the clue I failed to take: the lines were already present. Round 421 removes the duplicate,
         // because two copies of a protocol is exactly how the two copies begin to disagree. Only the frame pointer stays.
-'**若本回合绑定了会议**：议程与类型由本轮会议帧给出，按议程发言、需要时举手。**若没有会议 id（本回合未绑定）**：不要举手、不要填 input——发言用工具 `vibe_v5_say`（回执里的 say 不会投递）。',
         // ★★★ RUN 60 / task-30 (P8): the frame printed a meeting with NO id anywhere, so a member guessed the meeting
         // from the agenda type and guessed wrong. The heading above now renders the id (`vmu.turn.meetingId`, supplied as
         // per-turn FACTS by the turn loop), and this line says what the binding MEANS: where a sentence goes, and that a
         // DIFFERENT meeting must be reached by the tool or by re-binding - never by addressing `say` to it.
         '{{ setting:vmu.turn.meetingDelivery }}',
-        '  · 判据：帧里**给了会 id** 才是绑定会议。绑定时回执的 `say` 不进会议楼层——发言填回执的 `input` 字段，对全所说话或私信一律用 `vibe_v5_say`；帧里没有会 id 就是未绑定，`say` 只留在回执 notes 里不投递。',
       ].join('\n'),
     },
   },

@@ -22,7 +22,9 @@ const ALL = Object.values(normal).join('\n')
 console.log('### RUN 79 / TB-2741 — the ten prompt corrections, asserted on assembled text')
 
 test('§1 item 1 the proof path example uses a real seat id and the library root; proof_ref resolves against the root', () => {
-  for (const [slot, text] of Object.entries(normal)) {
+  // ROUND-5: charter-libraries is role-gated to chair/member (temp has no library/card face), so the path teaching is
+  // asserted on the seats that can write a library, and temp is asserted NOT to carry a library write path (with a lamp).
+  for (const [slot, text] of Object.entries(normal).filter(([slot]) => slot !== 'temp')) {
     assert.ok(text.includes('<roots.libraryRoot>/Members/<你的 id>/Proofs/…'), slot + ': the path example starts at the library root')
     // ROUND-3 audit P2: the hardcoded `r-acad` example is unclear for a member (copying it would write into another
     // seat's library). The example now uses the reader's own id; the pin follows that, with a lamp that the old
@@ -33,6 +35,8 @@ test('§1 item 1 the proof path example uses a real seat id and the library root
     assert.ok(!text.includes('Members/acad/Progress/progress.md'), slot + ': the old example with the non-roster id acad is gone')
     assert.ok(!text.includes('Members/acad/'), slot + ': no non-roster id survives in a path example')
   }
+  assert.ok(!normal.temp.includes('<roots.libraryRoot>/Members/'), 'temp: the library write path is NOT taught to a seat with no library face (role gate)')
+  assert.ok((normal.member + normal.temp).includes('<roots.libraryRoot>/Members/'), 'LAMP: the same predicate is true for a seat that DOES have the face')
 })
 
 test('§2 item 2 vote_solved is a bookkeeping field that never counts alone; the tool is the only closure channel', () => {
@@ -134,7 +138,7 @@ const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
 // names `vmu.meetings.eligibleSeats` for the vote (the review rewrite: attendance never decided the vote), F80-4
 // restores the two legal spellings of an evidence pointer (paper phases are outside this water level). Per seat
 // -826 / -803 / -822, sum -2451 (ROUND-3: legacy corrections deleted).
-const TB2752_RUN80_FIXES = { chair: -838, member: -933, temp: -1877, sum: -3648 } // ROUND-1 P0/P1 prompt fixes
+const TB2752_RUN80_FIXES = { chair: -2616, member: -816, temp: -1969, sum: -5401 } // ROUND-1 P0/P1 prompt fixes
 test('§11 three-seat normal sum is the baseline plus the corrections plus the RUN 272 restore, and nothing else', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   assert.equal(normalSum, TB2741_BASELINE.sum + TB2741_CORRECTIONS_NET.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum,

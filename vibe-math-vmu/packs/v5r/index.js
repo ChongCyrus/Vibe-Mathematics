@@ -44,22 +44,31 @@ export { V5R_SETTING_DEFAULTS, V5R_SETTING_KEYS, decideSections, v5rPromptSwitch
  * (they are large arrays the sibling modules own); everything else is stated here.
  */
 /**
- * THE PHASES THIS PACK ADDS TO THE FRAMEWORK'S SET.
- * `heartbeat` is institution vocabulary - it is the phase in which a member is told the institute has made no
- * progress - and the framework should not have to know the word. The pack names it and the loop accepts it.
+ * ★★★ TB-2792 / C#1 — THE PACK'S PRE-KERNEL DECLARATIONS ARE ITS OWN DATA FILE, NOT THE FRAMEWORK'S LITERALS.
+ * Before this, the framework ENTRY imported V5R_PHASES / V5R_REPLY_FIELDS directly and kept a `PACK_RUNTIME` table
+ * naming 'v5r' — so a second pack required editing the framework entry. The data now lives in `./runtime.json`
+ * (scanned synchronously by the entry, because the turn loop's reply-field table is a construction snapshot), and this
+ * module is the typed view of it. ONE source of truth: the values below ARE the JSON, not a copy.
  */
-export const V5R_PHASES = Object.freeze(['heartbeat', 'paper-write', 'paper-review', 'paper-final'])
+import runtimeData from './runtime.json' with { type: 'json' }
+import { inboxBlock } from './notices.js'
 
 /**
- * ★★★ P0-b (ROUND-1 audit C#2) — THE PACK DECLARES ONE REPLY FIELD OF ITS OWN. This is the sample that proves the
- * receipt protocol is extensible from a MANIFEST: the entry folds `replyFields` into the kernel and the turn loop merges
- * them with its core table, so a pack adds a reply field WITHOUT editing kernel source. `paper_claim` is v5r vocabulary
- * (a member claiming a paper section through its own turn); `shape`/`textCoercion` are DECLARED here so a reader (and a
- * future shape adapter) knows what the field carries instead of guessing from prose.
+ * THE PHASES THIS PACK ADDS TO THE FRAMEWORK'S SET (from ./runtime.json).
+ * `heartbeat` is institution vocabulary — the phase in which a member is told the institute has made no progress —
+ * and the framework names none of them: the pack does.
  */
-export const V5R_REPLY_FIELDS = Object.freeze([
-  Object.freeze({ field: 'paper_claim', face: 'vmu.meetings', op: 'speak', shape: 'string', textCoercion: 'string', text: 'a member claiming which paper section it is taking this turn (v5r vocabulary, dispatched through the meeting speak face)' }),
-])
+export const V5R_PHASES = Object.freeze(runtimeData.phases.slice())
+
+/**
+ * ★★★ P0-b (ROUND-1 audit C#2) — THE PACK DECLARES ONE REPLY FIELD OF ITS OWN (from ./runtime.json). This is the
+ * sample that proves the receipt protocol is extensible from a MANIFEST: the entry folds `replyFields` into the kernel
+ * and the turn loop merges them with its core table, so a pack adds a reply field WITHOUT editing kernel source.
+ * `paper_claim` is v5r vocabulary (a member claiming a paper section through its own turn); shape/textCoercion are
+ * DECLARED so a reader (and a future shape adapter) knows what the field carries instead of guessing from prose.
+ */
+export const V5R_REPLY_FIELDS = Object.freeze(runtimeData.replyFields.map((f) => Object.freeze(Object.assign({}, f))))
+
 
 // THE FOLDER-LEVEL CONTRIBUTION RECORD, and the distinction is load-bearing: the manifest the LOADER consumes is `PACK`
 // from `prompts/v5r-core.js` (star-re-exported above), which carries the slots, tracks, rules, codes and prompt text.
@@ -128,3 +137,16 @@ export function describeV5rPack() {
     settings: V5R_SETTING_KEYS.length,
   }
 }
+
+/**
+ * ★★★ TB-2792 / C#1 — THE RUNTIME HOOKS A PACK EXPORTS TO THE FRAMEWORK, under a NAME THE FRAMEWORK KNOWS.
+ * `runtime.json` carries DATA (phases / replyFields) but not functions, and the framework's own prompt pipeline needs
+ * two: the section-policy composer and the notice-block renderer. The entry collects THIS object when it loads the pack
+ * module (the same async pack-apply path it already used), so the entry holds no pack-specific table and a third-party
+ * pack is integrated by shipping `runtime.json` + this export — never by editing the entry (docs/27 "第三方 pack 接入").
+ */
+export const PACK_CONTRIBUTION = Object.freeze({
+  id: 'v5r',
+  sectionPolicy: decideSections,
+  noticeBlock: inboxBlock,
+})

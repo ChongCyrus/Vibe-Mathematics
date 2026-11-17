@@ -328,8 +328,8 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // addresses whichever member is being assembled, so nothing is hard-coded per member and the section stays
   // editable through settings, config or middleware.
   const loopRole = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: v5rTurnSections, clock: () => '2026-01-01T00:00:00.000Z' }), faces: facesFrom(kernelTurn) })
-  const r1 = await loopRole.assemble(loopRole.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'founding' }).turn)
-  const ac = await loopRole.assemble(loopRole.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding' }).turn)
+  const r1 = await loopRole.assemble(loopRole.open({ member: 'r-1', role: 'member', roleLabel: '常驻研究员', phase: 'founding' }).turn)
+  const ac = await loopRole.assemble(loopRole.open({ member: 'acad', role: 'chair', roleLabel: '院士', phase: 'founding' }).turn)
   ok(r1.ok === true && ac.ok === true && r1.text !== ac.text && r1.text.includes('{{') === false,
     'V54. ★★★★ CLOSED: with the role section the framework composes PER MEMBER, two members get different text, and no placeholder is left unsubstituted',
     { chars: [r1.text.length, ac.text.length], differ: r1.text !== ac.text })
@@ -425,10 +425,10 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   {
     const withPack = mkAB()
     let okPack = true
-    try { withPack.open({ member: "acad", role: "academician", roleLabel: "院士", phase: "heartbeat" }) } catch (e) { okPack = false }
+    try { withPack.open({ member: "acad", role: "chair", roleLabel: "院士", phase: "heartbeat" }) } catch (e) { okPack = false }
     ok(okPack, "a phase the PACK declares is accepted by the framework", { phase: "heartbeat" })
     let refusal = null
-    try { withPack.open({ member: "acad", role: "academician", roleLabel: "院士", phase: "not-a-phase" }) } catch (e) { refusal = e }
+    try { withPack.open({ member: "acad", role: "chair", roleLabel: "院士", phase: "not-a-phase" }) } catch (e) { refusal = e }
     ok(refusal && refusal.code === "VMU_INVALID_ARGUMENT" && /heartbeat/.test(String(refusal.hint || "")),
       "and a phase NOBODY declares is refused by name, with the framework list AND the pack list printed - so a pack can extend the set without the framework learning its vocabulary",
       { code: refusal && refusal.code, hint: refusal && String(refusal.hint || "").slice(0, 90) })
@@ -444,10 +444,10 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   // missing - a claim about the harness wearing the costume of a claim about the pack.
   const UNION_INPUTS = {
     founding: [
-      { member: "acad", role: "academician", roleLabel: "院士" },
-      { member: "r-1", role: "researcher", roleLabel: "研究员" },
-      { member: "r-2", role: "researcher", roleLabel: "研究员" },
-      { member: "r-3", role: "researcher", roleLabel: "研究员" },
+      { member: "acad", role: "chair", roleLabel: "院士" },
+      { member: "r-1", role: "member", roleLabel: "研究员" },
+      { member: "r-2", role: "member", roleLabel: "研究员" },
+      { member: "r-3", role: "member", roleLabel: "研究员" },
       { member: "t-1", role: "temp", roleLabel: "临时工" },
     ],
   }
@@ -455,7 +455,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
     const variants = UNION_INPUTS[phase] || [{}]
     const parts = []
     for (const v of variants) {
-      const a = await loopAB.assemble(loopAB.open(Object.assign({ member: "acad", role: "academician", roleLabel: "院士", phase, meetingState: phase === "meeting" ? "first" : undefined, roster: "acad、r-1、r-2、r-3", quorum: 3, statusBlock: "[状态] x", round: 3 }, v)).turn)
+      const a = await loopAB.assemble(loopAB.open(Object.assign({ member: "acad", role: "chair", roleLabel: "院士", phase, meetingState: phase === "meeting" ? "first" : undefined, roster: "acad、r-1、r-2、r-3", quorum: 3, statusBlock: "[状态] x", round: 3 }, v)).turn)
       parts.push(String(a.text))
     }
     // the reviewer is a SETTING, so the second one needs a second loop rather than a per-call variant
@@ -467,7 +467,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
         noticeBlock: INBOX.inboxBlock,
       })
       alt.notify("acad", "【研究所提示】demo 未生效（V5_DEMO）：示例通知，用于让比对看见表头与缩进")
-      const a2 = await alt.assemble(alt.open({ member: "acad", role: "academician", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
+      const a2 = await alt.assemble(alt.open({ member: "acad", role: "chair", roleLabel: "院士", phase, roster: "acad、r-1、r-2", quorum: 3, statusBlock: "[状态] x", round: 3 }).turn)
       parts.push(String(a2.text))
     }
     oursSingle[phase] = parts[0]

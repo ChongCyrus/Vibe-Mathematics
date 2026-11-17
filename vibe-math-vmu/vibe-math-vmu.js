@@ -17,9 +17,6 @@
 //   · it does NOT reach for the math host seam: `createKernel` is given no host, so the math surface stays
 //     unavailable and refuses BY NAME. Wiring a real subprocess seam is a separate, explicit step.
 
-import { decideSections as V5R_DECIDE_SECTIONS } from './packs/v5r/middleware/prompt-switches.js'
-import { inboxBlock as V5R_INBOX_BLOCK } from './packs/v5r/notices.js'
-import { V5R_PHASES, V5R_REPLY_FIELDS } from './packs/v5r/index.js'
 import { createChildrenPort } from './host-children.js'
 import { createKernel } from './kernel/index.js'
 // ★ A1 step 1 · Part B: the report-feedback DELIVERY call. It lives in a module of its own (this file is at its
@@ -518,16 +515,53 @@ export function apply(ctx, config = {}) {
   // AFTER `createKernel` (its apply may need the kernel), while `sectionPolicy` was a CONSTRUCTION parameter - so a
   // manifest's `promptPolicies` was collected by the loader's sink and never composed into the function the turn
   // loop consults: reported, yet ZERO effect. That is the half `kernel/pack.js`'s own refusal message already asked
-  // the caller to finish ("compose the collected policies into the section policy the turn loop consults"). The v5r
-  // table below is why it went unnoticed: its policy arrives through PACK_RUNTIME before the kernel exists.
+  // the caller to finish ("compose the collected policies into the section policy the turn loop consults"). The old
+  // static table below is why it went unnoticed: a pack policy was injected BEFORE the kernel existed.
   // THE FIX: ONE stable dispatcher, handed to the kernel for its whole lifetime, that re-reads the LIVE list on every
   // assembly. No second construction path, no mutable kernel hook, and the turn loop needed no change.
-  const PACK_RUNTIME = Object.freeze({
-    v5r: { id: 'v5r', sectionPolicy: V5R_DECIDE_SECTIONS, noticeBlock: V5R_INBOX_BLOCK, phases: V5R_PHASES, replyFields: V5R_REPLY_FIELDS },
-  })
+  // ★★★ TB-2792 / C#1 — THE ENTRY NAMES NO PACK. Before this, this file statically imported v5r's prompt switch,
+  // notice block, phases and reply fields and kept a `PACK_RUNTIME` table keyed by the id 'v5r' — so integrating a
+  // SECOND pack meant editing the framework entry (the audit's C#1 FAIL). The pack now brings its own declarations:
+  //   · DATA (phases / replyFields) is scanned SYNCHRONOUSLY from `packs/<id>/runtime.json` (and from any directory in
+  //     `config.packDirs`), because the turn loop's reply-field table is a construction-time snapshot. The scanned data
+  //     rides the EXISTING fold seam (`kernel/pack.js#foldPackDeclarations`), so there is no second registration path.
+  //   · HOOKS (sectionPolicy / noticeBlock) cannot be data. The pack module exports them as `PACK_CONTRIBUTION`; the
+  //     entry collects them when the SAME async pack-apply path below loads the module, and the section-policy
+  //     dispatcher re-reads the live list on every assembly, so a pack loaded after createKernel still takes effect.
+  const entryHome = dirname(fileURLToPath(import.meta.url))
+  const runtimeDataDirs = [join(entryHome, 'packs')].concat(Array.isArray(config.packDirs) ? config.packDirs.filter((d) => typeof d === 'string' && isAbsolute(d)) : [])
+  const packDataErrors = []
+  const scanPackRuntimeData = (id) => {
+    for (const dir of runtimeDataDirs) {
+      const file = join(dir, id, 'runtime.json')
+      if (!existsSync(file)) continue
+      try {
+        const data = JSON.parse(readFileSync(file, 'utf8'))
+        if (!data || typeof data !== 'object') throw new Error('runtime.json is not an object')
+        return { id: typeof data.id === 'string' ? data.id : id, requestId: id, phases: Array.isArray(data.phases) ? data.phases.filter((x) => typeof x === 'string') : [], replyFields: Array.isArray(data.replyFields) ? data.replyFields.filter((f) => f && typeof f === 'object' && typeof f.field === 'string') : [], source: file }
+      } catch (e) { packDataErrors.push({ id, file, code: (e && e.code) || 'VMU_PACK_RUNTIME_DATA_INVALID', message: String((e && e.message) || e) }) }
+    }
+    return null
+  }
   const wantedPackIds = Array.isArray(config.packs) ? config.packs.filter((p) => typeof p === 'string') : []
-  const packRuntime = wantedPackIds.map((id) => PACK_RUNTIME[id]).filter(Boolean)
-  const builtinPromptPolicies = packRuntime.filter((r) => typeof r.sectionPolicy === 'function')
+  const activePackIds = Array.isArray(settings['vmu.packs.active']) ? settings['vmu.packs.active'].filter((p) => typeof p === 'string') : []
+  const runtimePackData = [...new Set([...wantedPackIds, ...activePackIds])].map(scanPackRuntimeData).filter(Boolean)
+  // Inline manifests (config.packs objects / config.packManifests) may carry the same DATA directly; they are folded
+  // through the same seam, so a deployment can declare phases/replyFields with no file at all.
+  const inlinePackData = (Array.isArray(config.packs) ? config.packs : []).filter((p) => p && typeof p === 'object' && !Array.isArray(p))
+    .map((p) => ({ id: (p && p.id) || null, phases: Array.isArray(p.phases) ? p.phases : [], replyFields: Array.isArray(p.replyFields) ? p.replyFields : [] }))
+    .filter((p) => p.id && (p.phases.length > 0 || p.replyFields.length > 0))
+  // HOOKS learned when a pack module is loaded (see the async apply path): the dispatcher reads this LIVE.
+  const builtinPromptPolicies = []
+  let liveNoticeBlock = null
+  const registerPackContribution = (requestId, mod) => {
+    const contribution = mod && (mod.PACK_CONTRIBUTION || mod.packContribution)
+    if (!contribution || typeof contribution !== 'object') return { registered: false, why: 'no PACK_CONTRIBUTION export' }
+    if (typeof contribution.sectionPolicy === 'function' && !builtinPromptPolicies.includes(contribution.sectionPolicy)) builtinPromptPolicies.push(contribution.sectionPolicy)
+    if (typeof contribution.noticeBlock === 'function') liveNoticeBlock = contribution.noticeBlock
+    return { registered: true, id: contribution.id || requestId, sectionPolicy: typeof contribution.sectionPolicy === 'function', noticeBlock: typeof contribution.noticeBlock === 'function' }
+  }
+  const packContributionsRegistered = []
   // ★ THE ONE SINK CONTRACT (kernel/pack.js): a manifest's policy is handed to `onPromptPolicy`, whose RETURN VALUE is
   // the loader's undo. This array holds EXACTLY those manifest-declared policies, so the existing `promptPolicies()`
   // accessor and `packMerge.promptPolicies` keep their documented meaning (they never included PACK_RUNTIME's).
@@ -583,8 +617,23 @@ export function apply(ctx, config = {}) {
     : []
   // ★★★ P0-b: a runtime pack's `replyFields` is a CONSTRUCTION-TIME declaration exactly like the manifest's — fold it
   // here so the turn loop's field table is built once, with the pack's fields in it (no post-construction mutation).
-  const runtimeReplyManifests = packRuntime.filter((r) => Array.isArray(r.replyFields) && r.replyFields.length > 0).map((r) => ({ id: r.id, replyFields: r.replyFields }))
-  const foldInputManifests = declaredPackManifests.concat(runtimeReplyManifests)
+  // The scanned DATA rides the SAME fold seam the declared manifests use (one implementation in kernel/pack.js).
+  // ★★★ TB-2792 / C#1 FIX (measured on sim actions-extra): a pack's runtime `phases` must NOT be folded into the
+  // kernel's construction-time `stages` option. That option OVERRIDES the deployment's explicit `vmu.tasks.stages`
+  // (the kernel takes the option as the stage table), so folding v5r's four phases there turned an explicit
+  // `stages: ['draft','verify','done']` into `heartbeat, paper-write, …` and `advance to "verify"` was REFUSED.
+  // THE PRECEDENCE THAT MUST HOLD: **explicit setting > pack default**. Runtime data therefore rides the fold the
+  // OLD runtimeReplyManifests rode it with — `replyFields` ONLY — while `phases` reach the loop the old way, through
+  // `extraPhases` (an ADDITIVE known-phase list, never an override). `config.packManifests` (deployment-declared) keeps
+  // its documented full-fold behaviour: there the deployment asked for the phases explicitly.
+  const runtimeDataManifests = runtimePackData
+    .filter((d) => d.replyFields.length > 0)
+    .map((d) => ({ id: d.id, replyFields: d.replyFields }))
+  const inlineDataManifests = inlinePackData
+    .filter((d) => d.replyFields.length > 0)
+    .map((d) => ({ id: d.id, replyFields: d.replyFields }))
+  const foldInputManifests = declaredPackManifests.concat(inlineDataManifests, runtimeDataManifests)
+  const runtimeDataManifestsCasualtyNote = 'phases intentionally excluded (explicit setting must win); see extraPhases'
   const foldedDeclarations = typeof packModule.foldPackDeclarations === 'function'
     ? packModule.foldPackDeclarations(foldInputManifests, settingsWithPackDefaults)
     : null
@@ -595,10 +644,22 @@ export function apply(ctx, config = {}) {
   // The resolved settings handed to the kernel now include the pack's folded declarations (record tracks, meeting type
   // catalog, task stages). Where no manifest is declared this is the SAME object identity as before - zero mechanism.
   const settingsWithPackDeclarations = foldedDeclarations ? foldedDeclarations.settings : settingsWithPackDefaults
+  // ★ A pack's notice block is a FUNCTION, so it travels as a hook, not as data. When packs are declared the kernel gets
+  // a LIVE wrapper (the contribution arrives when the module loads); with no pack the entry hands over null, exactly as
+  // before, so the kernel's own default notice block keeps the zero-mechanism path byte-identical.
+  // ★★★ THE WRAPPER MUST BE A REAL FUNCTION, NOT AN ARROW (measured: final20 G1). The first version was
+  // `() => liveNoticeBlock.apply(null, arguments)`: an arrow expression has NO `arguments` binding, so every call threw
+  // (`arguments is not defined`) and the notice block rendered EMPTY — sim passed because it never reached this renderer,
+  // while the real turns lost `[新到的消息]` (blockChars:0). A rest-parameter function forwards the caller's arguments
+  // unchanged, which is what the kernel's renderer expects.
   const noticeBlock = (foldedDeclarations && foldedDeclarations.options.noticeBlock)
-    || ((packRuntime.find((r) => r.noticeBlock) || {}).noticeBlock || null)
+    || (packsDeclared
+      ? function packNoticeBlockSeam(...args) {
+          return typeof liveNoticeBlock === 'function' ? liveNoticeBlock.apply(null, args) : null
+        }
+      : null)
   const extraPhases = (() => {
-    const runtimePhases = packRuntime.length ? packRuntime.flatMap((r) => r.phases || []) : []
+    const runtimePhases = runtimePackData.concat(inlinePackData).flatMap((d) => d.phases || [])
     const declaredPhases = foldedDeclarations ? foldedDeclarations.options.stages : []
     const all = [...new Set([...runtimePhases, ...declaredPhases])]
     return all.length > 0 ? all : null
@@ -1098,6 +1159,8 @@ export function apply(ctx, config = {}) {
   const packRequested = packsWanted.map((w) => ({ id: typeof w === 'string' ? w : (w && w.id) || null, via: packSourceOf.get(typeof w === 'string' ? 'id:' + w : w) || null }))
   const appliedPacks = []
   const packErrors = []
+  // A malformed runtime.json is a NAMED refusal on the same list the pack receipt publishes (never a silent skip).
+  for (const e of packDataErrors) packErrors.push({ id: e.id, code: e.code, message: e.message })
   // ROUND 30 / task-151 (D1): THE TWO ID SETS, MAPPED EXPLICITLY. A pack is REQUESTED by id (`v5r`) and APPLIES
   // under the id its manifest declares (`v5r-core`): the loader's receipt carries the manifest id, while the request
   // id is what the deployment wrote. Merging the two would silently change both fields' meaning, and leaving the
@@ -1129,6 +1192,7 @@ export function apply(ctx, config = {}) {
               try {
 
                 loaded = await import('./packs/' + wanted + '/index.js')
+                if (loaded) { const reg = registerPackContribution(wanted, loaded); if (reg.registered) packContributionsRegistered.push(reg) }
 
               } catch (e) {
 
@@ -1142,6 +1206,7 @@ export function apply(ctx, config = {}) {
                 try {
 
                   loaded = await import('./packs/' + wanted + '.js')
+                  if (loaded) { const reg = registerPackContribution(wanted, loaded); if (reg.registered) packContributionsRegistered.push(reg) }
 
                 } catch (e2) {
 
@@ -1327,6 +1392,17 @@ export function apply(ctx, config = {}) {
     loadedModules: () => loadedModules.slice(),
     moduleErrors: () => moduleErrors.slice(),
     packLoader: () => packLoader,
+    // ★★★ TB-2792 / C#1: WHAT THE FRAMEWORK DISCOVERED ON ITS OWN — the pre-kernel DATA it scanned (`runtime.json`),
+    // the HOOKS a loaded pack module contributed (`PACK_CONTRIBUTION`), and any malformed data it refused BY NAME.
+    // No v5r identifier appears in the entry: this receipt is how a deployment (or a test) sees that.
+    packRuntime: () => ({
+      data: runtimePackData.map((d) => ({ requestId: d.requestId, id: d.id, phases: d.phases.slice(), replyFields: d.replyFields.map((f) => f.field), source: d.source })),
+      inline: inlinePackData.map((d) => ({ id: d.id, phases: d.phases.slice(), replyFields: d.replyFields.map((f) => f.field) })),
+      contributions: packContributionsRegistered.slice(),
+      errors: packDataErrors.map((e) => Object.assign({}, e)),
+      noticeBlockLive: typeof liveNoticeBlock === 'function',
+      sectionPoliciesLive: builtinPromptPolicies.length,
+    }),
     appliedPacks: () => appliedPacks.slice(),
     packErrors: () => packErrors.slice(),
     // ROUND 25 / task-138: the same four facts the host receipt carries (`packReport`), readable by a caller that

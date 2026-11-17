@@ -7,6 +7,12 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
 const { collect } = await import(new URL('../scripts/sim/audit/prompt-sections.mjs', import.meta.url).href)
+// ROUND-5: the meeting protocol sections are gated by meetingId:'required', so this suite reads its MEETING texts from a
+// BOUND meeting assembly (the same shape a real meeting round has) instead of the unbound collector slice.
+const { mkdtemp, rm } = await import('node:fs/promises')
+const { tmpdir } = await import('node:os')
+const { join } = await import('node:path')
+const { boot } = await import(new URL('../scripts/sim/harness.mjs', import.meta.url).href)
 
 const got = await collect({ slots: ['chair', 'member', 'temp'], phases: ['normal', 'meeting'] })
 const sections = got.sections
@@ -14,7 +20,10 @@ const textOf = (slot, phase) => sections.filter((s) => s.slot === slot && s.phas
 const normalCombos = Object.fromEntries(got.combos.filter((c) => c.phase === 'normal').map((c) => [c.slot, c.chars]))
 
 const normal = { chair: textOf('chair', 'normal'), member: textOf('member', 'normal'), temp: textOf('temp', 'normal') }
-const meeting = { chair: textOf('chair', 'meeting'), member: textOf('member', 'meeting'), temp: textOf('temp', 'meeting') }
+const harnessRoot = await mkdtemp(join(tmpdir(), 'run78-meeting-'))
+const harness = await boot({ root: harnessRoot, withPrompt: true })
+const meetingText = async (seat) => String(await harness.prompts.assembleFor({ seat, phase: 'meeting', meeting: 'm-test' }))
+const meeting = { chair: await meetingText('chair'), member: await meetingText('member'), temp: await meetingText('temp') }
 const normalSum = Object.values(normalCombos).reduce((a, b) => a + b, 0)
 
 const BARE_LIBRARY_ROOT = /(?<!roots\.)libraryRoot/g // only `roots.libraryRoot` is legal
@@ -106,7 +115,7 @@ const TB2732_BASELINE = { chair: 29500, sum: 78171 }
 // this suite as a NAMED line item — never by editing 78 171 into the measured number (that would erase the baseline).
 // Per seat after ROUND-3: chair -826, member -803, temp -822; sum -2451 (five legacy correction sections deleted);
 // the taskbook's +120 envelope. No cap / ratchet was raised.
-const TB2752_RUN80_FIXES = { chair: -838, member: -933, temp: -1877, sum: -3648 } // ROUND-1 audit P0/P1 fixes
+const TB2752_RUN80_FIXES = { chair: -2616, member: -816, temp: -1969, sum: -5401 } // ROUND-1 audit P0/P1 fixes
 test('§8 the RUN 78 corrections are net-zero, plus the NAMED RUN 80 batch (+96): three-seat normal sum ≤ baseline + TB-2752', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   const sumCeiling = TB2732_BASELINE.sum + TB2752_RUN80_FIXES.sum

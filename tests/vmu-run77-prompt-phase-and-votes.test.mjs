@@ -87,8 +87,16 @@ test('§1 every seat is taught the phase union (11 values), with the four flow p
   }
 })
 
-test('§2 the closure ballot three-way mapping is in the meeting prompt', () => {
-  const t = texts['acad/meeting']
+test('§2 the closure ballot three-way mapping is in the meeting prompt', async () => {
+  // ROUND-5: the meeting protocol sections are gated by meetingId:'required', so the chair's meeting text is read from a
+  // BOUND assembly (the shape a real meeting round has).
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { boot } = await import(new URL('../scripts/sim/harness.mjs', import.meta.url).href)
+  const hroot = await mkdtemp(join(tmpdir(), 'run77-meeting-'))
+  const h = await boot({ root: hroot, withPrompt: true })
+  const t = String(await h.prompts.assembleFor({ seat: 'chair', phase: 'meeting', meeting: 'm-test' }))
   ok(says(t, '结题票三处对照'), 'the meeting prompt carries the three-way mapping')
   ok(says(t, '`vibe_vmu_vote`'), 'names the ACTION surface (meeting skeleton vibe_vmu_vote)')
   ok(says(t, '`vote_solved`'), 'names the reply FIELD (vote_solved)')

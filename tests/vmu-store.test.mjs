@@ -225,6 +225,83 @@ const openStore = async (opts = {}) => {
   } finally { await rm(cdir, { recursive: true, force: true }) }
 }
 
+
+// ---- 8b. TB-2791 §B-1/B-2: the CAS content-resync must HYDRATE projections, and must not parse the whole file --------
+{
+  const hroot = await mkdtemp(join(tmpdir(), 'vmu-store-cas-hydrate-'))
+  try {
+    const A = m.createStore({ root: hroot, clock: () => 1000 })
+    const B = m.createStore({ root: hroot, clock: () => 1000 })
+    await A.open(); await B.open()
+    await A.write('phase', 'base')
+    const hfile = join(hroot, 'vmu', 'state.json')
+    const HFIX = new Date(1000000)
+    await utimes(hfile, HFIX, HFIX)
+    B.refresh()                                       // B holds fold=base + stamp=HFIX (a genuinely stale fold, matching stamp)
+    let hooks = 0
+    B.onReload(() => { hooks += 1 })
+    const hBefore = B.stats()
+    await A.write('phase', 'AAAB')                    // another kernel's update lands (same size)
+    await utimes(hfile, HFIX, HFIX)                   // restore the stamp: mtime+size cannot see it
+    const stale = B.fingerprintOf('phase')            // still 'base' (stale fold, matching stamp)
+    let conflict = null
+    try { await B.write('phase', 'BBBB', { expectFingerprint: stale }) } catch (e) { conflict = e }
+    const hAfter = B.stats()
+    ok(!!conflict && conflict.code === 'VMU_STORE_CONFLICT',
+      'B1-1 (precondition) the interleaved CAS write is still refused by name', conflict && conflict.code)
+    ok(hooks === hBefore.reloads + 1 - hBefore.reloads && hooks === 1,
+      'B1-2 ★★ TB-2791 §B-1：CAS 采纳磁盘 fold 会触发 onReload（内核用它水化 members/meetings/ballotbox 等 Map 投影）——hooks 调用 +1',
+      { hooks })
+    ok(hAfter.reloads === hBefore.reloads + 1 && hAfter.adopts === hBefore.adopts + 1,
+      'B1-3 ★★ …并且 stats.reloads +1 / stats.adopts +1（采纳被记录成一次 reload，不再是静默直赋）',
+      { before: hBefore, after: hAfter })
+    // hash fast path: the file is byte-identical to what this instance last persisted/adopted, so no JSON.parse is needed
+    const fpNow = B.fingerprintOf('phase')
+    const pBefore = B.stats()
+    await B.write('phase', 'CCCC', { expectFingerprint: fpNow })
+    const pAfter = B.stats()
+    ok(pAfter.casHashHits > pBefore.casHashHits && pAfter.casParses === pBefore.casParses,
+      'B2-1 ★★ TB-2791 §B-2：文件字节与上次持久化/采纳完全相同的 CAS 写走 sha256 快路（casHashHits+1，0 次 JSON.parse）',
+      { hits: pAfter.casHashHits - pBefore.casHashHits, parses: pAfter.casParses - pBefore.casParses })
+    ok(pAfter.casReads > pBefore.casReads,
+      'B2-2 …仍然读了文件字节（内容判据不变：不是退回 mtime+size）', { reads: pAfter.casReads - pBefore.casReads })
+    // ★ lamp: copy tree, restore the OLD direct assignment (fold = disk; adoptStamp()) in the CAS branch -> hooks never fire
+    const lampDir = await mkdtemp(join(tmpdir(), 'vmu-store-cas-hy-lamp-'))
+    try {
+      const tree = join(lampDir, 'vibe-math-vmu')
+      cpSync(join(REPO, 'vibe-math-vmu'), tree, { recursive: true })
+      const storePath = join(tree, 'kernel', 'store.js')
+      const src = readFileSync(storePath, 'utf8')
+      const fromAdopt = 'adoptDiskFold(disk, { why: \'cas-content-resync\', key })'
+      ok(src.indexOf(fromAdopt) !== -1, 'B1 lamp-setup: the CAS adoption seam exists')
+      writeFileSync(storePath, src.replace(fromAdopt, 'fold = disk; adoptStamp()'))
+      const lampMod = await import(pathToFileURL(storePath).href + '?tb2791lamp=1')
+      const ldir = await mkdtemp(join(tmpdir(), 'vmu-store-cas-hy-lamp-ws-'))
+      try {
+        const lA = lampMod.createStore({ root: ldir, clock: () => 1000 })
+        const lB = lampMod.createStore({ root: ldir, clock: () => 1000 })
+        await lA.open(); await lB.open()
+        await lA.write('phase', 'base')
+        const lfile = join(ldir, 'vmu', 'state.json')
+        const LFIX = new Date(1000000)
+        await utimes(lfile, LFIX, LFIX)
+        lB.refresh()
+        let lHooks = 0
+        lB.onReload(() => { lHooks += 1 })
+        const lBefore = lB.stats()
+        await lA.write('phase', 'AAAB')
+        await utimes(lfile, LFIX, LFIX)
+        const lStale = lB.fingerprintOf('phase')
+        try { await lB.write('phase', 'BBBB', { expectFingerprint: lStale }) } catch { /* the conflict itself is not the lamp */ }
+        const lAfter = lB.stats()
+        ok(lHooks === 0 && lAfter.reloads === lBefore.reloads && lAfter.adopts === lBefore.adopts,
+          'B1 lamp RED-worthy: 走旧直赋路径 ⇒ 采纳磁盘 fold 不触发 hooks、不增 reloads（投影不水化——TB-2791 §B-1 的缺陷形状）',
+          { hooks: lHooks, before: lBefore, after: lAfter })
+      } finally { await rm(ldir, { recursive: true, force: true }) }
+    } finally { await rm(lampDir, { recursive: true, force: true }) }
+  } finally { await rm(hroot, { recursive: true, force: true }) }
+}
+
 // ---- 9. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   ok(failed > 0, 'self-probe: the naive read-modify-write lost an update and the assertion caught it', failed)

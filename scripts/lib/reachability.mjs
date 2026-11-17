@@ -41,6 +41,26 @@ export const KNOWN_UNMOUNTED = Object.freeze({
     'a separate decision, and must not be replaced by "nobody noticed".',
 })
 
+/**
+ * ★★★ TB-2792 / C#1: THE PACK MODULES ARE PART OF THE ENTRY SURFACE — THE LOADER IMPORTS THEM AT RUNTIME.
+ * The entry no longer statically imports any pack (that static coupling is exactly what C#1 removed), so a graph seeded
+ * only by the eight PLUGIN_ENTRY_FILES would report every pack module (and the kit/handlers they reach) as unreachable —
+ * a FALSE ORPHAN created by the refactor, not by a dead file. The loader's real behaviour is: for each requested pack id
+ * it imports  (folder first, flat  as the legacy fallback). Those files are
+ * therefore runtime entry points, enumerated from the packs directory (the same shape the loader resolves).
+ */
+export const runtimePackEntryFiles = (vmuDir) => {
+  const out = []
+  const packsDir = join(vmuDir, 'packs')
+  try {
+    for (const e of readdirSync(packsDir, { withFileTypes: true })) {
+      if (e.isDirectory()) { const p = join(packsDir, e.name, 'index.js'); if (existsSync(p)) out.push(p) }
+      else if (e.name.endsWith('.js')) out.push(join(packsDir, e.name))
+    }
+  } catch { /* no packs directory: no runtime pack entries */ }
+  return out
+}
+
 const edgesOf = (file) => {
   let src
   try { src = readFileSync(file, 'utf8') } catch { return [] }
@@ -56,6 +76,7 @@ const edgesOf = (file) => {
 /** Every file reachable from the plugin entries, plus the entry list that produced it. */
 export const walkAssembly = (vmuDir) => {
   const entries = PLUGIN_ENTRY_FILES.map((f) => join(vmuDir, f)).filter((p) => existsSync(p))
+    .concat(runtimePackEntryFiles(vmuDir))
   const reachable = new Set()
   const queue = [...entries]
   while (queue.length) {
