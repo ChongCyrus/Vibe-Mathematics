@@ -46,7 +46,8 @@ const short = (s) => String(s).slice(0, 90)
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 const RP = await import(u('repropack.js'))
-const RV = await import(u('reviewers.js'))
+// ★ TB-2794 Step 3: reviewers moved to packs/research-core; the claim suite follows the code.
+const RV = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'reviewers.js')).href)
 const BD = await import(u('board.js'))
 const FD = await import(u('fidelity.js'))
 

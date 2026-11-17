@@ -21,7 +21,7 @@ const ok = (cond, label, detail) => {
 }
 
 // The operations faces: money, goods, conference, HR and the rest of the administrative surface.
-const OPS = ['budget.js', 'board.js', 'conference.js', 'resource.js', 'ip.js', 'funding.js', 'capacity.js', 'tenure.js', 'compliance.js', 'course.js', 'external.js', 'publication.js']
+const OPS = ['budget.js', 'board.js', 'conference.js', 'resource.js', 'ip.js', 'funding.js', 'capacity.js', 'tenure.js', 'compliance.js', 'course.js', 'external.js']
 // The surfaces that HOLD an academic conclusion. Writing here is what O-5 forbids. Reading them is a different matter: the
 // publication face is SUPPOSED to read claims, which is why the list names writes and factory constructors, not the words.
 const VERDICT_WRITES = [

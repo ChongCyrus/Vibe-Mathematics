@@ -4,6 +4,7 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+import { createPublication } from '../vibe-math-vmu/packs/research-core/publication.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -19,7 +20,12 @@ const ok = (cond, label, detail) => {
 const WORDS = ['revolutionary', 'breakthrough', 'proves']
 const SUMMARY = 'This is a revolutionary breakthrough that proves the conjecture.'
 const CLAIMS = [{ text: 'the theorem holds under the stated hypotheses', evidenceRef: 'claim-1' }]
-const mk = (settings) => createKernel({ clock: () => 0, settings }).publication
+// ★ TB-2794 Step 3: publication is pack-contributed; the helper supplies the generic face through the service seam.
+const mk = (settings) => {
+  const k = createKernel({ clock: () => 0, settings })
+  k.provideService({ name: 'vmu.publication', apiVersion: 1, impl: createPublication({ clock: () => 0, settings }), by: 'test-publication-face' })
+  return k.publication
+}
 
 console.log('=== 1. ZERO CONFIGURATION REFUSES NOTHING (the wordlist defaults to empty) ===')
 {

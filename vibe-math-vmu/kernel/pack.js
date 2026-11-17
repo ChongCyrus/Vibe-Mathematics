@@ -1077,6 +1077,30 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           retractService: (entry) => kernel.retractService(Object.assign({ by: manifest.id }, entry)),
           registerReplyFieldAdapter: (entry) => (typeof kernel.registerReplyFieldAdapter === 'function' ? kernel.registerReplyFieldAdapter(Object.assign({ by: manifest.id }, entry)) : null),
           retractReplyFieldAdapter: (entry) => (typeof kernel.retractReplyFieldAdapter === 'function' ? kernel.retractReplyFieldAdapter(Object.assign({ by: manifest.id }, entry)) : null),
+          // ★ TB-2794 Step 3: generic seams a CONTRIBUTED research face needs. Still no registry / raw kernel: a pack can
+          // reach published services, the clock, bus emit, settings values and the approval gate — nothing that can
+          // publish/retract outside its own contribution.
+          setting: (key) => settingsNow()[key],
+          // ★ TB-2794 Step 3 (G3, clock purity): a contributed face takes the kernel's INJECTED clock or gets a NAMED
+          // refusal. There is NO Date.now() fallback: a pack path that silently reads the wall clock is exactly the
+          // violation clock purity exists to catch. Pass the seam as a function (lazy) so a bad clock is refused when
+          // the face is USED, not when the pack is applied.
+          clock: () => {
+            if (typeof kernel.clock !== 'function') {
+              throw refuse('VMU_CLOCK_UNGUARDED', 'this kernel exposes no injected clock for the contributed face',
+                'construct the kernel with { clock: () => <instant> }; a pack face may not fall back to the wall clock')
+            }
+            return kernel.clock()
+          },
+          guardedClock: () => {
+            if (typeof kernel.guardedClock !== 'function') {
+              throw refuse('VMU_CLOCK_UNGUARDED', 'this kernel exposes no guarded clock for the contributed face',
+                'construct the kernel with { clock }; the guarded seam refuses a non-finite instant by name')
+            }
+            return kernel.guardedClock()
+          },
+          emit: (topic, payload) => kernel.bus.emit(topic, payload),
+          attachApprovalGate: (args) => (typeof kernel.attachApprovalGate === 'function' ? kernel.attachApprovalGate(args) : { attached: false, reason: 'this kernel exposes no approval-gate seam' }),
         })
         const impl = svc.create({ facade, settings: settingsNow(), log: facade.log })
         if (!impl || typeof impl !== 'object') {
@@ -1134,7 +1158,14 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
     /** Unload: reverse exactly what was applied, newest first, and report whether the state is restored. */
     async unload(id) {
       const record = applied.get(id)
-      if (!record) throw refuse('VMU_NO_SUCH_OBJECT', 'pack ' + String(id) + ' is not applied')
+      if (!record) {
+        const appliedIds = [...applied.keys()].sort()
+        const requestIds = [...applied.entries()].map(([k, v]) => (v && v.requestId ? v.requestId : null)).filter(Boolean)
+        throw refuse('VMU_NO_SUCH_OBJECT', 'pack ' + String(id) + ' is not applied',
+          'applied pack ids are: ' + (appliedIds.length ? appliedIds.join(', ') : '(none)')
+            + (requestIds.length && requestIds.some((r) => r !== id) ? ' — the id you passed may be the REQUEST id; the manifest ids above are what unload accepts' : ''),
+          { requestedId: String(id), appliedIds, requestIds })
+      }
       const failures = []
       for (const undoOne of record.undo.slice().reverse()) {
         try { await undoOne() } catch (e) { failures.push(String(e && e.message)) }

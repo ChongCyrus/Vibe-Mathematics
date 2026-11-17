@@ -33,9 +33,11 @@ const HARNESS = read('scripts/sim/harness.mjs')
 const GATE_SRC = read('scripts/audit-prompt-budget.mjs')
 const PARITY = read('tests/sim-assembly-parity.test.mjs')
 
-ok(has(KERNEL, 'const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs })'),
-  'the kernel builds the faces map ONCE and names it ("the same map" beats "the same construction")')
-ok(has(KERNEL, 'faces: turnFaces,'),
+// ROUND-9/G5: facesFrom now takes the SECOND argument resolveOwners(null, replyFields) — the map is kernel-local faces
+// PLUS the faces the pack contributes through its reply-field owners, still constructed ONCE and named turnFaces.
+ok(has(KERNEL, 'const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }, resolveOwners(null, replyFields))'),
+  'the kernel builds the faces map ONCE (kernel-local faces + pack-contributed owners) and names it ("the same map" beats "the same construction")')
+ok(has(KERNEL, 'faces: turnFaces,') && has(KERNEL, 'resolveOwners(null, replyFields)'),
   'the turn loop is built with that object, not with a second assembly')
 ok(has(KERNEL, 'get faces() { return turnFaces },'),
   'and the SAME object is on the public kernel API, so a ruler reads it instead of assembling a rival one')

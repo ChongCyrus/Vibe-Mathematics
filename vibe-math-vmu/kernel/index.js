@@ -21,10 +21,11 @@
 //     contribution seams a pack uses to publish its own implementations.
 // What it no longer owns, and what is still being moved:
 //   · MOVED: the paper face (`kernel/paper.js` deleted; the flow lives in packs/research-core, the institution policy
-//     in packs/v5r), the verified-track status policy (a v5r `vmu.status` section now), and the reply fields
-//     formal/lean_archive/lean_run (v5r runtime.json + pack adapters).
-//   · STILL LOCAL, i.e. NOT YET TRUE: the reviewers, publication, formal, mathjobs and fidelity faces are still
-//     constructed in this file. Their construction/policy is the remaining Step 3-5 migration; this comment must not be
+//     in packs/v5r), the verified-track status policy (a v5r `vmu.status` section now), the reply fields
+//     formal/lean_archive/lean_run (v5r runtime.json + pack adapters), and the reviewers/publication faces (generic
+//     code in packs/research-core, services contributed by v5r through PACK.services).
+//   · STILL LOCAL, i.e. NOT YET TRUE: the formal, mathjobs and fidelity faces are still constructed in this file. Their
+//     construction/policy is the remaining Step 5 migration; this comment must not be
 //     read as "kernel names no research face" until those are gone. Each getter already goes through `resolveFace`, so a
 //     pack-provided implementation can replace a local one once the local construction is removed.
 
@@ -39,7 +40,7 @@ import { createPromptPipeline } from './prompt/index.js'
 // ROUND 339: the TURN LOOP itself (docs/26) - assemble, deliver, parse, dispatch - so a host that installs only the
 // framework can run a member turn instead of borrowing the original preset loop. Its ownership table names REAL
 // faces and operations (read off this kernel at runtime in round 338), and delivery goes through the host seam.
-import { createTurnOrchestrator, facesFrom, closureVoteOf, deliverByReturning } from './turn/index.js'
+import { createTurnOrchestrator, facesFrom, closureVoteOf, deliverByReturning, resolveOwners } from './turn/index.js'
 // ★★★ RUN 249 (task-69 / F-11): the framework's OWN notice block — a deployment with no pack still renders the
 // `[新到的消息]` header instead of folding the queue into the status block (the 69th live run shipped 7 unread mails
 // that reached the queue and never reached a prompt). A pack's `noticeBlock` still wins.
@@ -81,7 +82,6 @@ import { createDelegation } from './delegation.js'
 import { createMemory } from './memory.js'
 import { createBidding } from './bidding.js'
 import { createSkills } from './skills.js'
-import { createPublication } from './publication.js'
 import { createCollab } from './collab.js'   // ROUND 218: the cross-institution collaboration face (docs/22 §协作)
 import { createIdentity } from './identity.js'      // ROUND 220: who a member is, and how that ends (docs/17)
 import { createHuman } from './human.js'            // ROUND 220: the human in the loop - veto, observer, approval (docs/17)
@@ -151,7 +151,6 @@ import { createCharter } from './charter.js'
 import { createReproPack } from './repropack.js'
 // ROUND 247: the domain compliance face (docs/20 §9.1-§9.4) - clinical (N2) and animal (N3) packs.
 import { createLegalEntity } from './partnership.js'
-import { createReviewers } from './reviewers.js'
 import { SETTING_DEFS, screenSettings, resolveSettings, validateValue, unenforcedReport, assertProfile } from '../settings/schema.js'
 // PHASE 6 / P0 (goal-3 audit R1/R3): ONE reader for "configured value, else the DECLARED default". Every read below
 // that may see an unconfigured key goes through it, so the declared default has one home (settings/schema.js).
@@ -1327,7 +1326,6 @@ export function createKernel({
   // would EXTEND an authorisation's life. The rest of the kernel keeps the raw clock on purpose.
   const audit = createAudit({ settings: settingsView, bus, clock: guardedClock, log, sink: auditToDisk })
 const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedClock, log })
-const reviewers = createReviewers({ settings: settingsView, clock: guardedClock, log })
   const alerts = createAlerts({ settings: settingsView, bus, clock: guardedClock, log, metrics })
   // `library` is the EXISTING kernel library; the module counts any unsupported adapter method as skipped and
   // never pretends a delete succeeded. Delegation gets the live members surface plus explicit roots (authority
@@ -1363,7 +1361,6 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // Batch-2/3/4 tails: skills, publication and the formalisation face. Skills' capacity counts only live and
   // fresh claims (a retired claim frees its slot); all three are zero-mechanism by default.
   const skills = createSkills({ settings: settingsView, bus, clock, log, members: memberRef })
-  const publication = createPublication({ settings: settingsView, bus, clock, log, library: libraryRef, repropack })
   const collab = createCollab({ settings: settingsView, bus, clock, log })
   const identity = createIdentity({ settings: settingsView, bus, clock, log })
   const human = createHuman({ settings: settingsView, bus, clock, log })
@@ -1566,7 +1563,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     }) })
   noteSeam('deliver', 'report', report ? deliver : null)
   const lifecycle = createLifecycle({ settings: settingsView, bus, clock, log, workflow,
-    publication, collab, identity, human, discipline, custody, explain, control, citations })
+    // ★ TB-2794 Step 3: the face is pack-contributed and applied AFTER construction, so the seam is a RESOLVER (the
+    // lifecycle unwraps it at use time); a no-pack kernel keeps the existing named refusal path.
+    publication: () => resolveFace(null, 'vmu.publication'), collab, identity, human, discipline, custody, explain, control, citations })
   // K6 (round 16): the unified idempotency ledger that a replay/retry path can consult before doing work again.
   // The ledger gets BOTH the guarded clock (so a backwards clock cannot keep a pending key alive forever) and
   // the kernel store (so idempotency survives the restart that a retry usually follows).
@@ -2861,7 +2860,6 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // leaving a method ungated.
       attach('vmu.records', records, ['datasetRegister', 'put', 'supersede', 'remove', 'purge', 'rebuttal'], (m, a) => (a && (a.kind || a.id || a.dataset)) || null)
       attach('vmu.library', library, ['append', 'retract', 'supersede', 'publish'], (m, a) => (a && (a.kind || a.statement)) || null)
-      attach('vmu.publication', publication, ['publish', 'retract', 'register', 'release'], (m, a) => (a && (a.title || a.id)) || null)
       attach('vmu.trust', trust, ['signal', 'dispute', 'endEngagement'], (m, a) => (a && (a.subject || a.member)) || null)
       attach('vmu.custody', custody, ['hold', 'release', 'transfer', 'seal'], (m, a) => (a && (a.artifact || a.id)) || null)
       attach('vmu.ip', ip, ['disclose', 'dispute', 'transfer', 'hold', 'release'], (m, a) => (a && (a.claim || a.id)) || null)
@@ -2960,7 +2958,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // }}` / `…Chair` / `…Agenda` from `faces['vmu.meetings'].summary()`. A ruler without the map measured the agenda line as
   // `议程：（类型：，主席：）。` — a prompt shorter than the one a real seat reads, i.e. headroom that does not exist (the
   // same class of defect RUN 226 fixed for `bindings`/`settings`). Hoisting it is what lets a ruler use the SAME map.
-  const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs })
+  // ★★★ TB-2794 Step 2B (round-9 P1, MEASURED): the face map is built from the EFFECTIVE owners, not just the core table.
+  // A PACK reply field (formal/lean_archive/lean_run) names a face.op; with the default core-only owners the map lacked
+  // the MathJobs submit face (a FACE, not a settings key), so a declared lean field was reported `face-not-wired` even though the face existed — the field
+  // was declared, the face was mounted, and dispatch could not see it. `replyFields` is the SAME folded declaration the
+  // loop uses, so one resolution feeds both sides.
+  const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }, resolveOwners(null, replyFields))
   // ★★★★★★★ RUN 76 / TB-2712 (F76-11): THE MD PARSER IS A DECLARED READ LEG, NOT A HOST CONVENIENCE.
   // The status block's blueprint reading parses a `blueprint` row's BODY with records.mdParse/mdDigest (RUN 258's
   // design: one reader, the kernel's own md door). But `facesFrom` binds ONLY the operations the catalogue declares,
@@ -3676,7 +3679,6 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   registry.register('vmu.metrics', { apiVersion: 1 }, { kind: 'service', description: 'metric observation, KPI judgement and counted drops (docs/21 搂4)' })
   registry.register('vmu.audit', { apiVersion: 1 }, { kind: 'service', description: 'append-only audit rows, redaction before storage, counted ring drops (docs/21 搂2)' })
     registry.register('vmu.partnership', { apiVersion: 1 }, { kind: 'service', description: 'legal entities and tax field slots: registration, account binding, invoice slot validation (volume 22 §L285)' })
-    registry.register('vmu.reviewers', { apiVersion: 1 }, { kind: 'service', description: 'reviewer market: COI recusal, blind mapping with tracing, concurrent load cap (volume 16 §L297)' })
   registry.register('vmu.alerts', { apiVersion: 1 }, { kind: 'service', description: 'thresholds, alert-level dedup, silences that still count, SLO tri-state (docs/21 搂5 搂13)' })
   registry.register('vmu.retention', { apiVersion: 1 }, { kind: 'service', description: 'report-first retention, permanent markers, quota tri-state, gc (docs/07 搂4.3 搂4.8)' })
   registry.register('vmu.delegation', { apiVersion: 1 }, { kind: 'service', description: 'delegation that can only narrow (S-2), expiry, revocation cascade (docs/17 搂4)' })
@@ -3718,7 +3720,6 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   registry.register('vmu.meetingverdict', { apiVersion: 1 }, { kind: 'service', description: '一场辩论的最终裁定：把各成员的 [0,1] 布尔概率聚合为「全一致取该值、否则取算术平均」，并产出给命题卡持有者的通知载荷（machine-readable，交出给既有 mailbox 面投递）；只属算术与载荷，谁辩论/何时结束/谁是卡主/措辞归 pack（docs/03 §2）' })
   registry.register('vmu.report', { apiVersion: 1 }, { kind: 'service', description: 'reporting: declarable report triggers (event/period/threshold), content templates, recipients and channels, an off switch whose default declares nothing, an append-only trace, and a parameter-config face whose domain and owners come from settings rather than from the kernel (docs/22 §reporting)' })
   registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 搂8)' })
-  registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 搂7)' })
   registry.register('vmu.collab', { apiVersion: 1 }, { kind: 'service', description: 'collab: counterparty register, agreements with expiry warning, data-sharing template, joint authorship and the settlement cycle with reconciliation tolerance (docs/22 §协作)' })
   registry.register('vmu.identity', { apiVersion: 1 }, { kind: 'service', description: 'identity: principal binding, trusted issuers, claim-to-slot mapping, institutional memberships with a cap, pseudonym scopes, end-of-membership disposition and audited reads (docs/17)' })
   registry.register('vmu.human', { apiVersion: 1 }, { kind: 'service', description: 'human: veto scope and reason, observer visibility, approval waiting whose declared timeout is hold rather than allow, and dashboard scope (docs/17)' })
@@ -3954,6 +3955,18 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // offers no delivery seam rather than pretending a member answered (docs/26 stage 3).
     turn,
     store,
+    // ★ TB-2794 Step 3: GENERIC SEAMS for pack-contributed faces. The gate reads the SAME human.gate this kernel uses
+    // for its own faces, so a pack face cannot be gated by a second policy; the clocks let a contributed face keep the
+    // same time semantics as the framework (guarded for time-sensitive modules).
+    get clock() { return clock },
+    get guardedClock() { return guardedClock },
+    attachApprovalGate({ face = null, target = null, methods = [], subjectOf = null } = {}) {
+      if (!human || typeof human.gate !== 'function') return { attached: false, wrapped: [], missing: [], reason: 'this kernel has no approval gate' }
+      const existing = (Array.isArray(methods) ? methods : []).filter((n) => target && typeof target[n] === 'function')
+      if (existing.length === 0) return { attached: false, wrapped: [], missing: methods.slice(), reason: 'no matching methods on the contributed face' }
+      const out = attachApprovalGate({ target, methods: existing, gate: human.gate, subjectOf, face })
+      return { attached: out.wrapped.length > 0, wrapped: out.wrapped, missing: out.missing, qualified: out.qualified, unwrap: out.unwrap }
+    },
     // Getters, not captured values: a pack can re-declare the institution (slots/tracks) AFTER the kernel
     // was constructed, so the public surface must always reflect the CURRENT surfaces (docs/10 搂2).
     get library() { return library },
@@ -3995,7 +4008,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
 
     /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */
     get legalentity() { return legalEntity },
-    get reviewers() { return resolveFace(reviewers, 'vmu.reviewers') },
+    // ★ TB-2794 Step 3: no local construction left (a local face + pack provideService would CONFLICT). A kernel with no
+    // pack has NO such face (null); the host tools report that by name.
+    get reviewers() { return resolveFace(null, 'vmu.reviewers') },
     get alerts() { return alerts },
     get retention() { return retention },
     get delegation() { return delegation },
@@ -4013,7 +4028,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get memory() { return memory },
     get bidding() { return bidding },
     get skills() { return skills },
-    get publication() { return resolveFace(publication, 'vmu.publication') },
+    get publication() { return resolveFace(null, 'vmu.publication') },
     get collab() { return collab },
     get identity() { return identity },
     get human() { return human },

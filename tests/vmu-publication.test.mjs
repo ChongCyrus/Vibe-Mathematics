@@ -1,8 +1,8 @@
-// tests/vmu-publication.test.mjs — kernel/publication.js (batch-3 slice 4).
+// tests/vmu-publication.test.mjs — packs/research-core/publication.js (batch-3 slice 4).
 // Scenarios: version-chain jumps/rollbacks refused with current + legal next; "on request" availability
 // refused; claimed registration without receipt refused (offline pending works); badge mismatch refused;
 // failed replication recorded as a first-class result; counted truncation; zero-config; determinism.
-import { createPublication, VERSION_CHAIN, isVague } from '../vibe-math-vmu/kernel/publication.js'
+import { createPublication, VERSION_CHAIN, isVague } from '../vibe-math-vmu/packs/research-core/publication.js'
 
 let pass = 0, fail = 0
 const ok = (cond, label) => { if (cond) { pass++ } else { fail++; console.log('FAIL ' + label) } }

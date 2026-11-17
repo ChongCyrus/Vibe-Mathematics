@@ -13,7 +13,7 @@
 //
 // AND IT CONFIRMED THE PREVIOUS RETRACTION INDEPENDENTLY: capacity's refusals do carry `enforcedScope: 'evaluated-so-far'` as
 // their own property - the same field that a helper had discarded when it reported a defect against conference.js.
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import { REPO } from './_lib/repo-root.mjs'
 const K = join(REPO, 'vibe-math-vmu', 'kernel')
@@ -34,7 +34,8 @@ const norm = async (fn) => {
 }
 const MEM = await import(url('memory.js'))
 const CAP = await import(url('capacity.js'))
-const PUB = await import(url('publication.js'))
+// ★ TB-2794 Step 3: publication moved to packs/research-core; the claim suite follows the code (no second copy).
+const PUB = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'publication.js')).href)
 
 console.log('=== 1. memory: ① "MEMORY NEVER AUTHORIZES — may()/authorize() ALWAYS refuse by name (VMU_MEMORY_NOT_AUTHORITY)" ===')
 ok(typeof MEM.createMemory === 'function', '★ discovery: memory exports createMemory', typeof MEM.createMemory)

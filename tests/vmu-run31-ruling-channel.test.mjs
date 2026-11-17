@@ -214,8 +214,8 @@ try {
   const noBallot = await R(A, 'vibe_v5_verdict', { target: 'p-r31', verdict: 1, reason: 'run31 原样复现', member: M1 })
   ok(noBallot && noBallot.ok === false && codeOf(noBallot) === 'VMU_NO_SUCH_OBJECT' && noBallot.message === 'no LIVE ballot with id p-r31',
     '★★★ G1 用命题 id 当票箱 target ⇒ 仍是 run 31 的原文拒绝（no LIVE ballot with id p-r31）', noBallot && { code: codeOf(noBallot), message: noBallot.message })
-  ok(noBallot && noBallot.hint === 'the ballot must be open; the original cast verdicts on the object under verification',
-    '★★ G2 连 hint 都没改：票箱面的说明与 run 31 逐字相同', noBallot && noBallot.hint)
+  ok(noBallot && typeof noBallot.hint === 'string' && noBallot.hint.startsWith('the ballot must be open; the original cast verdicts on the object under verification') && noBallot.hint.includes('REACHABLE INSTEAD'),
+    '★★ G2 票箱面的说明仍保留 run 31 的原句，并按 C#25 补上 REACHABLE INSTEAD（不是逐字停旧：拒绝 hint 已覆盖该面）', noBallot && noBallot.hint)
   const live = kernel.ballot({ id: 'b-live-1', question: 'run31 活票箱对照' })
   ok(live && typeof live.cast === 'function', 'G3 前置：造出一个 LIVE 票箱（下面的正例才有对象）', !!live)
   await live.open({ by: M1 })

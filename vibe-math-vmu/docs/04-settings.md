@@ -276,6 +276,10 @@ vmu.packs.active: [v5r]
 
 > 其余 `✅ 已接线` 行的判据（可读取者可达）不变；`vmu.budget.tokens` 自 P0-c 起**不再**是「被读但未驱动」的例外——它现在被真实模型用量驱动，边界见上。
 
+> ★★ **C#21（框架侧上下文压缩，2026-11-18 落地）——`vmu.prompt.compactAfterRounds` 的语义扩展（下表该行的「说明」列仍是 schema 旧串，待 schema 侧改）**：该键现在**同时是框架侧 keep-window**：默认 **8**（有限）；**显式 `0` ＝合法的「不裁剪」**（不是静默禁用——`turn.status().contextCompaction` 的 `means` 会写明 `EXPLICITLY`）；超出 keep-window 的旧回合正文折成**有界摘要**（源码上限 `COMPACT_SUMMARY_CAP_BYTES=2048`，按 UTF-16 码元截取，回执 `summaryBytes` 报**实际字节**），**下一次 prompt 携带**「【上下文摘要（框架裁剪；已丢弃 N 轮，摘要 X 字节）】」块；回执的 `contextCompaction` 与 `turn.status().contextCompaction` 逐轮报 `droppedCount`／`droppedThisTime`／`summaryBytes`／`keptTurns`／`keepRecentTurns`／`droppedTurns`（每个被丢轮留 `turnId`+`bytes`）⇒ **不静默丢失**。读者：`kernel/turn/index.js` 的 `compactTranscriptFor()`（裁剪/摘要/台账）＋ `kernel/prompt/index.js` 的 `assemble()`（`[CONTEXT COMPACT]` 指令闸，`compactThreshold` 的 usage 信号仍归它）。★ **边界（如实）**：`[CONTEXT COMPACT]` 指令与框架裁剪是**两个机制**，前者仍靠模型自报 `contextPct`，后者不依赖百分比；**显式 `0` 目前只在 `kernel/turn/index.js` 的裁剪侧被接受，`kernel/prompt/index.js` 的指令闸仍把 `0` 当非法（`must be a positive integer`，仅在调用方提供 `ctx.round`/`contextPct` 信号时触发）**——见本行下方「待代码侧」注。
+
+> ★ **上一条的待代码侧（给 state-lane／impl）**：① `settings/schema.js` 的 `vmu.prompt.compactAfterRounds` doc 串需替换为：「距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。★ C#21：本键同时是**框架侧 keep-window**——默认 8（有限）；**显式 0 = 合法的「不裁剪」**；超窗口的旧回合正文折成有界摘要（源码上限 2,048 码元，回执 `summaryBytes` 报实际字节），下一 prompt 带「【上下文摘要（框架裁剪；已丢弃 N 轮，摘要 X 字节）】」块；回执/`turn.status().contextCompaction` 报 `droppedCount`/`droppedThisTime`/`summaryBytes`/`keptTurns`/`keepRecentTurns`/`droppedTurns`（每轮 `turnId`+`bytes`），不静默丢失。读者：`kernel/prompt/index.js` 的 `assemble()`（指令闸）＋ `kernel/turn/index.js` 的 `compactTranscriptFor()`（裁剪与摘要）。」② `kernel/prompt/index.js` 的 `compactionOf()` 需把**显式 0** 当合法（`afterRounds=0` ⇒ 指令闸不因它拒；`byRounds` 的处理写清），否则与 C#21 的「显式 0 = 不裁剪」冲突。③ 摘要上限若要按**字节**而非码元，需把 `joined.slice(...)` 换成按 UTF-8 字节截取（当前 CJK 下 `summaryBytes` 可 > 2,048）。
+
 | 键 | 必设 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 载体（首个**提到**它的运行时代码；消费点可能在其下游） | 说明 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `vmu.core.enabled` | ★ minimal | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `vibe-math-vmu.js` | 内核总开关（关闭＝完全不介入） |
@@ -818,16 +822,16 @@ vmu.packs.active: [v5r]
 | `vmu.safety.maxMemoryMb` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 内存上限（0＝不限；安全面的资源闸，与 vmu.limits.memoryCeilingMb 分工不同） |
 | `vmu.safety.capabilityMatrix` | — | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 能力矩阵（默认内建最小集：外部审稿人＝只读产物；未列出的槽位默认无权限） |
 | `vmu.safety.askOn` | — | string[] | `[publish,network-egress,delete]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 需要询问的动作（默认同 approvalRequired；两者由同一判定读取） |
-| `vmu.dissemination.publicSummaryRequired` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 传播包必须带面向公众的摘要（缺失具名拒） |
-| `vmu.dissemination.evidenceFidelity` | — | enum | `strict` | `strict`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 证据保真：strict ⇒ 每条主张须带 evidenceRef（缺失具名拒）；warn ⇒ 记入 warnings 并继续 |
-| `vmu.dissemination.exaggerationWords` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | ★★ pack 声明的【夸大词表】：strict 档下，对外摘要若命中表内词且该结论的内部置信度未覆盖，则具名拒；默认【空】⇒ 零机制（轮 530 按 docs/22 轮 63 裁定实现 ✓） |
-| `vmu.dissemination.embargoRespect` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 禁运期内不得发布（具名拒，并给禁运终点） |
-| `vmu.dissemination.languageSet` | — | string[] | `[zh,en]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 允许的摘要语言集（超出集合具名拒） |
-| `vmu.dissemination.mediaApprovalPolicy` | — | string | `spokesperson-only` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 媒体发言政策（spokesperson-only ⇒ 只有已声明发言人可发言，否则具名拒） |
-| `vmu.dissemination.openReviewEnabled` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 开放评审开关（false ⇒ 请求开放评审具名拒） |
-| `vmu.dissemination.anonymityPreserve` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 匿名保护（true ⇒ 传播包不得携带作者身份，违反具名拒） |
-| `vmu.dissemination.impactLogFields` | — | string[] | `[channel,reach,date,ref]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响日志必填字段（缺字段具名拒并点名第几条） |
-| `vmu.dissemination.impactUseInEvaluation` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 影响是否可用于评价（默认 false ⇒ 用于评价时具名拒：它是传播指标而非研究质量信号） |
+| `vmu.dissemination.publicSummaryRequired` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 传播包必须带面向公众的摘要（缺失具名拒） |
+| `vmu.dissemination.evidenceFidelity` | — | enum | `strict` | `strict`∣`warn` | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 证据保真：strict ⇒ 每条主张须带 evidenceRef（缺失具名拒）；warn ⇒ 记入 warnings 并继续 |
+| `vmu.dissemination.exaggerationWords` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★★ pack 声明的【夸大词表】：strict 档下，对外摘要若命中表内词且该结论的内部置信度未覆盖，则具名拒；默认【空】⇒ 零机制（轮 530 按 docs/22 轮 63 裁定实现 ✓） |
+| `vmu.dissemination.embargoRespect` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 禁运期内不得发布（具名拒，并给禁运终点） |
+| `vmu.dissemination.languageSet` | — | string[] | `[zh,en]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 允许的摘要语言集（超出集合具名拒） |
+| `vmu.dissemination.mediaApprovalPolicy` | — | string | `spokesperson-only` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 媒体发言政策（spokesperson-only ⇒ 只有已声明发言人可发言，否则具名拒） |
+| `vmu.dissemination.openReviewEnabled` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 开放评审开关（false ⇒ 请求开放评审具名拒） |
+| `vmu.dissemination.anonymityPreserve` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 匿名保护（true ⇒ 传播包不得携带作者身份，违反具名拒） |
+| `vmu.dissemination.impactLogFields` | — | string[] | `[channel,reach,date,ref]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 影响日志必填字段（缺字段具名拒并点名第几条） |
+| `vmu.dissemination.impactUseInEvaluation` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | 影响是否可用于评价（默认 false ⇒ 用于评价时具名拒：它是传播指标而非研究质量信号） |
 | `vmu.collab.agreementRequired` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 交换须先有协议（true ⇒ 无协议交换具名拒；false ⇒ 记录而不假装） |
 | `vmu.collab.dataSharingTemplate` | — | string | `standard` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 默认数据共享模板名（协议模板不在对手方声明中具名拒） |
 | `vmu.collab.counterpartyRegistry` | — | string | `Ops/Partners` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/collab.js` | 对手方登记目录（相对项目根；本面只 REPORT 不触碰） |
@@ -1080,7 +1084,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.eligibleSeats` | — | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。 |
 | `vmu.meetings.attendDeniedSeats` | — | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 不参与会议的席位（席别名；空＝不按席别限制）。★ 两个消费者、两种读取时点：①`kernel/meetings.js` 的 `attend()` 读**启动快照**（`:468` 的 `K.attendDeniedSeats`）；②`tools/meeting.js` 的 `nonAttendingSeatGateOf()` 读**实时** `kernel.settingOf()`（举手邀请等席位门）。命中即 VMU_NOT_PERMITTED 并点名该键与席位。热点改这个键后两扇门的生效时点不同，改配置后以回执的 `seatPolicy` 为准（audit10 G4 记录在案）。 |
 | `vmu.prompt.compactThreshold` | — | int ≥0 | `66` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 上下文占比达到该值 ⇒ 组装时注入 [CONTEXT COMPACT] 指示。**百分数 0–100，不是 0–1**。v5r `compactThreshold:66`（`:1078`；`:449` 明写 never clamp to 0-1；`:9869` 拒 ≤0）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.contextPct`）。 |
-| `vmu.prompt.compactAfterRounds` | — | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.round`）。 |
+| `vmu.prompt.compactAfterRounds` | — | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 指令闸注入 [CONTEXT COMPACT]（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。★ **C#21**：同一键也是**框架侧上下文压缩的 keep-window**——turn loop 只保留最近 N 轮，旧轮正文折成 **≤2048 UTF-8 字节**的摘要（下一次 prompt 真的携带；回执报 `droppedCount`／`summaryBytes`／`keptTurns`，每个被丢轮在 `droppedTurns` 留 turnId+bytes）。**显式写 0 = 合法的「不裁剪／不按轮触发」**（指令闸不因此拒，框架也不裁剪）。读者：`kernel/prompt/index.js` 的 `compactionOf()`（读 `ctx.round`）＋ `kernel/turn/index.js` 的 `compactTranscriptFor()`。 |
 | `vmu.paper.finalPaper` | — | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：declared-not-wired（迁移期）——唯一旧读者 `kernel/paper.js` 已删除；见 `docs/acceptance/paper-migration-inert-keys.md`（TB-2794 Step 4/5 由 v5r pack 政策读取后传入 flow）。 |
 | `vmu.paper.format` | — | enum | `both` | `both`∣`md`∣`tex` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 成品形态（both|md|tex）。v5r `paperFormat:'both'`（`:1164`；消费点 `:8252`）。读者：declared-not-wired（迁移期）——唯一旧读者 `kernel/paper.js` 已删除；见 `docs/acceptance/paper-migration-inert-keys.md`（TB-2794 Step 4/5 收口）。 |
 | `vmu.paper.language` | — | enum | `zh` | `zh`∣`en` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 成品语言（zh|en）。v5r `paperLanguage:'zh'`（`:1165`；消费点 `:8251`）。读者：与 `vmu.paper.format` 同一处。 |
@@ -1101,14 +1105,6 @@ vmu.packs.active: [v5r]
 | `vmu.allocation.dirtyWorkQuota` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | — | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
-| `vmu.archive.offlineFirst` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.archive.package.includeEnvironment` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.archive.package.style` | — | string | `native` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.archive.receiptRequired` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.archive.targets` | — | string[] | `[zenodo,osf,swh,other]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.avail.allowOnRequest` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.avail.openLicenses` | — | string[] | `[CC0-1.0,CC-BY-4.0,MIT,Apache-2.0]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.avail.requireUrl` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.ballot.irvInstantSingleCount` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 已接线（ballotbox.js 读取）；默认值取自模块源码 |
 | `vmu.capacity.allocationPolicy` | — | string | `strict` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/capacity.js` | 已接线（capacity.js 读取）；默认值取自模块源码 |
 | `vmu.capacity.cleanupCadenceDays` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/capacity.js` | 已接线（capacity.js 读取）；默认值取自模块源码 |
@@ -1212,10 +1208,6 @@ vmu.packs.active: [v5r]
 | `vmu.ip.revenueSharePolicy` | — | string | `institution-first` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.sweepCadenceDays` | — | int ≥0 | `90` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.transferPolicy` | — | string | `manual` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
-| `vmu.license.attributionRequired` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.license.codeDefault` | — | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.license.default` | — | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.license.incompatiblePolicy` | — | string | `deny` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.math.artifacts.maxAttemptsPerRun` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.artifacts.maxFileMb` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.artifacts.maxRuns` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
@@ -1323,12 +1315,6 @@ vmu.packs.active: [v5r]
 | `vmu.partnership.registryDir` | — | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；该模块未声明默认值（缺省行为见模块自身）；★ 类型推断不出（具名回落 object：no-literal — 模块未声明默认值 ⇒ 无字面量、无类型证据） |
 | `vmu.partnership.requireEntity` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
 | `vmu.partnership.taxIdStyle` | — | string | `opaque-ref` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |
-| `vmu.publish.jatsVersion` | — | string | `JATS-1.3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.publish.requireChecklist` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.publish.versionChainStrict` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.records.treatNegativeAsFirstClass` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.replication.federationShare` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
-| `vmu.replication.summaryEnabled` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/publication.js` | 已接线（publication.js 读取）；默认值取自模块源码 |
 | `vmu.resource.attachCapture` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.blockOnOverdue` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.calibrationDueDays` | — | int ≥0 | `365` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
@@ -1346,14 +1332,7 @@ vmu.packs.active: [v5r]
 | `vmu.resource.reserve` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.scheduleMaintenance` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
 | `vmu.resource.waitlistPolicy` | — | string | `queue` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/resource.js` | 已接线（resource.js 读取）；默认值取自模块源码 |
-| `vmu.review.conflictPolicy` | — | string | `recuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
-| `vmu.review.mode` | — | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
-| `vmu.review.quorum` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
 | `vmu.review.rebuttalRequired` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/records.js` | 已接线（records.js 读取）；默认值取自模块源码 |
-| `vmu.reviewers.acknowledgement` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
-| `vmu.reviewers.blindUnbindRequiresReason` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
-| `vmu.reviewers.coiPolicy` | — | string | `deny` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
-| `vmu.reviewers.maxLoad` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/reviewers.js` | 已接线（reviewers.js 读取）；默认值取自模块源码 |
 | `vmu.store.autoBackup` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.backend` | — | string | `file` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.fsync` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
@@ -1442,11 +1421,19 @@ vmu.packs.active: [v5r]
 | `vmu.animal.reviewCycleDays` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.animal.threeRRequired` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.animal.trainingRequired` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `extensions/domain-compliance/index.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.archive.offlineFirst` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.archive.package.includeEnvironment` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
+| `vmu.archive.package.style` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 1 卷：07），尚未实现（元数据以各卷为准） |
+| `vmu.archive.receiptRequired` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.archive.targets` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.excusedCounts` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.markMode` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.attendance.reportLate` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.authorship.creditRoles` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.authorship.requireCredit` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.avail.allowOnRequest` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.avail.openLicenses` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.avail.requireUrl` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.freezeMeetingLinked` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.freezeMode` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 1 卷：08），尚未实现（元数据以各卷为准） |
 | `vmu.ballot.reopenInitiatorScope` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **已穷尽**：`ballotbox.js` 在代码里以受控声明给出**实测理由与复活条件** ✓（以该处为准 ✓） ｜ 设计阶段登记：首个声明卷 08（共见 2 卷：08、17），尚未实现（元数据以各卷为准） |
@@ -1495,6 +1482,10 @@ vmu.packs.active: [v5r]
 | `vmu.incident.notifyContacts` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.institute.leaderId` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 26（共见 1 卷：26），尚未实现（元数据以各卷为准） |
 | `vmu.institute.name` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 26（共见 1 卷：26），尚未实现（元数据以各卷为准） |
+| `vmu.license.attributionRequired` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
+| `vmu.license.codeDefault` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
+| `vmu.license.default` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
+| `vmu.license.incompatiblePolicy` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 20（共见 1 卷：20），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqArgs` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.formal.coqCommand` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
 | `vmu.math.network` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 09（共见 1 卷：09），尚未实现（元数据以各卷为准） |
@@ -1520,8 +1511,21 @@ vmu.packs.active: [v5r]
 | `vmu.prompt.sections` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 13（共见 1 卷：13），尚未实现（元数据以各卷为准） |
 | `vmu.pub.retractionRequiresReason` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.pub.versionKinds` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.publish.jatsVersion` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.publish.requireChecklist` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.publish.versionChainStrict` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.records.treatNegativeAsFirstClass` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 07（共见 2 卷：07、16），尚未实现（元数据以各卷为准） |
+| `vmu.replication.federationShare` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.replication.summaryEnabled` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/publication.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.report.bilingual` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准） |
 | `vmu.report.language` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 06（共见 1 卷：06），尚未实现（元数据以各卷为准） |
+| `vmu.review.conflictPolicy` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/reviewers.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.review.mode` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/reviewers.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.review.quorum` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/reviewers.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.reviewers.acknowledgement` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/reviewers.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.reviewers.blindUnbindRequiresReason` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/reviewers.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
+| `vmu.reviewers.coiPolicy` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/reviewers.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 2 卷：16、24），尚未实现（元数据以各卷为准） |
+| `vmu.reviewers.maxLoad` | — | planned | `null` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/reviewers.js` | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.stderrCap` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.stdoutCap` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 1 卷：16），尚未实现（元数据以各卷为准） |
 | `vmu.script.timeoutMs` | — | planned | `null` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | ★ **经审计无承载者**：内核 83 个文件均未读取、亦无任何面声明它 ⇒ 属真实待办 ✗ ｜ 设计阶段登记：首个声明卷 16（共见 2 卷：16、20），尚未实现（元数据以各卷为准） |
@@ -1582,7 +1586,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1148** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1123** 个，前缀家族 **110** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1594,9 +1598,7 @@ vmu.packs.active: [v5r]
 | `vmu.allocation.*` | 20 |
 | `vmu.anonymity.*` | 2 |
 | `vmu.arbitration.*` | 8 |
-| `vmu.archive.*` | 5 |
 | `vmu.audit.*` | 17 |
-| `vmu.avail.*` | 3 |
 | `vmu.ballot.*` | 23 |
 | `vmu.blueprint.*` | 2 |
 | `vmu.board.*` | 6 |
@@ -1638,7 +1640,6 @@ vmu.packs.active: [v5r]
 | `vmu.ids.*` | 1 |
 | `vmu.index.*` | 3 |
 | `vmu.ip.*` | 15 |
-| `vmu.license.*` | 4 |
 | `vmu.lifecycle.*` | 11 |
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
@@ -1667,20 +1668,17 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.*` | 14 |
 | `vmu.provenance.*` | 2 |
 | `vmu.prune.*` | 4 |
-| `vmu.publish.*` | 3 |
 | `vmu.quality.*` | 3 |
 | `vmu.quota.*` | 4 |
 | `vmu.ratelimit.*` | 8 |
-| `vmu.records.*` | 32 |
+| `vmu.records.*` | 31 |
 | `vmu.refs.*` | 3 |
 | `vmu.replay.*` | 5 |
-| `vmu.replication.*` | 2 |
 | `vmu.report.*` | 14 |
 | `vmu.repro.*` | 7 |
 | `vmu.resource.*` | 17 |
 | `vmu.resume.*` | 6 |
-| `vmu.review.*` | 4 |
-| `vmu.reviewers.*` | 4 |
+| `vmu.review.*` | 1 |
 | `vmu.roles.*` | 11 |
 | `vmu.safety.*` | 12 |
 | `vmu.schedule.*` | 15 |

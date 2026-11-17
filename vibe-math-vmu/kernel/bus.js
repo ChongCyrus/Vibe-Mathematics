@@ -253,8 +253,8 @@ export const HOOK_REGISTRY = Object.freeze([
   // extension may legitimately react to) or listed in `LOG_ONLY_EMITS` (an accounting/observability row that
   // is NOT a subscribable hook). Nothing is left in between - see `docs/05 §5.4` and the classification gate
   // `D:\_tmp\vmu-hook-emit-census.mjs` (仓库外临时探针).
-  { name: 'publication/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a paper advanced a publication stage', producer: 'kernel/publication.js' },
-  { name: 'publication/replication-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a replication attempt failed', producer: 'kernel/publication.js' },
+  { name: 'publication/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a paper advanced a publication stage', producer: 'packs/research-core/publication.js' },
+  { name: 'publication/replication-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a replication attempt failed', producer: 'packs/research-core/publication.js' },
   { name: 'notify/emit', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a notification was emitted to the delivery seam', producer: 'kernel/notify.js' },
   { name: 'crypto/signed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a payload was signed', producer: 'kernel/crypto.js' },
   { name: 'crypto/rotated', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'key material was rotated', producer: 'kernel/crypto.js' },
@@ -263,7 +263,7 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'ratelimit/queued', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a call was queued by the rate limiter', producer: 'kernel/ratelimit.js' },
   { name: 'ratelimit/degraded', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the rate limiter degraded a call', producer: 'kernel/ratelimit.js' },
   { name: 'recruit/confirmed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a recruitment was confirmed into a slot', producer: 'kernel/recruit.js' },
-  { name: 'reviewers/registered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a reviewer was registered', producer: 'kernel/reviewers.js' },
+  { name: 'reviewers/registered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a reviewer was registered', producer: 'packs/research-core/reviewers.js' },
   { name: 'workflow/advance', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a workflow advanced a state', producer: 'kernel/workflow.js' },
   { name: 'workflow/retry', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a workflow step was retried', producer: 'kernel/workflow.js' },
   { name: 'workflow/escalate', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a workflow escalated', producer: 'kernel/workflow.js' },

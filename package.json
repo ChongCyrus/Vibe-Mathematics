@@ -784,7 +784,7 @@
     "vibe-math-vmu/kernel/partnership.js",
     "vibe-math-vmu/kernel/projmigrate.js",
     "vibe-math-vmu/kernel/prompt/index.js",
-    "vibe-math-vmu/kernel/publication.js",
+    "vibe-math-vmu/packs/research-core/publication.js",
     "vibe-math-vmu/kernel/ratelimit.js",
     "vibe-math-vmu/kernel/receiptbounds.js",
     "vibe-math-vmu/kernel/records.js",
@@ -800,7 +800,7 @@
     "vibe-math-vmu/kernel/resume.js",
     "vibe-math-vmu/kernel/resumeflush.js",
     "vibe-math-vmu/kernel/retention.js",
-    "vibe-math-vmu/kernel/reviewers.js",
+    "vibe-math-vmu/packs/research-core/reviewers.js",
     "vibe-math-vmu/kernel/rules.js",
     "vibe-math-vmu/kernel/scheduler.js",
     "vibe-math-vmu/kernel/script-bridge.js",
@@ -955,7 +955,9 @@
     "示例图/框架图-v4.svg",
     "示例图/框架图-v5-en.svg",
     "示例图/框架图-v5.svg",
-    "vibe-math-vmu/packs/v5r/reply-field-adapters.js"
+    "vibe-math-vmu/packs/v5r/reply-field-adapters.js",
+    "scripts/audit-refusal-means.mjs",
+    "tests/audit-refusal-means.test.mjs"
   ],
   "license": "MIT",
   "keywords": [

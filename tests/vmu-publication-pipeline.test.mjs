@@ -2,6 +2,9 @@
 // and asserts each stage ADVANCES rather than succeeding: in a pipeline, getting past one check and stopping at the next is progress.
 import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+// ★ TB-2794 Step 3: the publication face is pack-contributed now; this suite drives the TOOL pipeline, so it supplies the
+// generic face directly through the SAME service seam a pack uses (no pack policy needed for these order/hint assertions).
+import { createPublication } from '../vibe-math-vmu/packs/research-core/publication.js'
 
 let passed = 0
 let failed = 0
@@ -14,6 +17,7 @@ const ok = (cond, label, detail) => {
 }
 
 const k = createKernel({ clock: () => 0, settings: {} })
+k.provideService({ name: 'vmu.publication', apiVersion: 1, impl: createPublication({ clock: () => 0, settings: {} }), by: 'test-publication-face' })
 const flags = Object.fromEntries(Object.keys(TOOL_NAMES).map((key) => [key + 'Tool', true]))
 const spec = toolSpecs({ kernel: k, settings: {}, ...flags }).find((s) => s.name === TOOL_NAMES.publication)
 const call = (action, request) => spec.run({ action, request })

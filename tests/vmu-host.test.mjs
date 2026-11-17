@@ -518,7 +518,10 @@ if (SELF_PROBE) {
   // lanes then added more status sections (usage / verifiedWarrantPolicy / closureVote / servicesProvided 等)，实测 10003。
   // 增长明细：这些段是其他车道的在飞改动；C#15 的 limits/tokenBudget 块**不在 summary**（只在 budget.status）。本 pin 只
   // 记录「实测值 + 原因」，不是放宽语义；上限仍是一条防 runaway 的硬线（10240）。
-  ok(text.length <= 10240, '★ 真装配（v5r pack）下 status 默认 summary ≤ 10240 字节（HEAD 9972 → 当前实测 10003：增长来自 usage/warrantPolicy/closureVote/servicesProvided 等新增 status 段；C#15 块不在 summary）', 'bytes=' + text.length)
+  // ★ TB-2794 Step 3 re-pin (Lead ruling: measured value + reason, never a silent cut): the v5r display now CONTRIBUTES
+  // vmu.reviewers + vmu.publication, so `servicesProvided` names two more faces (measured 10271 bytes, was 10003). The
+  // ceiling still exists to catch RUNAWAY growth; it is re-pinned just above the measured value with the cause written down.
+  ok(text.length <= 10271, '★ 真装配（v5r pack）下 status 默认 summary ≤ 10271 字节（HEAD 9972 → 10003 → Step 3 实测 10271：增长来自 servicesProvided 新增 vmu.reviewers/vmu.publication 两条贡献面；C#15 块不在 summary）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),

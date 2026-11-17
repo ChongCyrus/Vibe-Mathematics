@@ -15,6 +15,12 @@ export function makeReviewersSpec({ param, refused, TOOL_NAMES, kernel }) {
     run: async ({ action, id, expertise, conflicts, reviewerId, submissionId } = {}) => {
       try {
         const reviewers = kernel.reviewers
+        // ★ TB-2794 Step 3: the face is CONTRIBUTED by a pack. A host that mounts no provider must get a named refusal,
+        // not a TypeError on null — and the hint names the only repair (mount the pack that contributes the face).
+        if (!reviewers || typeof reviewers !== 'object') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'no pack provides vmu.reviewers in this assembly',
+            'mount the pack that contributes the face (the v5r pack publishes it through PACK.services)')
+        }
         if (action === 'register') return Object.assign({ ok: true, action }, await reviewers.register({ id, expertise, conflicts }))
         if (action === 'assign') return Object.assign({ ok: true, action }, await reviewers.assign({ reviewerId, submissionId }))
         if (action === 'unbind') return Object.assign({ ok: true, action }, await reviewers.unbind({ reviewerId, submissionId }))

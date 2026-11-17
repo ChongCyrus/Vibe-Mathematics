@@ -1,7 +1,7 @@
 // tests/vmu-reviewers.test.mjs — the reviewer market (volume 16 §L297-§L305).
 //
 // ROUND 279. The volume states the schema, three field-level rules and the defaults; each rule is pinned to the key that declares it.
-import { createReviewers } from '../vibe-math-vmu/kernel/reviewers.js'
+import { createReviewers } from '../vibe-math-vmu/packs/research-core/reviewers.js'
 
 let pass = 0
 let fail = 0

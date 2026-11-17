@@ -136,16 +136,23 @@ export function createPromptPipeline({
     }
     const rawAfterValue = sget('vmu.prompt.compactAfterRounds')
     const rawAfter = rawAfterValue === undefined || rawAfterValue === null || rawAfterValue === '' ? 8 : Number(rawAfterValue)
-    const afterRounds = Number.isFinite(rawAfter) && rawAfter > 0 ? Math.floor(rawAfter) : null
+    // ★★★ C#21 (ROUND-8 follow-up, real conflict): 0 is a LEGAL declaration, not an invalid value. It means
+    // "no round-based compaction directive" — the SAME decision the framework-side keep-window reads as
+    // "do not trim". Refusing it here made "vmu.prompt.compactAfterRounds: 0" throw on every live turn (the turn loop
+    // passes `round`), contradicting the C#21 contract. Only a value that is neither 0 nor a positive integer is refused.
+    const explicitZeroAfter = rawAfterValue === 0 || rawAfterValue === '0'
+    const afterRounds = Number.isFinite(rawAfter) && (explicitZeroAfter || rawAfter > 0) ? Math.floor(rawAfter) : null
     if (afterRounds === null) {
-      const detail = { enforced: ['vmu.prompt.compactAfterRounds'], declared: ['integer >= 1'], value: rawAfterValue, enforcedScope: 'evaluated-so-far' }
-      throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'vmu.prompt.compactAfterRounds must be a positive integer: ' + String(rawAfterValue),
-        'v5r compactAfterRounds is 8 (v5r :1079)'), detail, { detail })
+      const detail = { enforced: ['vmu.prompt.compactAfterRounds'], declared: ['integer >= 0'], value: rawAfterValue, enforcedScope: 'evaluated-so-far' }
+      throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'vmu.prompt.compactAfterRounds must be a non-negative integer: ' + String(rawAfterValue),
+        'v5r compactAfterRounds is 8 (v5r :1079); 0 is legal and means the round trigger is disabled (C#21: explicit 0 = no trim)'), detail, { detail })
     }
     const wake = ctx && typeof ctx.wake === 'string' && ctx.wake ? ctx.wake : 'normal'
     const wakeEligible = COMPACT_WAKES.indexOf(wake) !== -1
     const byPct = contextPct !== null && contextPct >= threshold
-    const byRounds = round !== null && round >= afterRounds
+    // 0 = the round trigger is DISABLED by an explicit declaration (never "round 0 reached"); it must not throw and
+    // must not prefix a directive.
+    const byRounds = afterRounds > 0 && round !== null && round >= afterRounds
     const enforced = []
     if (byPct) enforced.push('vmu.prompt.compactThreshold')
     if (byRounds) enforced.push('vmu.prompt.compactAfterRounds')
@@ -154,7 +161,8 @@ export function createPromptPipeline({
       due, threshold, afterRounds, contextPct, round, wake, enforced,
       reason: !wakeEligible
         ? ('wake=' + wake + ' cannot acknowledge a compaction directive (v5r :3901)')
-        : (due ? (byPct ? 'contextPct ' + contextPct + ' >= ' + threshold : 'round ' + round + ' >= ' + afterRounds) : 'below both thresholds'),
+        : (due ? (byPct ? 'contextPct ' + contextPct + ' >= ' + threshold : 'round ' + round + ' >= ' + afterRounds)
+          : (afterRounds === 0 && round !== null && !byPct ? 'round trigger disabled by an EXPLICIT vmu.prompt.compactAfterRounds=0 (C#21: no trim)' : 'below both thresholds')),
       // The directive TEXT mirrors v5r :3905-3907, MINUS the two reply fields it asks for: vmu's turn parser has a
       // CLOSED field catalogue (kernel/turn/index.js, not this face), so requiring new reply fields here would make
       // every turn fail with VMU_TURN_UNKNOWN_FIELD. The member is asked for a condensed self-report instead, which

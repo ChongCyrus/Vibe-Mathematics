@@ -1,6 +1,9 @@
 // tests/vmu-publication-tool.test.mjs - the four acceptance criteria, with both failure shapes. agent-to-agent publicationoration, the only face that had no tool.
 import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+// ★ TB-2794 Step 3: the publication face is pack-contributed now; this suite drives the TOOL surface, so it supplies the generic
+// face through the same service seam a pack uses.
+import { createPublication } from '../vibe-math-vmu/packs/research-core/publication.js'
 
 let passed = 0
 let failed = 0
@@ -16,6 +19,7 @@ const specOf = (kernel, extra = {}) => toolSpecs({ kernel, settings: {}, ...extr
 console.log('=== 1. REGISTRATION IS CONDITIONAL ===')
 {
   const k = createKernel({ clock: () => 0, settings: {} })
+k.provideService({ name: 'vmu.publication', apiVersion: 1, impl: createPublication({ clock: () => 0, settings: {} }), by: 'test-publication-face' })
   const off = toolSpecs({ kernel: k, settings: {} })
   ok(off.length === 1 && off[0].name === TOOL_NAMES.status,
     'without any declaration exactly ONE tool registers - the zero-mechanism invariant', { n: off.length, names: off.map((s) => s.name) })
@@ -25,6 +29,7 @@ console.log('=== 1. REGISTRATION IS CONDITIONAL ===')
 
 console.log('=== 2. THE ACTION ENUM IS COMPLETE ===')
 const k = createKernel({ clock: () => 0, settings: {} })
+k.provideService({ name: 'vmu.publication', apiVersion: 1, impl: createPublication({ clock: () => 0, settings: {} }), by: 'test-publication-face' })
 const spec = specOf(k, { publicationTool: true })
 ok(!!spec, 'the publication tool has a spec')
 const ACTIONS = ["shareReplication","submitPack","advance","register","availability","badge","replication","list","status","outreachPack","publishOutreach","openOutreachReview","logImpact","useImpactInEvaluation"]

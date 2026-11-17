@@ -844,7 +844,6 @@ for (const [mod, m] of [...byModule].sort()) {
     'library.js': 'receipts carry enforced[]; archive refusals are driven by the library scenarios',
     'lifecycle.js': 'receipts carry enforced[]; lifecycle refusals asserted in its own suite',
     'partnership.js': 'receipts carry enforced[]; partnership refusals asserted in its own suite',
-    'publication.js': 'receipts carry enforced[]; publication refusals asserted in its own suite',
     'trust.js': 'receipts carry enforced[]; the authority refusals are asserted in its own suite',
     // ROUND 2 (handover): the new faces whose `enforced` mentions are ONLY receipt envelopes. The check below
     // mechanically verifies every occurrence is envelope-shaped - one `enforced.push(...)` would void the

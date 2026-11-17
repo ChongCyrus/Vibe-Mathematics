@@ -209,9 +209,12 @@ console.log('=== 5. ★ REGRESSION WITNESS (the blind spot that let the 319-key 
     'W9. ★ and every declared key whose own default contradicts its declaration is NAMED too (count printed)', unenforced.declarations.length)
   const planned = unenforced.types.find((t) => t.type === 'planned')
   // ★ TB-2794 Step 1 (paper dead face removed): the three vmu.paper.maxRounds/maxSections/requireAllSections keys lost their
-  // only reader with kernel/paper.js, so the generator now honestly classifies them as `planned` too — the measured count is
-  // 116, not 113 (a pinned number that no longer matches the tree would be a claim, not a measurement).
-  ok(planned === undefined || planned.count === 116, 'W10. the `planned` count is the measured 116 keys (113 + the 3 paper keys whose dead-face reader was deleted)', planned && planned.count)
+  // only reader with kernel/paper.js, so the generator now honestly classifies them as `planned` too — that was 116.
+  // ★★ ROUND-9 (measured on the CURRENT docs, not relaxed): docs volumes 07/16/20/24 gained 25 documented-but-unwired
+  // design keys during the paper/migration documentation pass (namespaces vmu.archive.* / vmu.avail.* / vmu.license.* /
+  // vmu.publish.* / vmu.records.treatNegativeAsFirstClass / vmu.replication.* / vmu.review.* / vmu.reviewers.*). The
+  // generator mints from the docs, so the honest measurement is 116 + 25 = 141; pinning 116 would be a stale claim.
+  ok(planned === undefined || planned.count === 141, 'W10. the `planned` count is the measured 141 keys (113 + 3 paper keys + 25 newly documented planned keys from docs 07/16/20/24)', planned && planned.count)
 }
 
 console.log('=== 6. ★ COVERAGE GATE: every declared type is either JUDGED or NAMED (a new case-less type reddens this) ===')

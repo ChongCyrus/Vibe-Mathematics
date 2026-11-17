@@ -152,7 +152,9 @@ ok(toolsSrc.includes('out.warning'), 'the warning reaches the receipt as a top-l
 // The prompt-side duty is TAUGHT (ROUND-3: the named correction section was deleted; the duty lives in the charter's
 // leaderless division text, which is read on a turn whose leaderId is not set).
 const charterA = readFileSync(join(PACK_DIR, 'prompts', 'v5r-blocks-a.js'), 'utf8')
-ok(charterA.includes('只有院士席能写领头人') && charterA.includes('vibe_v5_set') && charterA.includes('chair-seated-but-leaderId-empty'), 'the charter names the leaderId write path, the tool and the state a reader will see')
+// ROUND-9: the sentence is seat-neutral now (「领头人由 chair 席担任」); the criterion is unchanged: the charter must name
+// the write path (chair), the tool (vibe_v5_set) and the state a reader will see (chair-seated-but-leaderId-empty).
+ok((charterA.includes('领头人由 chair 席担任') || charterA.includes('只有院士席能写领头人')) && charterA.includes('vibe_v5_set') && charterA.includes('chair-seated-but-leaderId-empty'), 'the charter names the leaderId write path, the tool and the state a reader will see')
 ok(charterA.includes('vmu.turn.leaderId'), 'the charter names the setting to write')
 const corrMod = await import(pathToFileURL(join(PACK_DIR, 'prompts', 'v5r-corrections.js')).href)
 ok(Array.isArray(corrMod.V5R_CORRECTION_SECTIONS) && corrMod.V5R_CORRECTION_SECTIONS.length === 0, 'the legacy correction ledger is EMPTY (ROUND-3 Lead ruling); the duty is taught in the charter, not in a history note')

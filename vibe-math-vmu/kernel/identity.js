@@ -5,7 +5,7 @@
 // SLOTS, multiple institutional memberships with their cap, pseudonyms and the scopes where they are allowed, the
 // disposition applied when a membership ends, and whether reads of identity are audited.
 //
-// FACE CONVENTIONS (the same as kernel/collab.js, kernel/funding.js, kernel/publication.js):
+// FACE CONVENTIONS (the same as kernel/collab.js, kernel/funding.js, packs/research-core/publication.js):
 //   ① every key is read with a LITERAL access - the settings table decides "wired" by scanning file text, and that table
 //      is a gate;
 //   ② receipts carry `enforced[]` (keys EVALUATED) and `fired[]` (keys that CHANGED the outcome);

@@ -43,6 +43,10 @@ import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
 import { V5R_VERIFIED_POLICY } from '../middleware/verified-policy.js'
 // ★ TB-2794 Step 2: reply-field adapters (the research fields' taught shapes) are pack code, supplied to the kernel seam.
 import { V5R_REPLY_FIELD_ADAPTERS } from '../reply-field-adapters.js'
+// ★ TB-2794 Step 3: v5r CONTRIBUTES the generic research faces; the implementations stay institution-neutral in
+// packs/research-core and this pack owns only the mounting (plus the policy defaults already in settings/).
+import { createReviewers } from '../../research-core/reviewers.js'
+import { createPublication } from '../../research-core/publication.js'
 // PHASE 7 / goal 2 (first batch): THE TOOL FACE. `packs/v5r` used to declare ZERO tools while its prompts taught
 // members to call `vibe_v5_record_* / say / message` (docs/acceptance/phase7-coverage-matrix.md §2: 17 names taught,
 // 0 declared). The six names live in `../tools.js` and are declared below as the manifest's `tools[]` - the SAME
@@ -108,6 +112,41 @@ export const PACK = Object.freeze({
   // ★ TB-2794 Step 2: adapters for the pack's own reply fields (formal shape); the kernel core table holds framework
   // fields only, and a missing adapter is a NAMED skip at dispatch time.
   replyFieldAdapters: V5R_REPLY_FIELD_ADAPTERS,
+  // ★ TB-2794 Step 3: the two research faces this institution publishes. The kernel no longer constructs them; a
+  // deployment mounts v5r and gets the faces through the Step-0 service seam (providedBy:"v5r", unload retracts).
+  services: [
+    {
+      name: 'vmu.reviewers',
+      apiVersion: 1,
+      create: ({ facade }) => createReviewers({
+        settings: facade.settingsSnapshot(),
+        clock: facade.guardedClock,   // the SEAM (lazy): a bad clock is refused when the face is used, not at apply
+        log: facade.log,
+      }),
+    },
+    {
+      name: 'vmu.publication',
+      apiVersion: 1,
+      create: ({ facade }) => {
+        const publication = createPublication({
+          settings: facade.settingsSnapshot(),
+          clock: facade.clock,   // the SEAM (lazy)
+          log: facade.log,
+          bus: { emit: facade.emit },
+          library: facade.service('vmu.library'),
+          repropack: facade.service('vmu.repropack'),
+        })
+        // The approval gate is INSTITUTION policy (vmu.human.gatedActions), but the face is pack-owned now, so the
+        // wrapper is attached HERE, at contribution time — the kernel's own attach block no longer has a target.
+        facade.attachApprovalGate({
+          face: 'vmu.publication', target: publication,
+          methods: ['publish', 'retract', 'register', 'release'],
+          subjectOf: (m, a) => (a && (a.title || a.id)) || null,
+        })
+        return publication
+      },
+    },
+  ],
   requires: [
     { service: 'vmu.tasks', minVersion: 1 },
     { service: 'vmu.middleware', minVersion: 1 },
@@ -490,7 +529,6 @@ export const v5rTempDeliverySection = Object.freeze({
     '任务被取消或结束时：保留 progress 里的结论索引，并把未完成项与接手人写清楚，方便交接。',
     '工作目录保持可交接：文件名带日期与对象 id，一人一目录；不要把临时文件散放在所内的共享位置。',
     '· 交接或换人时：把对象、已核对结论、未完成项、下一步写进 progress，并注明接手人。',
-    '· 汇报频率：每回合一条 progress 足够；有阻塞或结论变化才额外发消息，避免刷屏。',
     '· 交回后可复用：把这次核对用到的检查步骤写成两三行模板，随结论一起交给派活者。',
   ].join('\n'),
 })
@@ -620,7 +658,7 @@ export const v5rFixtureTools = Object.freeze({
     // whole turn with it (`"progress":"长叙述"` ⇒ "unknown record track: undefined" ×19): the shape must be COPY-PASTEABLE
     // where the seat that writes it reads it. Restored here, in the shared block all three seats get, 80 chars.
     "★ 进展写成对象：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★ 本表是职责说明；本回合实际可调用工具以**宿主注入的实际工具清单**为准（本表不承诺已挂载，也不指向任何小节标题）。",
     "★★ 结题票**只走工具** `vibe_vmu_vote`（唯一入口，`vote_solved` 是**书账字段，永不单独计票**（回执 `{\"vote_solved\": true|false}` 只是书账）——被忽略时看回执 `fieldsIgnored` 原因（`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row`；可证空表 `tool-not-mounted` 才计票），**按原因改渠道**。`set_solved` 未登记。个人判断 `{\"solved\": false}`（**不计票**）。`say`：未绑→留 `notes`；错会→跳过。",
     "★★ 写卡片默认用 fs。",
   ].join('\n'),
@@ -681,7 +719,7 @@ export const v5rToolSectionAcademician = Object.freeze({
   scope: Object.freeze({ role: 'chair' }),
   text: [
     '【本角色可用的工具｜院士】',
-    "★ 本角色清单（院士）是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★ 本角色清单（院士）是职责说明；**本回合实际可调用工具以本轮装配清单为准**。",
     ...seatBulletLines('chair'),
     ...V5R_PROSE_CHAIR,
   ].join('\n'),
@@ -719,7 +757,7 @@ export const v5rToolSectionResearcher = Object.freeze({
   scope: Object.freeze({ role: 'member' }),
   text: [
     '【本角色可用的工具｜研究员】',
-    "★ 本角色清单（研究员）是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★ 本角色清单（研究员）是职责说明；**本回合实际可调用工具以本轮装配清单为准**。",
     ...seatBulletLines('member'),
     ...V5R_PROSE_MEMBER,
   ].join('\n'),
@@ -758,7 +796,7 @@ export const v5rToolSectionTemp = Object.freeze({
   scope: Object.freeze({ role: 'temp' }),
   text: [
     '【本角色可用的工具｜临时成员】',
-    "★ 本角色清单（临时成员）是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★ 本角色清单（临时成员）是职责说明；**本回合实际可调用工具以本轮装配清单为准**。",
     ...seatBulletLines('temp'),
     ...V5R_PROSE_TEMP,
   ].join('\n'),

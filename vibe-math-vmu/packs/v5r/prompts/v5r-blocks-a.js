@@ -67,7 +67,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '你自己**——它分派的是工作，不是结论。',
       ].join('\n'),
       leaderless: [
-'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**只有院士席能写领头人**：若你在院士席且 `vibe_v5_overview.leadership.code` 报 `chair-seated-but-leaderId-empty`，用 `vibe_v5_set` 写 `vmu.turn.leaderId`；其他席位不要尝试（工具面会拒），在群聊点名请院士补数据。',
+'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**领头人由 chair 席担任**：chair 若见 `vibe_v5_overview.leadership.code` 报 `chair-seated-but-leaderId-empty`，用 `vibe_v5_set` 写 `vmu.turn.leaderId`；其他席位不要尝试（工具面会拒），在群聊点名请 chair 补数据；确无 chair 时由全体有表决权者商议。',
 '**若确无院士席**，组织与协调由**全体有表决权者共同商议**（所办代表外部）；但请守住同一条分工：',
 '**组织归院士/集体，判断属于你自己**——讨论决定的是工作，不是结论。',
       ].join('\n'),

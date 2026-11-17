@@ -8581,10 +8581,25 @@ function withActingSeatGate(toolName, handler) {
     return out
   }
   const asyncHandler = !!(handler && handler.constructor && handler.constructor.name === 'AsyncFunction')
+  // ★★★ TB-2792 / C#25: EVERY refusal that passes through a pack tool is DECORATED here (one seam):
+  // · returned receipts ({ok:false}) get `means` + `hintShort`/`hintFull` (and `hint` per the caller's form),
+  // · thrown refusals get the same facts ATTACHED before the rethrow, because the host copies own enumerable facts;
+  // · the default form is FULL; a compact/tool-face caller may pass `ctx.receiptForm:'short'` to land the short
+  //   line in `hint` while `hintFull` keeps the superset text (nothing is lost by choosing short).
+  const refusalFormOf = (args, ctx) => {
+    if (args && typeof args.hintForm === 'string') return args.hintForm
+    if (ctx && (ctx.receiptForm === 'short' || ctx.compact === true)) return 'short'
+    return 'full'
+  }
+  const finish = (out, args, ctx) => {
+    if (out && typeof out === 'object' && out.ok === false) decorateRefusal(out, { form: refusalFormOf(args, ctx) })
+    return disclose(out, args)
+  }
+  const failure = (e) => { decorateThrownRefusal(e, {}); throw e }
   if (asyncHandler) {
     const wrapped = async function gatedHandler(args = {}, ctx = {}) {
-      gate(args, ctx)
-      return disclose(await handler(args, ctx), args)
+      try { gate(args, ctx) } catch (e) { failure(e) }
+      try { return finish(await handler(args, ctx), args, ctx) } catch (e) { failure(e) }
     }
     // ★ SOURCE-READING GATES STILL SEE THE DELEGATED HANDLER: `String(entry.handler)` is how R31b proves the step is
     // awaited; the async wrapper awaits the ORIGINAL handler, so reporting that handler's source is the truthful
@@ -8593,9 +8608,10 @@ function withActingSeatGate(toolName, handler) {
     return wrapped
   }
   const wrappedSync = function gatedHandler(args = {}, ctx = {}) {
-    gate(args, ctx)
-    const out = handler(args, ctx)
-    return out && typeof out.then === 'function' ? out.then((v) => disclose(v, args)) : disclose(out, args)
+    try { gate(args, ctx) } catch (e) { failure(e) }
+    let out
+    try { out = handler(args, ctx) } catch (e) { failure(e) }
+    return out && typeof out.then === 'function' ? out.then((v) => finish(v, args, ctx), (e) => failure(e)) : finish(out, args, ctx)
   }
   wrappedSync.toString = () => String(handler)
   return wrappedSync
@@ -8676,3 +8692,300 @@ export const V5R_NAMED_GAP_CHECKS = Object.freeze([
   { gap: 'per-box secrecy/abstention', file: 'kernel/ballotbox.js', absent: /RULE_KEYS\s*=\s*\[[^\]]*'secret'/ },
   { gap: 'meeting propose', file: 'kernel/meetings.js', absent: /propose\s*\(/ },
 ])
+
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ★★★ TB-2792 / C#25 (round-4..8 audit FAIL) — REFUSAL MEANS + DUAL-FORM HINTS, ONE TABLE.
+//
+// THE MEASURED DEFECT: 186 refusal receipts in a round, only 6 carried `means`; and `hint` had no short/full
+// distinction, so a caller in a compact/tool receipt had to read a paragraph to learn what the code means, while a
+// caller who needed a next step got a one-liner. Both are RECEIPT-LEGIBILITY defects, not wording.
+//
+// THE MECHANISM (this table + the two functions below; wired in `withActingSeatGate`, so EVERY v5r pack tool receipt
+// and EVERY thrown refusal that the host serialises passes through it — one seam, not per-call sprinkling):
+//   · `means`      — ONE sentence per CODE: why it refused / what the state means. Coverage is validated by
+//                    `scripts/audit-refusal-means.mjs` (every distinct code the pack can emit must have an entry; a
+//                    missing one is a RED gate, not a silent null).
+//   · `hintShort`  — ONE line (≤ ~80 chars) for compact/tool-face receipts,
+//   · `hintFull`   — the original hint text PRESERVED, plus `REACHABLE INSTEAD:` naming a reachable alternative
+//                    (the full form is a SUPERSET: nothing that used to be said is dropped),
+//   · `hint`       — the form the CALLER asked for: full by default; `hintForm:'short'` (or a compact ctx) selects
+//                    short. `hintFull`/`hintShort` are always both present, so switching form never loses content.
+// A code the table does not know is NOT invented at runtime: `means` stays null and `meansMissing:true` is attached,
+// so the validator's red is the only way such a code can ship (honest absence over a fabricated sentence).
+export const V5R_REFUSAL_MEANS = Object.freeze({
+  VMU_INVALID_ARGUMENT: Object.freeze({
+    means: 'The call carried a missing, extra or malformed argument (a required parameter, a value out of range, or two conflicting aliases) — nothing was written and this is a CALL-SHAPE refusal, not a state refusal.',
+    short: 'The call shape is wrong (missing/malformed/conflicting argument) — nothing was written.',
+    reachable: 'Pass exactly the parameters this face declares (a typo is not an alias), one of each alias pair, and a value inside the domain the hint names.',
+  }),
+  VMU_ENGINE_UNAVAILABLE: Object.freeze({
+    means: 'The framework seam this face needs (records, roster, ledger, library, a registered service) is not published in this deployment — the request is well-formed, the MACHINE cannot carry it, so it is refused rather than pretended.',
+    short: 'This deployment does not publish the seam this face needs — the request was not performed.',
+    reachable: 'Read what IS reachable (the receipt names it), or have the deployment publish the missing service before calling this face again.',
+  }),
+  VMU_STATE: Object.freeze({
+    means: 'The request is legal in general but this object is in a state that forbids it right now (closed, already done, not yet opened, no open row) — the state machine, not the call shape, refused.',
+    short: 'The object state forbids this action right now.',
+    reachable: 'Read the object first (its receipt names the state), then take the action that state allows — or move the object to the needed state on its own face.',
+  }),
+  VMU_NOT_PERMITTED: Object.freeze({
+    means: 'The caller is not the seat this act belongs to (another member, a non-chair, a non-office seat) — v5r is an institution with role-scoped powers, and this act is reserved to a declared role.',
+    short: 'The caller does not hold the role this act is reserved to.',
+    reachable: 'Call the face as the seat that owns the act (member:"<your id>"), or ask the office/chair to perform it; a refusal that names the roles tells you which.',
+  }),
+  VMU_NO_SUCH_OBJECT: Object.freeze({
+    means: 'The id/pointer this call names does not exist in the registry it was looked up in — this is ABSENCE, not a failed check (nothing was compared, nothing was judged).',
+    short: 'The named object does not exist in that registry.',
+    reachable: 'List the registry first (the face that mints these rows has a list/roster read) and pass an id that exists; do not mint an id yourself.',
+  }),
+  VMU_V5R_CLOCK_VALUE_INVALID: Object.freeze({
+    means: 'A time/epoch field was not a value this institute can place on the clock (unparseable, negative, or not an instant the deployment permits) — the refusal is about the TIME INPUT, not about the object.',
+    short: 'The time value is not a usable instant.',
+    reachable: 'Pass epoch milliseconds or an ISO-8601 instant (the deployment clock decides "now"); omit the field when you mean the default.',
+  }),
+  VMU_CONFLICT: Object.freeze({
+    means: 'Two declarations/sources disagree about the same fact (a name already published, an id already taken, a vote and a ruling that cannot both hold) — O4: conflicts are refused, never merged silently.',
+    short: 'Two sources conflict about the same fact; nothing was merged.',
+    reachable: 'Pick one owner for the fact (drop the duplicate declaration, or use the distinct name/id the receipt suggests), then retry.',
+  }),
+  VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED: Object.freeze({
+    means: 'This institute requires a machine-checked (Lean) pass before the act, and the evidence this call relied on is not a passing Lean run — the gate is the institution\'s policy (vmu.math.formalVerify), not a tool bug.',
+    short: 'The required machine-checked (Lean) pass is missing for this act.',
+    reachable: 'Run the Lean face (vibe_v5_lean_run) and archive a passing outcome, or change vmu.math.formalVerify if this deployment does not require it.',
+  }),
+  VMU_ASK_UNKNOWN_PROPOSITION: Object.freeze({
+    means: 'A question/ask named a proposition id this institute does not hold — the ask is addressed to a row that cannot answer it.',
+    short: 'The ask names a proposition that does not exist here.',
+    reachable: 'List the propositions/cards first and ask about an existing id (or record the proposition before asking).',
+  }),
+  VMU_METRIC_UNAVAILABLE: Object.freeze({
+    means: 'A metric/indicator the call needs was never declared by this deployment (vmu.metrics.indicators) — the count is ABSENT, not zero.',
+    short: 'The metric this call needs is not declared here.',
+    reachable: 'Declare the indicator in vmu.metrics.indicators (an undeclared metric is not silently counted as 0), or read a face that does not require it.',
+  }),
+  VMU_PACK_V5R_CORE_PAPER_STATE: Object.freeze({
+    means: 'The paper pipeline was asked for an action its current state does not allow (a draft not yet adopted, a finalisation before review, a section not yet part of the paper) — the pipeline state machine refused, not the paper face.',
+    short: 'The paper is not in a state that allows this action.',
+    reachable: 'Read the paper status first and take the allowed next step (the refusal names the state and the allowed action); adopt/finalise only after the earlier stage completed.',
+  }),
+  VMU_PACK_V5R_CORE_P1_RULING_UNVOTED: Object.freeze({
+    means: 'A P1 (proposition-level) ruling was requested before the debate produced votes — the ruling gate needs a DECIDED debate, and "no votes yet" is a policy refusal.',
+    short: 'The P1 ruling needs debate votes first.',
+    reachable: 'Open/advance the debate until the required votes are in (vibe_v5_meeting), then file the ruling.',
+  }),
+  VMU_MEETING_QUORUM_LOST: Object.freeze({
+    means: 'The meeting\'s legal quorum was lost (a participant left/was removed, or the declared quorum rule no longer holds) — the body cannot make a binding decision right now.',
+    short: 'The meeting lost its quorum; decisions are blocked.',
+    reachable: 'Restore attendance to the quorum rule (the receipt names the rule/needed count), or close the meeting and reconvene.',
+  }),
+  VMU_PAPER_GLYPH_UNCOVERED: Object.freeze({
+    means: 'The paper text uses a glyph/character the renderer cannot cover with the declared fonts — the render would drop or mangle it, so the face refused the render instead of producing a lossy artifact.',
+    short: 'The text uses a glyph the declared fonts cannot cover.',
+    reachable: 'Replace the uncovered glyph (the receipt names it) or add a font that covers it, then render again.',
+  }),
+  VMU_SCOPE_REFUSED: Object.freeze({
+    means: 'A member-scope rule (the seat\'s permissible tool/face set for this turn) refuses the call — this is the institution\'s scope policy, distinct from a role permission.',
+    short: 'This seat\'s member scope does not include the call.',
+    reachable: 'Act within the tools the scope names (the receipt lists them), or have the office adjust the seat\'s scope policy.',
+  }),
+  VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS: Object.freeze({
+    means: 'This institute refuses ad-hoc script execution outside its script/ledger faces — a direct script run is policy-refused even where the sandbox could technically run it.',
+    short: 'Ad-hoc scripts are refused by institute policy.',
+    reachable: 'Run the computation through the math/tool faces (or the declared script face) so the act is recorded; do not call raw script execution.',
+  }),
+  VMU_PACK_V5R_CORE_NOT_SETTLED: Object.freeze({
+    means: 'A record/proposition was used as settled evidence while its state is not settled (draft/unverified) — the pack\'s "only settled facts may be cited" rule refused.',
+    short: 'The record is not settled, so it cannot be used as evidence.',
+    reachable: 'Promote the record through verification (the track/face that settles it), or cite a settled one.',
+  }),
+  VMU_TURN_NO_PENDING_MEMBER: Object.freeze({
+    means: 'The turn face has no pending member/context to hand a reply to — the turn loop was not awaiting a member, so a reply would land nowhere.',
+    short: 'No pending member turn to receive this reply.',
+    reachable: 'Reply through the channel the turn opened (the fence the receipt names), or drive a member turn first.',
+  }),
+  VMU_MATH_INVALID_INPUT: Object.freeze({
+    means: 'A math/formalisation input was incomplete or malformed for the engine (missing statement/proof keys, a shape the adapter cannot map) — this is an INPUT refusal before any computation.',
+    short: 'The math input is incomplete or malformed.',
+    reachable: 'Supply the keys the hint lists (statement/proof/…) in the taught fence shape, then retry the computation.',
+  }),
+  VMU_SEAT_FACE_UNKNOWN: Object.freeze({
+    means: 'A tool-face name was resolved against the seat-face table and is not one this pack declares — the name is not a face, it is a typo or a face another deployment would own.',
+    short: 'That tool-face name is not declared by this pack.',
+    reachable: 'Use a face name from the pack\'s declared set (vibe_v5_tool_help lists the seat\'s reachable faces).',
+  }),
+  VMU_FEEDBACK_ACTION_IS_THE_OPERATION: Object.freeze({
+    means: 'The feedback face takes its verb as the OPERATION (`action`) rather than as an argument — the call mixed the two, so the face cannot tell what you meant.',
+    short: 'Pass the feedback verb as `action`, not as an argument.',
+    reachable: 'Call vibe_v5_feedback with `action:"<create|list|close|…>"` and keep the rest as its declared parameters.',
+  }),
+  VMU_RECORD_SETTLEMENT_REWRITE: Object.freeze({
+    means: 'A settled record row cannot be rewritten (settlement is a one-way state) — the attempt to modify a settled fact was refused instead of silently forking it.',
+    short: 'A settled record cannot be rewritten.',
+    reachable: 'Append a new row (or a revision) instead of rewriting the settled one; the settled fact stays as it was.',
+  }),
+  VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED: Object.freeze({
+    means: 'The P1 ruling was asked to conclude while the underlying debate is unresolved (no decision, or an undecided tie) — the gate needs a resolution, not just a filing.',
+    short: 'The P1 debate is unresolved; no ruling can conclude.',
+    reachable: 'Resolve the debate first (the meeting face names the missing votes), then file the ruling.',
+  }),
+  VMU_PACK_V5R_CORE_P1_RULING_NOT_UNANIMOUS: Object.freeze({
+    means: 'This institute\'s quorum rule for the P1 ruling is m-unanimous and the votes are not unanimous — the ruling is refused by the declared rule rather than recorded as decided.',
+    short: 'The P1 ruling is not unanimous under this rule.',
+    reachable: 'Reopen discussion until the required unanimity, or change vmu.meetings.quorumRule if this deployment really uses another rule.',
+  }),
+  VMU_PACK_V5R_SOCIAL_WARRANT_REFUSED: Object.freeze({
+    means: 'A social act (say/message) lacked the warrant this institute requires for that channel (a cited source, a declared motive) — refused rather than sent without its warrant.',
+    short: 'The social act lacks its required warrant.',
+    reachable: 'Add the warrant field the receipt names (e.g. a cited basis/motive), or use the channel whose contract does not need it.',
+  }),
+  VMU_PACK_V5R_VERIFIED_NEEDS_JUDGE: Object.freeze({
+    means: 'A verified-row promotion needs a JUDGE verdict and none is recorded (a promotion cannot be self-certified) — the gate is about WHO may certify.',
+    short: 'No judge verdict is recorded for this promotion.',
+    reachable: 'Have a judge seat file the verdict on the debate/ruling face, then repeat the promotion.',
+  }),
+  VMU_PACK_V5R_P1_NEEDS_DEBATE: Object.freeze({
+    means: 'A P1 ruling was attempted with no debate at all — the institution requires a debate before a proposition-level ruling, even when the answer seems obvious.',
+    short: 'A P1 ruling needs a debate first.',
+    reachable: 'Open a debate meeting on the proposition (vibe_v5_meeting) and let it produce the votes, then file the ruling.',
+  }),
+  VMU_PACK_V5R_FORMAL_REQUIRED: Object.freeze({
+    means: 'formalmachine-check is REQUIRED by this deployment (vmu.math.formalVerify=require) and this call carried no passing formal evidence — the policy gate refused the conclusion.',
+    short: 'This deployment REQUIRES formal (Lean) evidence for this act.',
+    reachable: 'Produce and archive a passing Lean run (vibe_v5_lean_run → archive), or set vmu.math.formalVerify to a policy that matches this institution.',
+  }),
+  VMU_RULING_NO_SUBMISSIONS: Object.freeze({
+    means: 'A ruling was filed while no submission/proposal exists to rule on — the ruling body has nothing before it.',
+    short: 'There is no submission to rule on.',
+    reachable: 'Let members submit positions/proposals first, then file the ruling.',
+  }),
+  VMU_RULING_CONTRADICTS_SUBMISSION: Object.freeze({
+    means: 'The ruling contradicts a recorded submission (the decision does not match what was proposed/voted) — the ledger refuses a ruling that rewrites the record it decides.',
+    short: 'The ruling contradicts the recorded submission.',
+    reachable: 'File a ruling that matches the recorded submission/votes, or record the change of position first so the ledger can show it.',
+  }),
+  VMU_ASK_NOTHING_DELIVERED: Object.freeze({
+    means: 'An ask produced no deliverable at all (no message, no file, no row) — the receipt says the act delivered NOTHING rather than pretending delivery.',
+    short: 'The ask delivered nothing (no message/file/row).',
+    reachable: 'Deliver the artifact before closing the ask (the face names the deliverable slots), or mark the ask as not needed.',
+  }),
+  VMU_MEETING_AGENDA_CONFLICT: Object.freeze({
+    means: 'Both `agenda` and its kernel-side alias `materials` were supplied with different content — the meeting stores ONE line, so passing two is a conflict, not a merge.',
+    short: 'Pass exactly one of agenda/materials, not both.',
+    reachable: 'Send ONE stored line: `agenda` (or `materials` alone); drop the other.',
+  }),
+  VMU_BALLOT_MIN_VOTES_NOT_MET: Object.freeze({
+    means: 'The ballot\'s declared minimum number of votes was not reached before this act — an institutional quorum rule, not a call error.',
+    short: 'The ballot did not reach its declared minimum votes.',
+    reachable: 'Collect the missing votes (the receipt names the minimum/current count), then retry the act.',
+  }),
+  VMU_RULING_NO_LEDGER: Object.freeze({
+    means: 'The ruling ledger face is not published in this deployment, so a ruling cannot be recorded — absence of the seam, named.',
+    short: 'No ruling ledger is published here.',
+    reachable: 'Record the ruling through the meeting/minutes face that IS published, or have the deployment publish the ledger.',
+  }),
+  VMU_RULING_CHAIR_SIGNS: Object.freeze({
+    means: 'Only the chair seat may sign/file the ruling (the institution puts the pen in the chair\'s hand) — another seat\'s attempt is refused.',
+    short: 'Only the chair seat may sign this ruling.',
+    reachable: 'Have the chair seat call this face (or the office acting for the chair), or use the face your role does own.',
+  }),
+  VMU_RULING_NOT_DEBATER: Object.freeze({
+    means: 'The caller is not a debater in this debate, so it cannot file a ruling in it — the body of participants is declared, not inferred.',
+    short: 'The caller is not a debater in this debate.',
+    reachable: 'File the ruling from a seat that IS in the debate (the receipt names the participants), or convene/seat the right debater first.',
+  }),
+  VMU_RULING_ALREADY_FILED: Object.freeze({
+    means: 'A ruling for this target was already filed — the ledger holds ONE ruling per target, and a second file would fork the record.',
+    short: 'A ruling is already filed for this target.',
+    reachable: 'Read the filed ruling (its face lists rulings), or supersede it through the declared revision path.',
+  }),
+  VMU_RULING_NEEDS_CHANNEL: Object.freeze({
+    means: 'The ruling was submitted through the wrong channel (the reply fence vs the tool, or a face that does not carry rulings) — the act is legal, the carrier is not.',
+    short: 'The ruling came through a channel that cannot carry it.',
+    reachable: 'File the ruling on the face the receipt names (e.g. vibe_v5_meeting/vibe_v5_verified ruling action), not through a free-text reply.',
+  }),
+  VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING: Object.freeze({
+    means: 'The paper section claimed a conclusion whose evidence cards/rows are missing — the paper gate refuses an assertion the record cannot support.',
+    short: 'The paper section lacks its evidence cards.',
+    reachable: 'Record the evidence cards/verified rows first (the receipt names what is needed), then write/adopt the section.',
+  }),
+  VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN: Object.freeze({
+    means: 'A citation in the paper points at a source this institute does not hold — the paper face refuses a citation that resolves to nothing.',
+    short: 'A citation names a source that is not held here.',
+    reachable: 'Import/record the cited source first (or cite an existing one the receipt lists), then render/adopt.',
+  }),
+  VMU_ENGINE_FAILURE: Object.freeze({
+    means: 'The underlying engine/service raised while performing the request — the seam EXISTS but failed this time; the failure is named rather than reported as a plain success.',
+    short: 'The underlying engine failed while performing the request.',
+    reachable: 'Read the failure message, fix its cause (or retry once), and if it persists treat the seam as unavailable and report it.',
+  }),
+  VMU_MEMBER_SESSION_NOT_LIVE: Object.freeze({
+    means: 'This member\'s session existed and has ENDED — there is a session to reopen (distinct from "never opened").',
+    short: 'The member session existed but is no longer live.',
+    reachable: 'Drive the member again (vibe_vmu_turn {op:"drive"}), or seat it again via vibe_vmu_control {action:"hire"}, then call again.',
+  }),
+  VMU_MEMBER_SESSION_NEVER_OPENED: Object.freeze({
+    means: 'This member has NEVER had a live session — there is no wire to reopen, only one to open (distinct from "ended").',
+    short: 'The member never had a session; there is nothing to reopen.',
+    reachable: 'Seat the member (vibe_vmu_control {action:"hire"}) or drive it (vibe_vmu_turn {op:"drive"}) so a session opens.',
+  }),
+  VMU_FIRE_CALLER_UNKNOWN: Object.freeze({
+    means: 'A scheduled/triggered fire could not name its caller (the agent/turn context that fired it is gone) — the act cannot be attributed, so it is refused rather than recorded anonymously.',
+    short: 'The firing caller cannot be identified.',
+    reachable: 'Fire from a live member/turn context (the face that schedules names the caller), or re-drive the member so the caller exists.',
+  }),
+})
+
+/** The means for a code, or null. `null` is HONEST ABSENCE (the validator turns it into a red gate). */
+export function refusalMeansOf(code) {
+  const row = V5R_REFUSAL_MEANS[String(code || '')]
+  return row ? row.means : null
+}
+
+/** One line, ≤ ~80 chars, derived from the table (short) — never a paragraph. */
+export function refusalShortOf(code, fallback = '') {
+  const row = V5R_REFUSAL_MEANS[String(code || '')]
+  const text = row ? row.short : String(fallback || '')
+  const line = String(text).replace(/\s+/g, ' ').trim()
+  return line.length > 96 ? line.slice(0, 93).replace(/[，。；、,. ]+$/, '') + '…' : line
+}
+
+/** The FULL hint: the original text is kept (superset), plus `REACHABLE INSTEAD:` when it is not already there. */
+export function refusalFullOf(code, originalHint = '') {
+  const row = V5R_REFUSAL_MEANS[String(code || '')]
+  const original = String(originalHint === null || originalHint === undefined ? '' : originalHint).trim()
+  const reachable = row ? String(row.reachable || '').trim() : ''
+  if (!reachable) return original || null
+  if (/REACHABLE INSTEAD/i.test(original)) return original
+  const clause = 'REACHABLE INSTEAD: ' + reachable
+  return original ? original + ' — ' + clause : clause
+}
+
+/** Decorate ONE receipt (`{ok:false,…}`) or ONE refusal error (THEN rethrown by the caller). Idempotent: an existing
+ *  `means`/`hintShort`/`hintFull` is never overwritten. `form` selects which shape lands in `hint` (full by default). */
+export function decorateRefusal(out, { form = null } = {}) {
+  if (!out || typeof out !== 'object') return out
+  const code = out.code
+  if (out.means === undefined) {
+    const means = refusalMeansOf(code)
+    out.means = means
+    if (means === null) out.meansMissing = true
+  }
+  if (out.hintShort === undefined) out.hintShort = refusalShortOf(code) || null
+  if (out.hintFull === undefined) out.hintFull = refusalFullOf(code, typeof out.hint === 'string' ? out.hint : '')
+  const wanted = form || out.hintForm || 'full'
+  if (out.hintForm === undefined) out.hintForm = wanted
+  // The chosen form lands in `hint`; the FULL form is a SUPERSET (original text + REACHABLE INSTEAD), so selecting
+  // full never drops what the old receipt said, and `hintFull`/`hintShort` keep both forms readable either way.
+  if (wanted === 'short') out.hint = out.hintShort
+  else out.hint = out.hintFull
+  return out
+}
+
+/** The same decoration for a THROWN refusal: the host copies every own enumerable fact, so attaching them here is
+ *  what makes `means`/`hintShort`/`hintFull` reach the model for thrown refusals too. */
+export function decorateThrownRefusal(e, opts = {}) {
+  if (!e || typeof e !== 'object' || typeof e.code !== 'string') return e
+  try { decorateRefusal(e, opts) } catch { /* decoration must never mask the refusal */ }
+  return e
+}

@@ -1973,19 +1973,16 @@ try {
     String(phByRole[r].text).includes('【本轮你实际能调用的工具')),
     '★★★ 正：每个占位段的 order 都晚于该角色的静态清单（★ 否则"替换块"会跑到清单前面），且文本带宿主要找的标题标记',
     ['chair', 'member', 'temp'].map((r) => ({ role: r, listOrder: corner[r] && corner[r].order, phOrder: phByRole[r] && phByRole[r].order })))
-  // ROUND-8 (audit prompts P1-2): the clarification may appear ONCE per rendered prompt. The three role lists therefore
-  // carry per-role variants ("上表是职责说明（院士）…"), and fixture-tools carries the "本表" variant; every list still names
-  // the authoritative host section, and no two lists share the identical sentence.
-  const authoritative = '以【本轮你实际能调用的工具】为准'
-  const listSections = [...roleSecs, PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0]]
-  const sentenceHits = listSections.map((s) => ({ name: s && s.name, has: String((s && s.text) || '').includes(authoritative), text: String((s && s.text) || '') }))
-  ok(sentenceHits.length === 4 && sentenceHits.filter((h) => h.has).length === 4,
-    '★★★ 正：三段角色清单 ＋ 研究回合清单（v5r-fixture-tools）都写了"以【本轮你实际能调用的工具】为准"那句', sentenceHits.map((h) => ({ name: h.name, has: h.has })))
-  const roleSents = roleSecs.map((s) => String((s && s.text) || '').split(String.fromCharCode(10)).filter((l) => l.includes('职责说明')))
-  ok(new Set(roleSents.map((x) => JSON.stringify(x))).size === 3,
-    '★★★ 反（ROUND-8）：角色清单的职责说明句是逐席变体（同一渲染里不重复同一句，审计 P1-2）', roleSents)
-  ok(String((PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0] || {}).text || '').includes('上表是职责说明'),
-    '★★★ 反（ROUND-8）：fixture-tools 用「本表」变体，不复制角色清单的同一句')
+  // ROUND-9 (audit prompts P2-3): ONE pointer sentence per render, in the shared fixture block, and it must not name a
+  // heading the section never contains. Role lists may reference "职责说明" but not the non-existent host heading.
+  const fixtureSec = PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0]
+  const fixtureText = String((fixtureSec && fixtureSec.text) || '')
+  ok(fixtureText.includes('本表是职责说明') && fixtureText.includes('实际工具清单'),
+    '★★★ 正：fixture-tools 用一句说明「本表是职责说明；实际可调用工具以宿主注入清单为准」', { hasClarification: fixtureText.includes('本表是职责说明'), hasAuthority: fixtureText.includes('实际工具清单') })
+  const roleHeadingRefs = roleSecs.map((s) => ({ name: s && s.name, refs: String((s && s.text) || '').includes('【本轮你实际能调用的工具】') }))
+  // ★ RULE E: a non-empty precondition + a COUNT (a bare .every over an empty list is vacuous truth).
+  ok(roleSecs.length === 3 && roleHeadingRefs.length === roleSecs.length && roleHeadingRefs.filter((r) => r.refs).length === 0,
+    '★★★ 反（ROUND-9）：三段角色清单不再指向 640 节里不存在的「本轮你实际能调用的工具」标题', { sections: roleSecs.length, refs: roleHeadingRefs.map((r) => r.name) })
   // ★ 反：no tool NAME may enter through the new text (a name here would silently widen/narrow the derived bullet face).
   const sentinel = '★ 上表是职责说明（院士）；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。'
   const newTexts = [...phs.map((s) => String(s.text)), sentinel]

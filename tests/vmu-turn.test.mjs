@@ -762,7 +762,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     for (const variant of variants) {
       const raw = b.texts && b.texts[variant]
       if (!raw || typeof raw !== 'string') continue
-      for (const line of raw.split('\n').map((l) => l.trim()).filter((l) => l.length > 18 && !l.includes('{{'))) {
+      // ★ RULE E shape A (G4 real fix, no whitelist): the loop below only COUNTS; if its iterable were EMPTY the
+      // whole block would be silently skipped and the "every prose line matches the baseline" claim would be vacuous.
+      // Assert the set is NON-EMPTY first (a removed/renamed block shows up here by name), then iterate it.
+      const sourceLines = raw.split('\n').map((l) => l.trim()).filter((l) => l.length > 18 && !l.includes('{{'))
+      ok(sourceLines.length > 0,
+        'T71 precondition: this charter block really has fixed prose lines to check (shape A: the loop cannot run zero times unnoticed)',
+        { block: b.name, variant, chars: raw.length })
+      for (const line of sourceLines) {
         total += 1
         if (!baselineCorpus.some((s) => s.includes(line))) {
           const named = b.name + '/' + variant + ': ' + line
@@ -2334,6 +2341,95 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(seenA && seenA.result && seenA.result.ok === 'A',
     'C10-9 ★ A 的结果原文仍可读回（丢了 key 就会变成一次新的 pending）', seenA && seenA.result)
   rmSync(iroot, { recursive: true, force: true })
+}
+
+
+// ★★★★★★★ C#21（ROUND-8 产品审计，连续 8 轮 FAIL）：框架侧上下文压缩 + dropped 计数。
+// 旧行为：只注入 `[CONTEXT COMPACT]` 指令，裁剪/摘要/计数全交给模型 ⇒ 长会话无从收缩。
+// 新行为：turn loop 维护 per-member transcript，按**声明的有限预算**（`vmu.prompt.compactAfterRounds`，默认 8；
+// 显式 0 = 明确不裁剪）保留最近 N 轮，旧轮正文折成有界摘要（2048B），**下一次 prompt 真的携带摘要**，回执/status
+// 逐轮报 droppedCount/summaryBytes/keptTurns，且每个被丢轮留 turnId+bytes（不静默丢）。
+{
+  const many = (rt, member, n) => Promise.all([]).then(async () => {
+    let last = null
+    for (let i = 0; i < n; i += 1) last = await rt.apply({ progress: { track: 'progress', text: 'turn number ' + i } }, null, member, { turnId: 't-c21-' + i })
+    return last
+  })
+  const rt = mk({ settings: { 'vmu.prompt.compactAfterRounds': 3 } })
+  const last = await many(rt, 'r-1', 12)
+  const c = last && last.contextCompaction
+  ok(!!c && c.droppedCount === 9 && c.droppedThisTime === 1 && c.keptTurns === 3 && c.keepRecentTurns === 3,
+    'C21-1 ★★★ 12 轮 / 预算 3 ⇒ 丢弃 9 轮、保留最近 3 轮（droppedCount 与 keptTurns 都逐轮回执）',
+    c && { droppedCount: c.droppedCount, droppedThisTime: c.droppedThisTime, keptTurns: c.keptTurns, keepRecentTurns: c.keepRecentTurns })
+  ok(!!c && c.summaryBytes > 0 && typeof c.summary === 'string' && c.summary.length > 0,
+    'C21-2 ★★ 被丢的旧回合正文折成**有界摘要**（summaryBytes>0，摘要可回读）', c && { summaryBytes: c.summaryBytes, summaryHead: String(c.summary).slice(0, 40) })
+  ok(!!c && Array.isArray(c.droppedTurns) && c.droppedTurns.length === c.droppedCount && c.droppedTurns.every((d) => typeof d.turnId === 'string' && d.bytes > 0),
+    'C21-3 ★★★ 不静默丢失：每一个被丢的轮都在 droppedTurns 里留下 turnId+bytes（可审计）', c && c.droppedTurns && c.droppedTurns.slice(0, 3))
+  ok(!!c && /context trimmed/.test(String(c.means)) && /budget/.test(String(c.budgetMeans)),
+    'C21-4 ★ 回执说清「裁剪了什么」与预算来源（keep-window + summary cap）', c && { means: String(c.means).slice(0, 80) })
+  // the SUMMARY must really reach the next prompt (otherwise the trimming would be fake)
+  const t = rt.open({ member: 'r-1', phase: 'normal' })
+  const asm = await rt.assemble(t.turn)
+  ok(asm && asm.text.includes('【上下文摘要（框架裁剪') && asm.text.includes(c.summary.slice(-40)),
+    'C21-5 ★★★ 摘要真的进入下一次 prompt（裁剪是机制，不是只记账）', asm && { hasBlock: asm.text.includes('【上下文摘要（框架裁剪'), contextCompaction: asm.contextCompaction && asm.contextCompaction.summaryBytes })
+  // status shows the current budget and usage
+  const st = rt.status()
+  const row = st && st.contextCompaction && st.contextCompaction.members.filter((m) => m.member === 'r-1')[0]
+  ok(st && st.contextCompaction && st.contextCompaction.keepRecentTurns === 3 && row && row.droppedCount === 9 && row.keptTurns === 3,
+    'C21-6 ★★ status 显示当前预算（keepRecentTurns）与使用（droppedCount/keptTurns/summaryBytes）', st && st.contextCompaction && { budget: st.contextCompaction.keepRecentTurns, row: row && { d: row.droppedCount, k: row.keptTurns, b: row.summaryBytes } })
+  // explicit 0 = an explicit "no trimming" decision (legal unlimited), stated as such
+  const rt0 = mk({ settings: { 'vmu.prompt.compactAfterRounds': 0 } })
+  const last0 = await many(rt0, 'r-1', 6)
+  const c0 = last0 && last0.contextCompaction
+  ok(!!c0 && c0.keepRecentTurns === 0 && c0.droppedCount === 0 && /EXPLICITLY/.test(String(c0.means)),
+    'C21-7 ★ 显式 0 是合法的「不裁剪」（不是静默禁用）：droppedCount=0 且 means 说清是显式决定', c0 && { keep: c0.keepRecentTurns, dropped: c0.droppedCount, means: String(c0.means).slice(0, 70) })
+  // C21-8 ★★★ CJK 摘要必须按 UTF-8 字节截断：summaryBytes 永不超 2048（旧 slice 按码元，CJK 下可达 ~6KB）
+  const rtCjk = mk({ settings: { 'vmu.prompt.compactAfterRounds': 2 } })
+  let lastCjk = null
+  for (let i = 0; i < 10; i += 1) lastCjk = await rtCjk.apply({ progress: { track: 'progress', text: '第' + i + '轮：' + '这是一个很长的中文回合正文，用来测试摘要的字节上限。'.repeat(6) } }, null, 'r-1', { turnId: 't-cjk-' + i })
+  const cc = lastCjk && lastCjk.contextCompaction
+  ok(!!cc && cc.summaryBytes <= 2048 && cc.summaryBytes > 0 && cc.droppedCount === 8,
+    'C21-8 ★★★ CJK 长回合：摘要按 UTF-8 字节截断 ⇒ summaryBytes ≤ 2048（旧按码元可达 ~6KB）',
+    cc && { summaryBytes: cc.summaryBytes, kept: cc.keptTurns, dropped: cc.droppedCount })
+  // ★ RULE E shape A (G4 real fix, no whitelist): `Array.from(summary).every(...)` is TRUE on an EMPTY string, so
+  // without a non-empty precondition the "no U+FFFD in the summary" claim would hold while there is no summary at all.
+  // Assert the summary really has bytes first, then the “no broken glyph” claim has something to be true about.
+  ok(!!cc && typeof cc.summary === 'string' && cc.summary.length > 0,
+    'C21-8c 前置（shape A）：摘要非空，下面的“无 U+FFFD”断言才有对象（空串的 every 是真空通过）',
+    cc && { chars: String(cc.summary || '').length, summaryBytes: cc.summaryBytes })
+  ok(!!cc && !/\uFFFD/.test(String(cc.summary)) && Array.from(cc.summary).every((ch) => ch !== '\uFFFD'),
+    'C21-8b ★ 截断没有切坏多字节/代理对（摘要里没有 U+FFFD）', cc && String(cc.summary).slice(-20))
+  // C21-7 真实设置路径：vmu.prompt.compactAfterRounds: 0 经【prompt 指令闸】不得抛错，且不触发 [CONTEXT COMPACT]
+  // the PROMPT side reads the key from the PIPELINE's settings (the live entry builds that pipeline with the kernel
+  // settings view), so the real-path test must declare it there too; otherwise the pipeline falls back to its default 8.
+  const zeroPipe = createPromptPipeline({ settings: { 'vmu.prompt.compactAfterRounds': 0 } })
+  const rtZero = mk({ prompt: zeroPipe, settings: { 'vmu.prompt.compactAfterRounds': 0 } })
+  let zeroAsm = null
+  let zeroErr = null
+  try {
+    const zt = rtZero.open({ member: 'r-1', phase: 'normal', round: 8 })
+    zeroAsm = await rtZero.assemble(zt.turn)
+  } catch (e) { zeroErr = e }
+  ok(!zeroErr && zeroAsm && zeroAsm.ok === true && !String(zeroAsm.text).includes('[CONTEXT COMPACT'),
+    'C21-7b ★★★ 显式 compactAfterRounds:0 走真实设置路径（round=8 的 prompt 装配）⇒ 不抛错且不注入 [CONTEXT COMPACT]',
+    { err: zeroErr && (zeroErr.code || zeroErr.message), hasDirective: zeroAsm && String(zeroAsm.text).includes('[CONTEXT COMPACT') })
+  // ★ lamp: copy tree, disable the trimming branch -> the transcript exceeds the budget but droppedCount stays 0
+  const ldir = mkdtempSync(join(tmpdir(), 'vmu-c21-lamp-'))
+  try {
+    cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(ldir, 'vibe-math-vmu'), { recursive: true })
+    const tp = join(ldir, 'vibe-math-vmu', 'kernel', 'turn', 'index.js')
+    const src = readFileSync(tp, 'utf8')
+    const from = '    if (list.length <= keepRecent) {'
+    ok(src.indexOf(from) !== -1, 'C21 lamp-setup: the within-budget branch exists')
+    writeFileSync(tp, src.replace(from, '    if (true) {'))
+    const lampTurn = await import(pathToFileURL(tp).href + '?c21lamp=1')
+    const lampRt = lampTurn.createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), settings: { 'vmu.prompt.compactAfterRounds': 3 } })
+    let lampLast = null
+    for (let i = 0; i < 12; i += 1) lampLast = await lampRt.apply({ progress: { track: 'progress', text: 'lamp turn ' + i } }, null, 'r-1', { turnId: 't-c21-lamp-' + i })
+    const lc = lampLast && lampLast.contextCompaction
+    ok(!!lc && lc.droppedCount === 0 && lc.keptTurns === 12 && lc.keepRecentTurns === 3,
+      'C21 lamp RED-worthy: 关掉裁剪分支 ⇒ 12 轮超过预算 3 但 droppedCount 仍是 0（正是审计要抓的「只记账不裁剪」形状）', lc && { dropped: lc.droppedCount, kept: lc.keptTurns, keep: lc.keepRecentTurns })
+  } finally { rmSync(ldir, { recursive: true, force: true }) }
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

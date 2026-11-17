@@ -50,6 +50,9 @@ export function createLifecycle(opts) {
   }
   const domaingate = o.domaingate
   const publication = o.publication
+  // ★ TB-2794 Step 3: the publication face is PACK-contributed and applied AFTER this object is constructed, so the seam
+  // arrives as a resolver. Unwrap at USE time; a plain object still works (tests/hosts inject one directly).
+  const publicationOf = () => (typeof publication === 'function' ? publication() : publication)
 
   const cfg = () => {
     const raw = readKey('vmu.lifecycle.stages')
@@ -193,7 +196,7 @@ export function createLifecycle(opts) {
 
   /** 闸点：**委托**接缝；无接缝 ⇒ 具名拒（不假装已检查 ✗）。 */
   const runGate = (kind, payload) => {
-    const seam = kind === 'publication' ? publication : domaingate
+    const seam = kind === 'publication' ? publicationOf() : domaingate
     if (!seam || typeof seam.check !== 'function') {
       return refuse('VMU_EXTERNAL_UNAVAILABLE', '闸点接缝未注入：' + kind + '（**不得假装已检查** ✗）', '由宿主注入 ' + kind + '.check({stage, evidence})')
     }

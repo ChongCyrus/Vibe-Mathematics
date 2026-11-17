@@ -464,7 +464,7 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
   // our side
   const hostSrc = readFileSync(new URL('../vibe-math-vmu/host.js', import.meta.url), 'utf8')
   const ctrlSrc = readFileSync(new URL('../vibe-math-vmu/kernel/control.js', import.meta.url), 'utf8')
-  const pubSrc = readFileSync(new URL('../vibe-math-vmu/kernel/publication.js', import.meta.url), 'utf8')
+  const pubSrc = readFileSync(new URL('../vibe-math-vmu/packs/research-core/publication.js', import.meta.url), 'utf8')
   ok(/vibe_vmu_set/.test(hostSrc) && /vibe_vmu_control/.test(hostSrc) && /vibe_vmu_status/.test(hostSrc) && /vibe_vmu_task/.test(hostSrc),
     'G5g. ★ vmu exposes the same three verbs as tools: set, control and status (plus the task board)')
   ok(/vmu\.control\.pauseScope/.test(ctrlSrc) && /vmu\.control\.idleAction/.test(ctrlSrc) && /vmu\.control\.degradeSteps/.test(ctrlSrc),

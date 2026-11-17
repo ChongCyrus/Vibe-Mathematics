@@ -55,7 +55,7 @@ const REPLY_COMPACT_TEXT = [
         // this one appears in thirty-three entries across eighteen kinds, while the other (`协调需要时可用assign（…）、
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
-        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明见设置 `vmu.turn.protocolPath` 指向的协议文件；没有该设置就向主席索取。',
+        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：**席位不读设置键**——向**所办**索取本轮协议（chair 开会时按需自取或请所办提供）。',
 ].join('\n')
 const REPLY_COMPACT_TEXT_TEMP = REPLY_COMPACT_TEXT.split('\n').filter((l) => !l.includes('vibe_v5_verdict') && !l.includes('vibe_v5_record_')).join('\n')
 
@@ -320,8 +320,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '【回执最小形状】围栏写**字段本身**，不是工具参数：' + String.fromCharCode(96) + '{"say":"…","solved":false}' + String.fromCharCode(96) + '（一个字段也要成句）；**围栏不要写 ' + String.fromCharCode(96) + 'op' + String.fromCharCode(96) + '**；所办代转才用 ' + String.fromCharCode(96) + 'vibe_vmu_turn {op:"reply", member, report:{…}}' + String.fromCharCode(96) + '。',
-        '只有**所办代转**时才用工具调用参数 `vibe_vmu_turn {op:"reply", member, report:{…}}`——那是调用参数，不是围栏形状；成员/临时工永远写字段；**一次回复至少一个字段**。',
+        '【回执最小形状】围栏写**字段本身**，不是工具参数：' + String.fromCharCode(96) + '{"say":"…","solved":false}' + String.fromCharCode(96) + '（一个字段也要成句）；**围栏不要写 ' + String.fromCharCode(96) + 'op' + String.fromCharCode(96) + '**；只有**所办代转**才用工具调用参数 ' + String.fromCharCode(96) + 'vibe_vmu_turn {op:"reply", member, report:{…}}' + String.fromCharCode(96) + '——那是参数不是围栏形状；**一次回复至少一个字段**。',
       ].join('\n'),
       researcher: [
         '【回执最小形状】回复正文围栏里写**字段本身**：最小合法形状 `{"say":"…","solved":false}`（一个已登记字段也要成句：键 + 值）；**围栏里不要写 `op`**（那是所办代转的工具参数，不是回复字段）。',
@@ -453,7 +452,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '若你认为某条"已通过"的结论其实不成立（或代码与命题不符），**不要用弃权来卡住流程**——给 `vibe_v5_verdict` 一个你相信的概率并写清理由，框架会记为 pending、撤回该条证明并写入形式化待办。只有你确实无法判断时，才给一个严格介于 0 与 1 之间的值。',
       ].join('\n'),
       researcher: [
-        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。**注意**：Lean 通过只指**编译通过**，不代表命题为真，仍需保真收口。你可以维持、修改或反驳任何人的看法。',
+        '本轮是**验证轮**：审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。**注意**：Lean 通过只指**编译通过**，不代表命题为真，仍需保真收口（formal-status 的「未尝试」只指**本席**未尝试；该对象的历史证明以记录为准）。你可以维持、修改或反驳任何人的看法。',
         '若你认为某条"已通过"的结论其实不成立（或代码与命题不符），**不要用弃权来卡住流程**——给 `vibe_v5_verdict` 一个你相信的概率并写清理由，框架会记为 pending、撤回该条证明并写入形式化待办。只有你确实无法判断时，才给一个严格介于 0 与 1 之间的值。',
       ].join('\n'),
       temp: [
@@ -731,7 +730,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     texts: {
       normal: [
-        '计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。近似、替代与有限搜索的范围须声明，不得当成精确证明。详细操作按需向主席/所办索取（设置键 `vmu.turn.protocolPath`）。',
+        '计算证据请引用回执路径；脚本修改后用同一源文件重跑，旧回执不代表新代码。近似、替代与有限搜索的范围须声明，不得当成精确证明。详细操作按需向**所办**索取（席位不读设置键）。',
       ].join('\n'),
     },
   },
@@ -1156,7 +1155,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【工具做事，回执汇报】开会/举手/邀请/投票/改任务/写轨迹的主路都是**工具调用**。每轮末尾的 fenced JSON 是**便捷桥**：只写回执字段目录里的字段，带属主的会**真的派发**到目录写的那个面，`face:null` 的只记账；`executed` 是派发计数，不是你要写的字段；无会议 id，举手/邀请走工具面。工具是主路，围栏不能替代工具。',
-        '  · id 照读面抄，自造 id 拒 `VMU_NO_SUCH_OBJECT`；hint 里的 REACHABLE INSTEAD：先 `vibe_v5_overview {member:"<你的 id>"}` 读 `roster[]`（主席读它；非主席读 `[在册]` 行），挑一个在册 id，再 `vibe_v5_inbox {action:"list", member:"<roster id>"}`（＝上一步 id）。',
+        '  · id 照读面抄，自造 id 拒 `VMU_NO_SUCH_OBJECT`；hint 里的 REACHABLE INSTEAD：先读本轮 `[在册]` 行（主席可读 `vibe_v5_overview {member:"<你的 id>"}` 的 `roster[]`），挑一个在册 id，再 `vibe_v5_inbox {action:"list", member:"<roster id>"}`（＝上一步 id）。',
       ].join('\n'),
     },
   },

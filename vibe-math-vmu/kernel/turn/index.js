@@ -3396,6 +3396,13 @@ export function createTurnOrchestrator({
       ? turn.why.trim()
       : (typeof turn.nextStep === 'string' && turn.nextStep.trim() !== '' ? turn.nextStep.trim() : '')
     if (instruction) withVisible += '\n\n【本轮指令】' + instruction.slice(0, 4000)
+    // ★ C#21: the framework's context compaction is REAL only if the next prompt carries the summary of what was
+    // trimmed away. Appended (not templated) so no pack section is required; it appears ONLY once a member's transcript
+    // has actually exceeded the declared keep-window, so short sessions and every existing prompt pin are byte-identical.
+    const assemblyCompaction = compactTranscriptFor(turn.member, typeof clock === 'function' ? clock() : null)
+    if (assemblyCompaction && assemblyCompaction.summaryBytes > 0) {
+      withVisible += '\n\n【上下文摘要（框架裁剪；已丢弃 ' + String(assemblyCompaction.droppedCount) + ' 轮，摘要 ' + String(assemblyCompaction.summaryBytes) + ' 字节）】\n' + assemblyCompaction.summary
+    }
     // ★★★ TB-2739 (E) / RUN 79 (MEASURED, against the code and against the live run): WHETHER THE STATUS BLOCK IS IN
     // THE TEXT THE MEMBER WILL READ IS A READING, NOT A BELIEF. The 79th live run's taskbook asserted the `[状态板]` and
     // `[蓝图]` lines are always rendered, and the office then paged the t-13 prompt (26 641 characters) and reported
@@ -3407,6 +3414,7 @@ export function createTurnOrchestrator({
     // name (`why`), not a sentence a member quotes from a prompt.
     const statusBlockIncluded = statusWithNotices !== '' && withVisible.includes(statusWithNotices)
     return { ok: true, text: withVisible, sources: out.sources || [], truncation: out.truncation || null,
+      contextCompaction: compactionView(assemblyCompaction),
       instructionDelivered: instruction !== '',
       statusBlock: { included: statusBlockIncluded, chars: statusWithNotices.length,
         appendedLiterally: statusBlockIncluded && !out.text.includes(statusWithNotices),
@@ -4245,6 +4253,8 @@ export function createTurnOrchestrator({
   /** ⑤ plan: a PURE function from a parsed reply to the dispatch list (one owner per field). */
   const plan = (reply) => {
     const r = reply && typeof reply === 'object' ? reply : {}
+
+
     return Object.keys(r).filter((k) => Object.prototype.hasOwnProperty.call(owners, k)).map((k) => {
       const owner = owners[k]
       const step = { field: k, face: owner.face, op: owner.op, payload: r[k], adapter: owner.adapter === undefined ? null : owner.adapter }
@@ -4269,6 +4279,116 @@ export function createTurnOrchestrator({
   // real compaction, and the resume seed a rebuilt session is handed. Kept here rather than in the kernel because it is
   // bookkeeping about the TURN, and the source keeps it in the same place its own round loop does.
   const context = new Map()
+
+  // ★★★★★★★ C#21 (ROUND-8 product audit, FAILED 8 rounds): FRAMEWORK-SIDE CONTEXT COMPACTION, WITH COUNTS.
+  // Before this, the framework only INJECTED the `[CONTEXT COMPACT]` directive and trusted the model to summarise itself:
+  // no trimming, no summary bytes, no dropped count — a long session could only grow. The loop now keeps a per-member
+  // transcript ledger of the turns it actually saw, trims it to a FINITE declared budget, and carries the tail of the
+  // dropped text as a bounded summary that the NEXT prompt actually contains. Nothing is silently lost: every dropped
+  // turn leaves a metadata row (turnId + bytes) and the receipt reports `droppedCount`/`summaryBytes`/`keptTurns`.
+  //
+  // THE BUDGET IS DECLARED, NOT INVENTED: `vmu.prompt.compactAfterRounds` (schema default 8, finite) is the keep-window —
+  // the same key the directive gate already uses — and an EXPLICIT 0 means "no trimming at all" (the legal unlimited
+  // choice, stated by the ledger instead of being guessed). `vmu.prompt.compactThreshold` (default 66%) stays the usage
+  // signal for the directive; this mechanism does not depend on the model reporting a percentage.
+  const transcripts = new Map()          // member -> [{ turnId, text, bytes }]
+  const compactionLedger = new Map()     // member -> { droppedCount, summaryBytes, keptTurns, keepRecentTurns, summary, archive, lastAt }
+  const COMPACT_SUMMARY_CAP_BYTES = 2048
+  const COMPACT_ARCHIVE_CAP = 200
+  const compactKeepRecentTurns = () => {
+    const raw = settings && typeof settings === 'object' ? settings['vmu.prompt.compactAfterRounds'] : undefined
+    if (raw === 0 || raw === '0') return 0        // EXPLICIT 0 = no trimming (legal unlimited declaration)
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return Math.floor(n)
+    return 8                                      // the declared default (schema.scope: vmu.prompt.compactAfterRounds)
+  }
+  const bytesOfText = (text) => (typeof Buffer !== 'undefined' ? Buffer.byteLength(String(text), 'utf8') : unescape(encodeURIComponent(String(text))).length)
+  // ★★★ C#21 (ROUND-8 follow-up): the summary cap is BYTES, not UTF-16 code units. `slice(len - cap)` on CJK text can
+  // return ~3x the declared byte budget (every CJK char is 3 UTF-8 bytes), which made the receipt's `summaryBytes`
+  // exceed 2,048. This walks CODE POINTS from the end and stops when the next character would break the byte limit, so
+  // `summaryBytes <= COMPACT_SUMMARY_CAP_BYTES` always holds and a surrogate pair is never split.
+  const tailUtf8 = (text, maxBytes) => {
+    const str = String(text)
+    if (bytesOfText(str) <= maxBytes) return str
+    const chars = Array.from(str)
+    let out = ''
+    let used = 0
+    for (let i = chars.length - 1; i >= 0; i -= 1) {
+      const b = bytesOfText(chars[i])
+      if (used + b > maxBytes) break
+      out = chars[i] + out
+      used += b
+    }
+    return out
+  }
+  const emptyCompaction = (keepRecent) => ({ droppedCount: 0, droppedThisTime: 0, summaryBytes: 0, keptTurns: 0, keepRecentTurns: keepRecent, summary: '', archive: [], trimMeans: null, means: 'no trimming has happened yet' })
+  const compactionView = (row) => ({
+    droppedCount: row.droppedCount, droppedThisTime: row.droppedThisTime, summaryBytes: row.summaryBytes,
+    keptTurns: row.keptTurns, keepRecentTurns: row.keepRecentTurns,
+    droppedTurns: row.archive.map((a) => ({ turnId: a.turnId, bytes: a.bytes })),
+    summary: row.summary,
+    means: row.means,
+    budgetMeans: 'budget = keep the most recent ' + String(row.keepRecentTurns) + ' turns (`vmu.prompt.compactAfterRounds`, declared default 8; an EXPLICIT 0 means no trimming). Older turn texts are replaced by a bounded summary (cap ' + String(COMPACT_SUMMARY_CAP_BYTES) + ' bytes) that the next prompt carries; every dropped turn keeps its turnId+bytes in `droppedTurns`, so the drop is auditable and never silent.',
+  })
+  /** Trim a member's transcript to the declared keep-window and fold the dropped tail into the bounded summary. */
+  const compactTranscriptFor = (member, now) => {
+    const id = String(member)
+    const keepRecent = compactKeepRecentTurns()
+    const list = transcripts.get(id) || []
+    const row = compactionLedger.get(id) || Object.assign(emptyCompaction(keepRecent), { summary: '', archive: [] })
+    row.keepRecentTurns = keepRecent
+    if (keepRecent === 0) {
+      row.keptTurns = list.length
+      row.droppedThisTime = 0
+      row.trimMeans = 'explicit-unlimited'
+      row.means = 'vmu.prompt.compactAfterRounds=0 is declared EXPLICITLY: this member context is not trimmed (keptTurns=' + String(list.length) + ')'
+      compactionLedger.set(id, row)
+      return row
+    }
+    if (list.length <= keepRecent) {
+      row.keptTurns = list.length
+      row.droppedThisTime = 0
+      row.trimMeans = 'within-budget'
+      row.means = 'within the declared keep-window (' + String(list.length) + '/' + String(keepRecent) + ' turns): nothing dropped'
+      compactionLedger.set(id, row)
+      return row
+    }
+    const drop = list.slice(0, list.length - keepRecent)
+    const kept = list.slice(list.length - keepRecent)
+    const joined = drop.map((e) => e.text).join('\n')
+    const summary = tailUtf8(joined, COMPACT_SUMMARY_CAP_BYTES)
+    row.droppedCount += drop.length
+    row.droppedThisTime = drop.length
+    row.summary = summary
+    row.summaryBytes = bytesOfText(summary)
+    row.keptTurns = kept.length
+    row.lastAt = typeof now === 'number' ? now : (typeof clock === 'function' ? clock() : null)
+    for (const e of drop) row.archive.push({ turnId: e.turnId, bytes: e.bytes })
+    if (row.archive.length > COMPACT_ARCHIVE_CAP) row.archive.splice(0, row.archive.length - COMPACT_ARCHIVE_CAP)
+    row.trimMeans = 'trimmed'
+    row.means = 'context trimmed: dropped ' + String(row.droppedCount) + ' turn(s) cumulatively (' + String(drop.length) + ' this turn), kept the most recent ' + String(kept.length) + '; the dropped text survives as a ' + String(row.summaryBytes) + '-byte summary carried by the next prompt, and every dropped turn is listed in droppedTurns'
+    transcripts.set(id, kept)
+    compactionLedger.set(id, row)
+    return row
+  }
+  // ★ status is a bounded surface: the FULL compaction reading (means/budgetMeans/summary/droppedTurns) rides on the
+  // RECEIPT; the status block carries only budget + counts (C#21-6 still reads these). This keeps the host status summary
+  // inside its size pin without hiding the readings.
+  const contextCompactionSummary = () => {
+    const members = []
+    for (const [id, row] of compactionLedger) members.push({ member: id, droppedCount: row.droppedCount, summaryBytes: row.summaryBytes, keptTurns: row.keptTurns })
+    return { keepRecentTurns: compactKeepRecentTurns(),
+      members: members.sort((a, b) => String(a.member).localeCompare(String(b.member))),
+      means: 'C#21: budget=compactAfterRounds; counts per member' }
+  }
+  const contextCompactionReading = () => {
+    const members = []
+    for (const [id, row] of compactionLedger) members.push(Object.assign({ member: id }, compactionView(row)))
+    return { keepRecentTurns: compactKeepRecentTurns(), summaryCapBytes: COMPACT_SUMMARY_CAP_BYTES,
+      members: members.sort((a, b) => String(a.member).localeCompare(String(b.member))),
+      means: 'framework-side context compaction (C#21): per-member keep-window from vmu.prompt.compactAfterRounds (default 8; explicit 0 = no trimming), bounded summary of dropped turns, and a droppedTurns ledger. The [CONTEXT COMPACT] directive is unchanged and still works beside this.' }
+  }
+
 
   /**
    * ROUND 384 - THE ONE-SHOT NOTICE QUEUE (docs/26 section 3.25). The source composes a settled asynchronous compile
@@ -4541,6 +4661,17 @@ export function createTurnOrchestrator({
     const deliverySeam = opts && opts.delivery && typeof opts.delivery === 'object' ? opts.delivery : null
     const recordsFace = map && typeof map === 'object' ? map['vmu.records'] : null
     const r = reply && typeof reply === 'object' ? reply : {}
+    // ★ C#21: this reply is the turn's context; record it, then trim the member's transcript to the declared budget.
+    const contextCompactionThisTurn = (memberId === null || memberId === undefined)
+      ? Object.assign(emptyCompaction(compactKeepRecentTurns()), { means: 'no member id on this apply(): there is no per-member transcript to trim' })
+      : (() => {
+        const id = String(memberId)
+        const list = transcripts.get(id) || []
+        const text = canonicalReplyValue(reply)
+        list.push({ turnId: opts && opts.turnId !== undefined && opts.turnId !== null ? String(opts.turnId) : null, text, bytes: bytesOfText(text) })
+        transcripts.set(id, list)
+        return compactTranscriptFor(id, typeof clock === 'function' ? clock() : null)
+      })()
     const bookkeeping = []
     turnEffects.length = 0   // R11: effects are per-apply, never accumulated across turns
     turnCoercions.length = 0 // ROUND 18: coercions are per-apply too
@@ -5118,6 +5249,7 @@ export function createTurnOrchestrator({
       meetingMeans: boundMeeting === null
         ? 'no meeting was bound to this turn, so a reply field that needs { meeting, member, text } cannot be dispatched (a bare sentence is kept in notes, never silently dropped)'
         : 'this turn was bound to the named meeting, so a member\'s bare sentence was recorded as THAT MEMBER\'S speech and the receipt carries onBehalf for it', effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
+      contextCompaction: compactionView(contextCompactionThisTurn),
       durableIdempotency: idempotency ? 'store-backed-ledger (key turnId|field|callIndex)' : 'none',
       replayedDispatches,
       ...(idemLedgerNote === null ? {} : { idempotencyLedgerNote: idemLedgerNote }),
@@ -7392,6 +7524,7 @@ export function createTurnOrchestrator({
       // stuck at status:"open" and NOTHING said the loop itself was holding it; `vibe_vmu_human recover` read the durable
       // fold and reported `inflight.pending:0`, so the two faces denied each other. `turnLoop` states the loop's own fact:
       // who holds the lock, for how long, when it will be closed by name, and whether a wake is waiting for a free turn.
+      contextCompaction: contextCompactionSummary(),
       turnLoop: turnLoopReading(),
       // ★★★ RUN 260 / TB-2667 (task-147): THE SESSION-WIDE SKIP TOTAL, DERIVED FROM THE SAME ROWS `turnReceipts` PUBLISHES.
       // Before this, answering "how many fields did this session skip?" meant paging through a bounded row list, and the

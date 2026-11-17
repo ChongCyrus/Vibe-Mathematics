@@ -229,11 +229,11 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 486 / suites 373 / probes 113`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 487 / suites 374 / probes 113`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **865 作业**（802 套件 + 63 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **866 作业**（803 套件 + 63 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
@@ -905,7 +905,6 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `panel` · `status()` | ok | — | dropped=[object Object] | ok 或 object（实测（轮 2）：零声明下 status() ⇒ **ok**（自曝 dropped 列表 ⇒ 零机制＝无成员面板可报 ⇒ 状态可读、**不拒** ✓）） |
 | `partnership` · `list()` | object | — | — | ok 或 object（实测（轮 276）：零声明下 status() ⇒ ok（entities=0、zeroMechanism=true 自曝 ✓）；validateInvoice() 对**缺声明的税务字段位【逐位点名】**并拒（VMU_TAX_FIELD_MISSING）；绑定未登记实体拒（VMU_ENTITY_UNKNOWN）✓） |
 | `projmigrate` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `publication` · `advance()` | refusal | VMU_VERSION_CHAIN_BROKEN | — | 具名拒（带 code）（task-214 实测：`advance()` ⇒ 具名拒 **VMU_VERSION_CHAIN_BROKEN** ⇒ 零机制＝无版本链可推进 ⇒ 具名拒即真实形状 ✓） |
 | `ratelimit` · `status()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `receiptbounds` | （无 create* 工厂） | — | — | EXPECT_NA（纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 32 从 `host.js` 抽出（该文件 **1231 行越过 1200** ⇒ 抽取，**未往 `KNOWN` 加名字** ✓，`host.js` 1231→1151）：回执尺寸契约 `MAX_TOOL_RESULT_BYTES` ＋ **结构内、路径级**省略 `boundedToolResult(value)`（**不动键、不动数组长度**；其形状与 `elided:[{path,from,to,bytes}]` 由 `tests/vmu-receipt-truncation.test.mjs` 覆盖 ✓）。） |
 | `records` · `put()` | ok | — | enforced=[10] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（task-204 实测（形状取自测试 vmu-records.test.mjs:103）：`put({track,kind,title,body,settled:true})` ⇒ **ok**（零机制＝无配额限制、放行 ✓）） |
@@ -921,7 +920,6 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `resume` · `status()` | ok | — | — | PROBE_NEEDS_ARGS（缺：`store`／`work`／`control`／`identity` 注入（工厂需要真实接缝才返回实例）；补参后应按实测形状裁定 ✓） |
 | `resumeflush` | create 抛出 | — | — | PROBE_NEEDS_ARGS（R10 拆出（`createExitContract`）；实测 `createExitContract({})` 抛 "needs a snapshot({key}) writer" ⇒ 工厂需要注入接缝，探针需参数才能裁定（由 R12 的顺序修正当场抓出）） |
 | `retention` · `plan()` | object | — | dropped=0 | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
-| `reviewers` · `status()` | ok | — | — | ok 或 object（实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓） |
 | `rules` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `scheduler` · `list()` | ok | — | dropped=0 truncated=false | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `script-bridge` · `plan()` | refusal | VMU_INVALID_ARGUMENT | — | 具名拒（带 code）（第 26 轮已修 ✓：实测拒绝带 **`VMU_INVALID_ARGUMENT`**（同上 ✗）） |
@@ -939,7 +937,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 107 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 12 n/a ===
+=== ZERO-MECHANISM MATRIX: 105 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 12 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

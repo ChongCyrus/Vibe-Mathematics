@@ -3,6 +3,10 @@
 // with a registered tool that refuses everything is not a usable face.
 import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+// ★ TB-2794 Step 3: reviewers/publication are PACK-contributed; this suite supplies the generic faces through the same
+// service seam a pack uses, so it still checks "usable", just not "kernel-constructed".
+import { createReviewers } from '../vibe-math-vmu/packs/research-core/reviewers.js'
+import { createPublication } from '../vibe-math-vmu/packs/research-core/publication.js'
 
 let passed = 0
 let failed = 0
@@ -30,6 +34,8 @@ const FACES = [
 
 console.log('=== EVERY FACE HAS A TOOL THAT ANSWERS ===')
 const k = createKernel({ clock: () => 0, settings: {} })
+k.provideService({ name: 'vmu.reviewers', apiVersion: 1, impl: createReviewers({ clock: () => 0, settings: {} }), by: 'test-reviewers-face' })
+k.provideService({ name: 'vmu.publication', apiVersion: 1, impl: createPublication({ clock: () => 0, settings: {} }), by: 'test-publication-face' })
 for (const [face, key, action] of FACES) {
   const flag = key + 'Tool'
   const specs = toolSpecs({ kernel: k, settings: {}, [flag]: true })

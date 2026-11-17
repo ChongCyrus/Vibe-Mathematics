@@ -729,7 +729,7 @@
       "text": "p=1 的命题要标记 verified",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::VMU_PACK_V5R_P1_NEEDS_DEBATE"
+        "vibe-math-vmu/packs/v5r/tools.js::throw refuse\\('VMU_PACK_V5R_P1_NEEDS_DEBATE'"
       ],
       "tool": [
         "vibe_v5_read_library",

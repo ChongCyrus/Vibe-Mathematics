@@ -188,6 +188,73 @@ const newTree = (tag) => {
   k.registry.removeAlias('vmu.probe.legacy')
 }
 
+// ── 4c. TB-2794 Step 3: the two research faces are PACK-CONTRIBUTED (v5r PACK.services), not kernel-local.
+{
+  const km = await importFrom(SRC, 'kernel/index.js')
+  const packm = await importFrom(SRC, 'kernel/pack.js')
+  const v5r = await importFrom(SRC, 'packs/v5r/prompts/v5r-core.js')
+  const mk = async (settings = {}) => {
+    const k = km.createKernel({ clock: () => 1000, root: mkdtempSync(join(tmpdir(), 'vmu-step3-')), settings })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    return { k, loader }
+  }
+  {
+    const { k, loader } = await mk()
+    ok(k.reviewers === null && k.publication === null,
+      '★★ Step3: a NO-PACK kernel has no reviewers/publication face (absence, not a stub)', { reviewers: k.reviewers, publication: k.publication })
+    ok(k.status().registry.services.filter((s) => s.name === 'vmu.reviewers' || s.name === 'vmu.publication').length === 0,
+      '★★ Step3: and the registry does not publish those names either')
+    const applied = await loader.apply(v5r.PACK)
+    ok(applied.ok === true && applied.services && applied.services.length === 2,
+      '★★ Step3: the v5r pack APPLIES its two contributed services (no local-name CONFLICT — the local construction is gone)',
+      applied && applied.services)
+    ok(k.reviewers !== null && k.publication !== null && typeof k.reviewers.register === 'function' && typeof k.publication.register === 'function',
+      '★★ Step3: the getters resolve the CONTRIBUTED faces', { reviewers: !!k.reviewers, publication: !!k.publication })
+    const provided = k.status().servicesProvided.map((s) => s.name).sort()
+    ok(provided.join(',') === 'vmu.publication,vmu.reviewers', '★★ Step3: servicesProvided names both, with the pack as owner', k.status().servicesProvided)
+    const reg = k.status().registry.services.filter((s) => s.name === 'vmu.reviewers' || s.name === 'vmu.publication')
+    ok(reg.length === 2 && reg.every((s) => s.providedBy === 'v5r-core'), '★★ Step3: registry providedBy = the pack id', reg)
+    const un = await loader.unload(v5r.PACK.id)
+    ok(un.ok === true && un.residueFree === true, '★★ Step3: unload is residue-free (the full-table scan agrees)', un)
+    ok(k.reviewers === null && k.publication === null &&
+      k.status().registry.services.filter((s) => s.name === 'vmu.reviewers' || s.name === 'vmu.publication').length === 0,
+      '★★ Step3: after unload the faces are GONE (getter null, registry absent), not silently surviving', { reviewers: k.reviewers, publication: k.publication })
+  }
+  // P3 (product audit): unload with the REQUEST id ("v5r") instead of the manifest id ("v5r-core") must name the real
+  // applied ids in its hint — the caller cannot discover the manifest id from a bare VMU_NO_SUCH_OBJECT with hint:null.
+  {
+    const { k, loader } = await mk()
+    await loader.apply(v5r.PACK)
+    let err = null
+    try { await loader.unload('v5r') } catch (e) { err = e }
+    ok(err && err.code === 'VMU_NO_SUCH_OBJECT' && typeof err.hint === 'string' && err.hint.includes(v5r.PACK.id),
+      '★★ P3: unload with the request id names the REAL applied ids in the hint (no hint:null dead end)', err && { code: err.code, hint: err.hint, facts: err.facts })
+    await loader.unload(v5r.PACK.id)
+  }
+
+  // lifecycle: the publication seam is a RESOLVER (pack applies after createLifecycle). A criterion, not a snapshot.
+  {
+    const lm = await importFrom(SRC, 'kernel/lifecycle.js')
+    let calls = 0
+    const stages = [{ id: 'L1', name: 'a', requires: [], gates: [] }, { id: 'L2', name: 'b', requires: [], gates: ['publication'] }]
+    const lc = lm.createLifecycle({ clock: () => 1000, settings: { 'vmu.lifecycle.stages': stages },
+      publication: () => ({ check: () => { calls += 1; return { ok: true } } }) })
+    const first = lc.advance({ studyId: 's1', to: 'L1' })
+    const advanced = lc.advance({ studyId: 's1', to: 'L2' })
+    ok(first.ok === true && advanced.ok === true && calls === 1,
+      '★★ Step3: lifecycle UNWRAPS the publication resolver at use time (a pack-applied face is visible to a constructed loop)', { advanced, calls })
+  }
+  // approval gate: the pack attaches the kernel's OWN gate to its contributed publication face
+  {
+    const { k, loader } = await mk({ 'vmu.human.gatedActions': ['vmu.publication.register'] })
+    await loader.apply(v5r.PACK)
+    let gateCode = null
+    try { await k.publication.register({ id: 'p-gate', title: 'T' }) } catch (e) { gateCode = e && e.code }
+    ok(typeof gateCode === 'string' && gateCode.indexOf('VMU_HUMAN_') === 0,
+      '★★ Step3: the pack-attached approval gate wraps the CONTRIBUTED publication face (gated action refuses by name)', gateCode)
+  }
+}
+
 // ── 5. LAMPS: remove one ingredient in a COPY and require the matching assertion to go red ──────────────────────────
 for (const [tag, mutate, expectedRed] of [
   ['getter-fallback', (dir) => {
@@ -234,6 +301,67 @@ for (const [tag, mutate, expectedRed] of [
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 10 })
   }
+}
+
+// ── 5b. TB-2794 Step 3 LAMPS (four): each copy removes ONE ingredient and requires a real red ────────────────────────
+{
+  // ① no services declaration in the pack: no faces (the declaration is what publishes them)
+  const dir = newTree('step3-no-services')
+  try {
+    const cp = join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')
+    writeFileSync(cp, readFileSync(cp, 'utf8').replace('\n  services: [', '\n  servicesOff: ['), 'utf8')
+    const km = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/pack.js')
+    const v5r = await importFrom(join(dir, 'vibe-math-vmu'), 'packs/v5r/prompts/v5r-core.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir, 'root') })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    await loader.apply(v5r.PACK)
+    ok(k.reviewers === null && k.publication === null,
+      'LAMP(step3-no-services): without PACK.services the faces are absent — the declaration is load-bearing', { reviewers: !!k.reviewers, publication: !!k.publication })
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10 }) }
+  // ② no attachApprovalGate in the pack: the contributed face is NOT gated
+  const dir2 = newTree('step3-no-gate')
+  try {
+    const cp = join(dir2, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')
+    writeFileSync(cp, readFileSync(cp, 'utf8').replace('facade.attachApprovalGate({', 'void ({'), 'utf8')
+    const km = await importFrom(join(dir2, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir2, 'vibe-math-vmu'), 'kernel/pack.js')
+    const v5r = await importFrom(join(dir2, 'vibe-math-vmu'), 'packs/v5r/prompts/v5r-core.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir2, 'root'), settings: { 'vmu.human.gatedActions': ['vmu.publication.register'] } })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    await loader.apply(v5r.PACK)
+    let code = null
+    try { await k.publication.register({ id: 'g', title: 'T' }) } catch (e) { code = e && e.code }
+    ok(typeof code !== 'string' || code.indexOf('VMU_HUMAN_') !== 0,
+      'LAMP(step3-no-gate): without the pack-attached gate the action is NOT refused by the human gate (the attach is load-bearing)', code)
+  } finally { rmSync(dir2, { recursive: true, force: true, maxRetries: 10 }) }
+  // ③ unload does not retract a contributed service: residue survives (the full-table receipt must catch it)
+  const dir3 = newTree('step3-unload-retract')
+  try {
+    const cp = join(dir3, 'vibe-math-vmu', 'kernel', 'pack.js')
+    writeFileSync(cp, readFileSync(cp, 'utf8').replace("        undo.push(() => { try { return kernel.retractService({ name: svc.name, by: manifest.id }) } catch { /* unload must still proceed; the failure is not silent because the next status shows it */ } })", ''), 'utf8')
+    const km = await importFrom(join(dir3, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir3, 'vibe-math-vmu'), 'kernel/pack.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir3, 'root') })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    await loader.apply({ id: 'lamp3-pack', version: '1.0.0', services: [{ name: 'vmu.probe.step3', apiVersion: 1, create: () => ({ ping: () => 1 }) }] })
+    await loader.unload('lamp3-pack')
+    ok(k.service('vmu.probe.step3') !== null,
+      'LAMP(step3-unload-retract): without the undo the contributed service SURVIVES unload — the retract is load-bearing', k.status().servicesProvided)
+  } finally { rmSync(dir3, { recursive: true, force: true, maxRetries: 10 }) }
+  // ④ lifecycle snapshots the seam instead of unwrapping the resolver: a pack-applied face is invisible
+  const dir4 = newTree('step3-lifecycle-snapshot')
+  try {
+    const cp = join(dir4, 'vibe-math-vmu', 'kernel', 'lifecycle.js')
+    writeFileSync(cp, readFileSync(cp, 'utf8').replace("const seam = kind === 'publication' ? publicationOf() : domaingate", "const seam = kind === 'publication' ? publication : domaingate"), 'utf8')
+    const lm = await importFrom(join(dir4, 'vibe-math-vmu'), 'kernel/lifecycle.js')
+    const stages = [{ id: 'L1', name: 'a', requires: [], gates: [] }, { id: 'L2', name: 'b', requires: [], gates: ['publication'] }]
+    const lc = lm.createLifecycle({ clock: () => 1000, settings: { 'vmu.lifecycle.stages': stages }, publication: () => ({ check: () => ({ ok: true }) }) })
+    lc.advance({ studyId: 's1', to: 'L1' })
+    const adv = lc.advance({ studyId: 's1', to: 'L2' })
+    ok(adv.ok === false && adv.code === 'VMU_EXTERNAL_UNAVAILABLE',
+      'LAMP(step3-lifecycle-snapshot): a snapshot seam treats the resolver as the face and refuses — the unwrap is load-bearing', adv)
+  } finally { rmSync(dir4, { recursive: true, force: true, maxRetries: 10 }) }
 }
 
 console.log('\n=== VMU SERVICE CONTRIBUTION: ' + passed + ' passed, ' + failed.length + ' failed ===')

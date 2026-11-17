@@ -19,3 +19,8 @@ export const RESEARCH_CORE_PACK = Object.freeze({
 export const PACK = RESEARCH_CORE_PACK
 
 export * from './paper-flow.js'
+
+// ★ TB-2794 Step 3: the generic research faces. v5r CONTRIBUTES them as services (`PACK.services`); this pack only
+// exports the institution-neutral factories (no policy, no defaults, no settings reads of its own).
+export { createReviewers, MODES, COI_POLICIES } from './reviewers.js'
+export { createPublication, VERSION_CHAIN, isVague, normalizeForMatch } from './publication.js'

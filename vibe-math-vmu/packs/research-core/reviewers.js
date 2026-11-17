@@ -1,4 +1,4 @@
-// vibe-math-vmu/kernel/reviewers.js — the reviewer market (volume 16 §L297-§L305, family G1).
+// vibe-math-vmu/packs/research-core/reviewers.js — the reviewer market (volume 16 §L297-§L305, family G1).  [TB-2794 Step 3: moved VERBATIM from kernel; v5r contributes the face as a service, policy stays in v5r.]
 //
 // ROUND 279. Built as its OWN face because the wiring bookkeeping is per family (round 275) and the neighbouring conference face pins an
 // exact count of ITS OWN keys with no cross-family tier. The volume gives the schema, the three field-level rules and the defaults:

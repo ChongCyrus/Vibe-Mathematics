@@ -14,6 +14,12 @@ export function makePublicationSpec({ param, refused, TOOL_NAMES, kernel }) {
     run: async ({ action, request, id, period } = {}) => {
       try {
         const publication = kernel.publication
+        // ★ TB-2794 Step 3: the face is CONTRIBUTED by a pack. A host that mounts no provider must get a named refusal,
+        // not a TypeError on null — and the hint names the only repair (mount the pack that contributes the face).
+        if (!publication || typeof publication !== 'object') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'no pack provides vmu.publication in this assembly',
+            'mount the pack that contributes the face (the v5r pack publishes it through PACK.services)')
+        }
         if (action === 'shareReplication') return Object.assign({ ok: true, action }, await publication.shareReplication(request))
         if (action === 'submitPack') return Object.assign({ ok: true, action }, await publication.submitPack(request))
         if (action === 'advance') return Object.assign({ ok: true, action }, await publication.advance(request))

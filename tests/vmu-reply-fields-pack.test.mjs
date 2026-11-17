@@ -13,7 +13,7 @@
 // Run: node tests/vmu-reply-fields-pack.test.mjs   Last line: N passed, M failed
 
 import { mkdtemp, rm } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -124,6 +124,49 @@ try {
   ok(typeof TURN.mergeReplyFieldOwners === 'function' &&
     (() => { try { TURN.mergeReplyFieldOwners([{ field: 'x', face: 'vmu.x', op: 'y', adapter: 'BAD NAME' }]); return false } catch (e) { return e.code === 'VMU_INVALID_ARGUMENT' } })(),
     '§5 a malformed adapter NAME in a declaration is refused by name (not silently ignored)')
+
+  // §6b THE FACE MAP IS BUILT FROM THE EFFECTIVE OWNERS (round-9 P1, MEASURED): a pack field whose face.op is not in
+  // the core table used to be reported "face-not-wired" even though the face existed. These assertions dispatch through a
+  // REAL v5r boot: the call must REACH vmu.mathjobs.submit (and get its own refusal), and a lamp proves the owner map is
+  // what makes that true.
+  console.log('§6b a pack field dispatch reaches its face in a REAL v5r boot (not face-not-wired)')
+  {
+    const b = await boot(['v5r'])
+    const out = await b.K.turn.apply({ lean_archive: { kind: 'blocked', note: 'no toolchain on this host' } }, null, 'r-1')
+    const skip = out.skipped[0] || null
+    ok(out.executed.length === 1 && skip === null,
+      '§6b ★ lean_archive is DISPATCHED (executed:1) — the face map knows vmu.mathjobs.submit', { executed: out.executed.length, skipped: out.skipped })
+    ok(out.executed[0] && out.executed[0].face === 'vmu.mathjobs' && out.executed[0].op === 'submit',
+      '§6b and the executed row names the face/op the pack declared', out.executed[0] && { face: out.executed[0].face, op: out.executed[0].op })
+    ok(out.executed[0] && out.executed[0].result && out.executed[0].result.ok === false && out.executed[0].result.code === 'VMU_MATH_INVALID_INPUT',
+      "§6b the face answered with its OWN named refusal (VMU_MATH_INVALID_INPUT), not the loop's face-not-wired", out.executed[0] && out.executed[0].result)
+    const formal = await b.K.turn.apply({ formal: { statement: 'P', proof: 'theorem t : True := trivial' } }, null, 'r-1')
+    ok(formal.skipped.length === 0 && formal.executed.length === 1 && formal.executed[0].face === 'vmu.formal',
+      '§6b ★ formal reaches vmu.formal.check too (adapter args + the pack-declared face.op in the map)', { executed: formal.executed.length, skipped: formal.skipped })
+    await rm(b.root, { recursive: true, force: true, maxRetries: 10 }).catch(() => {})
+  }
+  {
+    // LAMP: build the face map from the CORE owners only (the pre-fix shape) in a COPY — the same dispatch must go red.
+    const dir = await mkdtemp(join(tmpdir(), 'vmu-step2b-lamp-'))
+    try {
+      cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+      const kp = join(dir, 'vibe-math-vmu', 'kernel', 'index.js')
+      const src = readFileSync(kp, 'utf8')
+      const marker = 'resolveOwners(null, replyFields))'
+      ok(src.includes(marker), '§6b lamp-setup: the effective-owner map is locatable')
+      writeFileSync(kp, src.split(marker).join('undefined)'), 'utf8')
+      const lampEntry = (await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?lamp=' + Date.now())).apply
+      const state = { specs: [] }
+      const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
+      const handle = lampEntry(ctx, { clock: () => 1000, packs: ['v5r'], root: join(dir, 'lamp-root') })
+      await handle.ready()
+      await handle.kernel.store.open()
+      const lout = await handle.kernel.turn.apply({ lean_archive: { kind: 'blocked', note: 'x' } }, null, 'r-1')
+      ok(lout.executed.length === 0 && lout.skipped[0] && lout.skipped[0].reason === 'face-not-wired' && lout.skipped[0].code === 'VMU_TURN_FACE_NOT_WIRED',
+        '§6b LAMP(RED-worthy): with the CORE-only owner map the SAME declared field is face-not-wired — the owner mapping is load-bearing',
+        lout.skipped)
+    } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10 }).catch(() => {}) }
+  }
 
   // §6 THE REAL ASSEMBLY: pack declares the fields, no-pack genuinely lacks them
   console.log('§6 the mounted assembly carries the pack fields; a no-pack kernel does not')

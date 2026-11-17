@@ -19,7 +19,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -176,6 +176,48 @@ test('RUN 256 clock purity', async (t) => {
     }
     const isoRefusal = isoKernel && isoKernel.refused ? isoKernel.refused.code : (isoNow && isoNow.code)
     ok(isoRefusal === 'VMU_CLOCK_UNGUARDED', '§7a an ISO-string kernel clock is refused by name, got ' + String(isoRefusal))
+
+    // ── §7b/7c a NaN clock and a CONTRIBUTED face: the guarded seam refuses BY NAME, never a silent wall read ────
+    {
+      // A full entry boot would surface an UNRELATED resume-projection refusal first (resume refuses a NaN instant by
+      // name, measured), so this probes the SAME seam the pack face uses: the kernel's own injected guarded clock.
+      const KERN = await import(pathToFileURL(join(VMU, 'kernel/index.js')).href)
+      const PACKM = await import(pathToFileURL(join(VMU, 'kernel/pack.js')).href)
+      const V5RPACK = await import(pathToFileURL(join(VMU, 'packs/v5r/prompts/v5r-core.js')).href)
+      const kn = KERN.createKernel({ clock: () => NaN, root: mkdtempSync(join(tmpdir(), 'vmu-r256-nan-')) })
+      let nanNow = null
+      try { kn.clockguard.now() } catch (e) { nanNow = e }
+      ok(nanNow && nanNow.code === 'VMU_CLOCK_UNGUARDED',
+        '§7b a NaN clock is refused by name through the guarded seam', nanNow && { code: nanNow.code, message: String(nanNow.message).slice(0, 80) })
+      const loader = PACKM.createPackLoader({ kernel: kn, registry: kn.registry })
+      await loader.apply(V5RPACK.PACK)
+      let faceErr = null
+      try { await kn.reviewers.register({ id: 'r-nan', expertise: [], conflicts: [] }) } catch (e) { faceErr = e }
+      ok(faceErr && faceErr.code === 'VMU_CLOCK_UNGUARDED',
+        '§7c ★ the CONTRIBUTED reviewers face takes the injected guarded clock: a NaN clock is a NAMED refusal, not Date.now()',
+        faceErr && { code: faceErr.code, message: String(faceErr.message).slice(0, 90) })
+    }
+    // LAMP: replace the contributed face's clock seam with a wall-clock read in a COPY ⇒ the NaN/ISO refusal disappears.
+    {
+      const dir = mkdtempSync(join(tmpdir(), 'vmu-r256-purity-lamp-'))
+      try {
+        cpSync(VMU, join(dir, 'vibe-math-vmu'), { recursive: true })
+        const cp = join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')
+        const src = readFileSync(cp, 'utf8')
+        const marker = 'clock: facade.guardedClock,'
+        ok(src.includes(marker), '§7-lamp-setup the guarded seam is locatable')
+        writeFileSync(cp, src.split(marker).join('clock: () => Date.now(),'), 'utf8')
+        const entry = await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?lamp=' + Date.now())
+        const specs = []
+        const ctx = { effect: (fn) => fn(), on: () => () => {}, tools: { register: async (spec) => { specs.push(spec); return () => {} } } }
+        const h = entry.apply(ctx, { clock: () => NaN, packs: ['v5r'], root: mkdtempSync(join(tmpdir(), 'vmu-r256-lamp-root-')) })
+        await h.ready(); await h.kernel.store.open()
+        let code = null
+        try { await h.kernel.reviewers.register({ id: 'r-lamp', expertise: [], conflicts: [] }) } catch (e) { code = e && e.code }
+        ok(code !== 'VMU_CLOCK_UNGUARDED',
+          '§7 LAMP(RED-worthy): with a Date.now() fallback the NaN clock is NO LONGER refused — the seam is load-bearing', code)
+      } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10 }) }
+    }
 
     // ── §8 the single named wall-clock fallback is COUNTED and NAMED (never silent) ───────────────────────────────
     // RUN 259 / P1-2 (AUDIT-14): an unusable instant is NO LONGER silently replaced by the wall clock. The fallback

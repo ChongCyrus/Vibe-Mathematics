@@ -1,4 +1,4 @@
-// vmu kernel publication — version chain, submission packs, archive registration (offline first),
+// vmu kernel publication — version chain, submission packs, archive registration (offline first),  [TB-2794 Step 3: moved VERBATIM from kernel; v5r contributes the face as a service, policy stays in v5r.]
 // availability statements + badges, and replication outcomes (negative results are first-class).
 // Spec: docs/16-research-lifecycle.md §7 (G2 JATS-style pack / G12 registration / G19 availability /
 //       G20 replication) + docs/07 (fingerprints are REFERENCED, never redefined here).
@@ -9,7 +9,7 @@
 // (an offline run still produces a *pending* pack); a badge must match its fields; `failed` replication is
 // recorded normally (never an error); injected clock; zero-config never crashes; reads never mutate.
 
-import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
+import { mint } from '../../kernel/ids.js'   // generic id primitive (the ONE minter); not a research face   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 export const apiVersion = 1
 
 /** The version chain of a publication (16 §7 G2). */

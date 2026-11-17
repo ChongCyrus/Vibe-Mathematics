@@ -5,7 +5,7 @@
 // governs an exchange, joint-authorship policy and the settlement cycle with its reconciliation tolerance. It owns exactly
 // the seven declared `vmu.collab.*` keys and decides nothing else.
 //
-// FACE CONVENTIONS (the same ones kernel/mathtools.js, kernel/funding.js and kernel/publication.js follow):
+// FACE CONVENTIONS (the same ones kernel/mathtools.js, kernel/funding.js and packs/research-core/publication.js follow):
 //   ① every key is read with a LITERAL access - a composed key is invisible to the settings table's scan, and that table
 //      is a gate (kernel/guard.js states the same discipline at its head);
 //   ② every receipt carries `enforced[]` - the keys EVALUATED for that call - so an auditor can tell which settings the

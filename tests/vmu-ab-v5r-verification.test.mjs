@@ -228,7 +228,7 @@ ok(noWhy.ok === false && /why|理由/.test(String(noWhy.message)),
   ok(/vmu\.conference\.cfpOpenMs/.test(confSrc) && /vmu\.conference\.cfpCloseMs/.test(confSrc),
     'V33. ★★ the NOTIFICATION WINDOW is a pair of tunable keys here: when the call opens and when it closes',
     { keys: 'cfpOpenMs / cfpCloseMs' })
-  const pubSrc = readFileSync(new URL('../vibe-math-vmu/kernel/publication.js', import.meta.url), 'utf8')
+  const pubSrc = readFileSync(new URL('../vibe-math-vmu/packs/research-core/publication.js', import.meta.url), 'utf8')
   const chain = (pubSrc.match(/VERSION_CHAIN = Object\.freeze\(\[([^\]]+)\]/) || [])[1] || ''
   ok(/preprint/.test(chain) && /vor/.test(chain) && /erratum/.test(chain),
     'V34. ★★★ the EFFECTIVE-TIME notion exists as a publication version chain - preprint, accepted, version of record, erratum - with each step timestamped in the history',

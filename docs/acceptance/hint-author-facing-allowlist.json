@@ -74,14 +74,14 @@
     },
     {
       "file": "vibe-math-vmu/kernel/index.js",
-      "line": 2340,
+      "line": 2339,
       "name": "open",
       "why": "kernel author: the ledger refuses outside a member-scoped turn; the hint cites kernel/turn/index.js open(), an internal constructor the kernel author calls.",
       "owner": "kernel-core"
     },
     {
       "file": "vibe-math-vmu/kernel/lifecycle.js",
-      "line": 116,
+      "line": 119,
       "name": "stages",
       "why": "kernel author: the stage table is declared by whoever builds the team lifecycle, and stages() is that builder's own accessor — no seat can type it.",
       "owner": "kernel-core"
