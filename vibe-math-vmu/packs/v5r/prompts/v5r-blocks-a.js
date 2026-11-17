@@ -67,8 +67,8 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '你自己**——它分派的是工作，不是结论。',
       ].join('\n'),
       leaderless: [
-'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**领头人由 chair 席担任**：chair 若见 `vibe_v5_overview.leadership.code` 报 `chair-seated-but-leaderId-empty`，用 `vibe_v5_set` 写 `vmu.turn.leaderId`；其他席位不要尝试（工具面会拒），在群聊点名请 chair 补数据；确无 chair 时由全体有表决权者商议。',
-'**若确无院士席**，组织与协调由**全体有表决权者共同商议**（所办代表外部）；但请守住同一条分工：',
+'所办 `next_step` 是**编排建议**，不是结论：做什么、往哪走，由所内自己决定。**领头人由 chair 席担任**：chair 若见 `vibe_v5_overview.leadership.code` 报 `chair-seated-but-leaderId-empty`，用 `vibe_v5_set` 写 `vmu.turn.leaderId`；其他席位不要尝试（工具面会拒），在群聊点名请 chair 补数据。',
+'**若确无 chair 席（即没有院士就位）**，组织与协调由**全体有表决权者共同商议**（所办代表外部）；机制席位与角色：**chair 席**是机制席位，**院士**是它的角色名（见名册）。请守住同一条分工：',
 '**组织归院士/集体，判断属于你自己**——讨论决定的是工作，不是结论。',
       ].join('\n'),
     },
@@ -139,7 +139,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
       ].join('\n'),
       leaderless: [
         '  · 你的雇主：{{ setting:vmu.turn.tempHiredBy }}。它给你派活。',
-'  · 领头人声明：`vmu.turn.leaderId` 由**院士席**用 `vibe_v5_set` 写（其他席位不要调）；若确无院士席，除雇主外由全体有表决权者商议，你不必向某个院士汇报。',
+'  · 领头人声明：`vmu.turn.leaderId` 由 **chair 席（院士）** 用 `vibe_v5_set` 写（其他席位不要调）；若确无 chair 席，除雇主外由全体有表决权者商议，你不必向某个院士汇报。',
       ].join('\n'),
     },
   },
@@ -254,7 +254,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         // leaderless sections said 「本所当前没有在册院士」 — two mutually negating statements in ONE prompt
         // (measured live, then reproduced by tests/vmu-prompt-live-facts.test.mjs R13e). The NAME belongs only to
         // the leader-conditional `v5r-charter-roster-temp` block; this sentence is about the SEAT, not a person.
-        '  本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
+        '  若已设**领头人**（`chair` 席位且 `vmu.turn.leaderId` 非空，见名册），TA 以**全所视角**组织与协调；未设时由全体有表决权者商议：',
         '    ① **统筹全局**：掌握各方向布局、谁在做什么、哪里是瓶颈、哪里有重复或空白；',
         '    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。',
         '       分派是它的职责，不是越权；',
@@ -283,7 +283,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         // leaderless sections said 「本所当前没有在册院士」 — two mutually negating statements in ONE prompt
         // (measured live, then reproduced by tests/vmu-prompt-live-facts.test.mjs R13e). The NAME belongs only to
         // the leader-conditional `v5r-charter-roster-temp` block; this sentence is about the SEAT, not a person.
-        '  本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
+        '  若已设**领头人**（`chair` 席位且 `vmu.turn.leaderId` 非空，见名册），TA 以**全所视角**组织与协调；未设时由全体有表决权者商议：',
         '',
         '  **你没有组织职责**：任务由院士/所办分派（**派活≠代做**）；你那份的卡、发言、表**由你本回合自己写**并如实汇报：',
         '    · 接到任务先读验收标准；不清楚就向雇主问清，不要自己改方向；',
@@ -323,10 +323,10 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · 进入 Verified/ 的门：概率必须为 **1** 且有具名凭据（辩论一致／verified 轨或文献／Lean+辩论一致）；缺凭据具名拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE`；写入口只有 `vibe_v5_verified_promote`（`VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`）。",
         "  · **参考文献中的命题**可直接进 Verified（不经辩论）：卡带 `literature_ref:\"<作者, 出处, 定理/页码>\"` 且 `p:1`，再用 `vibe_v5_verified_promote`（`warrant_kind:\"literature\"`）入轨。",
         "  · **表决**（议题办不办、会议能不能开）用法定票数 m = min(所办上限, 在册有表决权人数)，读状态块的 `[表决] 法定票数 m = N` 行。`quorumRule` 默认 m-unanimous（defaultTally 一致）；未投满或票分裂 ⇒ undecided。",
-        "· 表决两段：先【独立初评】（独立给票与理由），未定论再【公开辩论】（意见公开、可引用/反驳/改后重投）；轮数由院士定（`vmu.meetings.verdictMaxRounds` 默认 3，到限新增动议拒 `VMU_RESOURCE_BUDGET`）。",
-        "· 未定论的对象**留在原库**：附裁决读数与完整辩论记录，不强判；条件成熟可再验证。",
-        "· **不要为了让流程往前走而投出你不相信的 1 或 0**：诚实的「不确定」好过虚假的「一致」。",
-        "· 你的**一票与所有人等重**，不能单方面定论。",
+        "  · 表决两段：先【独立初评】（独立给票与理由），未定论再【公开辩论】（意见公开、可引用/反驳/改后重投）；轮数由院士定（`vmu.meetings.verdictMaxRounds` 默认 3，到限新增动议拒 `VMU_RESOURCE_BUDGET`）。",
+        "  · 未定论的对象**留在原库**：附裁决读数与完整辩论记录，不强判；条件成熟可再验证。",
+        "  · **不要为了让流程往前走而投出你不相信的 1 或 0**：诚实的「不确定」好过虚假的「一致」。",
+        "  · 你的**一票与所有人等重**，不能单方面定论。",
         "  · 裁决落地靠**通知**：回执 `delivery`/`notified`/`notification.state` 说明通知到谁（`delivered`＝已推进，`queued`＝仍在收件箱未读）——没人被告知就不算落地。",
         "  · **人数闸在裁决这一步**：签署人数＝交裁决成员数＋签字的你，低于 m 拒 `VMU_MEETING_QUORUM_LOST`（回执 `floor.gate`）；故意不足 m 才用 `partial: true` + `why`。",
         "  · 同场同对象只投一次（重复投拒 `VMU_RULING_ALREADY_FILED`）；**final 只能由主席签**（代投被拒 `VMU_RULING_CHAIR_SIGNS`）。",

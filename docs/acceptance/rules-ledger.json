@@ -1612,7 +1612,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::fidelity"
       ],
       "mechanism": [
-        "vibe-math-vmu/kernel/fidelity.js::createFidelityRegistry"
+        "vibe-math-vmu/packs/v5r/verification-gates.js::export function fidelityAsked",
+        "vibe-math-vmu/packs/research-core/fidelity.js::createFidelityRegistry"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_PACK_V5R_FIDELITY_ASK_REQUIRED",

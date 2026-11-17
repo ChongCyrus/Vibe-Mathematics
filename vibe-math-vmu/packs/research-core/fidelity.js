@@ -1,7 +1,7 @@
-// vibe-math-vmu — C-45：**忠实性缺陷 ⇒ 强制弃权**（内核谓词；v5r 的 L2 option A / Adv-verify F1）。
+// vibe-math-vmu — C-45：**忠实性缺陷 ⇒ 强制弃权**（内核谓词；v5r 的 L2 option A / Adv-verify F1）。  [TB-2794 Step 4: moved VERBATIM from kernel; v5r contributes the face as a service.]
 //
-// 为什么它单独成面（而不是塞进 `kernel/formal.js` 的方法表）：
-//   · `kernel/formal.js` 的 10 个方法**一一对应** `vibe_vmu_formal` 的 10 个 action（那条门禁要求"工具枚举
+// 为什么它单独成面（而不是塞进 `packs/research-core/formal.js` 的方法表）：
+//   · `packs/research-core/formal.js` 的 10 个方法**一一对应** `vibe_vmu_formal` 的 10 个 action（那条门禁要求"工具枚举
 //     与服务方法表逐个对齐、谁都不许漂移"）。忠实性弃权不是那个工具的一个动作，它是**表决面消费的判定点**，
 //     所以它有自己的服务键、自己的读面、自己的留痕目录 —— 这样两边都不会出现"藏起来的第十一个方法"。
 //
@@ -23,8 +23,8 @@
 //   · fs  —— 可选 `{ writeText, readText, listDir }` ⇒ `Formal/Defects/<target>.json`
 //   · bus —— 可选；事件 `formal/fidelity-defect`、`formal/abstention-enforced`、`formal/defects-loaded`
 
-import { mint as mintId } from './ids.js'
-import { ENFORCED_SCOPE } from './mathjobs.js'
+import { mint as mintId } from '../../kernel/ids.js'
+import { ENFORCED_SCOPE } from '../../kernel/mathjobs.js'   // Step 5 will switch this to kernel/jobprimitives
 
 /** 强制弃权的票值：严格介于 0 与 1 之间 ⇒ 按定义计作弃权（v5r 的 L2 option A）。 */
 export const FIDELITY_ABSTENTION_VOTE = 0.5
@@ -195,7 +195,36 @@ export function createFidelityRegistry(opts) {
 
   const status = () => ({ ok: true, durable: !!fsSeam, defects: defects.size, declared: defectsDeclared, abstentionsEnforced, dir: fsSeam ? FIDELITY_DEFECT_DIR : null })
 
-  return { declareDefect, abstentionFor, applyAbstention, passedWithdrawnFor, loadDefects, view, status, trail: () => trail.slice() }
+  // ★ TB-2794 Step 4: THE DURABLE LOAD RECEIPT LIVES WITH THE FACE NOW. The kernel used to START this in createKernel and
+  // publish fidelityLoad()/fidelityReady(). The face is pack-contributed (applied after construction), so the CONTRIBUTOR
+  // starts it here and the kernel's two public methods DELEGATE to these three; one implementation, one receipt shape.
+  const loadReceipt = { status: 'pending', loaded: 0, code: null, message: null }
+  let loadPromise = Promise.resolve(loadReceipt)
+  let loadStarted = false
+  const startLoad = () => {
+    if (loadStarted) return { ...loadReceipt }
+    loadStarted = true
+    if (!fsSeam) {
+      loadReceipt.status = 'unavailable'
+      loadReceipt.code = 'VMU_MATH_JOBS_MIRROR_UNWIRED'
+      loadReceipt.message = 'no host fs seam (writeText/readText): durable defect markers cannot be reloaded; in-memory markers only'
+      return { ...loadReceipt }
+    }
+    loadPromise = Promise.resolve()
+      .then(() => loadDefects())
+      .then((r) => {
+        if (r && r.ok === true) { loadReceipt.status = 'loaded'; loadReceipt.loaded = Number(r.loaded) || 0 }
+        else { loadReceipt.status = 'unavailable'; loadReceipt.code = (r && r.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; loadReceipt.message = (r && r.message) || 'loadDefects refused' }
+        return { ...loadReceipt }
+      })
+      .catch((e) => { loadReceipt.status = 'unavailable'; loadReceipt.code = (e && e.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; loadReceipt.message = String((e && e.message) || e); return { ...loadReceipt } })
+    return { ...loadReceipt }
+  }
+  const loadStatus = () => ({ ...loadReceipt })
+  const ready = () => loadPromise.then(() => ({ ...loadReceipt }))
+
+  return { declareDefect, abstentionFor, applyAbstention, passedWithdrawnFor, loadDefects, view, status, trail: () => trail.slice(),
+    startLoad, loadStatus, ready }
 }
 
 export default createFidelityRegistry

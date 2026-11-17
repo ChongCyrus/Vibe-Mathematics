@@ -55,7 +55,7 @@ const REPLY_COMPACT_TEXT = [
         // this one appears in thirty-three entries across eighteen kinds, while the other (`协调需要时可用assign（…）、
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
-        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：**席位不读设置键**——向**所办**索取本轮协议（chair 开会时按需自取或请所办提供）。',
+        'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：**席位不读设置键**——向**所办**索取本轮协议（chair 开会时同样由所办提供）。',
 ].join('\n')
 const REPLY_COMPACT_TEXT_TEMP = REPLY_COMPACT_TEXT.split('\n').filter((l) => !l.includes('vibe_v5_verdict') && !l.includes('vibe_v5_record_')).join('\n')
 

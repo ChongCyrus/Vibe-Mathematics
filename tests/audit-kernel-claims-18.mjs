@@ -45,10 +45,12 @@ const codeOf = (r) => (r.threw && r.threw.code) || (r.value && r.value.code) || 
 const hintOf = (r) => (r.threw && r.threw.hint) || (r.value && r.value.hint) || null
 const msgOf = (r) => String((r.threw && r.threw.message) || (r.value && r.value.message) || '')
 const short = (s) => String(s).slice(0, 90)
-const srcOf = (f) => readFileSync(join(K, f), 'utf8')
+// ★ TB-2794 Step 4: formal moved to packs/research-core; source reads fall back to the pack path (no second copy).
+const RPC = join(REPO, 'vibe-math-vmu', 'packs', 'research-core')
+const srcOf = (f) => { try { return readFileSync(join(K, f), 'utf8') } catch { return readFileSync(join(RPC, f), 'utf8') } }
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
-const F = await import(u('formal.js'))
+const F = await import(pathToFileURL(join(RPC, 'formal.js')).href)
 const CG = await import(u('clockguard.js'))
 const SV = await import(u('stateversion.js'))
 const ID = await import(u('identity.js'))

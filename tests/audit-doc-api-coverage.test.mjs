@@ -40,7 +40,7 @@ const PAIRS = [
   { vol: '21-observability-and-operations.md', mod: 'kernel/metrics.js', must: ['createMetrics', 'METRIC_CATALOGUE', 'NEVER_SAMPLED_KINDS'] },
   { vol: '21-observability-and-operations.md', mod: 'kernel/alerts.js', must: ['OPS', 'SLO_STATES', 'ERROR_BUDGET_ACTIONS', 'ALERT_CODES', 'RUNBOOK', 'fingerprintOf'] },
   // Round 511: five more volumes that named NONE of their module's exports.
-  { vol: '09-math-formalization.md', mod: 'kernel/formal.js', must: ['createFormal', 'FORMAL_KEYS'] },
+  { vol: '09-math-formalization.md', mod: 'packs/research-core/formal.js', must: ['createFormal', 'FORMAL_KEYS'] },
   { vol: '15-math-computation-toolbox.md', mod: 'math-computation.js', must: ['MATH_TOOL_NAME', 'MATH_PARAM_NAMES', 'MATH_CAPS', 'registerMathComputation'] },
   { vol: '16-research-lifecycle.md', mod: 'kernel/external.js', must: ['createExternal', 'PIPELINE', 'fingerprintOf'] },
   { vol: '17-agent-society-and-delegation.md', mod: 'kernel/trust.js', must: ['createTrust', 'AUTHORITY_REFUSAL'] },

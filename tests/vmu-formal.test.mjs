@@ -1,8 +1,8 @@
-// vibe-math-vmu —— 形式化面（kernel/formal.js）独立测试。
+// vibe-math-vmu —— 形式化面（packs/research-core/formal.js）独立测试。
 // 运行：`node tests/vmu-formal.test.mjs`（末行 `=== VMU FORMAL: N passed, M failed ===`）。
 
 import assert from 'node:assert/strict'
-import { createFormal, FORMAL_KEYS } from '../vibe-math-vmu/kernel/formal.js'
+import { createFormal, FORMAL_KEYS } from '../vibe-math-vmu/packs/research-core/formal.js'
 
 let passed = 0
 let failed = 0

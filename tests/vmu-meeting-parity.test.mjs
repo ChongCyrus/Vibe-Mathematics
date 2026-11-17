@@ -31,7 +31,9 @@ const ballotMod = await import(pathToFileURL(K('ballot.js')).href)
 const boxMod = await import(pathToFileURL(K('ballotbox.js')).href)
 const meetingsMod = await import(pathToFileURL(K('meetings.js')).href)
 const minutesMod = await import(pathToFileURL(K('minutes.js')).href)
-const fidelityMod = await import(pathToFileURL(K('fidelity.js')).href)
+// ★ TB-2794 Step 4: fidelity moved to packs/research-core; the parity suite follows the code.
+const RPC = resolve(REPO, 'vibe-math-vmu', 'packs', 'research-core')
+const fidelityMod = await import(pathToFileURL(resolve(RPC, 'fidelity.js')).href)
 
 let NOW = Date.parse('2026-10-09T00:00:00.000Z')
 const clock = () => NOW

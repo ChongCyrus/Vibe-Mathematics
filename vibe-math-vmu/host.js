@@ -1,4 +1,6 @@
 // vmu host adapter — attaching the assembled kernel to the DSH tool surface (docs/03 §3, docs/11 §9).
+// ★ round-10 boundary: the SAME refusal decorator the pack uses, imported (host never depends on pack code).
+import { decorateRefusal, decorateThrownRefusal } from './refusal-means.js'
 import { makeTransactionSpec } from './tools/transaction.js'
 import { makeTurnSpec } from './tools/turn.js'
 import { makeMemberToolsSpec } from './tools/member-tools.js'
@@ -457,6 +459,10 @@ function makeDirectionSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'list') return api.list()
         return refused('VMU_INVALID_ARGUMENT', 'unknown direction action: ' + action, 'use action = set｜get｜list')
       } catch (e) {
+        // ★ round-10 boundary: the thrown refusal is decorated BEFORE the receipt is rebuilt; host.js copies every
+        // own enumerable fact (refusalFacts), so means/hintShort/hintFull reach the model for EVERY tool module — the
+        // kernel tool face, the pack, the kit and the host pre-gates alike.
+        decorateThrownRefusal(e)
         const extra = {}
         if (Array.isArray(e && e.fieldsMissing)) extra.fieldsMissing = e.fieldsMissing
         if (Array.isArray(e && e.fieldsRequired)) extra.fieldsRequired = e.fieldsRequired
@@ -1993,10 +1999,15 @@ export function toHostSpec(spec, kernel = null) {
         // ★ RUN 228: EVERY face says who acted, not only the pack faces. This is the one place that holds both the
         // result and the execution context, so the disclosure cannot be forgotten by a face that returns early.
         const outNow = await spec.run(args || {}, exec)
+        // ★ round-10 boundary: a face that RETURNS {ok:false} carries the same means/hint forms as a thrown refusal.
+        if (outNow && typeof outNow === 'object' && !Array.isArray(outNow) && outNow.ok === false) decorateRefusal(outNow, { form: exec && exec.receiptForm === 'short' ? 'short' : 'full' })
         // RUN 239: the two branches below must read as ONE shape (a refusal is a receipt of the same species as a
         // success). The waiter lift happens INSIDE the envelope for both, so neither branch nests them differently.
         return boundedToolResult(liftFiredWaiters(discloseActOnSeat(kernel, exec, args, outNow, spec.name)))
       } catch (e) {
+        // ★ round-10 boundary: decorate BEFORE the receipt is rebuilt; refusalFacts copies every own enumerable fact,
+        // so means/hintShort/hintFull reach the model for EVERY tool module (kernel tools, pack, kit, host gates).
+        decorateThrownRefusal(e)
         // ★★ ROUND 36 (measured on a real machine): THIS BRANCH USED TO RETURN A DIFFERENT SHAPE FROM THE OTHER ONE.
         // The success path goes through `boundedToolResult`, documented in receiptbounds.js as "the ONE place a tool
         // result is serialized", and it ALWAYS attaches `receiptMeta` - even when nothing was cut, deliberately, so

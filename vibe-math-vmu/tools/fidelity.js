@@ -1,5 +1,5 @@
 // vibe-math-vmu/tools/fidelity.js — ROUND 3 / task-20 (v5r-reader-b's task-19 wiring sheet): the fidelity face's thin
-// tool. `kernel/fidelity.js` is the C-45 ENFORCEMENT point (`applyAbstention` rewrites a registered member's boolean
+// tool. `packs/research-core/fidelity.js` is the C-45 ENFORCEMENT point (`applyAbstention` rewrites a registered member's boolean
 // vote to 0.5), and it is deliberately NOT configurable ("a rule you can switch off is not an enforcement"), so this
 // face carries NO settings family of its own: it is declared by the EXISTING `vmu.math.formalVerify` policy being on
 // (`encourage`/`require`), which is the only honest declaration basis reader-b could name. With the default `off` the

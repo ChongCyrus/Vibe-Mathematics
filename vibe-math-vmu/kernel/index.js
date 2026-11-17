@@ -90,7 +90,6 @@ import { createCustody } from './custody.js'  // ROUND 221: entry ledger and cha
 import { createExplain } from './explain.js'          // ROUND 222: what an explanation carries, and why it is refused (docs/17)
 import { createControl } from './control.js'          // ROUND 222: pause scope, watchdog, idle, degradation (docs/08)
 import { createCitations } from './citations.js'      // ROUND 222: the bibliography face - style, fields, id priority (docs/07)
-import { createFormal } from './formal.js'
 import { createMathJobs } from './mathjobs.js'
 import { createExternal } from './external.js'
 import { createScheduler } from './scheduler.js'
@@ -170,7 +169,6 @@ import { createReport } from './report.js'
 import { createActivity } from './activity.js'
 // ROUND 3 / task-20 (v5r-reader-b's task-19): the C-45 fidelity registry - `applyAbstention` is the ONE enforcement
 // point (a registered member's boolean vote is rewritten to 0.5) and it is NOT configurable, so it has no settings key.
-import { createFidelityRegistry } from './fidelity.js'
 import { createMathAdapters } from './mathadapters.js'
 // ROUND 2: the approval GATE wrapper (module-level export of kernel/human.js) - it wraps the named mutating methods
 // of a face so a gated action QUEUES instead of running (Lead's "审批未批 ⇒ 动作只能排队" requirement).
@@ -1171,7 +1169,6 @@ export function createKernel({
   const initialTracks = tracks || settings['vmu.records.tracks']
   // P1-9: the library is created BEFORE the fidelity registry, but history exports must be able to say
   // "a defect marker withdrew this proof". A holder is set once fidelity exists (never a forward reference).
-  const fidelityRef = { current: null }
   let library = root
     ? createLibrary({
       root,
@@ -1181,7 +1178,12 @@ export function createKernel({
       fingerprintPolicy: settings['vmu.records.fingerprintPolicy'],
       // P1-9: history rows keep the OLD body (that is a historical fact), but the export must also carry the
       // CURRENT truth: `currentDefect` asks the fidelity marker, so a reader cannot mistake history for current proof.
-      defectLookup: (target) => (fidelityRef.current && typeof fidelityRef.current.passedWithdrawnFor === 'function' ? fidelityRef.current.passedWithdrawnFor(target) : null),
+      // ★ TB-2794 Step 4: the fidelity face is PACK-contributed (applied after this library is constructed), so the
+      // marker is resolved at CALL time — never a construction-time snapshot.
+      defectLookup: (target) => {
+        const f = resolveFace(null, 'vmu.fidelity')
+        return f && typeof f.passedWithdrawnFor === 'function' ? f.passedWithdrawnFor(target) : null
+      },
       // THE PATH POLICY REACHES THE WRITE SURFACE (docs/04 搂11): the library gates its writes through
       // kernel/guard.js, so `vmu.safety.pathPolicy` is a consumer rather than a declaration.
       // TASK-163: it gets the READ-ONLY LIVE VIEW (not the raw object) — a consumer handed the raw settings
@@ -1437,7 +1439,6 @@ const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedCl
     // silent bypass of the very gate this line is for.
     approval: typeof human.gate === 'function' ? (req) => human.gate(req) : null })
   const citations = createCitations({ settings: settingsView, bus, clock, log })
-  const formal = createFormal({ settings: settingsView, bus, clock, log, spawn, library: libraryRef })
   // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
   // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
   // missing engine surfaces as a named refusal rather than a silent no-op.
@@ -1499,34 +1500,20 @@ const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedCl
     activePeers: members && typeof members.roster === 'function'
       ? (me) => members.roster().filter((m) => m && m.state !== 'ended').map((m) => String(m.id)).filter((id) => id !== String(me || ''))
       : null })
-  // ROUND 3 / task-20 (reader-b's sheet): the fidelity registry. `ids` is omitted on purpose - the module uses the
-  // module-level minter bound by `bindIds` above (so `fd-N` never restarts); `fs` is the host file face (its absence is
-  // NAMED as `durable:false` by the module, not silently ignored).
-  const fidelity = createFidelityRegistry({ clock, log, bus,
-    fs: host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null })
-  // ...and the library's history export can now ask the CURRENT truth (P1-9); assignment (not a forward call).
-  fidelityRef.current = fidelity
-  /**
-   * P1-9: durable defect markers must be reloaded after a restart. createKernel is SYNC, so the async load is STARTED
-   * here and its receipt is observable (`kernel.fidelityLoad()`); nothing pretends it already ran. No host fs seam ⇒
-   * status is NAMED `unavailable` (loadDefects refuses by name), never "loaded 0".
-   */
-  const fidelityLoad = { status: 'pending', loaded: 0, code: null, message: null }
-  const fsForDefects = host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null
-  let fidelityLoadPromise = Promise.resolve(fidelityLoad)
-  if (!fsForDefects) {
-    fidelityLoad.status = 'unavailable'
-    fidelityLoad.code = 'VMU_MATH_JOBS_MIRROR_UNWIRED'
-    fidelityLoad.message = 'no host fs seam (writeText/readText): durable defect markers cannot be reloaded; in-memory markers only'
-  } else {
-    fidelityLoadPromise = Promise.resolve()
-      .then(() => fidelity.loadDefects())
-      .then((r) => {
-        if (r && r.ok === true) { fidelityLoad.status = 'loaded'; fidelityLoad.loaded = Number(r.loaded) || 0 }
-        else { fidelityLoad.status = 'unavailable'; fidelityLoad.code = (r && r.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; fidelityLoad.message = (r && r.message) || 'loadDefects refused' }
-        return fidelityLoad
-      })
-      .catch((e) => { fidelityLoad.status = 'unavailable'; fidelityLoad.code = (e && e.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED'; fidelityLoad.message = String((e && e.message) || e); return fidelityLoad })
+  // ★ TB-2794 Step 4: the fidelity face is CONTRIBUTED by the pack (PACK.services "vmu.fidelity"). The kernel no longer
+  // constructs it or starts its durable load; it DELEGATES the SAME observable receipt (fidelityLoad/fidelityReady) to the
+  // contributed face. No pack ⇒ a NAMED unavailable, never a fake loaded:0.
+  const fidelityUnavailable = Object.freeze({ status: 'unavailable', loaded: 0,
+    code: 'VMU_ENGINE_UNAVAILABLE', message: 'no pack provides vmu.fidelity in this assembly' })
+  const fidelityLoadNow = () => {
+    const f = resolveFace(null, 'vmu.fidelity')
+    if (!f || typeof f.loadStatus !== 'function') return Object.assign({}, fidelityUnavailable)
+    try { return Object.assign({}, f.loadStatus()) } catch (e) { return Object.assign({}, fidelityUnavailable, { message: String((e && e.message) || e) }) }
+  }
+  const fidelityReadyNow = () => {
+    const f = resolveFace(null, 'vmu.fidelity')
+    if (!f || typeof f.ready !== 'function') return Promise.resolve(fidelityLoadNow())
+    try { return Promise.resolve(f.ready()).then(() => fidelityLoadNow()) } catch { return Promise.resolve(fidelityLoadNow()) }
   }
   // ROUND 2 (task-14, vmu-assistant's contract): the REPORTING face. It has NO internal timer by design ("a report
   // never drives anything"), so the entry advances it at the turn boundary; `deliver` is the transport (a missing one
@@ -2963,7 +2950,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // the MathJobs submit face (a FACE, not a settings key), so a declared lean field was reported `face-not-wired` even though the face existed — the field
   // was declared, the face was mounted, and dispatch could not see it. `replyFields` is the SAME folded declaration the
   // loop uses, so one resolution feeds both sides.
-  const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }, resolveOwners(null, replyFields))
+  // ★ TB-2794 Step 4: pack faces are applied AFTER construction, so the map cannot be a construction-time snapshot — the loop
+  // resolves a missing face.op through `resolveService` at dispatch time (and caches it). Core faces stay literal here.
+  const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox }, resolveOwners(null, replyFields))
   // ★★★★★★★ RUN 76 / TB-2712 (F76-11): THE MD PARSER IS A DECLARED READ LEG, NOT A HOST CONVENIENCE.
   // The status block's blueprint reading parses a `blueprint` row's BODY with records.mdParse/mdDigest (RUN 258's
   // design: one reader, the kernel's own md door). But `facesFrom` binds ONLY the operations the catalogue declares,
@@ -3056,6 +3045,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     sectionPolicy: sectionPolicy || null,
     // ★★★ P0-b: the pack's own reply fields (empty ⇒ core table only).
     replyFields: Array.isArray(replyFields) && replyFields.length > 0 ? replyFields : null,
+    // ★ TB-2794 Step 4: dispatch-time resolution for PACK-contributed faces (formal/fidelity/mathjobs/... later).
+    resolveService: (name) => {
+      // Step 4: mathjobs is STILL locally constructed (Step 5 moves it); the contributed faces come through resolveFace.
+      const local = name === 'vmu.mathjobs' ? mathjobs : null
+      return local || resolveFace(null, name)
+    },
     // ★ TB-2794 Step 2: adapters are resolved at dispatch time (pack apply happens after construction).
     resolveReplyAdapter: (name) => replyAdapterOf(name),
     // ★★★ C#16 (ROUND-2 audit): the STORE-BACKED idempotency ledger. Handed to the turn loop so a dispatch replay after a
@@ -3512,10 +3507,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // it through the capability-gated catalogue. It never drives anything (`drives:false` on every receipt); `emit`
     // only DELIVERS an already-declared report, so listing it is safe for a module with `trigger-workflow`.
     'vmu.report': report,
-    // PHASE 6 / P1-9: the fidelity registry already OWNS the defect markers (`passedWithdrawn`), but a pack had no
-    // way to ask it - the marker was write-only. Exposing the READ-ONLY predicate (`passedWithdrawnFor`) lets the
-    // verified read points check the same truth the kernel writes. It mutates nothing through this seam.
-    'vmu.fidelity': fidelity,
+    // ★ TB-2794 Step 4: `vmu.fidelity` is pack-contributed now; it reaches the capability-gated catalogue through
+    // providedCatalog()'s merge (a module with services.get('vmu.fidelity') sees it only when the pack is mounted).
     // ★★★ THE SCRIPT BRIDGE, ASYNCHRONOUS FORM ONLY — and the absence of `run` is the design, not an omission. A hook has
     // `vmu.middleware.hookTimeoutMs` (2000 ms) to spend; a script's own budget defaults to 60000 ms. Exposing `run` would
     // let a policy await the subprocess, burn the hook budget, and leave the bus reporting the entry as failed while the
@@ -3711,8 +3704,6 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // exactly the "silently unreachable" shape D-01 forbids. All three are now present.
   registry.register('vmu.panel', { apiVersion: 1 }, { kind: 'service', description: 'member state panel: overall goal, plan and running subtasks, append-only with a view audit (docs/17)' })
   registry.register('vmu.activity', { apiVersion: 1 }, { kind: 'service', description: '一次性 future-only 活动等待器：等待开始前的通知绝不唤醒、一次通知只唤醒当前一代、超时 disposer 在所有分支清理（docs/08 原语）' })
-  registry.register('vmu.fidelity', { apiVersion: 1 }, { kind: 'service',
-    description: '忠实性缺陷强制弃权（C-45，v5r 的 L2 option A）：declareDefect 留痕（append-only，可落 Formal/Defects/<target>.json 并 loadDefects 重载）；abstentionFor 是纯谓词；applyAbstention 是唯一强制点——被登记者在该对象上的布尔票 1/0 一律被改写为 0.5 弃权（不可由 pack 关闭）。' })
   // PHASE 12 / D15: the debate's FINAL RULING. Registered as a SERVICE (not put on the orphan-exemption list) because a
   // pack will `requires` it: the pack tool that ends a debate calls `rulePropositionProbability` and hands the payload to
   // `vmu.mailbox`. Exempting it would tell the next reader "nothing uses this" about precisely what the pack is meant to
@@ -3728,7 +3719,6 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   registry.register('vmu.explain', { apiVersion: 1 }, { kind: 'service', description: 'explain: report detail, delegation chains and scores, a required reason with a declared length cap, event correlation by the declared key, and markdown or JSON rendering - every omission named (docs/17)' })
   registry.register('vmu.control', { apiVersion: 1 }, { kind: 'service', description: 'control: what may be paused and by which role, the watchdog interval (zero means no timer), what counts as idle and the notice-only default, the degradation ladder, and whether stopping clears the registry (docs/08)' })
   registry.register('vmu.citations', { apiVersion: 1 }, { kind: 'service', description: 'citations: the declared style, the required fields, the identifier priority that decides the key, and free text that is off by default (docs/07)' })
-  registry.register('vmu.formal', { apiVersion: 1 }, { kind: 'service', description: 'formalisation: sorry refuses by default, compile failure is never a refutation (docs/09)' })
   registry.register('vmu.external', { apiVersion: 1 }, { kind: 'service', description: 'external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 搂8)' })
   registry.register('vmu.scheduler', { apiVersion: 1 }, { kind: 'service', description: 'scheduled triggers: timer is a seam, triggerVia defaults to report-only (docs/08 搂5)' })
   registry.register('vmu.crypto', { apiVersion: 1 }, { kind: 'service', description: 'signatures and non-repudiation: no signer means no signature is invented (docs/20 搂6)' })
@@ -3960,6 +3950,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // same time semantics as the framework (guarded for time-sensitive modules).
     get clock() { return clock },
     get guardedClock() { return guardedClock },
+    // ★ TB-2794 Step 4: generic execution/host seams for pack-contributed faces (same allowlist discipline as the facade).
+    get spawn() { return spawn || null },
+    get spawnHandle() { return spawnHandle || null },
+    get timer() { return timer || null },
+    // ★ The ONE id minter (already exposed as `get ids` below); reused by contributed faces.
+    get fsSeam() { return host && typeof host.writeText === 'function' && typeof host.readText === 'function' ? host : null },
+    get rootPath() { return root || null },
     attachApprovalGate({ face = null, target = null, methods = [], subjectOf = null } = {}) {
       if (!human || typeof human.gate !== 'function') return { attached: false, wrapped: [], missing: [], reason: 'this kernel has no approval gate' }
       const existing = (Array.isArray(methods) ? methods : []).filter((n) => target && typeof target[n] === 'function')
@@ -4037,7 +4034,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get explain() { return explain },
     get control() { return control },
     get citations() { return citations },
-    get formal() { return resolveFace(formal, 'vmu.formal') },
+    // ★ TB-2794 Step 4: no local construction left (it would CONFLICT with the pack's provideService); no pack ⇒ null.
+    get formal() { return resolveFace(null, 'vmu.formal') },
     get mathjobs() { return resolveFace(mathjobs, 'vmu.mathjobs') },
     // ROUND 2 (task-14): the four new faces, reachable like every other service.
     get mathadapters() { return mathadapters },
@@ -4051,12 +4049,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get report() { return report },
     // ROUND 3 / task-24: the activity waiter, reachable like every other service.
     get activity() { return activity },
-    // ROUND 3 / task-20: the fidelity registry (the C-45 enforcement point).
-    get fidelity() { return resolveFace(fidelity, 'vmu.fidelity') },
+    // ★ TB-2794 Step 4: pack-contributed (C-45 enforcement point); no pack ⇒ null.
+    get fidelity() { return resolveFace(null, 'vmu.fidelity') },
     /** P1-9: the async durable-defect-load receipt (`status: pending|loaded|unavailable`, named code when unavailable). */
-    fidelityLoad: () => Object.assign({}, fidelityLoad),
+    fidelityLoad: () => fidelityLoadNow(),
     /** P1-9: AWAITABLE form of the same load — `await kernel.fidelityReady()` resolves the receipt (polling not needed). */
-    fidelityReady: () => fidelityLoadPromise.then(() => Object.assign({}, fidelityLoad)),
+    fidelityReady: () => fidelityReadyNow(),
     /** The control SERVICE (`createControl`), distinct from `kernel.control()` - the control VIEW function that has
      *  occupied that name since round 1. `tune()` (the mid-flight retune face) lives on the service. */
     get controlService() { return control },
@@ -4137,7 +4135,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // ROUND 3 / task-20 (reader-c's task-17): the C-45 ENFORCEMENT seam. `ballot.cast()` is the single point where
         // a registered member's boolean vote is rewritten to 0.5; without this seam the face reports
         // `status().fidelitySeam === false` and rewrites NOTHING (self-disclosed, never a pretend enforcement).
-        fidelity }, opts))
+        // ★ TB-2794 Step 4: resolved at CALL time — the face is pack-contributed; absent ⇒ null (createBallot
+        // reports fidelitySeam:false, a legal, self-disclosed default).
+        fidelity: resolveFace(null, 'vmu.fidelity') }, opts))
       // LIVE OBJECTS (docs/03 搂3.1): the tool face addresses a ballot by id, so the kernel keeps the session's
       // live instances. This is not new policy - it is the SAME primitive, reachable by name. Bounded by
       // `liveCap` so a long session cannot grow it without limit (the oldest is evicted, and that is counted).

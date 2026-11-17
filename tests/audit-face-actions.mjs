@@ -105,6 +105,16 @@ if (process.argv.includes("--selftest")) {
 const { createKernel } = await import("file:///" + VMU.replace(/\\/g, "/").replace(/ /g, "%20") + "/kernel/index.js")
 const { toolSpecs } = await import("file:///" + VMU.replace(/\\/g, "/").replace(/ /g, "%20") + "/host.js")
 const kernel = createKernel({ clock: () => 0, settings: {}, root: VMU, host: null, slots: [{ id: "member", capacity: 0, permissions: ["speak", "vote"] }] })
+// ★ TB-2794 Step 4: formal/fidelity are PACK-contributed; this audit measures the TOOL faces against real service method
+// sets, so it supplies the generic faces through the SAME service seam a pack uses (no second implementation).
+{
+  const { pathToFileURL } = await import('node:url')
+  const ufh = (rel) => pathToFileURL(join(VMU, rel)).href
+  const { createFormal } = await import(ufh('packs/research-core/formal.js'))
+  const { createFidelityRegistry } = await import(ufh('packs/research-core/fidelity.js'))
+  kernel.provideService({ name: "vmu.formal", apiVersion: 1, impl: createFormal({ clock: () => 0, settings: {} }), by: "audit-face-fixture" })
+  kernel.provideService({ name: "vmu.fidelity", apiVersion: 1, impl: createFidelityRegistry({ clock: () => 0 }), by: "audit-face-fixture" })
+}
 const specs = toolSpecs({ kernel, settings: { "vmu.tools.faces": ["*"], "vmu.tools.allowAll": true }, instance: "audit" })
 const sources = new Map()
 for (const f of readdirSync(join(VMU, "tools"))) if (f.endsWith(".js")) sources.set(f, readFileSync(join(VMU, "tools", f), "utf8"))

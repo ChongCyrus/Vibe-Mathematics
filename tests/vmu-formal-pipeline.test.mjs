@@ -3,6 +3,8 @@
 // guessed `{target, content}` is the seventeenth time this session a guessed shape cost a call.
 import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+// ★ TB-2794 Step 4: formal is PACK-contributed now; this suite supplies the generic face through the service seam.
+import { createFormal } from '../vibe-math-vmu/packs/research-core/formal.js'
 
 let passed = 0
 let failed = 0
@@ -15,6 +17,7 @@ const ok = (cond, label, detail) => {
 }
 
 const k = createKernel({ clock: () => 0, settings: {} })
+k.provideService({ name: 'vmu.formal', apiVersion: 1, impl: createFormal({ clock: () => 0, settings: {} }), by: 'test-formal-face' })
 const flags = Object.fromEntries(Object.keys(TOOL_NAMES).map((key) => [key + 'Tool', true]))
 const spec = toolSpecs({ kernel: k, settings: {}, ...flags }).find((s) => s.name === TOOL_NAMES.formal)
 const call = (action, request) => spec.run({ action, request })

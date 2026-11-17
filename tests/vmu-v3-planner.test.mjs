@@ -25,6 +25,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+// ★ TB-2794 Step 4: fidelity is PACK-contributed now; this planner suite supplies the generic face through the service seam.
+import { createFidelityRegistry } from '../vibe-math-vmu/packs/research-core/fidelity.js'
 import { createPackLoader } from '../vibe-math-vmu/kernel/pack.js'
 import { SETTING_DEFS } from '../vibe-math-vmu/settings/schema.js'
 import { PACK } from '../vibe-math-vmu/packs/v3/index.js'
@@ -86,6 +88,7 @@ function boot({ replier = null, overrides = {} } = {}) {
       return replier ? replier({ turn, text }) : ACK
     },
   })
+  kernel.provideService({ name: 'vmu.fidelity', apiVersion: 1, impl: createFidelityRegistry({ clock: () => clockRef.at }), by: 'test-fidelity-face' })
   const loader = createPackLoader({ kernel, registry: kernel.registry, onPromptPolicy: () => () => {} })
   return { kernel, loader, delivered, clockRef }
 }
@@ -1062,7 +1065,7 @@ const promoteOnce = async (value) => {
   const fsp = await import('node:fs/promises')
   const os = await import('node:os')
   const pathMod = await import('node:path')
-  const { createFidelityRegistry } = await import('../vibe-math-vmu/kernel/fidelity.js')
+  const { createFidelityRegistry } = await import('../vibe-math-vmu/packs/research-core/fidelity.js')
   const { createLibrary } = await import('../vibe-math-vmu/kernel/library.js')
   const files = new Map()
   const fakeFs = {
@@ -1070,7 +1073,15 @@ const promoteOnce = async (value) => {
     readText: async (rel) => (files.has(rel) ? files.get(rel) : null),
     listDir: async (rel) => [...files.keys()].filter((k) => k.startsWith(rel + '/')).map((k) => ({ name: k.slice(rel.length + 1), type: 'file' })),
   }
-  const mkKernel = () => createKernel({ clock: () => 1000, settings: clone(PACK_DEFAULTS), sections: PACK.sections, host: fakeFs })
+  // ★ TB-2794 Step 4: the durable load is started by the CONTRIBUTOR now; this fixture provides the face and starts it,
+  // exactly as the v5r PACK service does (the kernel only delegates the receipt).
+  const mkKernel = () => {
+    const k = createKernel({ clock: () => 1000, settings: clone(PACK_DEFAULTS), sections: PACK.sections, host: fakeFs })
+    const face = createFidelityRegistry({ clock: () => 1000, fs: fakeFs })
+    k.provideService({ name: 'vmu.fidelity', apiVersion: 1, impl: face, by: 'test-fidelity-face' })
+    if (typeof face.startLoad === 'function') face.startLoad()
+    return k
+  }
   const k1 = mkKernel()
   const load1 = await k1.fidelityReady()
   ok(load1.status === 'loaded' && load1.loaded === 0, '有 fs：装配期 loadDefects 真的跑了（0 条，具名状态 loaded）', load1)
@@ -1081,7 +1092,14 @@ const promoteOnce = async (value) => {
   ok(load2.status === 'loaded' && load2.loaded === 1, '★ 新内核装配期重载了 1 条耐久标记（fidelityReady 可 await）', load2)
   ok(k2.fidelity.passedWithdrawnFor('p-durable') && k2.fidelity.passedWithdrawnFor('p-durable').withdrawn === true,
     '★ 重启后 passedWithdrawnFor 仍读得到（机制真的接线了）')
+  // No-fs case still needs a CONTRIBUTED face (the kernel no longer builds one); the contributor's startLoad then
+  // reports the named MIRROR_UNWIRED state, which is what this assertion is about.
   const kNoFs = createKernel({ clock: () => 1000, settings: clone(PACK_DEFAULTS), sections: PACK.sections })
+  {
+    const noFsFace = createFidelityRegistry({ clock: () => 1000 })
+    kNoFs.provideService({ name: 'vmu.fidelity', apiVersion: 1, impl: noFsFace, by: 'test-fidelity-face' })
+    if (typeof noFsFace.startLoad === 'function') noFsFace.startLoad()
+  }
   const loadNo = await kNoFs.fidelityReady()
   ok(loadNo.status === 'unavailable' && loadNo.code === 'VMU_MATH_JOBS_MIRROR_UNWIRED',
     '★ 无 fs ⇒ 具名 unavailable（不假装加载了；fidelityReady 立即返回该回执）', loadNo)

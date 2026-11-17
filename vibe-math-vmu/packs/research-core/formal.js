@@ -1,4 +1,4 @@
-// vibe-math-vmu — 形式化面（09 卷）：把"证明尝试"变成**可点名的检查结果**。
+// vibe-math-vmu — 形式化面（09 卷）：把"证明尝试"变成**可点名的检查结果**。  [TB-2794 Step 4: moved VERBATIM from kernel; v5r contributes the face as a service.]
 //
 // 硬不变式：
 //   ① `spawn` 是**注入接缝**：未注入 ⇒ 具名拒（**不假装编译过** ✗）；
@@ -13,8 +13,8 @@
 //   · spawn —— `({ command, args, cwd, stdin, timeoutMs }) => { exitCode, stdout, stderr, timedOut? }`
 //   · ids   —— 可选：`kernel/ids.js` 的实例（缺省用模块级单例）⇒ 记录号经**唯一铸号者**（D-15）
 
-import { mint as mintId } from './ids.js'
-import { ENFORCED_SCOPE } from './mathjobs.js'   // C-45 的口径常量（拒绝/回执都带作用域）
+import { mint as mintId } from '../../kernel/ids.js'
+import { ENFORCED_SCOPE } from '../../kernel/mathjobs.js'   // Step 5 will switch this to kernel/jobprimitives   // C-45 的口径常量（拒绝/回执都带作用域）
 
 
 export const FORMAL_KEYS = Object.freeze([
@@ -228,7 +228,7 @@ export function createFormal(opts) {
   const status = () => ({
     ok: true, count: notes.size, droppedLog, droppedArtifacts,
     allowSorry: cfg().allowSorry, axiomWhitelist: cfg().axiomWhitelist.slice(),
-    // C-45 lives in its own service (`kernel/fidelity.js`): when one is injected we surface its counts here
+    // C-45 lives in its own service (`packs/research-core/fidelity.js`): when one is injected we surface its counts here
     // for the operator's glance, but this face exposes NO fidelity method (the tool enum must stay 10 = 10).
     fidelity: (o.fidelity && typeof o.fidelity.status === 'function') ? o.fidelity.status() : null,
   })

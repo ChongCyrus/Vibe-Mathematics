@@ -90,13 +90,14 @@ const SRC = readFileSync(ROOT + 'vibe-math-vmu/kernel/turn/index.js', 'utf8')
   // must never be reached for a field that is skipped). Same claim, no length assumption.
   const skipBranchAt = SRC.indexOf('if (skipReason !== null) {')
   const skipContinueAt = skipBranchAt < 0 ? -1 : SRC.indexOf('continue', skipBranchAt)
-  const skipFaceAt = skipBranchAt < 0 ? -1 : SRC.indexOf('const face = map[d.face]', skipBranchAt)
+  // ★ TB-2794 Step 4: the lookup is `let face = map[d.face]` now (the lazy resolver caches what it finds).
+  const skipFaceAt = skipBranchAt < 0 ? -1 : SRC.indexOf('let face = map[d.face]', skipBranchAt)
   ok(skipBranchAt > 0 && skipContinueAt > skipBranchAt && skipFaceAt > skipContinueAt,
     'b) and a skip CONTINUES past the face lookup (no face is touched)',
     { branchAt: skipBranchAt, continueAt: skipContinueAt, faceLookupAt: skipFaceAt })
   // the guard must sit BEFORE the face lookup, or a face would already have been chosen for a field that never runs
   const skipAt = SRC.indexOf('const skipReason = dispatchSkipReason(d')
-  const faceAt = SRC.indexOf('const face = map[d.face]', skipAt < 0 ? 0 : skipAt)
+    const faceAt = SRC.indexOf('let face = map[d.face]', skipAt < 0 ? 0 : skipAt)
   ok(skipAt > 0 && faceAt > skipAt, 'b) the guard runs BEFORE `const face = map[d.face]`', { skipAt, faceAt })
   ok(/export const lostTurnState = /.test(SRC), 'b) `lostTurnState` is DECLARED and exported')
   ok(SRC.split('lostTurnState(turn)').length - 1 === 1, 'b) and has exactly ONE consumer', SRC.split('lostTurnState(turn)').length - 1)

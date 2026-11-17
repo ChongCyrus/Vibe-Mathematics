@@ -14,21 +14,26 @@
 //
 //   node scripts/audit-refusal-means.mjs            # check, exit 1 on any violation
 //   node scripts/audit-refusal-means.mjs --json     # machine-readable report
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const PACK_ROOT = join(REPO, 'vibe-math-vmu', 'packs', 'v5r')
+const PRODUCT_ROOT = join(REPO, 'vibe-math-vmu')
+// The TOOL-FACING surface the corpus receipts come from: the pack, the host pre-gates/seams, the kernel tool modules
+// (tools/*.js), the kit and the domain extensions. `prompts/` is included on purpose: a refusal shape TAUGHT there is
+// still a code the corpus can read back. `docs/` and the generated packs/*-prompts.js are prose/data, not construction sites.
+const PRODUCT_SOURCE_DIRS = ['tools', 'kit', 'packs/v5r']
+const PRODUCT_SOURCE_FILES = ['host.js', 'host-pack-tools.js', 'host-deliver.js', 'host-hooks.js', 'host-children.js', 'host-spawn.js', 'host-math.js', 'vibe-math-vmu.js']
 
-/** Codes deliberately NOT carrying a means, each with the reason a reader needs. Kept tiny on purpose. */
-export const V5R_REFUSAL_MEANS_EXEMPT = Object.freeze({
-  // (none today: every discovered code carries a means. A future entry here MUST name why the code cannot be explained.)
-})
+/** The ONE exemption ledger lives in the shared module (`vibe-math-vmu/refusal-means.js`); this re-export keeps the
+ *  audit's old name working. It is intentionally tiny: every entry must carry the reason the code cannot be explained. */
+export { REFUSAL_MEANS_EXEMPT as V5R_REFUSAL_MEANS_EXEMPT } from '../vibe-math-vmu/refusal-means.js'
 
 const walkJs = (d) => {
   const out = []
+  if (!existsSync(d)) return out
   for (const e of readdirSync(d, { withFileTypes: true })) {
     const p = join(d, e.name)
     if (e.isDirectory()) out.push(...walkJs(p))
@@ -104,12 +109,23 @@ export function auditRefusalMeans({ sources, table, exempt = {} }) {
   }
 }
 
-export function readPackSources(root = PACK_ROOT) {
+export function readProductSources(root = PRODUCT_ROOT) {
+  const files = []
+  for (const d of PRODUCT_SOURCE_DIRS) files.push(...walkJs(join(root, d)))
+  for (const f of PRODUCT_SOURCE_FILES) files.push(join(root, f))
+  return files.map((f) => ({ file: f, src: readFileSync(f, 'utf8') }))
+}
+/** Kept for the pack-scoped callers/tests: the v5r pack folder only. */
+export function readPackSources(root = join(PRODUCT_ROOT, 'packs', 'v5r')) {
   return walkJs(root).map((f) => ({ file: f, src: readFileSync(f, 'utf8') }))
 }
 
-export function auditPackRefusalMeans({ table, exempt = V5R_REFUSAL_MEANS_EXEMPT, root = PACK_ROOT } = {}) {
-  return auditRefusalMeans({ sources: readPackSources(root), table, exempt })
+export function auditPackRefusalMeans({ table, exempt = V5R_REFUSAL_MEANS_EXEMPT, root = PRODUCT_ROOT } = {}) {
+  return auditRefusalMeans({ sources: readPackSources(join(root, 'packs', 'v5r')), table, exempt })
+}
+/** Round-10 boundary: the SAME audit over the WHOLE tool-facing surface (host pre-gates + kernel tool modules + pack). */
+export function auditProductRefusalMeans({ table, exempt, root = PRODUCT_ROOT } = {}) {
+  return auditRefusalMeans({ sources: readProductSources(root), table, exempt })
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -118,8 +134,8 @@ const isMain = (() => {
   catch { return false }
 })()
 if (isMain || (process.argv[1] && String(process.argv[1]).endsWith('audit-refusal-means.mjs'))) {
-  const { V5R_REFUSAL_MEANS } = await import('../vibe-math-vmu/packs/v5r/tools.js')
-  const report = auditPackRefusalMeans({ table: V5R_REFUSAL_MEANS })
+  const { REFUSAL_MEANS, REFUSAL_MEANS_EXEMPT } = await import('../vibe-math-vmu/refusal-means.js')
+  const report = auditProductRefusalMeans({ table: REFUSAL_MEANS, exempt: REFUSAL_MEANS_EXEMPT })
   const asJson = process.argv.includes('--json')
   if (asJson) console.log(JSON.stringify(report, null, 1))
   else {

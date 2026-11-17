@@ -1977,8 +1977,8 @@ try {
   // heading the section never contains. Role lists may reference "职责说明" but not the non-existent host heading.
   const fixtureSec = PACK.sections.filter((s) => s.name === 'v5r-fixture-tools')[0]
   const fixtureText = String((fixtureSec && fixtureSec.text) || '')
-  ok(fixtureText.includes('本表是职责说明') && fixtureText.includes('实际工具清单'),
-    '★★★ 正：fixture-tools 用一句说明「本表是职责说明；实际可调用工具以宿主注入清单为准」', { hasClarification: fixtureText.includes('本表是职责说明'), hasAuthority: fixtureText.includes('实际工具清单') })
+  ok(fixtureText.includes('本表是职责说明') && fixtureText.includes('本轮装配工具清单'),
+    '★★★ 正：fixture-tools 用一句说明「本表是职责说明；实际可调用工具以本轮装配工具清单为准」', { hasClarification: fixtureText.includes('本表是职责说明'), hasAuthority: fixtureText.includes('本轮装配工具清单') })
   const roleHeadingRefs = roleSecs.map((s) => ({ name: s && s.name, refs: String((s && s.text) || '').includes('【本轮你实际能调用的工具】') }))
   // ★ RULE E: a non-empty precondition + a COUNT (a bare .every over an empty list is vacuous truth).
   ok(roleSecs.length === 3 && roleHeadingRefs.length === roleSecs.length && roleHeadingRefs.filter((r) => r.refs).length === 0,

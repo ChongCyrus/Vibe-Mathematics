@@ -138,7 +138,7 @@ const RUN272_RUN79_RESTORE = { chair: 30, sum: 90 }
 // names `vmu.meetings.eligibleSeats` for the vote (the review rewrite: attendance never decided the vote), F80-4
 // restores the two legal spellings of an evidence pointer (paper phases are outside this water level). Per seat
 // -826 / -803 / -822, sum -2451 (ROUND-3: legacy corrections deleted).
-const TB2752_RUN80_FIXES = { chair: -3635, member: -1061, temp: -2409, sum: -7105 } // ROUND-1 P0/P1 prompt fixes
+const TB2752_RUN80_FIXES = { chair: -3651, member: -1076, temp: -2410, sum: -7137 } // ROUND-1 P0/P1 prompt fixes
 test('§11 three-seat normal sum is the baseline plus the corrections plus the RUN 272 restore, and nothing else', () => {
   assert.equal(Object.keys(normalCombos).length, 3, 'three seats measured (a shrunken set would pass vacuously)')
   assert.equal(normalSum, TB2741_BASELINE.sum + TB2741_CORRECTIONS_NET.sum + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum,

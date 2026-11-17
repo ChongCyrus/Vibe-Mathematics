@@ -1,4 +1,4 @@
-// vibe-math-vmu —— ROUND 3 · C-45：**忠实性缺陷 ⇒ 强制弃权**（kernel/fidelity.js 的内核谓词）。
+// vibe-math-vmu —— ROUND 3 · C-45：**忠实性缺陷 ⇒ 强制弃权**（packs/research-core/fidelity.js 的内核谓词）。
 // 运行：`node tests/vmu-fidelity-abstention.test.mjs`（末行 `=== VMU FIDELITY ABSTENTION: N passed, M failed ===`）。
 //
 // 判据（04-parity-matrix.md:254）："造一个不忠实回执 ⇒ 必须**具名弃权 + 留痕**"。
@@ -7,8 +7,8 @@
 //    被登记者声明的 1/0 一律变 0.5；⑤ 不忠实**永远不是反证**（isRefutation 恒 false）。
 
 import assert from 'node:assert/strict'
-import { createFidelityRegistry, FIDELITY_ABSTENTION_VOTE, FIDELITY_DEFECT_DIR } from '../vibe-math-vmu/kernel/fidelity.js'
-import { createFormal } from '../vibe-math-vmu/kernel/formal.js'
+import { createFidelityRegistry, FIDELITY_ABSTENTION_VOTE, FIDELITY_DEFECT_DIR } from '../vibe-math-vmu/packs/research-core/fidelity.js'
+import { createFormal } from '../vibe-math-vmu/packs/research-core/formal.js'
 
 let passed = 0
 let failed = 0

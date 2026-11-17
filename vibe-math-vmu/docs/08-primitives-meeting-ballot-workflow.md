@@ -1396,7 +1396,7 @@ recount(ballotId):
 - `node tests/vmu-meeting-parity.test.mjs` ⇒ 基线 A 逐项驱动 + §25.4 登记的机械校验（见该套件输出）
 - 既有套件回归：`vmu-meeting` 50/0、`vmu-meetings` 160/0、`vmu-ballot` 41/0、`vmu-ballotbox` 13/0、`vmu-minutes` 20/0
 
-### 25.8 C-45 · 忠实性缺陷 ⇒ 强制弃权（**closed-by ＝ `kernel/fidelity.js`**）
+### 25.8 C-45 · 忠实性缺陷 ⇒ 强制弃权（**closed-by ＝ `packs/research-core/fidelity.js`**）
 
 - **判定在策略层、强制在内核**：`declareDefect({target,by,note})` 登记"该成员在该对象上有已声明缺陷"（缺字段具名拒）；`abstentionFor(member,target)` 是纯谓词；**`applyAbstention` 是唯一强制点**（被登记者声明的 1/0 ⇒ 0.5）。
 - **表决面唯一调用点**：`kernel/ballot.js` 的 `cast()`（`castValid` 之后、落票之前）——改写后的票以 `kind:'abstain'` 落账（**不计入 decisive/m**），并保留 `declared`／`byFidelity:true`／`markerId`。**唯一**一处，不散落。

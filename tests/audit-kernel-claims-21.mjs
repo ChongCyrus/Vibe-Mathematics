@@ -49,7 +49,9 @@ const RP = await import(u('repropack.js'))
 // ★ TB-2794 Step 3: reviewers moved to packs/research-core; the claim suite follows the code.
 const RV = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'reviewers.js')).href)
 const BD = await import(u('board.js'))
-const FD = await import(u('fidelity.js'))
+// ★ TB-2794 Step 4: fidelity moved to packs/research-core; the claim suite follows the code.
+const RPC = join(REPO, 'vibe-math-vmu', 'packs', 'research-core')
+const FD = await import(pathToFileURL(join(RPC, 'fidelity.js')).href)
 
 // ── --selftest ──
 if (process.argv.includes('--selftest')) {

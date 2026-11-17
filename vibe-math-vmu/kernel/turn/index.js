@@ -2392,6 +2392,10 @@ export function createTurnOrchestrator({
   // says out loud that it is local.
   closureVote = null,
   prompt = null, deliver = null, faces = {}, bindings = null, wakeupPolicy = 'round-robin', settings = null, clock = () => new Date().toISOString(),
+  // ★ TB-2794 Step 4: a PACK-contributed face is applied AFTER this loop is constructed, so dispatch resolves a MISSING
+  // face.op at CALL time and caches it. Absent ⇒ the historical face-not-wired path, unchanged (no pack ⇒ nothing is
+  // silently invented). The resolver returns the service object or null; it never throws into the dispatch loop.
+  resolveService = null,
   // ★★★ P0-b: reply fields DECLARED BY PACKS (manifest replyFields[]). Merged with the core table by resolveOwners;
   // the kernel keeps the core semantics and only ADDS names. Absent ⇒ exactly the frozen core table (zero mechanism).
   replyFields = null,
@@ -5001,8 +5005,20 @@ export function createTurnOrchestrator({
           note: (ghost === null ? skipReason.note : ghost.note) + '; the line IS kept: see `notes` for this round' })
         continue
       }
-      const face = map[d.face]
-      const fn = face && typeof face[d.op] === 'function' ? face[d.op] : null
+      let face = map[d.face]
+      if (!face && typeof resolveService === 'function') {
+        try {
+          const inst = resolveService(d.face)
+          if (inst && typeof inst === 'object') { face = {}; map[d.face] = face }
+        } catch { face = null }
+      }
+      let fn = face && typeof face[d.op] === 'function' ? face[d.op] : null
+      if (!fn && face && typeof resolveService === 'function') {
+        try {
+          const inst = resolveService(d.face)
+          if (inst && typeof inst[d.op] === 'function') { fn = inst[d.op].bind(inst); face[d.op] = fn }
+        } catch { fn = null }
+      }
       if (!fn) {
         counts.notExecuted += 1
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired',
@@ -7482,11 +7498,20 @@ export function createTurnOrchestrator({
       // SAME readings the full object below uses, and — crucially — it returns BEFORE the big fields exist, so the slice
       // cannot be truncated. Any other value is a NAMED refusal; omitting detail keeps the full reading byte for byte.
       const wantedDetail = detail === undefined || detail === null || String(detail).trim() === '' ? null : String(detail).trim()
-      if (wantedDetail !== null && wantedDetail !== 'board') {
-        fail('VMU_INVALID_ARGUMENT', 'unknown status detail: ' + wantedDetail, 'known detail values: board (omit detail for the full status)')
+      if (wantedDetail !== null && wantedDetail !== 'board' && wantedDetail !== 'compaction') {
+        fail('VMU_INVALID_ARGUMENT', 'unknown status detail: ' + wantedDetail, 'known detail values: board, compaction (omit detail for the full status)')
       }
       const closureVoteReading = closureVoteOf({ votes: closureVotes, roster, may, permission, solvedThisRound })
       const memberWorkShareReading = workShareOf({ turns: Array.from(turnReceipts.values()) })
+      // ★ TB-2794 Step 4 follow-up (sim-lane visibility gap): the FULL C#21 compaction ledger — including the per-turn
+      // `droppedTurns` (turnId+bytes) — had NO public face: `contextCompactionReading()` was defined and never called, and
+      // the status/summary surfaces carried only bounded counts. This named detail exposes the reading the docs promise
+      // WITHOUT changing the settled-receipt shape (option ① of the two rulings).
+      if (wantedDetail === 'compaction') {
+        return { ok: true, apiVersion, action: 'status', detail: 'compaction',
+          contextCompaction: contextCompactionReading(),
+          detailMeans: 'the FULL C#21 compaction ledger per member: keepRecentTurns/summaryCapBytes, and for each member droppedCount/droppedThisTime/summaryBytes/keptTurns/summary and droppedTurns [{turnId,bytes}] — the audit trail the docs promise. The settled turn receipt and the default status keep the BOUNDED projection (counts only); this detail is the complete reading.' }
+      }
       if (wantedDetail === 'board') {
         return { ok: true, apiVersion, action: 'status', detail: 'board',
           detailMeans: 'the BOARD slice of the SAME status reading: turnLoop, memberWorkShare, closureVote and liveReadings only — the four blocks a board renders. Omitted on purpose: dispatch, turnReceipts (the per-turn ledger), lastAttribution, counts, memberSessions — exactly the fields that made the full status exceed the host bound (51 988 B measured on the 77th run). `op:"status"` without detail still returns everything; the four values here are JSON-identical to that full reading.',
@@ -7757,7 +7782,7 @@ export const taskCreateArgs = (payload) => {
  * ★★★ RUN 191 (run 35 / FEEDBACK34 2.6, MEASURED) — THE `formal` REPLY FIELD WAS TAUGHT A SHAPE NO FACE ACCEPTS.
  *
  * The catalogue line for this field said `{decision,file,note}` (the pack's reply-channel prompt file), while the face
- * it dispatches to is the formal-check service (`{statement, proof, allowSorry?}`, kernel/formal.js:111). Run 35's chair wrote the
+ * it dispatches to is the formal-check service (`{statement, proof, allowSorry?}`, packs/research-core/formal.js:111). Run 35's chair wrote the
  * field as taught, the face answered `VMU_MATH_INVALID_INPUT: check 需要 statement 与 proof`, and the dispatch path THREW —
  * so one wrong reply shape destroyed the whole turn instead of being skipped by name. Two repairs, and both are needed:
  * the taught line now names the real shape, and this adapter turns a wrong shape into a NAMED skip

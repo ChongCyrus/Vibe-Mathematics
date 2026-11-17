@@ -190,7 +190,7 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //        表决权分到两个声明键上）。本套件的两条上限此前**漏记**这一轮，实测已红（29 562 > 29 555、78 288 > 78 216）；
   //        这里按同一份逐条记账的口径补上：chair -826、member -803、temp -822、合计 -2451（ROUND-3：删五节历史账）。
   //        来源与归因见 `tests/vmu-run256-prompts-compress.test.mjs` 的 `TB2752_RUN80_FIXES`。
-  const TB2752_RUN80_FIXES = { chair: -3635, member: -1061, temp: -2409, sum: -7105 } // ROUND-1 audit P0/P1 fixes
+  const TB2752_RUN80_FIXES = { chair: -3651, member: -1076, temp: -2410, sum: -7137 } // ROUND-1 audit P0/P1 fixes
   //   ★ RUN 270 (Lead) — TB-2725 的回退缺口：那次把「回执契约」两句合并成一句时，把 progress 的**可照抄样例**一起删了。
   //       实测后果：fixtureMode=tools 下 member/temp 席的提示词里**一处样例都没有**（只剩 chair 自己的
   //       `v5r-tools-academician` 里还有一份）。这个样例存在的理由是真机缺陷——席位写 `"progress":"长叙述"`（字符串）⇒
@@ -243,7 +243,7 @@ for (const seat of ['chair', 'member', 'temp']) {
   ok(tooLong.length === 0, `§2 ${seat}：没有超长目录行（>300 字符＝又把用法/参数写回来了）`, tooLong.map((l) => l.length))
   ok(row.chars <= spec.cap, `§2 ${seat}：角色段 ≤${spec.cap} 字符`, row.chars)
   ok(!row.text.includes('回执样例') && !row.text.includes('回执示例'), `§2 ${seat}：角色段不再重复回执样例（样例只留一处）`)
-  ok(row.text.includes('本角色清单')&&row.text.includes('职责说明')&&row.text.includes('以本轮装配清单为准')&&!row.text.includes('【本轮你实际能调用的工具】'),
+    ok(!row.text.includes('【本轮你实际能调用的工具】') && String((at('chair','normal','v5r-fixture-tools')||{}).text||'').includes('本轮装配工具清单'),
     `§2 ${seat}：角色段声明「实际可调用工具以本轮装配为准」`, null)
 }
 

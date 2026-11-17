@@ -73,7 +73,9 @@ const newTree = (tag) => {
 {
   const km = await importFrom(SRC, 'kernel/index.js')
   const k = km.createKernel({ clock: () => 1000 })
-  throwsCode(() => k.provideService({ name: 'vmu.formal', apiVersion: 1, impl: { check: () => null }, by: 'x-pack' }), 'VMU_SERVICE_CONFLICT',
+  // TB-2794 Step 4: a CORE framework face (tasks) is constructed locally for good, so it keeps the
+  // no-shadow guard meaningful (no dual implementation).
+  throwsCode(() => k.provideService({ name: 'vmu.tasks', apiVersion: 1, impl: { list: () => [] }, by: 'x-pack' }), 'VMU_SERVICE_CONFLICT',
     '★★ a pack may NOT shadow a face the kernel still constructs (no dual implementation)')
   throwsCode(() => k.provideService({ name: 'vmu.probe.bad name', apiVersion: 1, impl: {} , by: 'x-pack' }), 'VMU_INVALID_ARGUMENT',
     'a malformed service name is refused by name')
@@ -205,12 +207,13 @@ const newTree = (tag) => {
     ok(k.status().registry.services.filter((s) => s.name === 'vmu.reviewers' || s.name === 'vmu.publication').length === 0,
       '★★ Step3: and the registry does not publish those names either')
     const applied = await loader.apply(v5r.PACK)
-    ok(applied.ok === true && applied.services && applied.services.length === 2,
+    const appliedStep3 = (applied.services || []).filter((x) => x.name === 'vmu.reviewers' || x.name === 'vmu.publication')
+    ok(applied.ok === true && appliedStep3.length === 2,
       '★★ Step3: the v5r pack APPLIES its two contributed services (no local-name CONFLICT — the local construction is gone)',
       applied && applied.services)
     ok(k.reviewers !== null && k.publication !== null && typeof k.reviewers.register === 'function' && typeof k.publication.register === 'function',
       '★★ Step3: the getters resolve the CONTRIBUTED faces', { reviewers: !!k.reviewers, publication: !!k.publication })
-    const provided = k.status().servicesProvided.map((s) => s.name).sort()
+    const provided = k.status().servicesProvided.map((s) => s.name).filter((n) => n === 'vmu.reviewers' || n === 'vmu.publication').sort()
     ok(provided.join(',') === 'vmu.publication,vmu.reviewers', '★★ Step3: servicesProvided names both, with the pack as owner', k.status().servicesProvided)
     const reg = k.status().registry.services.filter((s) => s.name === 'vmu.reviewers' || s.name === 'vmu.publication')
     ok(reg.length === 2 && reg.every((s) => s.providedBy === 'v5r-core'), '★★ Step3: registry providedBy = the pack id', reg)
@@ -254,6 +257,58 @@ const newTree = (tag) => {
       '★★ Step3: the pack-attached approval gate wraps the CONTRIBUTED publication face (gated action refuses by name)', gateCode)
   }
 }
+
+// ── 4d. TB-2794 Step 4: formal + fidelity are pack-contributed; the turn face map resolves pack faces at DISPATCH time.
+{
+  const km = await importFrom(SRC, 'kernel/index.js')
+  const packm = await importFrom(SRC, 'kernel/pack.js')
+  const v5r = await importFrom(SRC, 'packs/v5r/prompts/v5r-core.js')
+  const mk = async () => {
+    const k = km.createKernel({ clock: () => 1000, root: mkdtempSync(join(tmpdir(), 'vmu-step4-')) })
+    return { k, loader: packm.createPackLoader({ kernel: k, registry: k.registry }) }
+  }
+  {
+    const { k, loader } = await mk()
+    ok(k.formal === null && k.fidelity === null,
+      '★★ Step4: a NO-PACK kernel has no formal/fidelity face (absence, not a stub)', { formal: !!k.formal, fidelity: !!k.fidelity })
+    ok(k.fidelityLoad().code === 'VMU_ENGINE_UNAVAILABLE',
+      '★★ Step4: without a pack the fidelity-load receipt is a NAMED unavailable (never a fake loaded:0)', k.fidelityLoad())
+    const applied = await loader.apply(v5r.PACK)
+    ok(applied.ok === true && applied.services.some((s) => s.name === 'vmu.formal') && applied.services.some((s) => s.name === 'vmu.fidelity'),
+      '★★ Step4: v5r publishes formal/fidelity through the service seam (no local-name CONFLICT)', applied.services.map((s) => s.name))
+    ok(!!k.formal && !!k.fidelity && typeof k.formal.check === 'function' && typeof k.fidelity.applyAbstention === 'function',
+      '★★ Step4: the getters resolve the contributed faces', { formal: !!k.formal, fidelity: !!k.fidelity })
+    const prov = k.status().servicesProvided.map((s) => s.name)
+    ok(prov.includes('vmu.formal') && prov.includes('vmu.fidelity'), '★★ Step4: servicesProvided names both', prov)
+    const reg = k.status().registry.services.filter((s) => s.name === 'vmu.formal' || s.name === 'vmu.fidelity')
+    ok(reg.length === 2 && reg.every((s) => s.providedBy === 'v5r-core'), '★★ Step4: registry providedBy = the pack id', reg)
+    const load = k.fidelityLoad()
+    ok(load.status !== 'pending' && load.code !== 'VMU_ENGINE_UNAVAILABLE',
+      '★★ Step4: the CONTRIBUTOR starts the load and the kernel DELEGATES its receipt (no pending-after-apply, no fake loaded:0)', load)
+    const un = await loader.unload(v5r.PACK.id)
+    ok(un.ok === true && un.residueFree === true && k.formal === null && k.fidelity === null,
+      '★★ Step4: unload retracts both faces residue-free', { residueFree: un.residueFree, formal: !!k.formal, fidelity: !!k.fidelity })
+  }
+  // The turn resolver, through the REAL entry (runtime.json reply fields are folded there): a pack "formal" reply field
+  // must dispatch to vmu.formal.check, not face-not-wired. This is the criterion for "construction-time snapshot ⇒ lazy".
+  const bootEntry = async (dir) => {
+    const entry = await importFrom(dir, 'vibe-math-vmu.js')
+    const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async () => () => {} } }
+    const h = entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root: mkdtempSync(join(tmpdir(), 'vmu-step4-boot-')) })
+    await h.ready()
+    await h.kernel.store.open()
+    return h.kernel
+  }
+  {
+    const k = await bootEntry(SRC)
+    const out = await k.turn.apply({ formal: { statement: 'P', proof: 'theorem t : True := trivial' } }, null, 'r-1')
+    const skip = out.skipped[0] || null
+    ok(out.executed.length === 1 && skip === null && out.executed[0].face === 'vmu.formal',
+      '★★★ Step4: a PACK formal reply field reaches vmu.formal.check at dispatch time (the face map is NOT a construction snapshot)',
+      { executed: out.executed.map((e) => e.face), skipped: out.skipped })
+  }
+}
+
 
 // ── 5. LAMPS: remove one ingredient in a COPY and require the matching assertion to go red ──────────────────────────
 for (const [tag, mutate, expectedRed] of [
@@ -363,6 +418,73 @@ for (const [tag, mutate, expectedRed] of [
       'LAMP(step3-lifecycle-snapshot): a snapshot seam treats the resolver as the face and refuses — the unwrap is load-bearing', adv)
   } finally { rmSync(dir4, { recursive: true, force: true, maxRetries: 10 }) }
 }
+
+// ── 5c. TB-2794 Step 4 LAMPS (four) ───────────────────────────────────────────────────────────────────────────────────
+{
+  // ① no services declaration for formal/fidelity: no faces
+  const dir = newTree('step4-no-services')
+  try {
+    const cp = join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')
+    let src = readFileSync(cp, 'utf8')
+    src = src.replace("name: 'vmu.formal', apiVersion: 1,", "nameOff: 'vmu.formal', apiVersion: 1,")
+    src = src.replace("name: 'vmu.fidelity', apiVersion: 1,", "nameOff: 'vmu.fidelity', apiVersion: 1,")
+    writeFileSync(cp, src, 'utf8')
+    const km = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/pack.js')
+    const v5r = await importFrom(join(dir, 'vibe-math-vmu'), 'packs/v5r/prompts/v5r-core.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir, 'root') })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    try { await loader.apply(v5r.PACK) } catch { /* the mutated declaration is refused; the point is absence */ }
+    ok(k.formal === null && k.fidelity === null,
+      'LAMP(step4-no-services): without the service declarations the faces are ABSENT — the declaration is load-bearing', { formal: !!k.formal, fidelity: !!k.fidelity })
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10 }) }
+  // ② contributor does not start the durable load: the kernel receipt stays pending (never a silent loaded)
+  const dir2 = newTree('step4-no-load')
+  try {
+    const cp = join(dir2, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')
+    writeFileSync(cp, readFileSync(cp, 'utf8').replace("if (typeof f.startLoad === 'function') f.startLoad()", ''), 'utf8')
+    const km = await importFrom(join(dir2, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir2, 'vibe-math-vmu'), 'kernel/pack.js')
+    const v5r = await importFrom(join(dir2, 'vibe-math-vmu'), 'packs/v5r/prompts/v5r-core.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir2, 'root') })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    await loader.apply(v5r.PACK)
+    ok(k.fidelityLoad().status === 'pending',
+      'LAMP(step4-no-load): without the contributor start the receipt stays PENDING — the delegated load is load-bearing', k.fidelityLoad())
+  } finally { rmSync(dir2, { recursive: true, force: true, maxRetries: 10 }) }
+  // ③ unload does not retract: the contributed face survives
+  const dir3 = newTree('step4-unload-retract')
+  try {
+    const cp = join(dir3, 'vibe-math-vmu', 'kernel', 'pack.js')
+    writeFileSync(cp, readFileSync(cp, 'utf8').replace("        undo.push(() => { try { return kernel.retractService({ name: svc.name, by: manifest.id }) } catch { /* unload must still proceed; the failure is not silent because the next status shows it */ } })", ''), 'utf8')
+    const km = await importFrom(join(dir3, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir3, 'vibe-math-vmu'), 'kernel/pack.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir3, 'root') })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    await loader.apply({ id: 'lamp4-pack', version: '1.0.0', services: [{ name: 'vmu.probe.step4', apiVersion: 1, create: () => ({ ping: () => 1 }) }] })
+    await loader.unload('lamp4-pack')
+    ok(k.service('vmu.probe.step4') !== null,
+      'LAMP(step4-unload-retract): without the undo the contributed face SURVIVES unload — the retract is load-bearing', k.status().servicesProvided)
+  } finally { rmSync(dir3, { recursive: true, force: true, maxRetries: 10 }) }
+  // ④ turn face map is a construction snapshot (resolver removed): the pack formal reply field goes back to face-not-wired
+  const dir4 = newTree('step4-snapshot-resolver')
+  try {
+    const cp = join(dir4, 'vibe-math-vmu', 'kernel', 'index.js')
+    const src4 = readFileSync(cp, 'utf8')
+    const a4 = src4.indexOf('    resolveService: (name) => {')
+    const b4 = a4 < 0 ? -1 : src4.indexOf(String.fromCharCode(10) + '    },', a4)
+    writeFileSync(cp, a4 >= 0 && b4 > a4 ? src4.slice(0, a4) + src4.slice(b4 + 7) : src4, 'utf8')
+    const entry = await importFrom(join(dir4, 'vibe-math-vmu'), 'vibe-math-vmu.js')
+    const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async () => () => {} } }
+    const h = entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root: join(dir4, 'boot-root') })
+    await h.ready(); await h.kernel.store.open()
+    const out = await h.kernel.turn.apply({ formal: { statement: 'P', proof: 'theorem t : True := trivial' } }, null, 'r-1')
+    ok(out.executed.length === 0 && out.skipped[0] && out.skipped[0].code === 'VMU_TURN_FACE_NOT_WIRED',
+      'LAMP(step4-resolver): a construction-time face map reports the pack formal field as face-not-wired — the lazy resolver is load-bearing',
+      out.skipped)
+  } finally { rmSync(dir4, { recursive: true, force: true, maxRetries: 10 }) }
+}
+
 
 console.log('\n=== VMU SERVICE CONTRIBUTION: ' + passed + ' passed, ' + failed.length + ' failed ===')
 for (const f of failed) console.error('  - ' + f)

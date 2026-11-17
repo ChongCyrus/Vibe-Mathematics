@@ -232,7 +232,7 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
   eq(ask.code, GATE_CODES.FIDELITY_ASK_REQUIRED, 'and it carries the named code (the caller must surface it, not drop it)')
   ok(String(ask.question).includes('定义') && String(ask.question).includes('符合'), 'the question is the rule\'s own question about propositions/definitions')
   eq(ask.options.join(','), 'conform,defect', 'with exactly the two legal answers')
-  eq(ask.consumer, 'kernel/fidelity.js 的 passedWithdrawnFor（撤回标记）＋ 辩论裁决的 formal 字段',
+  eq(ask.consumer, 'packs/research-core/fidelity.js 的 passedWithdrawnFor（撤回标记）＋ 辩论裁决的 formal 字段',
     'and it names its consumers (red line ④: no mechanism without a consumer)')
 
   eq(fidelityAsked({ cardId: 'r-1', leanPassed: true, p: 0.62, answered: { decision: 'conform', by: 'm-1' } }).required, false,

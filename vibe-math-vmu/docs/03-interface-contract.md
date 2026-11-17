@@ -37,6 +37,7 @@
 > ★★★ **PHASE 7 更正（★ 不改写上面的历史，★ 只追加）** ✓：★ 80 变 **81** 的原因是新增了 **`vmu.status`**
 > ★★★ **PHASE 9 更正（★ 同上：★ 只追加 ✓）**：★ 81 变 **82** 的原因是新增了 **`vmu.env`**（★ 环境探测面：★ 标准 `probe`／`list`／`report` 三动作，★ 用 `vmu.env.needs` 声明本部署需要哪些外部环境）✓。★★ **口径不变**（★ 仍然是 `registry.register` 的静态注册点数）✓。 ✓
 > ★★★ **PHASE 12 更正（★ 同上：★ 只追加 ✓）**：★ 82 变 **83** 的原因是新增了 **`vmu.meetingverdict`**（★ 裁决聚合面：★ 命题感知的行裁定 ＋ `rulePropositionProbability` 主入口，★ 由 `kernel/meetingverdict.js` 注册）✓。★★ 口径不变（★ 仍然是 `registry.register` 的静态注册点数）✓；★ 本轮同时**删除**了装配不可达的 `kernel/grant.js` —— ★ 它不是服务、不进这个数 ✓。
+> ★★★ **ROUND-10 实测复核（★ 同上：★ 只追加 ✓；★ 口径不变）**：★ `kernel/index.js` 里 `registry.register('…'` 的**字面调用点 = 80**（★ 其中 **79** 条 `kind:'service'` ＋ **1** 条 `kind:'tool'` 的 `math_computation`），★ 其中 **5** 条是**条件注册**（`if (…)` 才注册），★ 且 `vmu.members` 在**两个分支各注册一次** ⇒ ★★ **去重后的服务名 = 79 个** ✓ —— ★ **这就是 `tests/audit-doc-vs-code-tables.test.mjs` 断言的当前实测数字** ✓（★ 该判据读的就是本文这一段所在的 §2 ✓）。★ 构成与变化：**HEAD（迁移前）是 82 个 `registry.register('…'` 调用点（81 个去重名）** ⇒ ★ **现为 80 个调用点（79 个去重服务名）** ✓；★ 差两个的原因是 **Step 3/4 把内核侧的 `vmu.fidelity`／`vmu.formal` 两个注册点迁出**（★ 迁到 `packs/research-core/`，内核不再注册 ✓）；★ 而 80→79 的去重差是 `vmu.members` 仍在两个装配分支各注册一次（★ 名字相同、调用点两个）✓。★★ **不是**统计口径改变 ✓。
 > ★ 它为什么存在：★ **pack 模块拿不到真 kernel**（★ `loader` 交付的 `services.kernel` 是 `Object.freeze({ read })` 只读门面，★ 而 `services.get` 的目录里没有 `vmu.kernel`）⇒ ★ **一个 pack 想贡献一段 `status()` 就【无路可走】** ✓
 > ★★ 所以补的是**通用通道**而不是给单个功能开洞：★ `services.get('vmu.status')` 提供 **`registerSection(name, fn)`（返回 disposer）／`unregisterSection(name)`／`names()`**，★ 同名注册**具名拒**；★ 模块可导出 `dispose`，★ `pack.unload()` 会 `await` 它 ⇒ ★ **卸载真的清零** ✓
 > ★★★ **计数口径不变**（★ 仍是 `registry.register` 的静态注册点数，★ 与 `tests/audit-doc-vs-code-tables.test.mjs` 的判据一致）✓
@@ -61,6 +62,8 @@
 > ★ `vmu.alerts` ✓ ｜ `vmu.retention` ✓ ｜ `vmu.repropack` ✓ ｜ `vmu.bidding` ✓ ｜ `vmu.publication` ✓ ｜ `vmu.external` ✓ ｜ `vmu.crypto` ✓ ｜ `vmu.idempotency` ✓ ｜ `vmu.replay` ✓ ｜ `vmu.transaction` ✓ ｜ `vmu.ratelimit` ✓ ｜ `vmu.auditchain` ✓ ｜ `vmu.stateversion` ✓ ｜ `vmu.clockguard` ✓ ｜ `vmu.mathtools` ✓ ｜ `vmu.projmigrate` ✓ ｜ `vmu.storepolicy` ✓ ｜ `vmu.migration` ✓。
 > 
 > ★★ **真源仍是 `registry.register` 的调用点** ✓；★ **本行只是让这 18 个名字【可查**] ✓。
+>
+> ★ **TB-2794 Step 3 更正（谁在发布）**：`vmu.reviewers`／`vmu.publication` 现在**由 pack 贡献**（`packs/v5r` 的 `PACK.services`，`providedBy:"v5r"`；实现 `packs/research-core/reviewers.js`／`publication.js`）；它们仍注册在**同一个 registry**（故本处计数口径不变），但 **kernel 只发 `resolveFace(null, …)` getter**——无 pack ⇒ `null`，host 工具具名 `VMU_ENGINE_UNAVAILABLE`（hint「mount the pack that contributes the face」）。
 
 **② 未发布：内核**内部句柄**与**工厂（**不是服务** ✗ —— 草案把它们当服务写了 ✗）**
 
@@ -1023,8 +1026,8 @@
 | `VMU_SAFETY_NET_DENIED` | **默认禁网下启动网络客户端**（`vmu.safety.netPolicy=off`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**策略值**与放行方式 ✓） |
 | `VMU_SAFETY_PATH_TOO_LONG` | **路径超长**（`vmu.safety.maxPathLength`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**实际长度与上限** ✓） |
 | `VMU_SAFETY_SYMLINK_DENIED` | **路径跨越软链**（`vmu.safety.followSymlinks=false`；实现于 `kernel/guard.js` ✓） | 安全（20） | ✅（须给**具体链接路径** ✓） |
-| `VMU_OUTREACH_INCOMPLETE` | 传播包**缺公共摘要**（`vmu.dissemination.publicSummaryRequired=true`；实现于 `kernel/publication.js` ✓） | 传播（22） | ✅（须点明缺 `publicSummary` ✓） |
-| `VMU_OUTREACH_LANGUAGE` | 摘要语言**超出 `languageSet`**（实现于 `kernel/publication.js` ✓） | 传播（22） | ✅（须给**允许语言集** ✓） |
+| `VMU_OUTREACH_INCOMPLETE` | 传播包**缺公共摘要**（`vmu.dissemination.publicSummaryRequired=true`；实现于 `packs/research-core/publication.js` ✓——TB-2794 Step 3 迁出内核） | 传播（22） | ✅（须点明缺 `publicSummary` ✓） |
+| `VMU_OUTREACH_LANGUAGE` | 摘要语言**超出 `languageSet`**（实现于 `packs/research-core/publication.js` ✓——TB-2794 Step 3 迁出内核） | 传播（22） | ✅（须给**允许语言集** ✓） |
 | `VMU_OUTREACH_EVIDENCE` | 主张**缺 `evidenceRef`**（`evidenceFidelity=strict` ✓） | 传播（22） | ✅（须给**缺失条数** ✓） |
 | `VMU_OUTREACH_MEDIA_DENIED` | **非已声明发言人**发言（`mediaApprovalPolicy=spokesperson-only` ✓） | 传播（22） | ✅（须点名**发言人**与该政策 ✓） |
 | `VMU_OUTREACH_ANONYMITY` | **匿名保护**被违反（`anonymityPreserve=true` ✓） | 传播（22） | ✅（须说明如何保持匿名 ✓） |
@@ -1188,7 +1191,7 @@
 | `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED` | v5r **忠实性收口缺少可通过的 Lean 依据**：`vibe_v5_fidelity_conclude` 的 `fidelity:'conform'` 要求带一个**已通过**的 Lean 作业；缺 `lean_job`、作业 id 面不认识、或作业未通过（消息点名实收 `state`，并区分「面不认识该作业」与「作业没通过」）三处共用一个码（实现于 `packs/v5r/tools.js` 的 `toolFidelityConclude`）；★ **属"证据层"而非"声明层"**：模型自述"我核对了"不算依据 | 会议·整合包 | ✅（`tests/vmu-fidelity-conclude.test.mjs` 8 节；`tests/vmu-v5r-tools.test.mjs` 46 工具计数） |
 | `VMU_PACK_V5R_DEBATE_SUBJECT_UNPROVEN` | v5r **辩论对象「声明已写完」但无机器证据**：卡上写了 `proofRef`＋`proofState=complete`，却既无 Lean 通过也无 `verified` 轨定论行（实现于 `packs/v5r/verification-gates.js` 的 `debateSubjectGate` 证据层分支）；★ **两种缺失两个码**：本码＝「自述写了≠真的写完」，`_NO_PROOF`＝「连自述都没有」；★ **尚无生产调用方**（接线在 B1 第 3 步） | 会议·整合包 | ✅（拒绝文案点名 `proofRef`/`proofState` 的实收值并给两条合法路径：跑 Lean 且 passed／走完辩论在 `verified` 轨留下定论行） |
 | `VMU_PACK_V5R_VERIFIED_SINGLE_WRITER` | v5r **定论多写了**：`verified` 轨只能由 `promoteVerified` 写，其它入口（含未声明写入器的裸写）⇒ 具名拒（实现于 `packs/v5r/verification-gates.js` 的 `singleWriter`）；★ **尚无生产调用方** | 记录·整合包 | ✅（须点名**违规入口**与唯一写入器） |
-| `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED` | v5r **D13 符合性追问缺失**：Lean 已通过但该卡概率仍非 1 时，必须先裁定「Lean 代码中的命题/定义是否与所需一致」，未裁定且证明未被撤回 ⇒ 具名要求（实现于 `packs/v5r/verification-gates.js` 的 `fidelityAsked`；本码是 `kernel/fidelity.js` 的 pack 侧消费者）；★ **尚无生产调用方** | 辩论·整合包 | ✅（须给出**问题原文**与两个合法答案 `conform`/`defect`） |
+| `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED` | v5r **D13 符合性追问缺失**：Lean 已通过但该卡概率仍非 1 时，必须先裁定「Lean 代码中的命题/定义是否与所需一致」，未裁定且证明未被撤回 ⇒ 具名要求（实现于 `packs/v5r/verification-gates.js` 的 `fidelityAsked`；本码是 `packs/research-core/fidelity.js` 的 pack 侧消费者）；★ **尚无生产调用方** | 辩论·整合包 | ✅（须给出**问题原文**与两个合法答案 `conform`/`defect`） |
 | `VMU_PACK_V5R_BLUEPRINT_MD_MISSING` | v5r **蓝图草案 md 缺失**：`vibe_v5_blueprint` 的 `propose` 带了 `mdPath` 但文件不存在，或 `adopt` 时草案文件已被删除 ⇒ 具名拒，回执给该相对路径与可达修法（用 fs 工具写好同一 `mdPath` 重试／改为不带 `mdPath` 让内核物化 `Shared/Drafts/<stem>-r<N>.md`）（实现于 `packs/v5r/blueprint.js` 的 `proposeBlueprint`／`adoptBlueprint`，RUN 248） | 蓝图·整合包 | ✅（**已实现** ✓；`packs/v5r/blueprint.js`，`tests/vmu-run248-blueprint-md.test.mjs`） |
 | `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT` | v5r **蓝图草案行与文件分叉**：`adopt` 前重算草案文件的 sha256 与草案行的 `mdFingerprint` 不等（提交之后又改过文件）⇒ 具名拒并给两个 sha 与修法（先 `vibe_v5_records {action:"reindex"}` 收编外部编辑，再采纳**被编辑过的字节**），**绝不静默晋升**（实现于 `packs/v5r/blueprint.js#adoptBlueprint`，RUN 248） | 蓝图·整合包 | ✅（**已实现** ✓；`packs/v5r/blueprint.js`，`tests/vmu-run248-blueprint-md.test.mjs`） |
 | `VMU_V5R_CLOCK_VALUE_INVALID` | v5r **时钟值非法**（RUN 259 / TB-2655 / AUDIT-14 P1-2）：`clockReadingOf` 只接受**整数毫秒且在 2000-01-01..2100-01-01 之间**，或**带显式位移的 ISO-8601**（`Z`/`+HH:MM`）；`0`／负数／小数／超范围（如 `8640000000000001`）／纯日期 `2026-01-01`／本地斜杠 `2026/01/01`／垃圾串一律具名拒，**绝不回落墙钟**——静默用 NOW 顶替会让「时钟坏了」和「时钟读到值」看起来一样。修复前这些值都被标成 `atSource:"kernel-clock"`（坏时钟冒充内核钟），且调用方自带的 `atSource` 还能覆盖实测值。内核钟值走 `{kernelClock:true}` 接缝（工具面硬编码，`boot({clock:()=>1000})` 不再被误拒）；`atSource` 只由测量方写，调用方标签另存 `atSourceCaller` | 时钟面（`vibe-math-vmu/packs/v5r/blueprint.js` 的 `clockReadingOf`；工具面 `vibe_v5_blueprint` 的 `at`/`now` 参数） | ✅（**已实现** ✓；`tests/vmu-run259-audit14.test.mjs`、`tests/vmu-run256-clock-purity.test.mjs`） |
@@ -1656,7 +1659,7 @@
 | `VMU_DISCIPLINE_RESTORE_NEEDS_HUMAN` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
 | `VMU_DISCIPLINE_SUSPEND_OVER_CAP` | **已实现 ✓** | `vibe-math-vmu/kernel/discipline.js` | 代码里有该码字符串 ✓ |
 | `VMU_ENGINE_FAILURE` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
-| `VMU_ENGINE_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js`、`vibe-math-vmu/host-hooks.js`、`vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/directions.js`、`vibe-math-vmu/kernel/env.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/loader.js`、`vibe-math-vmu/kernel/mailbox.js`、`vibe-math-vmu/kernel/math.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetingmarker.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/recruit.js`、`vibe-math-vmu/kernel/registry.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/kit/extras.js`、`vibe-math-vmu/kit/handlers.js`、`vibe-math-vmu/packs/research-core/paper-flow.js`、`vibe-math-vmu/packs/v3/middleware/gates.js`、`vibe-math-vmu/packs/v3/middleware/methods.js`、`vibe-math-vmu/packs/v3/middleware/planner.js`、`vibe-math-vmu/packs/v3/middleware/verify.js`、`vibe-math-vmu/packs/v3/tools.js`、`vibe-math-vmu/packs/v5r/blueprint.js`、`vibe-math-vmu/packs/v5r/meeting-tool-face.js`、`vibe-math-vmu/packs/v5r/middleware/artifact-counter.js`、`vibe-math-vmu/packs/v5r/middleware/motion-box.js`、`vibe-math-vmu/packs/v5r/middleware/paper-dispatch.js`、`vibe-math-vmu/packs/v5r/middleware/verified-policy.js`、`vibe-math-vmu/packs/v5r/paper-quality.js`、`vibe-math-vmu/packs/v5r/tools.js`、`vibe-math-vmu/packs/v5r/verified.js`、`vibe-math-vmu/settings/schema.js`、`vibe-math-vmu/tools/activity.js`、`vibe-math-vmu/tools/capacity.js`、`vibe-math-vmu/tools/chat.js`、`vibe-math-vmu/tools/control.js`、`vibe-math-vmu/tools/env.js`、`vibe-math-vmu/tools/fidelity.js`、`vibe-math-vmu/tools/human.js`、`vibe-math-vmu/tools/mailbox.js`、`vibe-math-vmu/tools/mathadapters.js`、`vibe-math-vmu/tools/mathjobs.js`、`vibe-math-vmu/tools/meeting.js`、`vibe-math-vmu/tools/member-tools.js`、`vibe-math-vmu/tools/panel.js`、`vibe-math-vmu/tools/publication.js`、`vibe-math-vmu/tools/report.js`、`vibe-math-vmu/tools/reviewers.js`、`vibe-math-vmu/tools/turn.js`、`vibe-math-vmu/tools/vote.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
+| `VMU_ENGINE_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js`、`vibe-math-vmu/host-hooks.js`、`vibe-math-vmu/host-math.js`、`vibe-math-vmu/host-spawn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/directions.js`、`vibe-math-vmu/kernel/env.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/loader.js`、`vibe-math-vmu/kernel/mailbox.js`、`vibe-math-vmu/kernel/math.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meeting.js`、`vibe-math-vmu/kernel/meetingmarker.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/minutes.js`、`vibe-math-vmu/kernel/pack.js`、`vibe-math-vmu/kernel/prompt/index.js`、`vibe-math-vmu/kernel/recruit.js`、`vibe-math-vmu/kernel/registry.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/script-bridge.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/kit/extras.js`、`vibe-math-vmu/kit/handlers.js`、`vibe-math-vmu/packs/research-core/paper-flow.js`、`vibe-math-vmu/packs/v3/middleware/gates.js`、`vibe-math-vmu/packs/v3/middleware/methods.js`、`vibe-math-vmu/packs/v3/middleware/planner.js`、`vibe-math-vmu/packs/v3/middleware/verify.js`、`vibe-math-vmu/packs/v3/tools.js`、`vibe-math-vmu/packs/v5r/blueprint.js`、`vibe-math-vmu/packs/v5r/meeting-tool-face.js`、`vibe-math-vmu/packs/v5r/middleware/artifact-counter.js`、`vibe-math-vmu/packs/v5r/middleware/motion-box.js`、`vibe-math-vmu/packs/v5r/middleware/paper-dispatch.js`、`vibe-math-vmu/packs/v5r/middleware/verified-policy.js`、`vibe-math-vmu/packs/v5r/paper-quality.js`、`vibe-math-vmu/packs/v5r/tools.js`、`vibe-math-vmu/packs/v5r/verified.js`、`vibe-math-vmu/settings/schema.js`、`vibe-math-vmu/tools/activity.js`、`vibe-math-vmu/tools/capacity.js`、`vibe-math-vmu/tools/chat.js`、`vibe-math-vmu/tools/control.js`、`vibe-math-vmu/tools/env.js`、`vibe-math-vmu/tools/fidelity.js`、`vibe-math-vmu/tools/formal.js`、`vibe-math-vmu/tools/human.js`、`vibe-math-vmu/tools/mailbox.js`、`vibe-math-vmu/tools/mathadapters.js`、`vibe-math-vmu/tools/mathjobs.js`、`vibe-math-vmu/tools/meeting.js`、`vibe-math-vmu/tools/member-tools.js`、`vibe-math-vmu/tools/panel.js`、`vibe-math-vmu/tools/publication.js`、`vibe-math-vmu/tools/report.js`、`vibe-math-vmu/tools/reviewers.js`、`vibe-math-vmu/tools/turn.js`、`vibe-math-vmu/tools/vote.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_ENV_NO_PROBE` | **已实现 ✓** | `vibe-math-vmu/kernel/env.js` | 代码里有该码字符串 ✓ |
 | `VMU_ENV_PROBE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/env.js` | 代码里有该码字符串 ✓ |
 | `VMU_ENV_UNKNOWN_NEED` | **已实现 ✓** | `vibe-math-vmu/kernel/env.js` | 代码里有该码字符串 ✓ |
@@ -1670,16 +1673,16 @@
 | `VMU_EXTERNAL_DISABLED` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js`、`vibe-math-vmu/kernel/records.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXTERNAL_RECEIPT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXTERNAL_STALE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js` | 代码里有该码字符串 ✓ |
-| `VMU_EXTERNAL_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js`、`vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/latex.js`、`vibe-math-vmu/kernel/lifecycle.js`、`vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/report.js`、`vibe-math-vmu/kernel/reportfeedback.js`、`vibe-math-vmu/kernel/reportfeedbackdelivery.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
+| `VMU_EXTERNAL_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js`、`vibe-math-vmu/kernel/latex.js`、`vibe-math-vmu/kernel/lifecycle.js`、`vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/report.js`、`vibe-math-vmu/kernel/reportfeedback.js`、`vibe-math-vmu/kernel/reportfeedbackdelivery.js`、`vibe-math-vmu/packs/research-core/formal.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_FEEDBACK_ACTION_IS_THE_OPERATION` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_ADAPTER_UNSUPPORTED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
-| `VMU_FORMAL_AXIOM_UNTRUSTED` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
+| `VMU_FORMAL_AXIOM_UNTRUSTED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/packs/research-core/formal.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_DISAGREEMENT` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_LIBRARY_NOT_INDEXED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
-| `VMU_FORMAL_NOT_FOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js` | 代码里有该码字符串 ✓ |
+| `VMU_FORMAL_NOT_FOUND` | **已实现 ✓** | `vibe-math-vmu/packs/research-core/formal.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_REPRO_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/repropack.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_SKELETON_UNAVAILABLE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
-| `VMU_FORMAL_SORRY_FOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
+| `VMU_FORMAL_SORRY_FOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/packs/research-core/formal.js` | 代码里有该码字符串 ✓ |
 | `VMU_FUNDING_ALLOCATION_MISMATCH` | **已实现 ✓** | `vibe-math-vmu/kernel/funding.js` | 代码里有该码字符串 ✓ |
 | `VMU_FUNDING_ALLOCATION_WEIGHTS` | **已实现 ✓** | `vibe-math-vmu/kernel/funding.js` | 代码里有该码字符串 ✓ |
 | `VMU_FUNDING_AMOUNT_OVER_CEILING` | **已实现 ✓** | `vibe-math-vmu/kernel/funding.js` | 代码里有该码字符串 ✓ |
@@ -1726,7 +1729,7 @@
 | `VMU_LEAN_ARCHIVE_NOT_FOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_BLOCKED_NOTE_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kit/extras.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_COMMAND_NOT_FOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
-| `VMU_LEAN_COMPILE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js` | 代码里有该码字符串 ✓ |
+| `VMU_LEAN_COMPILE_FAILED` | **已实现 ✓** | `vibe-math-vmu/packs/research-core/formal.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_EXIT_NONZERO` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_EXIT_UNOBSERVED` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
 | `VMU_LEAN_FILE_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js` | 代码里有该码字符串 ✓ |
@@ -1762,9 +1765,9 @@
 | `VMU_MATH_EXPR_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_HARNESS_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_INTERVAL_EMPTY` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
-| `VMU_MATH_INVALID_INPUT` | **已实现 ✓** | `vibe-math-vmu/kernel/fidelity.js`、`vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/packs/v5r/reply-field-adapters.js`、`vibe-math-vmu/tools/fidelity.js` | 代码里有该码字符串 ✓ |
+| `VMU_MATH_INVALID_INPUT` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/packs/research-core/fidelity.js`、`vibe-math-vmu/packs/research-core/formal.js`、`vibe-math-vmu/packs/v5r/reply-field-adapters.js`、`vibe-math-vmu/tools/fidelity.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_JOBS_DIR_UNSAFE` | **已实现 ✓** | `vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
-| `VMU_MATH_JOBS_MIRROR_UNWIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/fidelity.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
+| `VMU_MATH_JOBS_MIRROR_UNWIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/packs/research-core/fidelity.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_JOB_ID_TAKEN` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js`、`vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_JOB_INVALID_STATE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_JOB_PERSIST_FAILED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
@@ -1774,7 +1777,7 @@
 | `VMU_MATH_NOT_CONVERGED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_PERSIST_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_PRECISION_LOST` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
-| `VMU_MATH_REPRO_MISMATCH` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/repropack.js` | 代码里有该码字符串 ✓ |
+| `VMU_MATH_REPRO_MISMATCH` | **已实现 ✓** | `vibe-math-vmu/kernel/repropack.js`、`vibe-math-vmu/packs/research-core/formal.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_RESIDUAL_TOO_LARGE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_RESOURCE_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_RESULT_UNPARSEABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js` | 代码里有该码字符串 ✓ |
@@ -2189,8 +2192,6 @@
 | `vmu.explain` | explain: report detail, delegation chains and scores, a required reason with a declared length cap, event correlation by the declared key, and markdown or JSON rendering - every omission named (docs/17) |
 | `vmu.external` | external fetch adapter: receipts for every fetch, stale never silent, conflicts surfaced (docs/16 搂8) |
 | `vmu.fairness` | conserving allocation with a per-person cap; reputation is never a weight (docs/17 搂17) |
-| `vmu.fidelity` | 忠实性缺陷强制弃权（C-45，v5r 的 L2 option A）：declareDefect 留痕（append-only，可落 Formal/Defects/<target>.json 并 loadDefects 重载）；abstentionFor 是纯谓词；applyAbstention 是唯一强制点——被登记者在该对象上的布尔票 1/0 一律被改写为 0.5 弃权（不可由 pack 关闭）。 |
-| `vmu.formal` | formalisation: sorry refuses by default, compile failure is never a refutation (docs/09) |
 | `vmu.funding` | funding: account/currency scope, budget balance, cost-share policy, receipts and settlement windows (docs/13, 22) |
 | `vmu.governance` | agenda and motions (docs/08 搂2) |
 | `vmu.handover` | handover packets: required fields named, redacted before packing (docs/17 搂11) |
@@ -2242,7 +2243,7 @@
 | `vmu.work` | durable in-flight ledger (recover after restart) |
 | `vmu.workflow` | stage whitelist, gates and escalation, no stage skipping (docs/08 搂4) |
 
-> ★★ 合计 **81** 个服务 ✓。
+> ★★ 合计 **79** 个服务 ✓。
 
 <!-- END GENERATED: service-index -->
 

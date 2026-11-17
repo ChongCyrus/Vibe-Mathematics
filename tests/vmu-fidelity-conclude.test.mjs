@@ -1,6 +1,6 @@
 // B8 · 「Lean 通过 ⇒ 辩论只查描述/定义符合性 ⇒ 符合即 p=1 且入 verified」
 //
-// 这一批修的缺陷是**没有消费者的机制**：`kernel/fidelity.js` 的 `declareDefect`/`passedWithdrawnFor`（撤回面）
+// 这一批修的缺陷是**没有消费者的机制**：`packs/research-core/fidelity.js` 的 `declareDefect`/`passedWithdrawnFor`（撤回面）
 // 与 `packs/v5r/verified.js` 的 `findVerified(...,{fidelity})`（撤回的**唯一读法**）都写好了，但：
 //   ① 没有任何 pack 动作把"符合性判定"落成结论（`vibe_v5_decide` 之类不存在）⇒ 规则那一步在真机不可达；
 //   ② `findVerified` 与 `promoteVerified` 用 `passedWithdrawnFor(...) === true` 比较，而内核返回的是**标记对象**

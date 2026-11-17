@@ -1101,6 +1101,13 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           },
           emit: (topic, payload) => kernel.bus.emit(topic, payload),
           attachApprovalGate: (args) => (typeof kernel.attachApprovalGate === 'function' ? kernel.attachApprovalGate(args) : { attached: false, reason: 'this kernel exposes no approval-gate seam' }),
+          // ★ TB-2794 Step 4: generic execution/host seams a contributed research face needs. Still no registry / raw kernel.
+          spawn: (typeof kernel.spawn === 'function' ? (...a) => kernel.spawn(...a) : null),
+          spawnHandle: (typeof kernel.spawnHandle === 'function' ? (...a) => kernel.spawnHandle(...a) : null),
+          timer: (typeof kernel.timer === 'function' ? (...a) => kernel.timer(...a) : null),
+          ids: kernel.ids || null,
+          fs: (typeof kernel.fsSeam === 'function' ? kernel.fsSeam() : (kernel.fsSeam || null)),
+          root: (typeof kernel.rootPath === 'function' ? kernel.rootPath() : (kernel.rootPath || null)),
         })
         const impl = svc.create({ facade, settings: settingsNow(), log: facade.log })
         if (!impl || typeof impl !== 'object') {

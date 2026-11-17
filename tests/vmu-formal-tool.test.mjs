@@ -2,6 +2,8 @@
 // the test also asserts the service's honesty invariants are visible through the tool rather than flattened by it.
 import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
+// ★ TB-2794 Step 4: formal is PACK-contributed now; this suite supplies the generic face through the service seam.
+import { createFormal } from '../vibe-math-vmu/packs/research-core/formal.js'
 
 let passed = 0
 let failed = 0
@@ -17,6 +19,7 @@ const specOf = (kernel, extra = {}) => toolSpecs({ kernel, settings: {}, ...extr
 console.log('=== 1. REGISTRATION IS CONDITIONAL ===')
 {
   const k = createKernel({ clock: () => 0, settings: {} })
+k.provideService({ name: 'vmu.formal', apiVersion: 1, impl: createFormal({ clock: () => 0, settings: {} }), by: 'test-formal-face' })
   const off = toolSpecs({ kernel: k, settings: {} })
   ok(off.length === 1 && off[0].name === TOOL_NAMES.status,
     'without any declaration exactly ONE tool registers - the zero-mechanism invariant', { n: off.length, names: off.map((s) => s.name) })
@@ -26,6 +29,7 @@ console.log('=== 1. REGISTRATION IS CONDITIONAL ===')
 
 console.log('=== 2. THE ACTION ENUM IS COMPLETE, WITH NO ELEVENTH ===')
 const k = createKernel({ clock: () => 0, settings: {} })
+k.provideService({ name: 'vmu.formal', apiVersion: 1, impl: createFormal({ clock: () => 0, settings: {} }), by: 'test-formal-face' })
 const spec = specOf(k, { formalTool: true })
 ok(!!spec, 'the formal tool has a spec')
 const ACTIONS = ['check', 'axioms', 'sorryReport', 'artifacts', 'reproduce', 'list', 'status', 'keysUsed', 'config', 'trail']

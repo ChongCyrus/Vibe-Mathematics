@@ -916,9 +916,9 @@ watchers: [{
 
 ---
 
-## 30. C-45 · 忠实性缺陷 ⇒ 强制弃权（Round 3；**closed-by ＝ `kernel/fidelity.js`**）
+## 30. C-45 · 忠实性缺陷 ⇒ 强制弃权（Round 3；**closed-by ＝ `packs/research-core/fidelity.js`**）
 
-**判定点归属**：**判定（"这份形式化不忠实"）在策略层**（`declareDefect({target, by, note})`，缺 target/by/note **具名拒**）；**"能不能把它变成一张 1 或 0 的票"由内核回答，答案永远是"不能"** —— `kernel/fidelity.js` 的 `applyAbstention({target, by, declared})` 是**唯一强制点**，被登记者声明 1/0 一律改写为 **0.5（弃权）**。
+**判定点归属**：**判定（"这份形式化不忠实"）在策略层**（`declareDefect({target, by, note})`，缺 target/by/note **具名拒**）；**"能不能把它变成一张 1 或 0 的票"由内核回答，答案永远是"不能"** —— `packs/research-core/fidelity.js` 的 `applyAbstention({target, by, declared})` 是**唯一强制点**，被登记者声明 1/0 一律改写为 **0.5（弃权）**。
 
 **表决面只做一件事（唯一调用点）**：`kernel/ballot.js` 的 `cast()` 在 `castValid` 之后、落票之前，把**布尔**票路由过 `applyAbstention`；改写后的票以 `kind:'abstain'` 落账（**不计入 decisive/m**，与"弃权"同义），同时保留 `declared`（原声明值）、`byFidelity:true`、`markerId`。**可观测**：回执带 `byFidelity/declared/markerId/note`；`ballot.status()` 回显 `fidelitySeam` 与 `byFidelity[]`；`fidelity.view()` 有 `abstentionsEnforced` ＋ `Formal/Defects/<target>.json` 耐久 marker。**无接缝** ⇒ `fidelitySeam:false` 且**不改写任何票**（不假装强制）。
 

@@ -231,7 +231,7 @@ export function createBallot({
   isFrozen = () => false,
   castValid = (id, value) => value === DECISIVE_VOTE.FOR || value === DECISIVE_VOTE.AGAINST,
   tally = defaultTally,
-  // C-45 (L2 option A): the fidelity registry (`kernel/fidelity.js`). Injected because the DECISION lives there;
+  // C-45 (L2 option A): the fidelity registry (`packs/research-core/fidelity.js`). Injected because the DECISION lives there;
   // this face only routes a decisive cast through it (the single enforcement point, see `cast` below).
   fidelity = null,
   // F32 (the "just decided" window): a SECOND settlement carrying the SAME outcome inside this window is folded
@@ -384,7 +384,7 @@ export function createBallot({
     }
     /**
      * C-45 — THE SINGLE FIDELITY ENFORCEMENT POINT (v5r L2 option A / Adv-verify F1). A member who DECLARED a
-     * fidelity defect on this object cannot assert 1 or 0 on it: the registry (`kernel/fidelity.js`) rewrites
+     * fidelity defect on this object cannot assert 1 or 0 on it: the registry (`packs/research-core/fidelity.js`) rewrites
      * the ballot to 0.5 AND the rewrite is a first-class ABSTENTION here (`kind:'abstain'`, so it is excluded
      * from the decisive count exactly as an abstention is), while the declared value and the marker id are
      * kept for the audit. Nothing is silent: the receipt says `byFidelity`, the row keeps `declared`, and the

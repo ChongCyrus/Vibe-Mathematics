@@ -205,6 +205,14 @@
       "path": "tests/vmu-cold-start.test.mjs",
       "owner": "host-lane",
       "why": "P0-e (C#24/C#27) 冷启动套件：用临时目录模拟安装后的 profile（preset 副本 + seed marker）并子进程跑 scripts/doctor.mjs；它要写临时 profile、起子进程，不随包发布，故登记为 dev-only 测试（发布物是 scripts/doctor.mjs 与 vibe-math-vmu/install-seed.js 本身）"
+    },
+    {
+      "path": "scripts/sim/scenarios/long-session.mjs",
+      "owner": "sim-lane",
+      "why": "新 sim 场景（C#21 长会话压缩覆盖）：只被本地 sim 的按文件发现机制运行，未被任何 shipped guard 引用；运行写 D:\\_tmp 语料，发布包不含这份开发场景，因此按仓规登记为 dev-only 而不是 shipped",
+      "hintKinds": [
+        "本地 sim 覆盖场景，未被 shipped guard 引用"
+      ]
     }
   ]
 }

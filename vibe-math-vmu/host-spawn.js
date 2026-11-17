@@ -267,7 +267,7 @@ export function createHostSpawn({
     const budget = Number.isInteger(request.timeoutMs) && request.timeoutMs >= 0 ? request.timeoutMs : null
     const argv = []
     // ★★ ROUND 37 (measured): THE EXECUTABLE IS REQUIRED, AND IT IS NOT INFERRED FROM THE ARGUMENTS. A caller
-    // (`kernel/formal.js:147`) passed `{ command: leanCommand, args: […, '--stdin'] }` while this seam reads `file` -
+    // (`packs/research-core/formal.js:147`) passed `{ command: leanCommand, args: […, '--stdin'] }` while this seam reads `file` -
     // a pure FIELD-NAME MISMATCH, the same family as the chat face's `from`/`by` drift. `file` was undefined, so
     // nothing was pushed, and because `args` were then appended, `argv[0]` became `--stdin`: the host tried to EXECUTE
     // a flag, and the real command was silently ignored. The emptiness guard below could not catch it, because argv

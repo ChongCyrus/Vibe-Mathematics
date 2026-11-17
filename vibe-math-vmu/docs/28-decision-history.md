@@ -460,7 +460,7 @@
 
 - ★★★ **轮 164：docs 定稿第三类 —— "能力 vs 暴露面"被混为一谈，抓到一处【过宽断言】** ✗✓
   **原文（`12` 卷）** ✗：五类能力（**论文编译／证明检查／复现包／统计分析／归档迁移** ✓）"**均为 roadmap 项，当前不可调用**" ✓。
-  **实测（两层分别量 ✓✓）**：**① 工具层** ⇒ 宿主工具面**恰好 9 个** ✓（`vibe_vmu_status`／`set`／`middleware`／`records`／`script`／`pack`／`control`／`meeting`／`task` ✓），**其中确实没有**编译／证明／复现／归档工具 ✓ ⇒ **原文这半句成立 ✓**；**② 能力层** ⇒ ★ **九类能力的模块全部存在** ✓✓（`createPaper` ✓／`createPublication` ✓／`createFormal` ✓／`createLeanFace` ✓／`createReproPack` ✓／`createMathTools` ✓／`createMathJobs` ✓／`createMigration` ✓／`createProjectionMigrator` ✓），**且每个都在"零机制矩阵"里被逐行裁定** ✓ ⇒ **原文这半句过宽 ✗**。
+  **实测（两层分别量 ✓✓）**：**① 工具层** ⇒ 宿主工具面**恰好 9 个** ✓（`vibe_vmu_status`／`set`／`middleware`／`records`／`script`／`pack`／`control`／`meeting`／`task` ✓），**其中确实没有**编译／证明／复现／归档工具 ✓ ⇒ **原文这半句成立 ✓**；**② 能力层** ⇒ ★ **九类能力的模块全部存在** ✓✓（`createPaper` ✓／`createPublication` ✓／`createFormal` ✓／`createLeanFace` ✓／`createReproPack` ✓／`createMathTools` ✓／`createMathJobs` ✓／`createMigration` ✓／`createProjectionMigrator` ✓），**且每个都在"零机制矩阵"里被逐行裁定** ✓ ⇒ **原文这半句过宽 ✗**。★ **TB-2794 迁移后（Step 1/3）**：`createPaper` 随 paper-flow 在 `packs/research-core/paper-flow.js`、`createPublication` 在 `packs/research-core/publication.js`（由 v5r pack 作为服务提供）——本段是轮 164 当时的实测记录。
   **更正** ✓✓：**分两层写** —— **"能力已在内核模块里承载 ✓；尚未作为【宿主工具】暴露 ✗"** ✓ —— ★ **这正是 vmu 的分层：框架给能力，工具是暴露面** ✓✓（**过宽断言的危险在于：它会让读者以为能力也不存在，从而重复造轮子** ✗✓）。
   **同轮次的一个反面样本（记下 ✓）**：我上一轮的粗筛把 `15` 卷的一句**图例**（"⛔ 未实现（仅设计…）" ✓）当成了状态断言 ✗ —— **它不是断言，只是图例** ✓ ⇒ ★ **再次印证：散文上的机械筛必然带误报** ✓（**判据必须靠人读上下文** ✓）。
 
@@ -877,7 +877,7 @@
   ★ **两处断言是【我】算错而非实现错** ✓（**测试的价值** ✓）：钳制要**默认 > 上限** ✓；招聘路径的职责分离要**同一人先持另一半** ✓ ⇒ 均按语义重写 ✓。
   **未做（明写 ✗）**：**`reconsiderFloor` 的 pack 层示例** ✗；**其余 440 条未接线（绝大多数 `planned`）** ✗；**真机复跑** ✗（**清单见 `10-§5.1.1`** ✓）；**版本号 / release** ✗（**须你批准** ✓）；**`#11`** ✗（**你的例外** ✓）。
 - ★★★★★ **轮 218（超长区间）：传播族 9 条接线 ＋ 协作族 7 条【连新面一起做】；未接线 440 → 424** ✓✓
-  **① 传播族（9 条）落在 `kernel/publication.js`** ✓ —— 契约**取自 `docs/22` 的统一参数表 L712-720** ✓（**不是凭名字猜** ✓）：公共摘要必填 ✓／证据保真（strict 拒、warn 记警告并继续 ✓）／禁运期内发布具名拒并给终点 ✓／语言集 ✓／媒体政策（spokesperson-only ✓）／开放评审开关 ✓／匿名保护 ✓／影响日志必填字段（**缺字段具名拒并点名第几条** ✓）／影响不得用于评价（**默认 false：它是传播指标而非质量信号** ✓）⇒ **`VMU PUBLICATION: 53 passed, 0 failed`** ✓；`vmu.dissemination` 未接线剩 **2**（**正是两条无声明契约者** ✓）。
+  **① 传播族（9 条）落在 `kernel/publication.js`** ✓（★ TB-2794 Step 3 后：该文件已迁 `packs/research-core/publication.js`，由 v5r pack 作为服务提供；本段是当时记录） —— 契约**取自 `docs/22` 的统一参数表 L712-720** ✓（**不是凭名字猜** ✓）：公共摘要必填 ✓／证据保真（strict 拒、warn 记警告并继续 ✓）／禁运期内发布具名拒并给终点 ✓／语言集 ✓／媒体政策（spokesperson-only ✓）／开放评审开关 ✓／匿名保护 ✓／影响日志必填字段（**缺字段具名拒并点名第几条** ✓）／影响不得用于评价（**默认 false：它是传播指标而非质量信号** ✓）⇒ **`VMU PUBLICATION: 53 passed, 0 failed`** ✓；`vmu.dissemination` 未接线剩 **2**（**正是两条无声明契约者** ✓）。
   **② 协作族（7 条）连【新面】一起做** ✓ —— 新建 **`kernel/collab.js`** ✓（对手方登记＋协议＋到期预警＋数据共享模板＋共同署名＋结算周期与对账容差 ✓；`trust`／`funding` 都不主管 ✓），严格照该仓库的面约定：**字面量读取** ✓、回执带 `enforced[]`／`fired[]` ✓、具名拒 ✓、零声明＝零机制 ✓、注入时钟 ✓、只读面不改状态且截断必计数 ✓；**接线 5 处**（import／create／内部 return／`registry.register`／公开 getter ✓）＋ **新套件 `tests/vmu-collab.test.mjs`** ✓ ⇒ **`VMU COLLAB: 25 passed, 0 failed`** ✓。
   **③ 两处"随包发布"的硬要求（由审计抓出 ✓）**：★ `package.json#files` 是**112 条显式列举、无 glob** ✓ ⇒ **新面与其套件必须显式列入** ✓（已按字典序插入 ✓）；★ 服务面审计要求**每个注册服务都在审计里映射到构造器** ✓ ⇒ 已补 `vmu.collab` ✓。**结果**：`PACKAGE MEMBERSHIP: 12/0` ✓、`VMU SERVICE SURFACE: 48/0（60 registered）` ✓、**作业总数 217 → 218（套件 146 → 147）** ✓。
   **④ 一处文档缺口（发现并记录 ✓）**：★ **`vmu.funds.*`（11 条）在 `docs/22` 里【没有任何契约声明】** ✗（既无分节表行、也无统一表行 ✓）⇒ ★★ **不可实现** ✗ —— **凭名字猜语义就是伪造契约** ✓ ⇒ **保持未接线，并在此记明"须先补声明"** ✓。
@@ -1420,7 +1420,7 @@
   **门禁与证据** ✓：**四条分支真机验证 ✓**；**`records.js` 语法 0 ✓**；**未接线 115 → 114** ✓；**待本轮 T1** ✓。
   **未做（明写 ✗）**：★★ **`review` 的余下 3 条（`mode`／`conflictPolicy`／`quorum`）仍未接** ✗ —— **复活条件已精确** ✓：**先有【审稿人库 ＋ 回避映射表 ＋ 留痕】，其判据照 L301 三条 ✓**；**`reconsiderFloor` 的 pack 层示例** ✗；**真机复跑** ✗；**版本号 / release** ✗（**须你批准** ✓）。
 
-- ★★★★★ **轮 279：建成 `kernel/reviewers.js` 面，接 7 键（`review` 余 3 ＋ `reviewers` 3＋1）；**真实缺口族已全部清零**；未接线 114 → 107** ✓✓
+- ★★★★★ **轮 279：建成 `kernel/reviewers.js` 面，接 7 键（`review` 余 3 ＋ `reviewers` 3＋1）；**真实缺口族已全部清零**；未接线 114 → 107** ✓✓（★ TB-2794 Step 3 后：该面已迁 `packs/research-core/reviewers.js`，由 v5r pack 作为服务提供；本段是当时记录）
   ★★★ **① 承载者是量出来的，且【又一次避开了按族陷阱】** ✓✓：**`conference.js`（18 条 `vmu.conference.*` 的计数断言 ＋ **无跨族层**）** ✗ ⇒ **塞别族键会红 4 条断言（正是轮 275 的教训 ✓）** ⇒ ★★ **按第 ⑮ 条新建 `kernel/reviewers.js`，自带记账** ✓。★ **但它已是评审概念的近邻**（`reviewer`×65／`conflict`×59／`assignment`×51 ✓），**故新面只补【卷里明确要而它没有的】那部分** ✓。
   ★★★ **② 规格来自卷 16 §L297-§L305，逐条落地** ✓✓：**schema**（`reviewers[{id, expertise[], load, conflicts[]}]` ✓、`reviewAssignment{…, mode, blind, …}` ✓）；**三条字段级规则** ✓：**① `conflicts[]` 命中被审对象 ⇒ 必须回避，否则【具名拒】** ✓；**② 盲评映射由 `mode` 决定，**分配时记下所用模式 ✓，且解绑必须留痕（谁、何时、为何）** ✓；**③ 同一审稿人并发上限** ✓。**七个键全带卷里的默认值** ✓（`mode=single-blind`／`conflictPolicy=recuse`／`reviewers.maxLoad=3`／`coiPolicy=deny`／`blindUnbindRequiresReason=true` ✓；**`quorum` 卷未给默认 ⇒ 取 0 ＝"不要求"，零机制 ✓**）；**三码全用卷里已声明的名字** ✓（`VMU_COI_VIOLATION`／`VMU_REVIEWER_OVERLOADED`／`VMU_BLIND_UNBIND_DENIED` ✓）。
   ★★★ **③ 十个分支逐支真机验证 ＋ 22 条断言全绿** ✓✓：**零声明自曝 ✓；COI 命中 ⇒ `VMU_COI_VIOLATION` ✓；超上限 ⇒ `VMU_REVIEWER_OVERLOADED`（回执带 cap ✓）；盲评无理由解绑 ⇒ `VMU_BLIND_UNBIND_DENIED` ✓；有理由则通过且【留痕 `blindTraced=true`】✓；`mode=open` 时无需理由 ✓；`quorum=2` 时 1 条不满足／2 条满足 ✓** ⇒ **`VMU REVIEWERS: 22 passed, 0 failed`** ✓。

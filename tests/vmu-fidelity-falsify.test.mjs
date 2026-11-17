@@ -1,4 +1,4 @@
-// tests/vmu-fidelity-falsify.test.mjs — FAMILY 5: `kernel/fidelity.js`, the C-45 ABSTENTION REWRITE — the face's
+// tests/vmu-fidelity-falsify.test.mjs — FAMILY 5: `packs/research-core/fidelity.js`, the C-45 ABSTENTION REWRITE — the face's
 // "唯一强制点": a member registered as having declared a fidelity defect on an object cannot make a boolean (1/0)
 // assertion about it; the vote is rewritten to 0.5 (abstain). Run: node tests/vmu-fidelity-falsify.test.mjs
 //
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const FIDELITY = join(HERE, '..', 'vibe-math-vmu', 'kernel', 'fidelity.js')
+const FIDELITY = join(HERE, '..', 'vibe-math-vmu', 'packs', 'research-core', 'fidelity.js')
 
 let passed = 0
 let failed = 0

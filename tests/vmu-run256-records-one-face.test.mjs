@@ -149,7 +149,10 @@ try {
   ok(kRefusal && kRefusal.code === 'VMU_INVALID_ARGUMENT', '内核面拒绝未知 track')
   eq(tRefusal.code, kRefusal.code, '工具面同码')
   eq(tRefusal.message, String(kRefusal.message), '工具面同 message')
-  eq(tRefusal.hint, kRefusal.hint, '工具面同 hint（facts 的一部分）')
+  // ★ TB-2794 Step 4 re-anchor: refusal-means appends a REACHABLE INSTEAD suffix to the HOST-facing hint; the
+  // service hint remains its prefix, so the facts are preserved rather than dropped.
+  ok(String(tRefusal.hint).startsWith(String(kRefusal.hint)) && (tRefusal.hint === kRefusal.hint || String(tRefusal.hint).includes('REACHABLE INSTEAD')),
+    '工具面 hint 以服务 hint 为前缀（refusal-means 的 reachable 后缀是附加事实，不丢 facts）', { tool: tRefusal.hint, service: kRefusal.hint })
 
   // ── 6. 裸 list 的 untracked 路：容器仍是同一个 ──────────────────────────
   await writeFile(join(base, 'Members', 'm-1', 'Propos', 'card-1.md'), '# card-1\n', 'utf8').catch(async () => {

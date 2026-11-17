@@ -94,7 +94,7 @@ const face = mod.createEnvFace({ settings, spawn: spawnOk })
 
 // ── 7. every kernel spawn point must carry a timeout/grace budget (the env miss was one of six) ───────────────
 {
-  const points = ['kernel/env.js', 'kernel/lean.js', 'kernel/latex.js', 'kernel/formal.js', 'kernel/mathjobs.js', 'kernel/mathadapters.js', 'kernel/script-bridge.js']
+  const points = ['kernel/env.js', 'kernel/lean.js', 'kernel/latex.js', 'packs/research-core/formal.js', 'kernel/mathjobs.js', 'kernel/mathadapters.js', 'kernel/script-bridge.js']
   const missing = points.filter((rel) => {
     const code = readFileSync(join(REPO, 'vibe-math-vmu', rel), 'utf8')
     return !/(?:timeoutMs|graceMs)\s*:/.test(code)

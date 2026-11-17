@@ -24,3 +24,7 @@ export * from './paper-flow.js'
 // exports the institution-neutral factories (no policy, no defaults, no settings reads of its own).
 export { createReviewers, MODES, COI_POLICIES } from './reviewers.js'
 export { createPublication, VERSION_CHAIN, isVague, normalizeForMatch } from './publication.js'
+
+// ★ TB-2794 Step 4: generic research faces contributed by v5r as services.
+export { createFormal, FORMAL_KEYS, FIDELITY_ABSTENTION_VOTE } from './formal.js'
+export { createFidelityRegistry, FIDELITY_DEFECT_DIR } from './fidelity.js'

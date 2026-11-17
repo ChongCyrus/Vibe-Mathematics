@@ -126,7 +126,10 @@ await ok('toHostSpec forwards a thrown refusal\'s facts through the one serializ
   const out = JSON.parse(await spec.execute({}, {}))
   assert.equal(out.ok, false)
   assert.equal(out.code, 'VMU_NOT_PERMITTED')
-  assert.equal(out.hint, 'ask the chair')
+  // ★ TB-2794 Step 4 re-anchor: refusal-means enriches a host-facing hint with a REACHABLE INSTEAD suffix (the
+  // original hint is the PREFIX, so no fact is lost); the strict-equality pin predates that global enrichment.
+  assert.ok(String(out.hint).startsWith('ask the chair'), 'the original hint is preserved as the prefix')
+  assert.ok(String(out.hint).includes('REACHABLE INSTEAD'), 'and the host hint carries the reachable suffix by design')
   assert.deepEqual(out.enforced, ['vmu.meetings.closeRequiresChair'])
   assert.equal(out.boundaryOnly, true)
   assert.equal(out.askedAction, 'close')

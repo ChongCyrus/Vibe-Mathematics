@@ -1,6 +1,6 @@
 # Paper 迁移期的 declared-not-wired 台账（TB-2794 Step 1）
 
-> **历史引用口径**：本仓历史验收记录（`docs/acceptance/**`）里的 `kernel/paper.js` 一律指**已删除的死面**，不是现行落点；现行论文流程在 `packs/research-core/paper-flow.js`。
+> **历史引用口径**：本仓历史验收记录（`docs/acceptance/**`）里的 `kernel/paper.js` 一律指**已删除的死面**，不是现行落点；现行论文流程在 `packs/research-core/paper-flow.js`。同理，历史记录里的 `kernel/reviewers`／`kernel/publication` 指**迁移前位置**——现为 `packs/research-core/reviewers.js`／`packs/research-core/publication.js`，由 `packs/v5r` 的 `PACK.services` 提供（TB-2794 Step 3），kernel 只留 `resolveFace` getter。
 
 > 背景：Step 1 删除了死面 `kernel/paper.js`（唯一读取者），通用流程迁 `packs/research-core/paper-flow.js`、机构政策留
 > `packs/v5r/paper.js`。下面 4 个 `vmu.paper.*` 键在迁移前只被那个死面读取，因此现在是**声明了但未接线**——本文件是

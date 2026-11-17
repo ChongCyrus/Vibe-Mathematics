@@ -9,7 +9,7 @@
 ## 1. 一句话
 
 ★★ **vmu 的实际运行机制 ＝ `kernel/`（框架）＋ `packs/<名字>/`（整合包文件夹）** ✓。
-★★★ **框架只提供【机制】，整合包提供【机构】** ✓ —— ★ **凡是"换一家研究所就不对"的东西，都不许待在 `kernel/`** ✗，**必须待在整合包里** ✓。★★ **现状（TB-2794 Step 0/1/2 之后）**：这是**目标态**，不是完成态 —— paper 流程**已迁出**（`packs/research-core/paper-flow.js`）；reply fields 与 verified warrant 政策也已迁 pack（Step 2）；reviewers／publication／formal／fidelity／mathjobs 五个研究面**仍由 `kernel/index.js` 本地构造（待迁，后续步）**；Lean 引擎留 kernel 作通用原语、其面/归档策略待迁。逐面「已迁 / 待迁」清单见 `02-architecture.md` §1.1（C#7 口径）。
+★★★ **框架只提供【机制】，整合包提供【机构】** ✓ —— ★ **凡是"换一家研究所就不对"的东西，都不许待在 `kernel/`** ✗，**必须待在整合包里** ✓。★★ **现状（TB-2794 Step 0–3 之后）**：这是**目标态**，不是完成态 —— paper 流程**已迁出**（`packs/research-core/paper-flow.js`）；reply fields 与 verified warrant 政策也已迁 pack（Step 2）；**reviewers／publication 已迁 `packs/research-core/` 并由 v5r pack 作为服务提供（Step 3；kernel 只发 `resolveFace` getter，无 pack ⇒ `null`＋具名 `VMU_ENGINE_UNAVAILABLE`）**；formal／fidelity／mathjobs 三个面**仍由 `kernel/index.js` 本地构造（待迁，Step 4/5）**；Lean 引擎留 kernel 作通用原语、其面/归档策略待迁。逐面「已迁 / 待迁」清单见 `02-architecture.md` §1.1（C#7 口径）。
 ★★★ **轮 1（D-03/D-06）**：**pack 是 L4，自成一档；它不是中间件四形态里的 M4** —— M4 是**消费 vmu 已发布服务的 DSH 外部插件**；总线只跑 M1（`rules`）与 M2（`module`），`kind:'script'|'plugin'` 由 `bus.add` **具名拒** `VMU_MIDDLEWARE_KIND_UNSUPPORTED`。pack 的机构策略（段开关、通知措辞、相位）**由 `config.packs` 声明驱动注入**（见 §4.1），不再由入口无条件带上。
 
 ---
@@ -220,23 +220,23 @@ node scripts/preflight.mjs && node scripts/regen-all.mjs --check
 
 | preset | src → dst | 托管文件数 | `.js` | `.json` | `.md` | `.yml` | 其他 |
 |---|---|---|---|---|---|---|---|
-| `vibe-math-vmu` | `vibe-math-vmu` → `vibe-math-vmu` | **278** | 236 | 8 | 32 | 2 | 0 |
+| `vibe-math-vmu` | `vibe-math-vmu` → `vibe-math-vmu` | **279** | 237 | 8 | 32 | 2 | 0 |
 
 #### `vibe-math-vmu` 文件清单（按目录分组，组内按名排序 ✓）
 
 | 目录 | 文件 |
 |---|---|
-| （根） | `agent.cordis.yml`、`glossary.json`、`host-children.js`、`host-deliver.js`、`host-hooks.js`、`host-math.js`、`host-pack-tools.js`、`host-spawn.js`、`host.js`、`math-computation.js`、`math-engines.js`、`preset.yml`、`vibe-math-vmu.js` |
+| （根） | `agent.cordis.yml`、`glossary.json`、`host-children.js`、`host-deliver.js`、`host-hooks.js`、`host-math.js`、`host-pack-tools.js`、`host-spawn.js`、`host.js`、`math-computation.js`、`math-engines.js`、`preset.yml`、`refusal-means.js`、`vibe-math-vmu.js` |
 | `docs/` | `00-README.md`、`01-philosophy.md`、`02-architecture.md`、`03-interface-contract.md`、`04-settings.md`、`05-middleware.md`、`06-prompt-pipeline.md`、`07-durability-library.md`、`08-primitives-meeting-ballot-workflow.md`、`09-math-formalization.md`、`10-packs.md`、`11-gates-and-development.md`、`12-user-guide.md`、`13-migration.md`、`14-open-items-and-roadmap.md`、`15-math-computation-toolbox.md`、`16-research-lifecycle.md`、`17-agent-society-and-delegation.md`、`18-command-and-protocol-reference.md`、`19-plugin-and-extension-development.md`、`20-security-privacy-and-compliance.md`、`21-observability-and-operations.md`、`22-academic-operations.md`、`23-extensions-and-deferred.md`、`24-v5r-containment.md`、`25-demoted-domains.md`、`26-turn-orchestration.md`、`27-pack-folder.md`、`28-decision-history.md`、`29-build-your-own-preset.md` |
 | `extensions/domain-compliance/` | `gate.js`、`index.js` |
-| `kernel/` | `activity.js`、`alerts.js`、`arbitration.js`、`audit.js`、`auditchain.js`、`ballot.js`、`ballotbox.js`、`bidding.js`、`board.js`、`budget.js`、`bus.js`、`capacity.js`、`charter.js`、`chat.js`、`citations.js`、`clockguard.js`、`collab.js`、`compliance.js`、`conference.js`、`contentvalue.js`、`control.js`、`course.js`、`crypto.js`、`custody.js`、`delegation.js`、`directions.js`、`discipline.js`、`env.js`、`explain.js`、`external.js`、`fairness.js`、`fidelity.js`、`formal.js`、`funding.js`、`governance.js`、`guard.js`、`handover.js`、`human.js`、`idempotency.js`、`identity.js`、`ids.js`、`index.js`、`ip.js`、`latex.js`、`lean.js`、`library-policy.js`、`library.js`、`lifecycle.js`、`loader.js`、`mailbox.js`、`math.js`、`mathadapters.js`、`mathjobs.js`、`mathtools.js`、`meeting.js`、`meetingdomain.js`、`meetinglapse.js`、`meetingleave.js`、`meetingmarker.js`、`meetings-defaults.js`、`meetings.js`、`meetingverdict.js`、`memberface.js`、`members.js`、`memory.js`、`metrics.js`、`migration.js`、`minutes.js`、`notices.js`、`notify.js`、`pack.js`、`panel.js`、`partnership.js`、`projmigrate.js`、`ratelimit.js`、`receiptbounds.js`、`records.js`、`recruit.js`、`registry.js`、`replay.js`、`report.js`、`reportfeedback.js`、`reportfeedbackdelivery.js`、`reporttransport.js`、`repropack.js`、`resource.js`、`resume.js`、`resumeflush.js`、`retention.js`、`rules.js`、`scheduler.js`、`script-bridge.js`、`settings-defaults.js`、`skills.js`、`stateversion.js`、`store.js`、`storepolicy.js`、`tasks.js`、`tenure.js`、`timevalue.js`、`topology.js`、`transaction.js`、`trust.js`、`work.js`、`workflow.js` |
+| `kernel/` | `activity.js`、`alerts.js`、`arbitration.js`、`audit.js`、`auditchain.js`、`ballot.js`、`ballotbox.js`、`bidding.js`、`board.js`、`budget.js`、`bus.js`、`capacity.js`、`charter.js`、`chat.js`、`citations.js`、`clockguard.js`、`collab.js`、`compliance.js`、`conference.js`、`contentvalue.js`、`control.js`、`course.js`、`crypto.js`、`custody.js`、`delegation.js`、`directions.js`、`discipline.js`、`env.js`、`explain.js`、`external.js`、`fairness.js`、`funding.js`、`governance.js`、`guard.js`、`handover.js`、`human.js`、`idempotency.js`、`identity.js`、`ids.js`、`index.js`、`ip.js`、`latex.js`、`lean.js`、`library-policy.js`、`library.js`、`lifecycle.js`、`loader.js`、`mailbox.js`、`math.js`、`mathadapters.js`、`mathjobs.js`、`mathtools.js`、`meeting.js`、`meetingdomain.js`、`meetinglapse.js`、`meetingleave.js`、`meetingmarker.js`、`meetings-defaults.js`、`meetings.js`、`meetingverdict.js`、`memberface.js`、`members.js`、`memory.js`、`metrics.js`、`migration.js`、`minutes.js`、`notices.js`、`notify.js`、`pack.js`、`panel.js`、`partnership.js`、`projmigrate.js`、`ratelimit.js`、`receiptbounds.js`、`records.js`、`recruit.js`、`registry.js`、`replay.js`、`report.js`、`reportfeedback.js`、`reportfeedbackdelivery.js`、`reporttransport.js`、`repropack.js`、`resource.js`、`resume.js`、`resumeflush.js`、`retention.js`、`rules.js`、`scheduler.js`、`script-bridge.js`、`settings-defaults.js`、`skills.js`、`stateversion.js`、`store.js`、`storepolicy.js`、`tasks.js`、`tenure.js`、`timevalue.js`、`topology.js`、`transaction.js`、`trust.js`、`work.js`、`workflow.js` |
 | `kernel/prompt/` | `index.js` |
 | `kernel/turn/` | `index.js` |
 | `kit/` | `extras.js`、`handlers.js`、`tools.js` |
 | `packs/example-data/` | `README.md` |
 | `packs/example-data/prompts/` | `sections.json` |
 | `packs/institute-min/` | `index.js` |
-| `packs/research-core/` | `index.js`、`paper-flow.js`、`publication.js`、`reviewers.js` |
+| `packs/research-core/` | `fidelity.js`、`formal.js`、`index.js`、`paper-flow.js`、`publication.js`、`reviewers.js` |
 | `packs/v3-core/` | `index.js` |
 | `packs/v3-core/settings/` | `declarations.js` |
 | `packs/v3/` | `README.md`、`index.js`、`tools.js` |

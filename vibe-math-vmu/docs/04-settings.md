@@ -226,7 +226,7 @@ vmu.packs.active: [v5r]
 - **可用性以探活为准**：一个引擎"可用"＝描述符 + PATH/安装目录发现 + `--version` 探活（`math-computation.js` 的 `probeMathEngines`）；**不需要在设置里写命令路径**（那是 `vmu.math.adapters.python` 的语义：显式解释器、绝不猜）。首次数学调用最多串行探 8 个候选，探活超时首个候选 20s、其后 45s（`math-computation.js:609`）、结果按会话缓存 ⇒ 有一次性成本，不是每次调用都付。
 - **`cli` 不自动探活**：它是"调用方给命令"的通道，即使声明在列表里也不会被自动探测；要用须显式给命令。
 - **引擎不可用时是具名降级，不是静默**：`kernel/mathjobs.js:733`（"未声明任何引擎（vmu.math.engines 为空）"）与 `:734`（"引擎未声明：X"）。显式设 `[]` ⇒ 同样具名拒；H2 热改 ⇒ 运行期可收窄/清空；部署要与 pack 默认不同值时，走 O4 的具名门（`vmu.packs.activeOverrides` 点名或 `vmu.packs.allowKernelOverride`），不许静默覆盖。
-- **Lean 不是引擎**：形式化走 `vmu.math.leanCommand`（`kernel/lean.js`、`kernel/formal.js`），与 `vmu.math.engines` 无关——"真机跑过 Lean"不能推出"引擎已声明"。
+- **Lean 不是引擎**：形式化走 `vmu.math.leanCommand`（`kernel/lean.js`、`packs/research-core/formal.js`），与 `vmu.math.engines` 无关——"真机跑过 Lean"不能推出"引擎已声明"。
 
 ---
 
@@ -276,9 +276,7 @@ vmu.packs.active: [v5r]
 
 > 其余 `✅ 已接线` 行的判据（可读取者可达）不变；`vmu.budget.tokens` 自 P0-c 起**不再**是「被读但未驱动」的例外——它现在被真实模型用量驱动，边界见上。
 
-> ★★ **C#21（框架侧上下文压缩，2026-11-18 落地）——`vmu.prompt.compactAfterRounds` 的语义扩展（下表该行的「说明」列仍是 schema 旧串，待 schema 侧改）**：该键现在**同时是框架侧 keep-window**：默认 **8**（有限）；**显式 `0` ＝合法的「不裁剪」**（不是静默禁用——`turn.status().contextCompaction` 的 `means` 会写明 `EXPLICITLY`）；超出 keep-window 的旧回合正文折成**有界摘要**（源码上限 `COMPACT_SUMMARY_CAP_BYTES=2048`，按 UTF-16 码元截取，回执 `summaryBytes` 报**实际字节**），**下一次 prompt 携带**「【上下文摘要（框架裁剪；已丢弃 N 轮，摘要 X 字节）】」块；回执的 `contextCompaction` 与 `turn.status().contextCompaction` 逐轮报 `droppedCount`／`droppedThisTime`／`summaryBytes`／`keptTurns`／`keepRecentTurns`／`droppedTurns`（每个被丢轮留 `turnId`+`bytes`）⇒ **不静默丢失**。读者：`kernel/turn/index.js` 的 `compactTranscriptFor()`（裁剪/摘要/台账）＋ `kernel/prompt/index.js` 的 `assemble()`（`[CONTEXT COMPACT]` 指令闸，`compactThreshold` 的 usage 信号仍归它）。★ **边界（如实）**：`[CONTEXT COMPACT]` 指令与框架裁剪是**两个机制**，前者仍靠模型自报 `contextPct`，后者不依赖百分比；**显式 `0` 目前只在 `kernel/turn/index.js` 的裁剪侧被接受，`kernel/prompt/index.js` 的指令闸仍把 `0` 当非法（`must be a positive integer`，仅在调用方提供 `ctx.round`/`contextPct` 信号时触发）**——见本行下方「待代码侧」注。
-
-> ★ **上一条的待代码侧（给 state-lane／impl）**：① `settings/schema.js` 的 `vmu.prompt.compactAfterRounds` doc 串需替换为：「距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。★ C#21：本键同时是**框架侧 keep-window**——默认 8（有限）；**显式 0 = 合法的「不裁剪」**；超窗口的旧回合正文折成有界摘要（源码上限 2,048 码元，回执 `summaryBytes` 报实际字节），下一 prompt 带「【上下文摘要（框架裁剪；已丢弃 N 轮，摘要 X 字节）】」块；回执/`turn.status().contextCompaction` 报 `droppedCount`/`droppedThisTime`/`summaryBytes`/`keptTurns`/`keepRecentTurns`/`droppedTurns`（每轮 `turnId`+`bytes`），不静默丢失。读者：`kernel/prompt/index.js` 的 `assemble()`（指令闸）＋ `kernel/turn/index.js` 的 `compactTranscriptFor()`（裁剪与摘要）。」② `kernel/prompt/index.js` 的 `compactionOf()` 需把**显式 0** 当合法（`afterRounds=0` ⇒ 指令闸不因它拒；`byRounds` 的处理写清），否则与 C#21 的「显式 0 = 不裁剪」冲突。③ 摘要上限若要按**字节**而非码元，需把 `joined.slice(...)` 换成按 UTF-8 字节截取（当前 CJK 下 `summaryBytes` 可 > 2,048）。
+> ★ **C#21（框架侧上下文压缩，2026-11-18 落地）**：`vmu.prompt.compactAfterRounds` 的完整语义已并入**下表该行**（schema doc 串同步更新：默认 8 的框架侧 keep-window；**显式 0 = 合法「不裁剪／不按轮触发」**；超窗口旧正文折成 **≤2,048 UTF-8 字节**摘要并由下一 prompt 携带；读数**分两档**：**默认面**——回合回执的 `contextCompaction` 是该回合的视图（计数 ＋ 该成员逐轮 `droppedTurns:[{turnId,bytes}]`），默认 `turn {op:"status"}` 只有**有界投影**（per-member `droppedCount`／`summaryBytes`／`keptTurns`）；**完整台账**——`turn {op:"status", detail:"compaction"}`（内核 `turn.status({detail:"compaction"})`）返回每成员完整视图（含逐轮 `droppedTurns`、`summary`、`summaryCapBytes`），默认回执/状态形状不变 ⇒ **不静默丢失**）。读者：`kernel/turn/index.js` 的 `compactTranscriptFor()`（裁剪/摘要/台账）＋ `kernel/prompt/index.js` 的 `compactionOf()`（`[CONTEXT COMPACT]` 指令闸；**显式 0 不再被拒**）。
 
 | 键 | 必设 | 类型 | 默认 | 域 | 作用域 | H | 谁 | 接线 | 载体（首个**提到**它的运行时代码；消费点可能在其下游） | 说明 |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -375,16 +373,16 @@ vmu.packs.active: [v5r]
 | `vmu.math.timeoutMs` | — | int ≥0 | `60000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/index.js` | P3：单次计算预算（共享模块默认） |
 | `vmu.math.packages` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `host-math.js` | P3：计算可要求的包/工具箱（共享模块默认） |
 | `vmu.math.installScope` | — | enum | `user` | `user`∣`system` | 会话 | H1 | office | ✅ 已接线 | `host-math.js` | P3：安装作用域；system 仅当次、绝不记忆 |
-| `vmu.math.compileTimeoutMs` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | 编译超时；0＝作业级默认 |
+| `vmu.math.compileTimeoutMs` | — | int ≥0 | `0` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/math.js` | 编译超时；0＝作业级默认 |
 | `vmu.math.formalVerify` | — | enum | `off` | `off`∣`encourage`∣`require` | 会话 | H2 | office | ✅ 已接线 | `host.js` | P3：判定时的形式化要求；默认 off＝零策略 |
 | `vmu.env.needs` | — | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/env.js` | P9：外部环境需求表（每个 need 的 probe/installCommand/requiresUser/why；新增环境只改这张表，不改内核） |
 | `vmu.env.probeTimeoutMs` | — | number | `15000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/env.js` | P9：单个环境 probe 的预算（ms），作为 host spawn 的 timeoutMs/graceMs；正整数 |
-| `vmu.math.leanCommand` | — | string | `lean` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 命令名（命令模板可覆盖） |
-| `vmu.math.leanArgs` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths） |
-| `vmu.math.leanTimeoutMs` | — | int ≥0 | `120000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/formal.js` | P3：单次 Lean 编译预算 |
-| `vmu.math.leanAsync` | — | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/formal.js` | P3：后台队列编译；只有"退出 0 且文件内容哈希未变"才可标 passed |
+| `vmu.math.leanCommand` | — | string | `lean` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：Lean 命令名（命令模板可覆盖） |
+| `vmu.math.leanArgs` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths） |
+| `vmu.math.leanTimeoutMs` | — | int ≥0 | `120000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/lean.js` | P3：单次 Lean 编译预算 |
+| `vmu.math.leanAsync` | — | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/lean.js` | P3：后台队列编译；只有"退出 0 且文件内容哈希未变"才可标 passed |
 | `vmu.math.leanInitiative` | — | enum | `normal` | `off`∣`normal`∣`eager` | 会话 | H2 | office | ✅ 已接线 | `kernel/lean.js` | P3：日常形式化积极性（**本运行时只回显：policy().initiativeEffect=display-only，不参与判定**；与 formalVerify 正交） |
-| `vmu.math.leanSearchPaths` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | P3：额外 -R 根（去重后注入，自动 VibMath 根之前） |
+| `vmu.math.leanSearchPaths` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：额外 -R 根（去重后注入，自动 VibMath 根之前） |
 | `vmu.math.leanJobsMaxParallel` | — | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：后台编译并发（1＝串行） |
 | `vmu.safety.pathPolicy` | — | enum | `workspace-only` | `workspace-only`∣`workspace+shared` | 会话 | **H3** | office | ✅ 已接线 | `host-spawn.js` | 写保护范围 |
 | `vmu.safety.approvalRequired` | — | string[] | `[publish,delete,network-egress]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/guard.js` | 需人类批准的动作（轮 217 接线：默认取 docs/20 §2 的声明；与 vmu.safety.askOn 取并集，由同一判定读取） |
@@ -646,11 +644,11 @@ vmu.packs.active: [v5r]
 | `vmu.math.denyNetwork` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 默认禁网（作为 env 传给 spawn；真正拦截在宿主 ✗） |
 | `vmu.math.workspaceOnly` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 默认限工作区（同上，拦截在宿主 ✗） |
 | `vmu.math.captureStdoutBytes` | — | int ≥0 | `65536` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | stdout 捕获上限（触界报丢弃字节 ✗） |
-| `vmu.formal.axiomWhitelist` | — | string[] | `[propext,Classical.choice,Quot.sound]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 受信公理白名单（白名单外 ⇒ 具名拒并点名 ✓） |
-| `vmu.formal.allowSorry` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 是否允许 sorry（默认 false：出现即拒并点名位置 ✗✓） |
-| `vmu.formal.requireArtifacts` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 是否必须有产物（当前只读入未强制 ✗） |
-| `vmu.formal.maxArtifacts` | — | int ≥0 | `32` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 产物条数上限（溢出必计数） |
-| `vmu.formal.maxSourceBytes` | — | int ≥0 | `262144` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/formal.js` | 源码字节上限（触界报丢弃字节 ✗） |
+| `vmu.formal.axiomWhitelist` | — | string[] | `[propext,Classical.choice,Quot.sound]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/formal.js` | 受信公理白名单（白名单外 ⇒ 具名拒并点名 ✓） |
+| `vmu.formal.allowSorry` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/formal.js` | 是否允许 sorry（默认 false：出现即拒并点名位置 ✗✓） |
+| `vmu.formal.requireArtifacts` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/formal.js` | 是否必须有产物（当前只读入未强制 ✗） |
+| `vmu.formal.maxArtifacts` | — | int ≥0 | `32` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/formal.js` | 产物条数上限（溢出必计数） |
+| `vmu.formal.maxSourceBytes` | — | int ≥0 | `262144` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/formal.js` | 源码字节上限（触界报丢弃字节 ✗） |
 | `vmu.external.conflictPolicy` | — | enum | `refuse-on-conflict` | `refuse-on-conflict`∣`newest-wins` | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 多源冲突策略（两种都必须把冲突报出来 ✗✓） |
 | `vmu.external.maxResults` | — | int ≥1 | `100` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 单次取数结果上限（截断必计数） |
 | `vmu.external.offline` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/external.js` | 离线模式（只许命中缓存 ✓ 零网络） |
@@ -1084,7 +1082,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.eligibleSeats` | — | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。 |
 | `vmu.meetings.attendDeniedSeats` | — | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 不参与会议的席位（席别名；空＝不按席别限制）。★ 两个消费者、两种读取时点：①`kernel/meetings.js` 的 `attend()` 读**启动快照**（`:468` 的 `K.attendDeniedSeats`）；②`tools/meeting.js` 的 `nonAttendingSeatGateOf()` 读**实时** `kernel.settingOf()`（举手邀请等席位门）。命中即 VMU_NOT_PERMITTED 并点名该键与席位。热点改这个键后两扇门的生效时点不同，改配置后以回执的 `seatPolicy` 为准（audit10 G4 记录在案）。 |
 | `vmu.prompt.compactThreshold` | — | int ≥0 | `66` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 上下文占比达到该值 ⇒ 组装时注入 [CONTEXT COMPACT] 指示。**百分数 0–100，不是 0–1**。v5r `compactThreshold:66`（`:1078`；`:449` 明写 never clamp to 0-1；`:9869` 拒 ≤0）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.contextPct`）。 |
-| `vmu.prompt.compactAfterRounds` | — | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 指令闸注入 [CONTEXT COMPACT]（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。★ **C#21**：同一键也是**框架侧上下文压缩的 keep-window**——turn loop 只保留最近 N 轮，旧轮正文折成 **≤2048 UTF-8 字节**的摘要（下一次 prompt 真的携带；回执报 `droppedCount`／`summaryBytes`／`keptTurns`，每个被丢轮在 `droppedTurns` 留 turnId+bytes）。**显式写 0 = 合法的「不裁剪／不按轮触发」**（指令闸不因此拒，框架也不裁剪）。读者：`kernel/prompt/index.js` 的 `compactionOf()`（读 `ctx.round`）＋ `kernel/turn/index.js` 的 `compactTranscriptFor()`。 |
+| `vmu.prompt.compactAfterRounds` | — | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 指令闸注入 [CONTEXT COMPACT]（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。★ **C#21**：同一键也是**框架侧上下文压缩的 keep-window**——turn loop 只保留最近 N 轮，旧轮正文折成 **≤2048 UTF-8 字节**的摘要（下一次 prompt 真的携带；回执报 `droppedCount`／`summaryBytes`／`keptTurns`，每个被丢轮在 `droppedTurns` 留 turnId+bytes）。**显式写 0 = 合法的「不裁剪／不按轮触发」**（指令闸不因此拒，框架也不裁剪）。★ **两档读数（实现真值）**：① **回合回执**的 `contextCompaction` ＝该回合视图（`droppedCount`／`summaryBytes`／`keptTurns` ＋ 该回合被丢轮的 `droppedTurns:[{turnId,bytes}]`）；② 默认 `turn {op:"status"}` ＝**有界投影**（per-member `droppedCount`／`summaryBytes`／`keptTurns`，不含逐轮台账）；③ `turn {op:"status", detail:"compaction"}` ＝**完整台账**（逐轮 `droppedTurns`、`summary`、`summaryCapBytes`）。读者：`kernel/prompt/index.js` 的 `compactionOf()`（读 `ctx.round`）＋ `kernel/turn/index.js` 的 `compactTranscriptFor()`（写入）与 `contextCompactionReading()`（detail:"compaction" 的完整读数）。 |
 | `vmu.paper.finalPaper` | — | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：declared-not-wired（迁移期）——唯一旧读者 `kernel/paper.js` 已删除；见 `docs/acceptance/paper-migration-inert-keys.md`（TB-2794 Step 4/5 由 v5r pack 政策读取后传入 flow）。 |
 | `vmu.paper.format` | — | enum | `both` | `both`∣`md`∣`tex` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 成品形态（both|md|tex）。v5r `paperFormat:'both'`（`:1164`；消费点 `:8252`）。读者：declared-not-wired（迁移期）——唯一旧读者 `kernel/paper.js` 已删除；见 `docs/acceptance/paper-migration-inert-keys.md`（TB-2794 Step 4/5 收口）。 |
 | `vmu.paper.language` | — | enum | `zh` | `zh`∣`en` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 成品语言（zh|en）。v5r `paperLanguage:'zh'`（`:1165`；消费点 `:8251`）。读者：与 `vmu.paper.format` 同一处。 |

@@ -47,6 +47,9 @@ import { V5R_REPLY_FIELD_ADAPTERS } from '../reply-field-adapters.js'
 // packs/research-core and this pack owns only the mounting (plus the policy defaults already in settings/).
 import { createReviewers } from '../../research-core/reviewers.js'
 import { createPublication } from '../../research-core/publication.js'
+// ★ TB-2794 Step 4: formal + fidelity contributed as services (generic code in packs/research-core).
+import { createFormal } from '../../research-core/formal.js'
+import { createFidelityRegistry } from '../../research-core/fidelity.js'
 // PHASE 7 / goal 2 (first batch): THE TOOL FACE. `packs/v5r` used to declare ZERO tools while its prompts taught
 // members to call `vibe_v5_record_* / say / message` (docs/acceptance/phase7-coverage-matrix.md §2: 17 names taught,
 // 0 declared). The six names live in `../tools.js` and are declared below as the manifest's `tools[]` - the SAME
@@ -123,6 +126,26 @@ export const PACK = Object.freeze({
         clock: facade.guardedClock,   // the SEAM (lazy): a bad clock is refused when the face is used, not at apply
         log: facade.log,
       }),
+    },
+    {
+      name: 'vmu.formal', apiVersion: 1,
+      create: ({ facade }) => createFormal({
+        settings: facade.settingsSnapshot(),
+        bus: { emit: facade.emit },
+        clock: facade.clock, log: facade.log,
+        spawn: facade.spawn,
+        library: facade.service('vmu.library'),
+      }),
+    },
+    {
+      name: 'vmu.fidelity', apiVersion: 1,
+      create: ({ facade }) => {
+        const f = createFidelityRegistry({ clock: facade.clock, log: facade.log,
+          bus: { emit: facade.emit }, fs: facade.fs })
+        // The kernel used to start this at construction; the CONTRIBUTOR starts it and the kernel delegates the receipt.
+        if (typeof f.startLoad === 'function') f.startLoad()
+        return f
+      },
     },
     {
       name: 'vmu.publication',
@@ -658,7 +681,7 @@ export const v5rFixtureTools = Object.freeze({
     // whole turn with it (`"progress":"长叙述"` ⇒ "unknown record track: undefined" ×19): the shape must be COPY-PASTEABLE
     // where the seat that writes it reads it. Restored here, in the shared block all three seats get, 80 chars.
     "★ 进展写成对象：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}。",
-    "★ 本表是职责说明；本回合实际可调用工具以**宿主注入的实际工具清单**为准（本表不承诺已挂载，也不指向任何小节标题）。",
+    "★ 本表是职责说明；本回合实际可调用工具以**本轮装配工具清单**为准（本表不承诺已挂载）。",
     "★★ 结题票**只走工具** `vibe_vmu_vote`（唯一入口，`vote_solved` 是**书账字段，永不单独计票**（回执 `{\"vote_solved\": true|false}` 只是书账）——被忽略时看回执 `fieldsIgnored` 原因（`tool-visible`/`tool-used-this-turn`/`tool-visibility-unprovable`/`legacy-row`；可证空表 `tool-not-mounted` 才计票），**按原因改渠道**。`set_solved` 未登记。个人判断 `{\"solved\": false}`（**不计票**）。`say`：未绑→留 `notes`；错会→跳过。",
     "★★ 写卡片默认用 fs。",
   ].join('\n'),
@@ -719,7 +742,6 @@ export const v5rToolSectionAcademician = Object.freeze({
   scope: Object.freeze({ role: 'chair' }),
   text: [
     '【本角色可用的工具｜院士】',
-    "★ 本角色清单（院士）是职责说明；**本回合实际可调用工具以本轮装配清单为准**。",
     ...seatBulletLines('chair'),
     ...V5R_PROSE_CHAIR,
   ].join('\n'),
@@ -757,7 +779,6 @@ export const v5rToolSectionResearcher = Object.freeze({
   scope: Object.freeze({ role: 'member' }),
   text: [
     '【本角色可用的工具｜研究员】',
-    "★ 本角色清单（研究员）是职责说明；**本回合实际可调用工具以本轮装配清单为准**。",
     ...seatBulletLines('member'),
     ...V5R_PROSE_MEMBER,
   ].join('\n'),
@@ -796,7 +817,6 @@ export const v5rToolSectionTemp = Object.freeze({
   scope: Object.freeze({ role: 'temp' }),
   text: [
     '【本角色可用的工具｜临时成员】',
-    "★ 本角色清单（临时成员）是职责说明；**本回合实际可调用工具以本轮装配清单为准**。",
     ...seatBulletLines('temp'),
     ...V5R_PROSE_TEMP,
   ].join('\n'),

@@ -656,8 +656,6 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // divergence below - the leaderless variants no longer assert 「本所当前没有在册院士」 at all. The closed gap is
   // removed rather than kept, which is what the loop at the end of this block demands.
   const KNOWN_UNBASELINED = [
-    'v5r-charter-org/researcher: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
-    'v5r-charter-org/temp: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
     // ★★ RUN 2692 / F75-03 (task-175): this is a NEW rule, not a missing combination. The live run
     // (build 92bc6d94) let the chair replace the placeholder problem with one of its own (「奇数求和」) and
     // then prove it, so the charter now pins the problem to `vibe_v5_start`'s `problem` and forbids rewriting
@@ -2377,6 +2375,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const row = st && st.contextCompaction && st.contextCompaction.members.filter((m) => m.member === 'r-1')[0]
   ok(st && st.contextCompaction && st.contextCompaction.keepRecentTurns === 3 && row && row.droppedCount === 9 && row.keptTurns === 3,
     'C21-6 ★★ status 显示当前预算（keepRecentTurns）与使用（droppedCount/keptTurns/summaryBytes）', st && st.contextCompaction && { budget: st.contextCompaction.keepRecentTurns, row: row && { d: row.droppedCount, k: row.keptTurns, b: row.summaryBytes } })
+  // ★ TB-2794 Step 4 follow-up (sim-lane): the FULL compaction ledger (with `droppedTurns`) had no public face.
+  const stComp = rt.status({ detail: 'compaction' })
+  const comp = stComp && stComp.contextCompaction
+  const compRow = comp && comp.members.filter((m) => m.member === 'r-1')[0]
+  ok(stComp && stComp.detail === 'compaction' && compRow && Array.isArray(compRow.droppedTurns) &&
+    compRow.droppedTurns.length === compRow.droppedCount && compRow.droppedTurns.every((d) => typeof d.turnId === 'string' && d.bytes > 0),
+    'C21-7 ★★★ detail:compaction exposes the FULL per-member ledger incl. droppedTurns (the visibility gap: the reading existed but had no public face)',
+    { detail: stComp && stComp.detail, dropped: compRow && compRow.droppedCount, listed: compRow && compRow.droppedTurns && compRow.droppedTurns.length })
   // explicit 0 = an explicit "no trimming" decision (legal unlimited), stated as such
   const rt0 = mk({ settings: { 'vmu.prompt.compactAfterRounds': 0 } })
   const last0 = await many(rt0, 'r-1', 6)

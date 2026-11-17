@@ -333,15 +333,20 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     const detail = args.detail === undefined || args.detail === null || String(args.detail).trim() === ''
       ? null
       : String(args.detail).trim()
-    if (detail !== null && detail !== 'closure' && detail !== 'board') {
+    if (detail !== null && detail !== 'closure' && detail !== 'board' && detail !== 'compaction') {
       return refused('VMU_INVALID_ARGUMENT', 'unknown status detail: ' + detail,
-        'known detail values: closure | board (omit detail for the full status)')
+        'known detail values: closure | board | compaction (omit detail for the full status)')
     }
     // ★ TB-2724 (D): the KERNEL only knows the `board` slice; `closure` is still assembled here from the full reading.
-    const status = kernel.turn.status(detail === 'board' ? { detail: 'board' } : {})
+    // ★ TB-2794 Step 4 follow-up: the FULL C#21 compaction ledger has a NAMED detail now (compaction), forwarded to
+    // the kernel's own reading (contextCompactionReading) — no second implementation, no receipt-shape change.
+    const status = kernel.turn.status(detail === 'board' || detail === 'compaction' ? { detail } : {})
     // ★ PHASE 7 / round 17: the turn face used to call closureVoteOf with its DEFAULTS (roster []), so a seated member
     // with the vote permission still read eligible:[]. Use the kernel's ONE calculation instead of a second one.
     if (typeof kernel.closureVoteView === 'function') status.closureVote = kernel.closureVoteView()
+    if (detail === 'compaction') {
+      return { ok: true, detail: 'compaction', contextCompaction: status.contextCompaction || null, detailMeans: status.detailMeans || null }
+    }
     if (detail === 'closure') {
       return { ok: true, detail: 'closure',
         closureVote: status.closureVote || null,

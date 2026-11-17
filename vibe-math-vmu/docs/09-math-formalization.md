@@ -6,7 +6,7 @@
 > 复用：共享模块 `math-computation.js`（v2–v5r 共用，探测判决＝"原样复用"）＋ vmu 侧接线 `host-math.js` ✓。
 > **口径（本卷与 15 卷共用）**：正文对**已实现**的键按 04 卷登记如实引用 ✓；对**计划**中的设置一律只写**通配家族**（如 `vmu.math.<族>.*`）✗ 不写具体键名 —— 具体拟增键统一在任务回报中登记，由 04 卷落定 ✓。未实现的能力/工具/协议一律带标记词 **⛔**。
 
-> ★★★ **本卷要教的 API（★ 轮 511 实测补 ✓）**：★ **`kernel/formal.js` 有两个公开导出，而本卷原先【一个都没点名**]✗** ✓。★ **逐个点名** ✓：**`createFormal({ … })`** ✓ —— ★ **形式化面工厂**（★ 判定并记录形式化状态 ✓）；**`FORMAL_KEYS`** ✓ —— ★ **形式化状态的**键集**（★ 与 `docs/05 §5` 的 `FORMAL_STATUSES` 四态 `passed`／`blocked`／`attempted`／`none` 配套 ✓）。★★ **由 `tests/audit-doc-api-coverage.test.mjs` 的配对表守着** ✓。
+> ★★★ **本卷要教的 API（★ 轮 511 实测补 ✓）**：★ **`packs/research-core/formal.js` 有两个公开导出，而本卷原先【一个都没点名**]✗** ✓。★ **逐个点名** ✓：**`createFormal({ … })`** ✓ —— ★ **形式化面工厂**（★ 判定并记录形式化状态 ✓）；**`FORMAL_KEYS`** ✓ —— ★ **形式化状态的**键集**（★ 与 `docs/05 §5` 的 `FORMAL_STATUSES` 四态 `passed`／`blocked`／`attempted`／`none` 配套 ✓）。★★ **由 `tests/audit-doc-api-coverage.test.mjs` 的配对表守着** ✓。
 
 ---
 
@@ -406,7 +406,7 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 
 **落在哪一层（本轮的结论）**：**内核谓词**，不是 pack 声明。pack/代理只能**声明**"这份形式化不忠实"（且必须写明偏差，那是判断）；**能不能把它变成一张 1 或 0 的票**由内核回答，答案永远是"不能"。因此 pack 无法关掉它、成员也无法"忘记弃权"——这就是"强制"二字的落点。
 
-- **服务**：`kernel/fidelity.js`（`createFidelityRegistry`；服务键 `vmu.fidelity`）。它**刻意不挂在 `kernel/formal.js` 的方法表上**：形式化面的 10 个方法与 `vibe_vmu_formal` 的 10 个 action 必须一一对应（那条门禁要求谁都不许漂移），而忠实性弃权是**表决面消费的判定点** ⇒ 它有自己的服务键、读面与留痕目录。
+- **服务**：`packs/research-core/fidelity.js`（`createFidelityRegistry`；服务键 `vmu.fidelity`）。它**刻意不挂在 `packs/research-core/formal.js` 的方法表上**：形式化面的 10 个方法与 `vibe_vmu_formal` 的 10 个 action 必须一一对应（那条门禁要求谁都不许漂移），而忠实性弃权是**表决面消费的判定点** ⇒ 它有自己的服务键、读面与留痕目录。
 - **三个动词**：`declareDefect({target,by,note})`（缺 target/by/note ⇒ 具名拒 `VMU_MATH_INVALID_INPUT` ＋ `enforced[]`）、`abstentionFor({target,by})`（**纯谓词**，只对"该成员 × 该对象"成立）、`applyAbstention({target,by,declared})`（**唯一强制点**：被登记者声明的 `1`/`0` 一律被改写为 `0.5`；本来就是中间值则原样通过且**不重复计数**）。
 - **留痕**：marker `{markerId:'fd-N', target, by, note, at, enforcedVote:0.5, passedWithdrawn:true}`，**append-only**（同一对象第二个缺陷追加 history，绝不抹掉第一个人）。注入 fs 接缝时落 `Formal/Defects/<target>.json` 并可 `loadDefects()` 跨实例重载；没有 fs ⇒ `durable:false` **具名**，不假装持久。
 - **语义边界**：不忠实**永远不是反证**——所有返回 `isRefutation:false`；`passed` 只在"退出 0 且内容哈希未变"时成立，缺陷声明把它**撤回**（`passedWithdrawn:true`），把审查对象变回"形式化需重做"。

@@ -27,7 +27,7 @@ const sum = Object.values(combos).reduce((a, b) => a + b, 0)
 // +1566 across the normal prompts, and this round deleted the one real duplication it found — the UNKNOWN_FIELD
 // sentence was stated twice inside the SAME section (once here, once in the receipt-contract line below): −46.
 const RUN2730_REPLY_QUALIFIER = { chair: 28, member: 28, temp: 28, sum: 84 } // TB-2733 prep: the member-facing op:"reply" teaching became an explicit prohibition (VMU_NOT_PERMITTED) and the caller sentence got its office qualifier; the shared fixture block paid for it by trimming restatements (net +24 vs the D5 restore)
-const FIXTURE_TOOLS_MEASURED = 1405 // 1291 + 164 (TB-2692) − 46 (deleted duplication) + 176 (TB-2711 office attribution) − 59 (TB-2725 receipt-contract merge) + 112 (RUN 270: the copy-pasteable progress sample TB-2725 merged away, restored — in fixtureMode=tools it had been left in no block a member/temp seat reads) − 14 (TB-2732: D4/D7/C10 restatements merged; the pinned duty-list caveat stays) − 177 (TB-2741: RUN-79 corrections merged the receipt-contract / reply-path / vote-channel restatements; the say destinations came back in 25 chars) + 15 (RUN 272: TB-2741's reword had dropped the load-bearing clause 「形状问题不等于引擎不可用」 — a fence/JSON error is not a broken toolchain, and a seat that reads it as one stops working and starts probing the engine; restored inside the same sentence)
+const FIXTURE_TOOLS_MEASURED = 1391 // 1291 + 164 (TB-2692) − 46 (deleted duplication) + 176 (TB-2711 office attribution) − 59 (TB-2725 receipt-contract merge) + 112 (RUN 270: the copy-pasteable progress sample TB-2725 merged away, restored — in fixtureMode=tools it had been left in no block a member/temp seat reads) − 14 (TB-2732: D4/D7/C10 restatements merged; the pinned duty-list caveat stays) − 177 (TB-2741: RUN-79 corrections merged the receipt-contract / reply-path / vote-channel restatements; the say destinations came back in 25 chars) + 15 (RUN 272: TB-2741's reword had dropped the load-bearing clause 「形状问题不等于引擎不可用」 — a fence/JSON error is not a broken toolchain, and a seat that reads it as one stops working and starts probing the engine; restored inside the same sentence)
 const FIXTURE_TOOLS_MARGIN = Math.max(Math.ceil(FIXTURE_TOOLS_MEASURED * 0.01), 3) // 16
 const FIXTURE_TOOLS_CEILING = FIXTURE_TOOLS_MEASURED + FIXTURE_TOOLS_MARGIN // 1601
 // ★ TB-2707 (2026-11-10) — F75-16 archive sentence: the shared `v5r-turn-channels` block went from the
@@ -94,7 +94,7 @@ const RUN272_RUN79_RESTORE = { chair: 30, member: 30, temp: 30, sum: 90 }
 // levels; its correction is pinned by the new judge against `assistant.json` directly.
 // Measured per seat after ROUND-3 (2026-11-17): chair 29 499→28 673 (-826), member 26 001→25 198 (-803), temp 22 668→21 846 (-822); ROUND-3 deleted the five legacy correction sections and applied P0-b/P1/P2;
 // three-seat sum 78 168→75 717 (-2 451); cap/ratchet untouched and the REAL end-to-end render is 35 325 ≤ 36 400 (margin 1 075).
-const TB2752_RUN80_FIXES = { chair: -3635, member: -1061, temp: -2409, sum: -7105 } // ROUND-2: P0/P1 fixes + reply-channel merge (net growth much smaller than R1: the merge removed historical lines) // ROUND-1 + B2 restores (scheduling facts, capture lines, formal required params, correction trims) // ROUND-1 P0/P1 prompt fixes (leaderless wording, formal shape, dangerous legacy lines removed, chair/meeting compression, warrant reading, release/phase/temp/roster teaching); measured on the same collect() ruler
+const TB2752_RUN80_FIXES = { chair: -3651, member: -1076, temp: -2410, sum: -7137 } // ROUND-2: P0/P1 fixes + reply-channel merge (net growth much smaller than R1: the merge removed historical lines) // ROUND-1 + B2 restores (scheduling facts, capture lines, formal required params, correction trims) // ROUND-1 P0/P1 prompt fixes (leaderless wording, formal shape, dangerous legacy lines removed, chair/meeting compression, warrant reading, release/phase/temp/roster teaching); measured on the same collect() ruler
 // ★ TB-2765 (2026-11-13, prompt-lane text side): A-3 formula teaching in the paper-write prompt, plus A-1/A-2/D-7 read-face
 // notes in the OFFICE persona (hostPrompt). All three additions land OUTSIDE the phases this ruler measures
 // (paper-write is not in collect()'s normal/meeting set; the office persona enters no seat prompt), so the measured
@@ -104,11 +104,11 @@ const TB2752_RUN80_FIXES = { chair: -3635, member: -1061, temp: -2409, sum: -710
 // replacements (run 82 lost 23 glyphs), and the `part` prompt carries a self-check line. Both land in the paper-write
 // phase — outside collect()'s normal/meeting set and outside the budget gate's phases — so the measured water levels
 // are UNCHANGED again: TB2752_RUN80_FIXES stays { chair: 51, member: 45, temp: 0, sum: 96 }.
-const CHAIR_NORMAL_MEASURED = 25864 // ROUND-8 re-baseline: live chair/normal measurement (itemised history lives in TB2752_RUN80_FIXES and §20.13)
+const CHAIR_NORMAL_MEASURED = 25848 // ROUND-8 re-baseline: live chair/normal measurement (itemised history lives in TB2752_RUN80_FIXES and §20.13)
 // ceiling derivation (cross-checked by run80 §3b): baseline + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair
 const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 287
 const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 28960
-const NORMAL_SUM_MEASURED = 71063 // ROUND-8 re-baseline: live three-seat normal sum
+const NORMAL_SUM_MEASURED = 71031 // ROUND-8 re-baseline: live three-seat normal sum
 // ceiling derivation (cross-checked by run80 §3c): baseline + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum
 const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 783
 const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 76474

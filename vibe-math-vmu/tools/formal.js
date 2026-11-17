@@ -17,6 +17,12 @@ export function makeFormalSpec({ param, refused, TOOL_NAMES, kernel }) {
     run: async ({ action, request, query, id } = {}) => {
       try {
         const formal = kernel.formal
+        // ★ TB-2794 Step 4: the face is PACK-contributed now. A host that mounts no provider gets a NAMED refusal, not a
+        // TypeError on null (measured: six actions leaked "Cannot read properties of null (reading '<action>')").
+        if (!formal || typeof formal !== 'object') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'no pack provides vmu.formal in this assembly',
+            'mount the pack that contributes the face (the v5r pack publishes it through PACK.services)')
+        }
         if (action === 'check') return Object.assign({ ok: true, action }, await formal.check(request))
         if (action === 'axioms') return Object.assign({ ok: true, action }, await formal.axioms(query))
         if (action === 'sorryReport') return Object.assign({ ok: true, action }, await formal.sorryReport())

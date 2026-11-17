@@ -26,7 +26,7 @@
 //                            合法用法**不许被误拒**，所以三种形态各自说明"怎么才算满足"。
 //   ③ `singleWriter`      —— 定论只能由 `promoteVerified` 写；其它路径往 `verified` 轨写 ⇒ 具名拒。
 //   ④ `fidelityAsked`     —— 「lean 通过但概率仍非 1」时辩论必须先问「代码中的命题/定义是否符合所需」：
-//                            本闸是 `kernel/fidelity.js` 在 pack 侧的**第一个消费者**（撤回过的证明不再追问）。
+//                            本闸是 `packs/research-core/fidelity.js` 在 pack 侧的**第一个消费者**（撤回过的证明不再追问）。
 //
 // ★ WHERE EACH GATE IS ACTUALLY CALLED (corrected on audit, round 113 — the header used to say "the callers are 0",
 //   which was true when it was written and is false now; a file that describes itself as dead code is worse than no
@@ -480,7 +480,7 @@ export function singleWriter({ records = null, cardId = null, by = null, at = nu
  * 输入：`{ cardId, leanPassed, p, withdrawnFor, answered }`
  *   · `leanPassed`  该卡对应 Lean 作业是否通过（布尔结论，不是状态）
  *   · `p`           该卡当前概率
- *   · `withdrawnFor` `kernel/fidelity.js` 的 `passedWithdrawnFor`（函数或已算好的标记）；这里是它在 pack 侧的
+ *   · `withdrawnFor` `packs/research-core/fidelity.js` 的 `passedWithdrawnFor`（函数或已算好的标记）；这里是它在 pack 侧的
  *                   **第一个消费者** —— 撤回过的证明不再追问，避免"证明已撤回却还拿它当辩论依据"
  *   · `answered`    已经记下的符合性裁定（`{decision:'conform'|'defect', by, at}`）
  * 输出：`{ ok, required, code?, question?, options?, resolved?, reason }`
@@ -519,7 +519,7 @@ export function fidelityAsked({ cardId = null, leanPassed = false, p = null, wit
     // to guess the parameter name (`fidelity`) before it could retry. A refusal owes the caller the exact next call.
     hint: '再调一次本工具并带上 `fidelity` 形参：fidelity:"conform"（Lean 命题与所需一致 ⇒ 概率可直接写成 1）或 fidelity:"defect"（不一致 ⇒ 记 formal:{decision:"defect"}，该证明的"已通过"被撤回）；'
       + '`fidelity` 是形参名，`conform`/`defect` 是它的两个取值',
-    consumer: 'kernel/fidelity.js 的 passedWithdrawnFor（撤回标记）＋ 辩论裁决的 formal 字段',
+    consumer: 'packs/research-core/fidelity.js 的 passedWithdrawnFor（撤回标记）＋ 辩论裁决的 formal 字段',
   })
 }
 

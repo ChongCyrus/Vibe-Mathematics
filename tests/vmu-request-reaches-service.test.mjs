@@ -6,6 +6,7 @@ import { toolSpecs, TOOL_NAMES } from '../vibe-math-vmu/host.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 // ★ TB-2794 Step 3: publication is PACK-contributed; the probe supplies the generic face so the spied method exists.
 import { createPublication } from '../vibe-math-vmu/packs/research-core/publication.js'
+import { createFormal } from '../vibe-math-vmu/packs/research-core/formal.js'
 
 let passed = 0
 let failed = 0
@@ -46,6 +47,7 @@ const readings = []
 for (const spec of declared) {
   const k = createKernel({ clock: () => 0, settings: {} })
   k.provideService({ name: 'vmu.publication', apiVersion: 1, impl: createPublication({ clock: () => 0, settings: {} }), by: 'probe-publication-face' })
+  k.provideService({ name: 'vmu.formal', apiVersion: 1, impl: createFormal({ clock: () => 0, settings: {} }), by: 'probe-formal-face' })
   const seen = collect(k)
   const specs2 = toolSpecs({ kernel: k, settings: {}, ...flags })
   const s2 = specs2.find((s) => s.name === spec.name)

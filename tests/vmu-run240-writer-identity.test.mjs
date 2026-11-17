@@ -188,7 +188,9 @@ const until = async (fn, ms = 3000) => {
     const rows = A.kernel.store.read('records')
     if (!Array.isArray(rows)) return null
     const hit = rows.filter((r) => r && String(r.id) === String(cardId))[0]
-    return hit && hit.owner !== undefined && hit.by !== undefined ? hit : null
+    // ★ TB-2794 Step 4 re-anchor: the first snapshot can land before the merge write; the FACT to wait for is
+    // owner r-1 + writer by r-acad, not merely "both keys exist" (measured: product is correct — durable by="r-acad").
+    return hit && hit.owner === 'r-1' && hit.by === 'r-acad' ? hit : null
   })
   ok(!!landed, '§4a precondition: the row reached the DURABLE fold (state.json), not only A\'s memory')
   ok(landed && landed.by === 'r-acad', '§4b ★★ the fold row stores the WRITER under `by` (this line used to store the owner)', landed && landed.by)

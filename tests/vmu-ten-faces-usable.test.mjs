@@ -7,6 +7,8 @@ import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 // service seam a pack uses, so it still checks "usable", just not "kernel-constructed".
 import { createReviewers } from '../vibe-math-vmu/packs/research-core/reviewers.js'
 import { createPublication } from '../vibe-math-vmu/packs/research-core/publication.js'
+import { createFormal } from '../vibe-math-vmu/packs/research-core/formal.js'
+import { createFidelityRegistry } from '../vibe-math-vmu/packs/research-core/fidelity.js'
 
 let passed = 0
 let failed = 0
@@ -36,6 +38,8 @@ console.log('=== EVERY FACE HAS A TOOL THAT ANSWERS ===')
 const k = createKernel({ clock: () => 0, settings: {} })
 k.provideService({ name: 'vmu.reviewers', apiVersion: 1, impl: createReviewers({ clock: () => 0, settings: {} }), by: 'test-reviewers-face' })
 k.provideService({ name: 'vmu.publication', apiVersion: 1, impl: createPublication({ clock: () => 0, settings: {} }), by: 'test-publication-face' })
+k.provideService({ name: 'vmu.formal', apiVersion: 1, impl: createFormal({ clock: () => 0, settings: {} }), by: 'test-formal-face' })
+k.provideService({ name: 'vmu.fidelity', apiVersion: 1, impl: createFidelityRegistry({ clock: () => 0 }), by: 'test-fidelity-face' })
 for (const [face, key, action] of FACES) {
   const flag = key + 'Tool'
   const specs = toolSpecs({ kernel: k, settings: {}, [flag]: true })
