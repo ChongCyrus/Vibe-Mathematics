@@ -27,7 +27,8 @@ export function makeMathjobsSpec({ param, refused, TOOL_NAMES, kernel }) {
       try {
         const svc = kernel.mathjobs
         if (!svc || typeof svc[action] !== 'function') {
-          return refused('VMU_ENGINE_UNAVAILABLE', 'this assembly has no math-jobs face (kernel.mathjobs.' + String(action) + ' is missing)')
+          return refused('VMU_ENGINE_UNAVAILABLE', 'no pack provides vmu.mathjobs in this assembly (kernel.mathjobs.' + String(action) + ' is missing)',
+            'mount the pack that contributes the face (the v5r pack publishes it through PACK.services)')
         }
         // ★★ RUN 240: `mirrorRel(jobId)` is the ONE method on this service whose parameter is a SCALAR. The face
         // handed every action the whole `rest` object, so `mirrorRel` stringified an options object into the receipt

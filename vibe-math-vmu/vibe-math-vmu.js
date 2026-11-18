@@ -645,7 +645,12 @@ export function apply(ctx, config = {}) {
   const registerPackContribution = (requestId, mod) => {
     const contribution = mod && (mod.PACK_CONTRIBUTION || mod.packContribution)
     if (!contribution || typeof contribution !== 'object') return { registered: false, why: 'no PACK_CONTRIBUTION export' }
-    if (typeof contribution.sectionPolicy === 'function' && !builtinPromptPolicies.includes(contribution.sectionPolicy)) builtinPromptPolicies.push(contribution.sectionPolicy)
+    // ★ ROUND-12 P0: push a ROW {id, sectionPolicy}, never the bare function. The READER below reads `r.sectionPolicy`;
+    // pushing a function made every read undefined, the composer filtered the list to empty, and the turn policy gate was
+    // silently handed `null` (measured: two mutually-exclusive catalogues + the HOST-ONLY placeholder rendered together).
+    if (typeof contribution.sectionPolicy === 'function' && !builtinPromptPolicies.some((r) => r && r.sectionPolicy === contribution.sectionPolicy)) {
+      builtinPromptPolicies.push({ id: contribution.id || requestId, sectionPolicy: contribution.sectionPolicy })
+    }
     if (typeof contribution.noticeBlock === 'function') liveNoticeBlock = contribution.noticeBlock
     return { registered: true, id: contribution.id || requestId, sectionPolicy: typeof contribution.sectionPolicy === 'function', noticeBlock: typeof contribution.noticeBlock === 'function' }
   }
@@ -672,7 +677,10 @@ export function apply(ctx, config = {}) {
   // the loader's undo. This array holds EXACTLY those manifest-declared policies, so the existing `promptPolicies()`
   // accessor and `packMerge.promptPolicies` keep their documented meaning (they never included PACK_RUNTIME's).
   const promptPolicies = []
-  const livePromptPolicies = () => builtinPromptPolicies.map((r) => r.sectionPolicy).concat(promptPolicies)
+  const livePromptPolicies = () => builtinPromptPolicies
+    .map((r) => (typeof r === 'function' ? r : (r && r.sectionPolicy)))
+    .filter((p) => typeof p === 'function')
+    .concat(promptPolicies)
   const composePromptPolicies = typeof packModule.composePromptPolicies === 'function' ? packModule.composePromptPolicies : null
   // With the composer available several policies combine; without it (not landed yet) the first wins, which is the
   // same behaviour a single-pack deployment gets. The composer answers `null` for an EMPTY list, and this dispatcher
@@ -694,15 +702,19 @@ export function apply(ctx, config = {}) {
   // names only - no policy is called - so asking has no side effects.
   const promptPolicyReport = () => {
     const list = livePromptPolicies()
+    const composed = list.length === 0 ? null : (composePromptPolicies ? composePromptPolicies(list) : list[0])
+    const effective = typeof composed === 'function'
     const idOf = (p) => (typeof p === 'function' ? (p.name || '(anonymous function)') : ((p && p.id) || '(anonymous policy)'))
     return {
       // THREE NAMED STATES, never one silence: no pack declared (the kernel received null) / packs declared and
       // nothing collected yet (the dispatcher answers null) / at least one policy is live.
       mode: packsDeclared ? (list.length > 0 ? 'live' : 'live-empty') : 'none',
       handedToKernel: packsDeclared ? 'dispatcher' : null,
-      effective: list.length > 0,
+      // ★ ROUND-12 P0: `effective` is the COMPOSED result, not list.length. The old test said effective:true while the
+      // kernel received null (ids showed "(anonymous policy)" / builtin [null]) — the self-report lied about the gate.
+      effective,
       ids: list.map(idOf),
-      builtin: builtinPromptPolicies.map((r) => r.id),
+      builtin: builtinPromptPolicies.map((r) => (typeof r === 'function' ? (r.name || '(anonymous function)') : r.id || '(unnamed policy)')),
       collected: promptPolicies.map(idOf),
       composition: composePromptPolicies ? 'composePromptPolicies' : 'first-wins',
       note: packsDeclared

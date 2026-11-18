@@ -66,13 +66,15 @@ console.log('=== 4. A CONTRIBUTED FACE WITH NO PROVIDER IS A NAMED REFUSAL, AND 
         const text = String((r && r.message) || '') + ' ' + String((r && r.hint) || '')
         if (ENGINE.test(text)) leaks2.push({ action: a, code: r && r.code, message: text.slice(0, 80) })
         if (r && r.code !== 'VMU_ENGINE_UNAVAILABLE') notNamed.push({ action: a, code: r && r.code })
+        if (r && (typeof r.hint !== 'string' || r.hint.trim() === '')) notNamed.push({ action: a, code: r && r.code, missingHint: true })
       }
     }
     return { leaks: leaks2, notNamed }
   }
   const kNo = createKernel({ clock: () => 0, settings: {} })
   const specsNo = toolSpecs({ kernel: kNo, settings: {}, ...flags })
-  for (const toolName of [TOOL_NAMES.formal, TOOL_NAMES.fidelity]) {
+  // ★ ROUND-12 P3: the SIX faces must answer the SAME way without a provider — named code AND a non-empty mount hint.
+  for (const toolName of [TOOL_NAMES.formal, TOOL_NAMES.fidelity, TOOL_NAMES.mathjobs]) {
     const r = await checkFace(kNo, specsNo, toolName)
     ok(r.leaks.length === 0 && r.notNamed.length === 0,
       '★ ' + toolName + ' with NO provider: every action is VMU_ENGINE_UNAVAILABLE with a mount hint and ZERO engine messages',

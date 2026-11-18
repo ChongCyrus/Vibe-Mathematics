@@ -2370,6 +2370,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const asm = await rt.assemble(t.turn)
   ok(asm && asm.text.includes('【上下文摘要（框架裁剪') && asm.text.includes(c.summary.slice(-40)),
     'C21-5 ★★★ 摘要真的进入下一次 prompt（裁剪是机制，不是只记账）', asm && { hasBlock: asm.text.includes('【上下文摘要（框架裁剪'), contextCompaction: asm.contextCompaction && asm.contextCompaction.summaryBytes })
+  // ★ ROUND-12 P2 (prompt-lane): the summary block must SAY it is OLD context beside the trimmed text.
+  ok(typeof asm === 'object' && asm !== null && /旧上下文的压缩摘要/.test(String(asm.text || '')) && /不要把它当成本轮指令/.test(String(asm.text || '')),
+    "C21-5b ★★★ the compaction block is LABELLED as old context (not this round instruction)", { has: /旧上下文的压缩摘要/.test(String(asm && asm.text)) })
   // status shows the current budget and usage
   const st = rt.status()
   const row = st && st.contextCompaction && st.contextCompaction.members.filter((m) => m.member === 'r-1')[0]

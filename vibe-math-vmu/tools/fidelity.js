@@ -25,7 +25,8 @@ export function makeFidelitySpec({ param, refused, TOOL_NAMES, kernel }) {
       try {
         const svc = kernel.fidelity
         if (!svc || typeof svc[action] !== 'function') {
-          return refused('VMU_ENGINE_UNAVAILABLE', 'this assembly has no fidelity face (kernel.fidelity.' + String(action) + ' is missing)')
+          return refused('VMU_ENGINE_UNAVAILABLE', 'no pack provides vmu.fidelity in this assembly (kernel.fidelity.' + String(action) + ' is missing)',
+            'mount the pack that contributes the face (the v5r pack publishes it through PACK.services)')
         }
         if (NEEDS_BY.has(action) && (typeof by !== 'string' || by.length === 0)) {
           return refused('VMU_MATH_INVALID_INPUT', 'this action needs `by`: a defect must be traceable to a person', 'pass by:"<member id>" (the registry refuses an anonymous declaration)')

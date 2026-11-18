@@ -135,6 +135,7 @@ export const PACK = Object.freeze({
       // Declines in an assembly with no spawn/spawnHandle seam: the engine needs a subprocess seam, and an inert face
       // would tell tools a capability exists (the kernel used to create NO lean face then).
       optional: true,
+      missingSeam: 'subprocess',
       create: ({ facade }) => ((facade.spawn || facade.spawnHandle) ? createLeanResearchFace({ facade }) : null),
     },
     {

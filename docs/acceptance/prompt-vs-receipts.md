@@ -889,3 +889,11 @@ final16b 的 6 套件红 + E1 同根失败，根因是 ROUND-1 的 P0-4 压缩�
 - **动作**：仅把 `files["vibe-math-vmu/packs/v5r/prompts/v5r-corrections.js"]` 恢复为 HEAD 内容；`sourceCommit/sourceCommitShort/sha256` 全部保持原值；fixture 文件与 HEAD **逐字节一致**（git status 0 变化）。没有只重取 sha。
 - **建议（给 impl-lane）**：路径迁移脚本应跳过 `tests/fixtures/**`（历史语料）；若确实要让迁移进入语料，需先提交该改动、再把 fixture 的 `sourceCommit` 指向新 commit 并重取全部 sha。
 - **判据**：`audit-prompt-tool-names` **17/0**（fixture sha 自洽）；`audit-prompt-budget --check` **PASS**；`vmu-v5r-tools` **373/0**；`regen 18/18`；`check-docs` PASS；run256-facts 107/0、run247 74/0、run239 166/0 不回退。
+
+### §20.19 ROUND-12 复测（impl 修好 prompt-policy 注册形状后）
+
+- **背景**：`vibe-math-vmu.js` 的 policy 注册形状不一致（压函数/当行对象读）使策略在真实 turn-prompt 路径整条失效；impl 修好后复测。**提示词侧未做任何压缩**，只保留 P1#3 的真门控（`v5r-turn-acad-leads` 按 chair）。
+- **long-session 真实渲染（`vibe_vmu_turn op:"prompt"`，member r-1 / normal）**：**24,108 ≤30,000**。互斥节各 ≤1：catalogues = `[v5r-reply-compact]`（reply-spec 不再同屏）、formal-status = `[v5r-formal-status-none]`、leader 变体各 1（taskboard-leader；无 leaderless 双份）、roster-temp = 0（temp-only 门控生效）、acad-leads = 0（member 不再见 chair 段）。**占位段【本轮你实际能调用的工具】出现 0 次**（host-only 零注入）。
+- **真实 chair/meeting**：最大 **32,630 ≤36,400（余 3,770）**；budget 主闸 PASS、sim 闸 PASS（ratio **1.276**，target 1.25 仍具名 MISSED）。
+- **残留（非 prompt 域）P2#6**：`【上下文摘要（框架裁剪；已丢弃 N 轮，摘要 X 字节）】` 仍直接跟压缩 JSON，缺「这是旧上下文、不是本轮任务」句。生产点在 `vibe-math-vmu/kernel/turn/index.js:3408`（impl 域）；建议在该行拼接一句「（旧上下文的压缩摘要；本轮任务以本轮提示为准，不要把它当成本轮指令）」。
+- **判据**：pin 套件全绿：tools 373/0、run256-facts 107/0、run256-compress 34/0、run247 74/0、run239 166/0、ledger 61/0、doc-line-refs 9/0、type 15/0、AB exit 0、run257 134/0、run80 61/0、run144 64/0、doc-sync 11/0、vmu-turn 373/0、run244 24/0、run31 92/0、leadership 47/0、run150 73/0、run209 6/0、tool-names 17/0；`regen 18/18`、`check-docs` PASS。

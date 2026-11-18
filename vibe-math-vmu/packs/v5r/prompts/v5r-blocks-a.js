@@ -131,6 +131,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     order: 702.5,
     range: 'pack',
     kind: 'leader-conditional',
+    scope: Object.freeze({ role: Object.freeze(['temp']) }),
     texts: {
       'with-leader': [
         '  · **院士 {{ setting:vmu.turn.leaderId }}** —— 本所领头人，组织与协调中心。它统筹全所、分派任务、主持',

@@ -1120,7 +1120,12 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           // ★ TB-2794 Step 5: an OPTIONAL contribution may decline in THIS assembly (measured: the Lean face exists only
           // when the host injected a spawn seam; publishing an inert face would make tools believe a capability exists).
           // Declining is reported by name, never silent.
-          if (Array.isArray(servicesReceipt)) servicesReceipt.push({ name: svc.name, apiVersion: svc.apiVersion, contributed: false, reason: 'optional-declined' })
+          const missingSeam = svc.missingSeam === undefined || svc.missingSeam === null ? null : String(svc.missingSeam)
+          if (Array.isArray(servicesReceipt)) servicesReceipt.push({ name: svc.name, apiVersion: svc.apiVersion, contributed: false, reason: 'optional-declined', missingSeam })
+          if (typeof kernel.noteDeclinedService === 'function') {
+            kernel.noteDeclinedService({ name: svc.name, reason: 'optional-declined', missingSeam, by: manifest.id })
+            undo.push(() => { try { return kernel.retractDeclinedService({ name: svc.name, by: manifest.id }) } catch { /* unload continues; the next status shows it */ } })
+          }
           continue
         }
         if (!impl || typeof impl !== 'object') {

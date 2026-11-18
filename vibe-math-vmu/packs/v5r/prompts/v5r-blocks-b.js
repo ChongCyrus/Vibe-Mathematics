@@ -70,6 +70,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 692,
     range: 'pack',
     kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair']) }),
     texts: {
       shared: [
         '作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、',

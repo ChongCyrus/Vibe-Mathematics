@@ -359,6 +359,42 @@ const newTree = (tag) => {
 }
 
 
+// ── 4f. ROUND-12 P2: a DECLINED optional contribution is READABLE on status (not "never declared").
+{
+  const km = await importFrom(SRC, 'kernel/index.js')
+  const packm = await importFrom(SRC, 'kernel/pack.js')
+  const v5r = await importFrom(SRC, 'packs/v5r/prompts/v5r-core.js')
+  const mk = async (spawn) => {
+    const k = km.createKernel({ clock: () => 1000, root: mkdtempSync(join(tmpdir(), 'vmu-step5-declined-')), spawn })
+    return { k, loader: packm.createPackLoader({ kernel: k, registry: k.registry }) }
+  }
+  {
+    const { k } = await mk(null)
+    ok(k.status().servicesProvided.length === 0 && k.status().servicesDeclined.length === 0,
+      '★★ P2: a NO-PACK kernel reports both arrays EMPTY (no stub that could be misread as a provider)', { provided: k.status().servicesProvided, declined: k.status().servicesDeclined })
+  }
+  {
+    const { k, loader } = await mk(null)
+    await loader.apply(v5r.PACK)
+    const declined = k.status().servicesDeclined
+    const lean = declined.filter((d) => d.name === 'vmu.lean')[0]
+    ok(lean && lean.reason === 'optional-declined' && lean.missingSeam === 'subprocess' && lean.providedBy === 'v5r-core',
+      '★★★ P2: without a spawn seam vmu.lean is DECLINED by name WITH the missing seam (部署能区分"没声明"与"缺 subprocess")', declined)
+    ok(!k.status().servicesProvided.some((s) => s.name === 'vmu.lean') && k.lean === null,
+      '★★ P2: and servicesProvided semantics is unchanged (declined face is not claimed as provided)')
+    const un = await loader.unload(v5r.PACK.id)
+    ok(un.ok === true && k.status().servicesDeclined.length === 0,
+      '★★ P2: unload clears the declined record too (decline is not a leftover)', k.status().servicesDeclined)
+  }
+  {
+    const { k, loader } = await mk(async () => ({ exitCode: 0, stdout: '', stderr: '', ms: 1 }))
+    await loader.apply(v5r.PACK)
+    ok(k.status().servicesProvided.some((s) => s.name === 'vmu.lean') && k.status().servicesDeclined.length === 0,
+      '★★ P2: WITH a spawn seam the lean face is PROVIDED and servicesDeclined is empty', { provided: k.status().servicesProvided.map((s) => s.name), declined: k.status().servicesDeclined })
+  }
+}
+
+
 // ── 5. LAMPS: remove one ingredient in a COPY and require the matching assertion to go red ──────────────────────────
 for (const [tag, mutate, expectedRed] of [
   ['getter-fallback', (dir) => {
@@ -597,6 +633,32 @@ for (const [tag, mutate, expectedRed] of [
     ok(pol && pol.formalVerify === 'off',
       'LAMP(step5-policy): with the wrapper CONSTANT the deployed policy is ignored — the settings-to-policy read is load-bearing', pol)
   } finally { rmSync(dir4, { recursive: true, force: true, maxRetries: 10 }) }
+}
+
+
+// ── 5e. ROUND-12 P2 LAMP: making the decline SILENT must redden the visibility criterion ─────────────────────────────
+{
+  const dir = newTree('step5-declined-silent')
+  try {
+    const cp = join(dir, 'vibe-math-vmu', 'kernel', 'pack.js')
+    let src = readFileSync(cp, 'utf8')
+    // remove ONLY the status recording (the receipt still says declined) — the exact "silent on status" defect.
+    const marker = "          if (typeof kernel.noteDeclinedService === 'function') {"
+    const a = src.indexOf(marker)
+    const b = a < 0 ? -1 : src.indexOf(String.fromCharCode(10) + '          }', a)
+    if (a >= 0 && b > a) src = src.slice(0, a) + src.slice(b + 12)
+    writeFileSync(cp, src, 'utf8')
+    const km = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/pack.js')
+    const v5r = await importFrom(join(dir, 'vibe-math-vmu'), 'packs/v5r/prompts/v5r-core.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir, 'root') })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    const applied = await loader.apply(v5r.PACK)
+    const leanDeclinedOnReceipt = (applied.services || []).some((s) => s.name === 'vmu.lean' && s.contributed === false)
+    ok(leanDeclinedOnReceipt && k.status().servicesDeclined.length === 0,
+      'LAMP(P2): if the decline is only on the apply receipt, STATUS is silent (empty) — the readability criterion is load-bearing',
+      { receiptDeclined: leanDeclinedOnReceipt, statusDeclined: k.status().servicesDeclined })
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10 }) }
 }
 
 

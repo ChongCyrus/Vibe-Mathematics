@@ -38,6 +38,27 @@ ok(start && start.ok === true, '§0 the institute starts (chair + two researcher
 // name before the second seat is dispatched — the archive keeps the prompt either way, which is what this op pages.
 const stepA = await h.call('vibe_vmu_turn', { op: 'step', member: 'r-1' })
 const turnA = stepA && stepA.memberPrompt && stepA.memberPrompt.turnId
+const promptA = (stepA && stepA.memberPrompt && stepA.memberPrompt.text) || ''
+// ★ ROUND-12 P0 REGRESSION: the entry registered the v5r prompt policy as a BARE FUNCTION and read it as a ROW, so the
+// dispatcher returned null and the REAL turn prompt rendered BOTH mutually-exclusive catalogues + the HOST-ONLY placeholder.
+{
+  const count = (re) => (promptA.match(re) || []).length
+  const fixture = count(/v5r-fixture-constraint/g) + count(/v5r-fixture-tools/g)
+  const reply = count(/v5r-reply-compact/g) + count(/v5r-reply-spec/g)
+  ok(count(/v5r-fixture-constraint/g) <= 1 && count(/v5r-fixture-tools/g) <= 1 && fixture <= 1,
+    '§0a the two FIXTURE catalogue variants do not both render', { constraint: count(/v5r-fixture-constraint/g), tools: count(/v5r-fixture-tools/g) })
+  ok(count(/v5r-reply-compact/g) <= 1 && count(/v5r-reply-spec/g) <= 1 && reply <= 1,
+    '§0b the two REPLY catalogue variants do not both render', { compact: count(/v5r-reply-compact/g), spec: count(/v5r-reply-spec/g) })
+  ok(count(/【本轮你实际能调用的工具｜占位段】/g) === 0 && count(/v5r-effective-tools-/g) === 0,
+    '§0c the HOST-ONLY placeholder section is NOT rendered into a seat prompt',
+    { placeholder: count(/【本轮你实际能调用的工具｜占位段】/g), effectiveTools: count(/v5r-effective-tools-/g) })
+  ok(promptA.length > 0 && promptA.length < 30000,
+    '§0d the real turn prompt fits the member cap (the broken tree measured 36,259 chars)', promptA.length)
+  const status = typeof h.handle.promptPoliciesStatus === 'function' ? h.handle.promptPoliciesStatus() : null
+  ok(status && status.effective === true && status.ids.length === 1 && status.ids[0] !== '(anonymous policy)' && status.builtin[0] !== null,
+    '§0e promptPoliciesStatus().effective is TRUE for a REAL reason (composed policy named), never list.length>0', status)
+}
+
 const closedA = turnA ? await h.call('vibe_vmu_turn', { op: 'abandon', turn: turnA, why: 'suite: free the single parked slot' }) : null
 const stepB = await h.call('vibe_vmu_turn', { op: 'step', member: 'r-acad' })
 ok(stepA && stepA.ok === true && stepB && stepB.ok === true,

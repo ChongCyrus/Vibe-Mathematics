@@ -3405,7 +3405,7 @@ export function createTurnOrchestrator({
     // has actually exceeded the declared keep-window, so short sessions and every existing prompt pin are byte-identical.
     const assemblyCompaction = compactTranscriptFor(turn.member, typeof clock === 'function' ? clock() : null)
     if (assemblyCompaction && assemblyCompaction.summaryBytes > 0) {
-      withVisible += '\n\n【上下文摘要（框架裁剪；已丢弃 ' + String(assemblyCompaction.droppedCount) + ' 轮，摘要 ' + String(assemblyCompaction.summaryBytes) + ' 字节）】\n' + assemblyCompaction.summary
+      withVisible += String.fromCharCode(10, 10) + '【上下文摘要（框架裁剪；已丢弃 ' + String(assemblyCompaction.droppedCount) + ' 轮，摘要 ' + String(assemblyCompaction.summaryBytes) + ' 字节）】' + String.fromCharCode(10) + assemblyCompaction.summary + String.fromCharCode(10) + '（旧上下文的压缩摘要；本轮任务与指令以本轮提示为准，不要把它当成本轮指令。）'
     }
     // ★★★ TB-2739 (E) / RUN 79 (MEASURED, against the code and against the live run): WHETHER THE STATUS BLOCK IS IN
     // THE TEXT THE MEMBER WILL READ IS A READING, NOT A BELIEF. The 79th live run's taskbook asserted the `[状态板]` and

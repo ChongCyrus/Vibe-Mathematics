@@ -525,7 +525,9 @@ if (SELF_PROBE) {
   // faces (measured 10415 bytes, was 10271). The ceiling is still a runaway guard; re-pinned just above the measurement.
   // ★ TB-2794 Step 5 re-pin (measured + cause): lean/mathjobs are contributed now, so servicesProvided names two more
   // faces (measured 10557, was 10415). Same runaway guard; re-pinned just above the measurement.
-  ok(text.length <= 10557, '★ 真装配（v5r pack）下 status 默认 summary ≤ 10557 字节（Step4 10415 → Step5 实测 10557：servicesProvided 再增 vmu.lean/vmu.mathjobs；C#15 块不在 summary）', 'bytes=' + text.length)
+  // ★ ROUND-12 P2 re-pin (measured + cause): status gained servicesDeclined + its means sentence so a deployment can tell
+  // "no provider" from "declared but no subprocess seam" (measured 11013, was 10557). Same runaway guard.
+  ok(text.length <= 11013, '★ 真装配（v5r pack）下 status 默认 summary ≤ 11013 字节（Step5 10557 → P2 实测 11013：status 新增 servicesDeclined + means 段；C#15 块不在 summary）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),

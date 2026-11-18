@@ -3567,6 +3567,23 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     return { ok: true, name: key, removed: true, providedBy: row.by }
   }
   const replyAdapterOf = (name) => { const row = replyFieldAdapters.get(String(name)); return row ? row.adapt : null }
+  // ★ ROUND-12 P2: a DECLINED optional contribution is not "never declared". Record it with the MISSING SEAM, so a
+  // deployment can tell "no provider" from "provider present but this assembly lacks subprocess", and unload clears it.
+  const declinedServices = new Map()
+  const noteDeclinedService = ({ name, reason = 'optional-declined', missingSeam = null, by = null } = {}) => {
+    const key = String(name)
+    declinedServices.set(key, { name: key, reason: String(reason), missingSeam: missingSeam === null || missingSeam === undefined ? null : String(missingSeam), providedBy: by === null || by === undefined ? '(unattributed)' : String(by) })
+    return { ok: true, name: key }
+  }
+  const retractDeclinedService = ({ name, by = null } = {}) => {
+    const key = String(name)
+    const row = declinedServices.get(key)
+    if (!row) return { ok: true, removed: false, name: key }
+    if (by !== null && by !== undefined && row.providedBy !== String(by)) throw refuse('VMU_NOT_PERMITTED', 'declined entry ' + key + ' belongs to "' + row.providedBy + '", not "' + String(by) + '"', 'only its contributor may retract it')
+    declinedServices.delete(key)
+    return { ok: true, removed: true, name: key }
+  }
+  const servicesDeclined = () => [...declinedServices.values()].map((row) => Object.assign({}, row))
   const providedServices = new Map()
   const providedCatalog = () => {
     const out = {}
@@ -5519,6 +5536,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // ★ TB-2794 Step 0: the service contribution seam (pack manifest services + module api.services.provide).
     provideService,
     retractService,
+    noteDeclinedService,
+    retractDeclinedService,
     registerReplyFieldAdapter,
     retractReplyFieldAdapter,
     service: serviceOf,
@@ -5694,6 +5713,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // ★ TB-2794 Step 0: services CONTRIBUTED by packs/modules, with the provider named. Empty after an unload —
         // "absent because nobody provides it" and "absent because the unload removed it" are both readable here.
         servicesProvided: servicesProvided(),
+        // ★ ROUND-12 P2: DECLINED optional contributions, with the missing seam. Empty when nothing declined — a
+        // deployment reads BOTH arrays: no entry in either means "no provider", an entry here means "declared but this
+        // assembly lacks the seam named".
+        servicesDeclined: servicesDeclined(),
+        servicesDeclinedMeans: 'servicesDeclined = optional contributions the mounted pack DECLINED in this assembly, each with the missing seam (e.g. {name:"vmu.lean", reason:"optional-declined", missingSeam:"subprocess"}). A face absent from BOTH servicesProvided and servicesDeclined was never declared; absent from provided but present here means the pack is mounted and the assembly lacks that seam',
         // ★ TB-2794 Step 2: pack-supplied reply-field adapters, with their owner (empty after unload).
         replyFieldAdaptersProvided: [...replyFieldAdapters.entries()].map(([name, row]) => ({ name, providedBy: row.by })),
         servicesProvidedMeans: 'servicesProvided = faces the KERNEL did not construct: each names the pack/module that contributed it (registry.status().services[].providedBy carries the same fact). Read this before concluding a face is missing from the assembly: a missing face with no entry here was never provided, not unloaded silently',
