@@ -14,7 +14,7 @@
 // It also guards the round-20 ④ disclosure: EVERY engine face must ANSWER "can you resume mid-run?" by name —
 // `mathjobs.js` and `lean.js` both say NO, with a reason and the change condition (a disclosure, not an
 // interpretation).
-import { createMathJobs, JOB_SCHEMA } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createMathJobs, JOB_SCHEMA } from '../vibe-math-vmu/packs/research-core/mathjobs.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 
 let passed = 0

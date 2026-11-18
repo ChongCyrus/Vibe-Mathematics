@@ -45,6 +45,8 @@ user 涨的才是「活变多」**。为什么不用校准子进程自己的 CPU
 `SEG_MS` 仍是硬超时兜底——超时是安全阀，不是尺子。两个长校准点保留为**报告值**：一次门禁会打印
 `contention=1.69x` 这样的争用画像，让人看得见「现在是忙机器」，但它不参与判定。
 
+> ★★★ **口径统一（P3，2026-11-18）——baseline 是什么、allowed 怎么算、并发下是否放宽**：**baseline ＝ 每段的 QUIET-WINDOW user-CPU 中位数**（同一棵树、安静窗口、≥3 次读数取中位；就是上面 `gate-baselines` 那一行，门禁与本文**读同一行**，所以不可能各说一套）；**allowed ＝ `max(baseline × drift(1.25), baseline + floor(1500 ms))`**；**并发下不加任何 concurrencySlack** —— 允许量**不因机器忙而放宽**：`contention=…x` 校准比值只是**报告值**（不除成本、不进断言），`1.25×` 的 drift 项才是吸收真实并发的唯一余地；红时打印的争用画像让人分清「代码真贵了」还是「机器在忙」。与 `tests/sim-gate.test.mjs` 头注**同一句**：「every baseline in docs/acceptance/sim-gate-scope.md §0 is the QUIET-WINDOW user-CPU median; the 1.25x drift factor is what absorbs real concurrency (a red run still prints the contention picture).」★ **历史注记（已被取代）**：下文墙钟时代曾把 `meeting-matrix` 基线按「实测最大并发读数 ÷ drift」重钉（12558／14000）——那是**换尺子前**的做法，TB-2728 改用 CPU 尺子后**不再适用**；现行基线是 `meeting-matrix=9577`（user CPU 安静窗口中位），**没有**按并发最大值重钉，**也没有** concurrencySlack。自证标定只修「同形状 control run」这一处（drag ＝ 允许量 − control + 500 ms），**不改 allowed**。
+
 下面这段是换尺子前的墙钟历史（保留证据，不与上文数字比较）：
 
 `audit/all` 的基线在 2026-11-10 03:39 重钉为 **62000**：静默树实测仍是 43–58 s，但 T1 以 **k=3 并发**跑，
@@ -80,19 +82,26 @@ k=3 让这一段贵约 48 %，这就是「跑在什么条件下，就用什么�
   会让一条真绿的门禁随机变红。floor 是**绝对量**，对大段永远不起作用
   （`max(1.25 × 62 s, 62 s + 1.5 s) = 77.5 s` 仍是 1.25× 项，+1.5 s 让不出来）。
 - 一条段只有**超过 `max(基线×1.25, 基线+1500 ms)`** 才算漂移。推论：56.7 s 段上 **+9 s 不算漂移**
-  （+16 % < 25 %，这是 1.25× 成本规则的定义，不是漏洞），+15 s 才算。门禁自带两条自证（数值由文档基线**算出来**，
+  （+16 % < 25 %，这是 1.25× 成本规则的定义，不是漏洞），+15 s 才算。门禁自带自证组（数值由文档基线**算出来**，
   不写死绝对毫秒，避免基线一改自证就失效）：
-  (i) 用 wrapper 在 end-to-end 前**真的烧掉** `ceil(允许量 − 本轮实测 CPU) + 1000 ms` 的 user CPU，
-  且被拖慢的那次仍是真跑（exit 0）⇒ 必须判红；(ii) audit/all 落在「基线 + 25 % 允许量的 64 %」⇒ 必须**仍绿**，
+  (i) 先跑一次**同形 control run**（同一 wrapper、drag=0、同一窗口）取本次窗口的诚实成本，再让 wrapper **真的烧掉**
+  `drag = max(250, ceil(允许量 − control.cpuMs) + 500) ms` 的 user CPU，且被拖慢的那次仍是真跑（exit 0）⇒ 必须判红；
+  **(i-b) 归因断言**：`dragged.cpuMs − control.cpuMs ≥ 0.8 × drag` —— 若 probe 少记（段行丢失／`NODE_OPTIONS` 断），
+  拖拽没被量到就在此**具名红**，而不是在「自证通过」里静默滑过；同形 control 自身也必须 exit 0 且 ≤ 允许量
+  （同形对照不能拿「机器忙」当借口）。★ 这次只改**自证标定**（同形 control run ＋ 归因断言），
+  **规则与 allowed 不动**（baseline／`drift=1.25`／`floor=1500` 原样）；
+  (ii) audit/all 落在「基线 + 25 % 允许量的 64 %」⇒ 必须**仍绿**，
   落在「允许量 + 1000 ms」⇒ 必须判红（证明 floor 没有把成本闸变成"一点都不能涨"的墙）；
   (v) **同一 wrapper 只 `setTimeout` 睡同样时长**（墙钟涨、CPU 不涨）⇒ 必须**仍绿**。这一条是「判的是 CPU」
   的对照面：没有它，「不量墙钟」就只是一句没人检验的话。
+
+> **标定修复后的实测（2026-11-18，`tests/sim-gate.test.mjs`，断言数 104；原始日志 `D:/_tmp/sim-lane/cpu-*.log`、报告 `D:/_tmp/sim-lane/GATE-CPU-FIX.md`）**：idle 连跑三次均 `104 passed, 0 failed`（130／135／109 s）；三个 CPU 霸占进程同跑仍 `104 passed, 0 failed`（193 s；CPU 尺子：end-to-end 2218／meeting-matrix 11265（allowed 11971）／audit/all 45664（allowed 50157）／determinism 4483；墙钟 audit/all 77.6 s 被抬高但**只打印、不进断言**；自证 control 2296／drag 1937／growth 1829 ≥ 0.8×1937=1549）；**欠拖反灯**（`drag` 人为减 600 ms）⇒ `103 passed, 1 failed`，失败项正是 `self-proof (i)`（`cpuMs 3000 ≤ allowed 3733`）；**归因反灯**（删 `cpu-probe.mjs` 的 `appendFileSync` 一行）⇒ `97 passed, 7 failed`，含 4 条 `measured USER CPU cost (0 ms …)` ＋ `every segment has a measured cost` ＋ `self-proof (i)` ＋ **`self-proof (i-b)`**（growth 0 < 0.8×4233）具名红。
 
 | 段 | 命令 | 实测耗时 / 预算 | 漂移上限（max(基线×1.25, 基线+1500 ms)） | 证明什么 |
 |---|---|---|---|---|
 | 1 | `node scripts/sim/run.mjs --scenario end-to-end` | **2.2 s CPU / 15 s** | 3.7 s | 全生命周期（立所 → hire → 命题 → 蓝图 fs-first → 会议 → 裁决 → 记录 → 论文 → 结题）在**真内核、真工具注册**下走得通，且**机制拒绝 = 0**（预期拒绝必须能被账本按 seq 点名，泛化赦免 `advisory > 0` 直接判红） |
 | 2 | `node scripts/sim/run.mjs --scenario meeting-matrix` | **9.6 s CPU / 45 s** | 12.0 s（9577×1.25） | 会议面矩阵（预约/签到/开门/发言/动议/表决/裁决/闭会）每条路径的**回执形状** |
-| 3 | `node scripts/sim/audit/all.mjs` | **40.1 s CPU / 150 s** | 50.2 s（40126×1.25） | 15 个场景的 A1–A5 回执审计 ＋ 93 条规则覆盖 ＋ 工具/动作覆盖 ＋ 与真机回执的**字段级**保真对照（嵌套叶路径） |
+| 3 | `node scripts/sim/audit/all.mjs` | **40.1 s CPU / 150 s** | 50.2 s（40126×1.25） | 16 个场景的 A1–A5 回执审计（round-10 起含 `long-session`：31 steps / 38 calls / 1 prompt） ＋ 93 条规则覆盖 ＋ 工具/动作覆盖 ＋ 与真机回执的**字段级**保真对照（嵌套叶路径） |
 | 4 | 确定性重放（门禁内部，两次同一输入） | **5.2 s CPU / 15 s** | 6.7 s（max(5170×1.25, 5170+1500)） | 同一输入两次跑：`pairs.jsonl` 归一化后**逐字节相同**（TB-2634 之后 consult id 已是确定性铸出，raw id 序列本身也逐条相等；归一化只是安全网） |
 
 总预算 **150 s 硬超时**：超时即失败，**不许 skip**（`SIM_SKIP` 之类的环境开关不存在）。

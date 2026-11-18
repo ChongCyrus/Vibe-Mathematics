@@ -442,14 +442,19 @@ if (SELF_PROBE) {
     'without a spawn seam there is NO lean face (kernel.lean === null) - the assembly gate is tested too',
     String(bare.lean))
   const seam = async () => ({ code: 0, stdout: '', stderr: '', timedOut: false, ms: 1 })
+  // ★ TB-2794 Step 5: the Lean FACE is pack-contributed now (the engine stays in kernel/lean.js). This unit supplies the
+  // face through the same service seam v5r uses, conditioned on the spawn seam exactly as the pack does.
   const withSeam = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z', spawn: seam })
+  const { createLeanFace } = await import('../vibe-math-vmu/kernel/lean.js')
+  withSeam.provideService({ name: 'vmu.lean', apiVersion: 1, by: 'test-lean-face', impl: createLeanFace({ spawn: seam, settings: {}, clock: () => 0 }) })
   ok(withSeam.lean && typeof withSeam.lean.submit === 'function' && typeof withSeam.lean.keysUsed === 'function',
-    'and with a seam the face appears (submit/keysUsed present)', JSON.stringify(Object.keys(withSeam.lean || {})))
+    'and with a seam the contributed face appears (submit/keysUsed present)', JSON.stringify(Object.keys(withSeam.lean || {})))
   // THE EXPECTED KEYS ARE LISTED, THE COUNT IS DERIVED. Round 2 added the job-ledger keys and round 4 added the
   // stdout cap (`vmu.math.captureStdoutBytes`, read by F17's real grace/terminate path), so a typed number went
   // stale twice. Named lists plus a derived total keep the claim precise: ADD A KEY HERE when the face reads it.
-  const LEAN_KEYS = ['vmu.math.formalVerify', 'vmu.math.leanCommand', 'vmu.math.leanArgs', 'vmu.math.leanTimeoutMs',
-    'vmu.math.leanAsync', 'vmu.math.leanInitiative', 'vmu.math.leanSearchPaths', 'vmu.math.leanJobsMaxParallel']
+  // TB-2794 Step 5: the two POLICY keys are read by the pack wrapper (packs/research-core/lean-face.js), not by the engine.
+  const LEAN_KEYS = ['vmu.math.leanCommand', 'vmu.math.leanArgs', 'vmu.math.leanTimeoutMs',
+    'vmu.math.leanAsync', 'vmu.math.leanSearchPaths', 'vmu.math.leanJobsMaxParallel']
   const JOBS_KEYS = ['vmu.math.jobs.persist', 'vmu.math.jobs.dir', 'vmu.math.jobs.recover', 'vmu.math.jobs.keepMirrors']
   const OUTPUT_KEYS = ['vmu.math.captureStdoutBytes']   // round 4 / F17: the child-output cap the Lean face reads
   const expectedKeys = LEAN_KEYS.concat(JOBS_KEYS, OUTPUT_KEYS)

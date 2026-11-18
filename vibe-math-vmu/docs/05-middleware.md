@@ -330,7 +330,7 @@ const started = scripts.start({ file: './check.py', args: [id] })   // ★ 立�
 | 同上 | `delivered` | `open` | ✗ | 一批已投递并 ack |
 | 面板（`panel/`，`kernel/panel.js`） | **`write-before`** | **`closed`** | **✓** | 自述面板写入前的策略点（他人改 `overall` 的处置在此可见） |
 | 同上 | `written`／`viewed` | `open` | ✗ | 写入落地／被查看（查看留痕） |
-| 数学作业（`math/`，`kernel/mathjobs.js`、`kernel/mathadapters.js`） | `job-submitted`／`job-settled`／`job-failed`／`job-timeout`／`job-cancelled`／`job-recovered`／`adapters-probed`／`adapters-ran` | `open` | ✗ | 作业生命周期与适配面探测/运行（观测；失败不因监听者坏掉而升级） |
+| 数学作业（`math/`，`packs/research-core/mathjobs.js`、`kernel/mathadapters.js`） | `job-submitted`／`job-settled`／`job-failed`／`job-timeout`／`job-cancelled`／`job-recovered`／`adapters-probed`／`adapters-ran` | `open` | ✗ | 作业生命周期与适配面探测/运行（观测；失败不因监听者坏掉而升级） |
 
 ★★★ **命名空间规则同步扩展**（`bus.emit` 的 `VU_NAMESPACE`）：`resume|ids|human|chat|mailbox|panel|math` 已加入 ⇒ 这七个命名空间里**未登记的名字会被具名拒**，不再"看起来正常、其实没人能挂"（与轮 496 修 `budget/warn`／`member/self-report` 同一条规则）。
 ★★ **emit 形态是硬要求**：`bus.emit('<名>', payload, {member,role,phase})`。`emit({type:'x'})` 这种**单对象调用**会被总线以 `VMU_INVALID_ARGUMENT` 拒绝（`kernel/lifecycle.js:39` 曾是活样例，其两条广播因此**从未到达总线**）；且门禁只认字面量 `bus.emit('<名>'` ⇒ 对象形态**不算生产者**。

@@ -47,8 +47,9 @@ const defined = new Set(SETTING_DEFS.map((d) => d.key))
 
 // ── A. four real anchors, one per read shape / tier ───────────────────────────────────────────────
 const ANCHORS = [
-  // read through a KERNEL service (`kernel/mathjobs.js`), i.e. the plain quoted-literal path
-  { key: 'vmu.math.maxParallel', verdict: WIRED, carrier: 'kernel/mathjobs.js', why: 'quoted literal read by a kernel module' },
+  // read through the ONE policy reader (`kernel/mathtools.js` readMaxParallel), which the pack mathjobs face imports —
+  // the carrier names the file that REALLY reads the key (TB-2794 Step 5 kept the reader in the kernel).
+  { key: 'vmu.math.maxParallel', verdict: WIRED, carrier: 'kernel/mathtools.js', why: 'quoted literal read by the one policy reader' },
   // read ONLY as a `{{ setting:… }}` placeholder in a pack prompt — the template path
   { key: 'vmu.turn.maxParallel', verdict: WIRED, carrier: 'packs/v5r/prompts/v5r-blocks-b.js', why: 'template-placeholder read by a pack prompt' },
   // declared, named nowhere a runtime can read it

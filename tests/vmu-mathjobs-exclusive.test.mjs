@@ -1,4 +1,4 @@
-// vibe-math-vmu —— ROUND 3 · N5：**跨进程独占创建**（kernel/mathjobs.js 的 `createJobMirror`，Lean 面同用）。
+// vibe-math-vmu —— ROUND 3 · N5：**跨进程独占创建**（packs/research-core/mathjobs.js 的 `createJobMirror`，Lean 面同用）。
 // 运行：`node tests/vmu-mathjobs-exclusive.test.mjs`（末行 `=== VMU MATHJOBS EXCLUSIVE: N passed, M failed ===`）。
 //
 // 这条不变式要证的是：**两个进程铸出同一个 jobId 时，后来者绝不静默覆盖前者的镜像**。
@@ -7,7 +7,7 @@
 //   · 有该接缝   ⇒ 首次写镜像**原子占号**；同号 ⇒ `VMU_MATH_JOB_ID_TAKEN`，且**前者的文件逐字未动**。
 
 import assert from 'node:assert/strict'
-import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createMathJobs } from '../vibe-math-vmu/packs/research-core/mathjobs.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createIds } from '../vibe-math-vmu/kernel/ids.js'
 

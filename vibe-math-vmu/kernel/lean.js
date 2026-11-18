@@ -20,7 +20,7 @@ const JOB_SCOPE_MEANS = 'these job ids are minted and kept by THIS kernel proces
 //
 // ── ROUND 2 · 目标 5 B（收掉 N2）：作业**持久化 / 断点续算** ────────────────────────────────────────
 //   本面原先只有会话内存（`jobs` Map，重启即丢）。现在接上与计算面**同一套原语**
-//   （`kernel/mathjobs.js` 的 `createJobMirror`）：
+//   （`packs/research-core/mathjobs.js` 的 `createJobMirror`）：
 //     · 镜像 `Formal/Jobs/<jobId>.json`（`schema:'vmu/lean-job@1'`，与 v5r 的 `Formal/Jobs/` 路径一致），
 //       记录状态、尝试次数、时间、退出码、**运行前后内容哈希**与**构建上下文指纹**；
 //     · 状态全集 `queued|running|settled|failed|timeout|interrupted`（**没有 `passed` 状态**：`passed` 只是
@@ -55,16 +55,15 @@ const JOB_SCOPE_MEANS = 'these job ids are minted and kept by THIS kernel proces
 import { readFile } from 'node:fs/promises'
 import { resolve as resolvePath } from 'node:path'
 import { createHash } from 'node:crypto'
-import { createJobMirror, safeRelDir, ENFORCED_SCOPE, createChildBudget, RECOVERY_LEASE_TTL_MS, defaultTimer } from './mathjobs.js'
+import { createJobMirror } from './jobmirror.js'
+import { safeRelDir, ENFORCED_SCOPE, createChildBudget, RECOVERY_LEASE_TTL_MS, defaultTimer } from './jobbudget.js'
 import { mint as mintId, observeIds } from './ids.js'
 
 export const LEAN_KEYS = Object.freeze([
-  'vmu.math.formalVerify',
   'vmu.math.leanCommand',
   'vmu.math.leanArgs',
   'vmu.math.leanTimeoutMs',
   'vmu.math.leanAsync',
-  'vmu.math.leanInitiative',
   'vmu.math.leanSearchPaths',
   'vmu.math.leanJobsMaxParallel',
   // ROUND 2 (target 5 B): the durable-job face, shared with the computation face.
@@ -127,6 +126,9 @@ function refuse(code, message, hint, enforced) {
 
 export function createLeanFace(opts) {
   const o = opts || {}
+  // ★ TB-2794 Step 5: the TWO POLICY keys (formalVerify / leanInitiative) are read by the pack wrapper
+  // (packs/research-core/lean-face.js) and injected here; the engine no longer reads them itself.
+  const policyIn = o.policy && typeof o.policy === 'object' ? o.policy : null
   const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
   const spawn = o.spawn
   // F17: the KILLABLE seam. `spawnHandle(opts, onHandle)` must hand us the handle synchronously; then the
@@ -144,7 +146,7 @@ export function createLeanFace(opts) {
   /**
    * Wait until a job reaches a terminal state (used to release the recovery lease exactly once).
    * ROUND 9-fix (F15): the polling sleep goes through the **INJECTED** timer seam and falls back to the framework's
-   * only global-timer site (`defaultTimer` in `kernel/mathjobs.js`). A kernel face must not own an un-injectable
+   * only global-timer site (`defaultTimer` in `packs/research-core/mathjobs.js`). A kernel face must not own an un-injectable
    * real sleep: `tests/vmu-activity-timers.test.mjs` classifies global timer sites, and a second site in this file
    * was exactly the "unclassified timer" it refused. Cadence and cap are unchanged (4000 × 50 ms).
    */
@@ -215,13 +217,13 @@ export function createLeanFace(opts) {
 
   // ── 设置读取（**唯一口径**；每个键只在此处被读 ⇒ keysUsed() 与实现必然一致）────────────
   const cfg = () => {
-    const formalVerify = String(readKey('vmu.math.formalVerify') || 'off')
+    const formalVerify = String((policyIn && policyIn.formalVerify) || 'off')
     const leanCommand = String(readKey('vmu.math.leanCommand') || 'lean')
     const leanArgs = Array.isArray(readKey('vmu.math.leanArgs')) ? readKey('vmu.math.leanArgs').map(String) : []
     const nTimeout = Number(readKey('vmu.math.leanTimeoutMs'))
     const leanTimeoutMs = Number.isFinite(nTimeout) && nTimeout > 0 ? Math.floor(nTimeout) : 120000
     const leanAsync = readKey('vmu.math.leanAsync') !== false
-    const leanInitiative = String(readKey('vmu.math.leanInitiative') || 'normal')
+    const leanInitiative = String((policyIn && policyIn.leanInitiative) || 'normal')
     const rawPaths = readKey('vmu.math.leanSearchPaths')
     const nJobs = Number(readKey('vmu.math.leanJobsMaxParallel'))
     const leanJobsMaxParallel = Number.isFinite(nJobs) && nJobs >= 1 ? Math.floor(nJobs) : 1

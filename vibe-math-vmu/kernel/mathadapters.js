@@ -31,7 +31,7 @@
 //
 // INJECTION
 //   createMathAdapters({ settings, clock, log, bus, resolveExecutable, spawn, root })
-//     · settings          — `{ get(key) }` or a plain object (same convention as kernel/mathjobs.js).
+//     · settings          — `{ get(key) }` or a plain object (same convention as packs/research-core/mathjobs.js).
 //     · resolveExecutable — `(cmd) => Promise<string>` (host subprocess service).
 //     · spawn             — `({ engine, argv, stdin, timeoutMs, env }) =>
 //                             { exitCode, stdout, stderr, timedOut?, signal? }`.
@@ -41,7 +41,7 @@
 import { createHash } from 'node:crypto'
 import { declaredDefault } from './settings-defaults.js'
 import { mint as mintId } from './ids.js'
-import { createChildBudget } from './mathjobs.js'
+import { createChildBudget } from './jobbudget.js'
 
 /** Public-interface version of this module's surfaces. */
 export const apiVersion = 1
@@ -431,7 +431,7 @@ function shapeName(raw) {
 
 export function createMathAdapters(opts) {
   const o = opts || {}
-  // ★ R16 / F1 (Lead ruling): same convention as kernel/mathjobs.js — the DECLARED default is the default, read
+  // ★ R16 / F1 (Lead ruling): same convention as packs/research-core/mathjobs.js — the DECLARED default is the default, read
   // through `kernel/settings-defaults.js`. A literal written beside a read is a second copy of a declaration and the
   // one that drifts (four such doors were measured and removed in PHASE 6 / goal 3).
   const readKey = (k) => {

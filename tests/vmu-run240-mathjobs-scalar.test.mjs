@@ -3,7 +3,7 @@
 //
 // THE MEASURED DEFECT (found by scripts/sim/audit/all.mjs: `vibe_vmu_mathjobs { action: "mirrorRel" }` sat in the
 // `never` list, and driving it by hand produced a receipt path nothing can name):
-//   `kernel/mathjobs.js` declares `mirrorRel(jobId)` — ONE SCALAR — while `tools/mathjobs.js` handed EVERY action the
+//   `packs/research-core/mathjobs.js` declares `mirrorRel(jobId)` — ONE SCALAR — while `tools/mathjobs.js` handed EVERY action the
 //   whole `{ action, ...rest }` options object. `String(options)` then landed in the receipt:
 //   `Math/Jobs/[object Object].json`. A caller asking "where is this job's mirror file" was told about a path that
 //   exists nowhere, and could not tell the answer was wrong.

@@ -153,14 +153,11 @@ try {
       const kp = join(dir, 'vibe-math-vmu', 'kernel', 'index.js')
       const src = readFileSync(kp, 'utf8')
       const marker = 'resolveOwners(null, replyFields))'
-      const resolver = "    resolveService: (name) => {"
+      const resolver = '    resolveService: (name) => resolveFace(null, name),'
       ok(src.includes(marker) && src.includes(resolver), '§6b lamp-setup: the effective-owner map AND the lazy resolver are locatable')
       // Step 4 added the dispatch-time resolver; the lamp must remove BOTH ingredients (the owner map and the resolver)
       // to reproduce the pre-Step-2B/pre-Step-4 construction-time behaviour.
-      const withOwners = src.split(marker).join('undefined)')
-      const a = withOwners.indexOf(String.fromCharCode(10) + '    resolveService: (name) => {')
-      const b = a < 0 ? -1 : withOwners.indexOf(String.fromCharCode(10) + '    },', a)
-      const mutated = a >= 0 && b > a ? withOwners.slice(0, a) + withOwners.slice(b + 7) : withOwners
+      const mutated = src.split(marker).join('undefined)').split(resolver).join('')
       writeFileSync(kp, mutated, 'utf8')
       const lampEntry = (await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?lamp=' + Date.now())).apply
       const state = { specs: [] }

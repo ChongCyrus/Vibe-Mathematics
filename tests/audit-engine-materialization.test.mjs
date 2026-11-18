@@ -6,7 +6,7 @@
 // ★ WHY THIS FILE EXISTS (the defect it locks), and the convention it encodes — CHANGED BY LEAD RULING.
 // MEASURED DEFECT: `vmu.math.engines` was declared in `settings/schema.js` with the eight-name engine order
 // (`MATH_DEFAULTS.mathEngines`), the plugin entry only ever adopts `config.vmu` as settings, and the gateway
-// `kernel/mathjobs.js` read the raw key ⇒ it saw `undefined` ⇒ every job was refused `VMU_MATH_UNSUPPORTED_OP`
+// `packs/research-core/mathjobs.js` read the raw key ⇒ it saw `undefined` ⇒ every job was refused `VMU_MATH_UNSUPPORTED_OP`
 // ("未声明任何引擎") on a host where python WAS installed, while `status().settings.resolved` still showed the
 // eight names. A declaration face and a runtime face disagreeing.
 //
@@ -41,7 +41,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
 const { MATH_ENGINE_ORDER } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'math-engines.js')).href)
-const { createMathJobs } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'mathjobs.js')).href)
+const { createMathJobs } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'research-core', 'mathjobs.js')).href)
 const { declaredDefault } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'settings-defaults.js')).href)
 
 const KEY = 'vmu.math.engines'

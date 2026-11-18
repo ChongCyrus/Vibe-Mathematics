@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createMathJobs } from '../vibe-math-vmu/packs/research-core/mathjobs.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 
 let passed = 0

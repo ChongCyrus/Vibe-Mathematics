@@ -154,16 +154,17 @@ ok(orphan.length === 0, 'no constructed service is missing from the registry', o
 // (5) SELF-PROBE: the check must actually bite. Strip the constructor binding for one service from an in-memory
 // copy of the kernel and require the construction check to report it - a gate that cannot fail is decoration.
 {
-  const mutated = code.replace(/const mathjobs = createMathJobs\(/, '// intentionally unbound for the self-probe\n  const mathjobsNeverBound = createMathJobs(')
+  // ★ TB-2794 Step 5: mathjobs is pack-contributed now, so the probe uses a CORE face that is still constructed locally.
+  const mutated = code.replace(/const tasks = createTasks\(/, '// intentionally unbound for the self-probe\n  const tasksNeverBound = createTasks(')
   ok(mutated !== code, 'self-probe: the mutation anchor is present in kernel/index.js',
-    'ANCHOR MISS: const mathjobs = createMathJobs(')
+    'ANCHOR MISS: const tasks = createTasks(')
   // ROUND 340: "bound" means CONSTRUCTED BY A FACTORY, which is what this gate is about. The old third pattern
   // counted a bare mention inside a map literal as a binding, so passing an identifier into another call (for
   // instance handing the faces to the turn loop) made the self-probe unable to see a genuinely unbound service -
   // a gate that cannot fail is decoration, and that is exactly what this probe exists to prevent.
   const boundIn = (text, id) => new RegExp('(?:const|let|var)\\s+' + id + '\\s*=\\s*create[A-Z]').test(text)
-  ok(!boundIn(mutated, 'mathjobs'), 'self-probe: an unbound service is detected (the round-14 defect would fail this gate)')
-  ok(boundIn(mutated, 'mathjobsNeverBound'), 'self-probe: the mutant still binds a differently-named identifier')
+  ok(!boundIn(mutated, 'tasks'), 'self-probe: an unbound service is detected (the round-14 defect would fail this gate)')
+  ok(boundIn(mutated, 'tasksNeverBound'), 'self-probe: the mutant still binds a differently-named identifier')
 }
 
 // (6) STRIPPER SELF-PROOF: the blanking must be real but conservative - and it must defeat the round-7 bypass.

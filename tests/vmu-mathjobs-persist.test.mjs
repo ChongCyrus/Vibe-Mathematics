@@ -1,4 +1,4 @@
-// vibe-math-vmu —— ROUND 2 目标 5 B：数学作业的**镜像 / 四态 / 恢复四分支**（kernel/mathjobs.js）。
+// vibe-math-vmu —— ROUND 2 目标 5 B：数学作业的**镜像 / 四态 / 恢复四分支**（packs/research-core/mathjobs.js）。
 // 运行：`node tests/vmu-mathjobs-persist.test.mjs`（末行 `=== VMU MATHJOBS PERSIST: N passed, M failed ===`）。
 //
 // 本套件的目的是**非空过**：每个恢复分支都断言"具体计数 + 具体状态 + spawn 是否真的被再调用"，
@@ -6,7 +6,9 @@
 // 一切接缝都注入：没有真引擎、没有真磁盘（内存 fs）、没有真实时间（注入 clock）。
 
 import assert from 'node:assert/strict'
-import { createMathJobs, MATH_KEYS, JOB_STATES, TERMINAL_STATES, JOB_SCHEMA, safeRelDir } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createMathJobs, MATH_KEYS, JOB_STATES, TERMINAL_STATES, JOB_SCHEMA } from '../vibe-math-vmu/packs/research-core/mathjobs.js'
+// ★ TB-2794 Step 5: shared primitives moved to kernel/jobbudget.js (the kernel must not import the pack).
+import { safeRelDir } from '../vibe-math-vmu/kernel/jobbudget.js'
 
 let passed = 0
 let failed = 0

@@ -89,6 +89,34 @@ console.log('=== 3. host boundary: returned refusal receipt ⇒ decorated before
     'a RETURNED refusal from any tool module is decorated by the same host seam', { means: String(receipt.means).slice(0, 40) })
 }
 
+// ---- 3b. ROUND-11 (frozen-layer deficit): a pack service that RESOLVES to its own `refuse(...)` Error ------------
+// The corpus' one undecorated signal: `vibe_vmu_reviewers` returned `{ ok:true, code:"VMU_INVALID_ARGUMENT", hint:"assign() first" }`
+// because the research-core reviewers service RESOLVES to an Error and the tool merged it with Object.assign. The host
+// boundary must treat BOTH a returned Error and a returned receipt carrying a refusal code as refusals and decorate them.
+console.log('=== 3b. returned Error / malformed refusal receipt ⇒ decorated at the host boundary ===')
+{
+  const { makeReviewersSpec } = await import('../vibe-math-vmu/tools/reviewers.js')
+  const denial = Object.assign(new Error('no such assignment'), { code: 'VMU_INVALID_ARGUMENT', hint: 'assign() first' })
+  const kernel = { reviewers: { unbind: async () => denial } }
+  const param = (type, description, opts) => Object.assign({ type, description }, opts || {})
+  const spec = makeReviewersSpec({ param, refused: (code, message, hint) => ({ ok: false, code, message, hint }), TOOL_NAMES: { reviewers: 'vibe_vmu_reviewers' }, kernel })
+  const receipt = JSON.parse(await toHostSpec(spec, null).execute({ action: 'unbind', reviewerId: 'r-1', submissionId: 'rec-1' }, {}))
+  ok(receipt.ok === false && receipt.code === 'VMU_INVALID_ARGUMENT',
+    '★ round-11: a pack service returning its own refuse() Error reaches the model as a REFUSAL (ok:false), not an ok:true receipt', { ok: receipt.ok, code: receipt.code })
+  ok(typeof receipt.means === 'string' && receipt.means.length > 24 && receipt.hintForm === 'full' && typeof receipt.hintShort === 'string',
+    '★ and it carries means + hintForm + hintShort (the corpus’ single undecorated receipt is now decorated)', { hintForm: receipt.hintForm })
+}
+{
+  const spec = { name: 'probe_malformed_receipt', description: 'probe', parameters: {}, run: async () => ({ ok: true, action: 'unbind', code: 'VMU_INVALID_ARGUMENT', hint: 'assign() first' }) }
+  const receipt = JSON.parse(await toHostSpec(spec, null).execute({}, {}))
+  ok(receipt.ok === false && typeof receipt.means === 'string' && receipt.hintForm === 'full',
+    '★ round-11: a returned receipt carrying a NAMED refusal code is NORMALIZED to a refusal and decorated (the shape cannot hide a refusal)', { ok: receipt.ok, hintForm: receipt.hintForm })
+  const okSpec = { name: 'probe_plain_success', description: 'probe', parameters: {}, run: async () => ({ ok: true, action: 'status', value: 1 }) }
+  const plain = JSON.parse(await toHostSpec(okSpec, null).execute({}, {}))
+  ok(plain.ok === true && plain.means === undefined && plain.hintForm === undefined,
+    '★ control: an ORDINARY success receipt is untouched (the normalization keys on a refusal code, not on `ok`)', plain)
+}
+
 // ---- 4. LAMPS ------------------------------------------------------------------------------------------------------
 console.log('=== 4. lamps: a deleted means and a short-copy-of-full are RED, naming the code ===')
 {

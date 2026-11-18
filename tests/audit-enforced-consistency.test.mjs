@@ -41,7 +41,7 @@ import { createChat } from '../vibe-math-vmu/kernel/chat.js'
 import { createMathAdapters } from '../vibe-math-vmu/kernel/mathadapters.js'
 import { createActivity } from '../vibe-math-vmu/kernel/activity.js'
 import { createBallot } from '../vibe-math-vmu/kernel/ballot.js'
-import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createMathJobs } from '../vibe-math-vmu/packs/research-core/mathjobs.js'
 import { createLeanFace } from '../vibe-math-vmu/kernel/lean.js'
 import { createFormal } from '../vibe-math-vmu/packs/research-core/formal.js'
 import { createFidelityRegistry, FIDELITY_ABSTENTION_VOTE } from '../vibe-math-vmu/packs/research-core/fidelity.js'
@@ -823,6 +823,11 @@ for (const [mod, m] of [...byModule].sort()) {
     'timevalue.js': 'no factory (exports ms / msStrict / apiVersion). msStrict refuses by name with the received '
       + 'value, and that path is asserted in its own suite and exercised by four consumer faces (hr, compliance, '
       + 'domaingate, metrics) whose refusals this gate already covers.',
+    // ★ TB-2794 Step 5: the job primitives extracted from mathjobs into the kernel. jobbudget exports the refusal
+    // ENVELOPE helper (enforced[] + enforcedScope) and jobmirror carries the admission report string; neither publishes
+    // an enforcement list of its own. Their refusal paths are the mathjobs/lean suites (same code that moved).
+    'jobbudget.js': 'primitive helpers (child budget / timer / safeRelDir / refusal envelope); no factory and no enforcement list - the job faces refusal paths are asserted in tests/vmu-mathjobs*.test.mjs and tests/vmu-lean*.test.mjs',
+    'jobmirror.js': 'the durable job-mirror primitive; its admission report is a capability statement, not an enforcement list - exercised by tests/vmu-mathjobs-persist.test.mjs',
   }
   // RECEIPT-ENVELOPE MODULES (round 522). These mention `enforced` because their RECEIPTS carry `enforced[]` - the D3 scope
   // marker every face documents in its own header ("FACE CONVENTIONS: literal key reads; receipts carry enforced[] and

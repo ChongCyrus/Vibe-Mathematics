@@ -228,18 +228,18 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'panel/write-before', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'before a self-report panel write', producer: 'kernel/panel.js' },
   { name: 'panel/written', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a self-report panel write landed', producer: 'kernel/panel.js' },
   { name: 'panel/viewed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a panel was viewed (view audit)', producer: 'kernel/panel.js' },
-  // reader-b (kernel/mathjobs.js, kernel/mathadapters.js): the math-job face emits these (NAME-first form).
-  { name: 'math/job-submitted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job was submitted', producer: 'kernel/mathjobs.js' },
-  { name: 'math/job-settled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exited cleanly', producer: 'kernel/mathjobs.js' },
+  // reader-b (packs/research-core/mathjobs.js, kernel/mathadapters.js): the math-job face emits these (NAME-first form).
+  { name: 'math/job-submitted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job was submitted', producer: 'packs/research-core/mathjobs.js' },
+  { name: 'math/job-settled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exited cleanly', producer: 'packs/research-core/mathjobs.js' },
   // ★ THE RESULT OF A SCRIPT A MIDDLEWARE STARTED. `script-bridge.start()` returns immediately (the hook budget is
   // `vmu.middleware.hookTimeoutMs`, 2000 ms, while a script's own default budget is 60000 ms), so the outcome cannot be a
   // return value - it is published here and any middleware may act on it. `blockable:false` for the same reason the other
   // observation hooks are: nothing consumes a veto on this name, and claiming one would be a promise nobody keeps.
   { name: 'script/settled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a script started by a middleware finished (successfully or not)', producer: 'kernel/script-bridge.js' },
-  { name: 'math/job-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exited non-zero', producer: 'kernel/mathjobs.js' },
-  { name: 'math/job-timeout', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exceeded its budget', producer: 'kernel/mathjobs.js' },
-  { name: 'math/job-cancelled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job was cancelled', producer: 'kernel/mathjobs.js' },
-  { name: 'math/job-recovered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the job mirror was scanned at start-up', producer: 'kernel/mathjobs.js' },
+  { name: 'math/job-failed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exited non-zero', producer: 'packs/research-core/mathjobs.js' },
+  { name: 'math/job-timeout', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job exceeded its budget', producer: 'packs/research-core/mathjobs.js' },
+  { name: 'math/job-cancelled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math job was cancelled', producer: 'packs/research-core/mathjobs.js' },
+  { name: 'math/job-recovered', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the job mirror was scanned at start-up', producer: 'packs/research-core/mathjobs.js' },
   { name: 'math/adapters-probed', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'the scientific-library environment was probed', producer: 'kernel/mathadapters.js' },
   { name: 'math/adapters-ran', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a library-adapted computation ran', producer: 'kernel/mathadapters.js' },
   // reader-a (kernel/lifecycle.js): the two broadcasts that used to be a SILENT no-op because they were sent as

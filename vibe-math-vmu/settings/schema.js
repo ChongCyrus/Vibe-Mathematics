@@ -1072,7 +1072,7 @@ const CORE_DEFS = Object.freeze([
   // treat it as pre-existing (`collect()` skips `already.has(key)`) ⇒ it emits no row for it and both invariants
   // ("declares a key twice" / "no default AND the file does not say so") hold — and the fix SURVIVES `regen-all`,
   // unlike hand-editing the generated block.
-  { key: 'vmu.math.jobs.dir', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '作业镜像目录（root 相对；空 ⇒ `Math/Jobs`）。三个真读者：`kernel/lean.js:128`、`kernel/mathjobs.js:192`、`kernel/mathtools.js:194` —— 三者都按**字符串路径**处理（非字符串即归一；越界 ⇒ `VMU_LEAN_JOBS_DIR_UNSAFE`／`VMU_MATH_JOBS_DIR_UNSAFE`）。' },
+  { key: 'vmu.math.jobs.dir', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '作业镜像目录（root 相对；空 ⇒ `Math/Jobs`）。三个真读者：`kernel/lean.js:128`、`packs/research-core/mathjobs.js:192`、`kernel/mathtools.js:194` —— 三者都按**字符串路径**处理（非字符串即归一；越界 ⇒ `VMU_LEAN_JOBS_DIR_UNSAFE`／`VMU_MATH_JOBS_DIR_UNSAFE`）。' },
   // ROUND 3 / task-20 D (reader-a's task-18): state projections write through after each wrapped mutation by default.
   { key: 'vmu.resume.writeThrough', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '状态型投影是否在每次被包方法返回后**写穿**一次（fire-and-forget，失败进 `resume/projection-error`）；关掉则只在显式 `snapshot()` 时写。读者：`kernel/resume.js` 的 `attachProjection`（reader-a）。' },
   // ROUND 3 / task-24 (vmu-activity's frozen contract): the one-shot future-only activity waiter's seven keys.
@@ -1110,8 +1110,8 @@ const CORE_DEFS = Object.freeze([
   // The SAME convergence for the other two keys the generator was emitting twice (measured: the block carried
   // `vmu.math.jobs.logMax` and `vmu.math.jobs.persist` twice as well, because `mathjobs.js` AND `mathtools.js` both
   // read them). One declaration each, with the readers named.
-  { key: 'vmu.math.jobs.logMax', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。' },
-  { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js`（R202：回执写的是镜像，不是造一张卡；三态计数 persisted/unwired/failed 在回执与 status().receipts 上）。' },
+  { key: 'vmu.math.jobs.logMax', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '作业日志保留条数（溢出必计数）。读者：`packs/research-core/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。' },
+  { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`packs/research-core/mathjobs.js`、`kernel/mathtools.js`（R202：回执写的是镜像，不是造一张卡；三态计数 persisted/unwired/failed 在回执与 status().receipts 上）。' },
   // ROUND 3 / task-20 A: the SECOND half of the maxParallel pair, under the hand-written table so the boundary is
   // stated ONCE (the generator treats it as pre-existing and emits no duplicate row).
   // ROUND 4 / task-25 D — **REMOVED BY LEAD RULING**: the old `math.jobs.*` second name for math-run

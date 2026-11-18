@@ -24,7 +24,7 @@
 //   · bus —— 可选；事件 `formal/fidelity-defect`、`formal/abstention-enforced`、`formal/defects-loaded`
 
 import { mint as mintId } from '../../kernel/ids.js'
-import { ENFORCED_SCOPE } from '../../kernel/mathjobs.js'   // Step 5 will switch this to kernel/jobprimitives
+import { ENFORCED_SCOPE } from '../../kernel/jobbudget.js'   // Step 5 will switch this to kernel/jobprimitives
 
 /** 强制弃权的票值：严格介于 0 与 1 之间 ⇒ 按定义计作弃权（v5r 的 L2 option A）。 */
 export const FIDELITY_ABSTENTION_VOTE = 0.5

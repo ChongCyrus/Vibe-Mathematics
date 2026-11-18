@@ -818,6 +818,9 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
       // ★ TB-2794 Step 2: registry names BEFORE this apply, so unload can prove it left no residue — including an
       // entry that was never attributed to providedServices (the round-8 bypass).
       const registryNamesBefore = (() => { try { return new Set((registry && typeof registry.status === 'function' ? registry.status().services : []).map((x) => x.name)) } catch { return new Set() } })()
+      // ★ TB-2794 Step 5: contributed-services receipt, declared at APPLY scope so the receipt outside runAll can read it
+      // (an OPTIONAL contribution may decline and must be reported by name).
+      const servicesReceipt = []
       // ★ TB-2794 Step 2: registry names BEFORE this apply, so unload can prove it left no residue (including an
       // ROUND 496: pack/loading and pack/loaded were frozen WITH default policies and nothing emitted them, so "pack-loading
       // intervention" was a paper capability. loading fires before any change is made and MAY refuse; loaded fires after.
@@ -1108,13 +1111,24 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
           ids: kernel.ids || null,
           fs: (typeof kernel.fsSeam === 'function' ? kernel.fsSeam() : (kernel.fsSeam || null)),
           root: (typeof kernel.rootPath === 'function' ? kernel.rootPath() : (kernel.rootPath || null)),
+          // The durable records STORE (kernel.store when it has read/write): the Lean face attaches its library to it
+          // through the same seam the kernel used at construction.
+          recordsStore: (kernel.store && typeof kernel.store.read === 'function' && typeof kernel.store.write === 'function' ? kernel.store : null),
         })
         const impl = svc.create({ facade, settings: settingsNow(), log: facade.log })
+        if ((!impl || typeof impl !== 'object') && svc.optional === true) {
+          // ★ TB-2794 Step 5: an OPTIONAL contribution may decline in THIS assembly (measured: the Lean face exists only
+          // when the host injected a spawn seam; publishing an inert face would make tools believe a capability exists).
+          // Declining is reported by name, never silent.
+          if (Array.isArray(servicesReceipt)) servicesReceipt.push({ name: svc.name, apiVersion: svc.apiVersion, contributed: false, reason: 'optional-declined' })
+          continue
+        }
         if (!impl || typeof impl !== 'object') {
           throw refuse('VMU_INVALID_ARGUMENT', 'pack ' + manifest.id + ' service ' + svc.name + ' create() did not return an implementation object',
             'create({kernel, settings, log}) must return the service instance (an object of methods)')
         }
         const provided = kernel.provideService({ name: svc.name, apiVersion: svc.apiVersion, impl, by: manifest.id })
+        servicesReceipt.push({ name: svc.name, apiVersion: svc.apiVersion, contributed: true })
         undo.push(() => { try { return kernel.retractService({ name: svc.name, by: manifest.id }) } catch { /* unload must still proceed; the failure is not silent because the next status shows it */ } })
         if (toolFaceReceipt === null) toolFaceReceipt = null
         void provided
@@ -1157,7 +1171,7 @@ export function createPackLoader({ kernel, registry = null, allowOverride = fals
         promptPolicies: (Array.isArray(manifest.promptPolicies) ? manifest.promptPolicies : []).map((p) => p.id),
         // TB-2649: what the fold DID for this manifest (folded keys) and what it could not (named unsupported keys).
         declarations: declarationFacts,
-        services: (manifest.services || []).map((svc) => ({ name: svc.name, apiVersion: svc.apiVersion })),
+        services: servicesReceipt,
         replyFieldAdapters: (manifest.replyFieldAdapters || []).map((a) => a.name),
         ...(toolFaceReceipt ? { toolFaces: toolFaceReceipt } : {}) }
     },

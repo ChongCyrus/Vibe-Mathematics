@@ -65,7 +65,6 @@ import { createLoader } from './loader.js'
 import { createScriptBridge } from './script-bridge.js'
 import { createRegistry } from './registry.js'
 import { createWorkLedger } from './work.js'
-import { createLeanFace } from './lean.js'
 import { createEnvFace } from './env.js'
 import { createLatexFace } from './latex.js'
 import { memoryCeilingExceeded } from './guard.js'
@@ -90,7 +89,6 @@ import { createCustody } from './custody.js'  // ROUND 221: entry ledger and cha
 import { createExplain } from './explain.js'          // ROUND 222: what an explanation carries, and why it is refused (docs/17)
 import { createControl } from './control.js'          // ROUND 222: pause scope, watchdog, idle, degradation (docs/08)
 import { createCitations } from './citations.js'      // ROUND 222: the bibliography face - style, fields, id priority (docs/07)
-import { createMathJobs } from './mathjobs.js'
 import { createExternal } from './external.js'
 import { createScheduler } from './scheduler.js'
 import { createCrypto } from './crypto.js'
@@ -1195,20 +1193,8 @@ export function createKernel({
   // ★ the same stable handle for `library`: `declareTracks()` / `retractTracks()` REPLACE it.
   const libraryRef = new Proxy({}, { get(_, prop) { const cur = library; if (!cur) return undefined; const v = cur[prop]; return typeof v === 'function' ? v.bind(cur) : v } })
 
-  // THE LEAN FACE (docs/09, `vmu.math.lean*`): a real subsystem, created only when a spawn seam exists. The
-  // face owns the semantics the docs promise ("exit 0 AND the content hash unchanged"); the kernel only wires.
-  // ROUND 6 / target-5 (v5r-reader-b's ruling): the Lean face now gets the SAME four seams its siblings get, so its
-  // MIRROR / resume-from-mirror and its cancel path work on the PRODUCTION path too (they previously worked only where
-  // a test injected them):
-  //   · `fs`         = the host file face (host-math's readText/writeText) ⇒ the `Math/Jobs` mirror is real;
-  //   · `ids`        = the kernel's ONE minter (bound above) ⇒ job ids never restart;
-  //   · `timer`      = the kernel's declared timer (child budget; absent ⇒ the platform timer, named by the module);
-  //   · `spawnHandle`= the killable spawn seam `(opts, onHandle)` ⇒ `cancel({jobId})` can really terminate.
-  const lean = spawn
-    ? createLeanFace({ settings: settingsView, spawn, spawnHandle, timer, ids, root, clock, log,
-      fs: host && typeof host.readText === 'function' && typeof host.writeText === 'function' ? host : null })
-    : null
-
+  // ★ TB-2794 Step 5: the Lean FACE is CONTRIBUTED by the pack (PACK.services "vmu.lean"); the ENGINE stays in
+  // kernel/lean.js (generic formalisation primitive). A kernel with no pack has NO lean face (null, named by callers).
   // ★ PHASE 7 — THE LaTeX EXECUTOR (paper's missing mechanism). Constructed ONLY when a spawn seam exists, exactly like
   // the Lean face; no seam ⇒ no face (a direct call would still refuse by name). The engine ORDER is pack policy data,
   // never a Chinese-first constant in the kernel.
@@ -1439,21 +1425,8 @@ const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedCl
     // silent bypass of the very gate this line is for.
     approval: typeof human.gate === 'function' ? (req) => human.gate(req) : null })
   const citations = createCitations({ settings: settingsView, bus, clock, log })
-  // INTEGRATOR FIX: `vmu.mathjobs` was REGISTERED but never CREATED - the registry advertised a service the
-  // kernel did not build. Both job faces now receive the kernel's real spawn seam (the host injects it), so a
-  // missing engine surfaces as a named refusal rather than a silent no-op.
-  const mathjobs = createMathJobs({ settings: settingsView, bus, clock, log, spawn, spawnHandle, timer, ids,
-    // ROUND 2 (task-14, reader-b's contract): the job MIRROR seam. `fs` is the host's file face (host-math.js
-    // exposes readText/writeText/listDir/exists/removeText), `root` is the durable root. A missing `fs` does NOT
-    // silently disable the mirror: `admission().fileMirror=false` reports it by name.
-    fs: host && typeof host.readText === 'function' && typeof host.writeText === 'function' ? host : null,
-    root: root || null })
-  // CORRECTION from reader-b: `createMathJobs` is a SYNCHRONOUS constructor and cannot scan the disk itself, so the
-  // declared `on-load` recovery is an EXPLICIT best-effort call here (it must not block construction). `manual` and
-  // `off` are left alone - the tool action `jobsRecover` is the manual trigger.
-  if (settings['vmu.math.jobs.recover'] === 'on-load' && mathjobs && typeof mathjobs.recover === 'function') {
-    Promise.resolve().then(() => mathjobs.recover()).catch((e) => log('mathjobs on-load recover failed: ' + String((e && e.message) || e)))
-  }
+  // ★ TB-2794 Step 5: the math-jobs FACE is CONTRIBUTED by the pack (PACK.services "vmu.mathjobs"); the kernel no
+  // longer constructs it. Its on-load recovery is started by the contributor, like the fidelity durable load.
   // ROUND 2 (task-14): the scientific-library adapter face (numpy/scipy/pandas/sympy). `resolveExecutable` comes from
   // the host math seam; without it `probe()` refuses by name (`VMU_EXTERNAL_UNAVAILABLE`) instead of guessing whether
   // the machine has python.
@@ -2230,7 +2203,7 @@ const legalEntity = createLegalEntity({ settings: settingsView, clock: guardedCl
 // it also armed the unhandled rejection that took the host process down. The math surface is built from `host` and
 // is exactly the seam this face wants. It is resolved LAZILY (a kernel with no math host must still construct), and
 // `mathtools` already refuses by name when no seam is available.
-const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library: libraryRef, jobs: mathjobs,
+const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library: libraryRef, jobs: null,
   spawn: (req) => mathSurface().runPlan(req) })
   // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
   // projection is migrated instead of silently discarded.
@@ -2578,7 +2551,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // ★ LIVE RUN 60 (F-50): the Lean archive was a bare Map inside the face, so a lemma the office archived was gone for
   // any kernel that started later — and nothing on disk said where it had gone. The face now takes the SAME durable port:
   // it folds `leanlibrary` in before a read and merges on write, and its `persistence()` says which answer applies.
-  if (lean && recordsStore && typeof lean.attachStore === 'function') lean.attachStore(recordsStore)
+  // ★ TB-2794 Step 5: the Lean face is pack-contributed and applied later, so the durable-port attach happens in the
+  // CONTRIBUTOR (lean-face.js) through the records-store seam; the kernel no longer has a lean variable to attach.
   const recordTracks = (() => {
     const t = settings && settings['vmu.records.tracks']
     return Array.isArray(t) && t.length > 0 ? t.slice() : null
@@ -3046,11 +3020,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // ★★★ P0-b: the pack's own reply fields (empty ⇒ core table only).
     replyFields: Array.isArray(replyFields) && replyFields.length > 0 ? replyFields : null,
     // ★ TB-2794 Step 4: dispatch-time resolution for PACK-contributed faces (formal/fidelity/mathjobs/... later).
-    resolveService: (name) => {
-      // Step 4: mathjobs is STILL locally constructed (Step 5 moves it); the contributed faces come through resolveFace.
-      const local = name === 'vmu.mathjobs' ? mathjobs : null
-      return local || resolveFace(null, name)
-    },
+    // ★ TB-2794 Step 5: every research face is pack-contributed now; dispatch resolves it through the registry seam.
+    resolveService: (name) => resolveFace(null, name),
     // ★ TB-2794 Step 2: adapters are resolved at dispatch time (pack apply happens after construction).
     resolveReplyAdapter: (name) => replyAdapterOf(name),
     // ★★★ C#16 (ROUND-2 audit): the STORE-BACKED idempotency ledger. Handed to the turn loop so a dispatch replay after a
@@ -3148,7 +3119,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // needed. A failure here is LOGGED and the assembly continues with the Lean notices: a broken mailbox must not
     // turn every turn into VMU_ENGINE_UNAVAILABLE.
     noticeSource: (member) => {
-      const leanNotices = lean && typeof lean.takeNoticesFor === 'function' ? lean.takeNoticesFor(member) : []
+      const leanFaceNow = resolveFace(null, 'vmu.lean')
+      const leanNotices = leanFaceNow && typeof leanFaceNow.takeNoticesFor === 'function' ? leanFaceNow.takeNoticesFor(member) : []
       let mailNotices = []
       try {
         const notice = mailbox && typeof mailbox.noticeLines === 'function' ? mailbox.noticeLines(String(member), { limit: 8 }) : null
@@ -3686,7 +3658,6 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   registry.register('vmu.repropack', { apiVersion: 1 }, { kind: 'service', description: 'reproduction packs: required members named, seed mandatory, diffs located (docs/16 L12)' })
   registry.register('vmu.memory', { apiVersion: 1 }, { kind: 'service', description: 'institutional memory that NEVER authorizes (S-3), contradictions visible (docs/17 搂9)' })
   registry.register('vmu.bidding', { apiVersion: 1 }, { kind: 'service', description: 'auctions: deadline, rationale, reputation never prices, collusion surfaced (docs/17 搂10)' })
-  registry.register('vmu.mathjobs', { apiVersion: 1 }, { kind: 'service', description: 'math jobs: timeout with partial output, complete receipts, seed required (docs/09路15)' })
   // ---- ROUND 2 (task-14): the four new faces' registrations ----------------------------------------------
   registry.register('vmu.ids', { apiVersion: 1 }, { kind: 'service', description: 'ids: the one id minter - monotonic across restarts, counters projected durably, never reuses a name (docs/07)' })
   registry.register('vmu.resume', { apiVersion: 1 }, { kind: 'service', description: 'resume: session recovery primitives - read-before-write gate, durable projections with id never reused, named interrupted outcomes (never silently passed), unacked-mail and watchdog refresh seams (docs/07)' })
@@ -4036,7 +4007,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get citations() { return citations },
     // ★ TB-2794 Step 4: no local construction left (it would CONFLICT with the pack's provideService); no pack ⇒ null.
     get formal() { return resolveFace(null, 'vmu.formal') },
-    get mathjobs() { return resolveFace(mathjobs, 'vmu.mathjobs') },
+    // ★ TB-2794 Step 5: pack-contributed; no pack ⇒ null.
+    get mathjobs() { return resolveFace(null, 'vmu.mathjobs') },
     // ROUND 2 (task-14): the four new faces, reachable like every other service.
     get mathadapters() { return mathadapters },
     get chat() { return chat },
@@ -4103,7 +4075,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   get hr() { return tenure },
     get migration() { return migration },
     /** The Lean face (docs/09): null unless a spawn seam was injected, so nothing is faked without one. */
-    get lean() { return resolveFace(lean, 'vmu.lean') },
+    // ★ TB-2794 Step 5: pack-contributed; no pack ⇒ null.
+    get lean() { return resolveFace(null, 'vmu.lean') },
     /** ★ PHASE 9 / goal 3: the environment adapter (probe/list/report; it never installs). */
     get env() { return env },
     get latex() { return latex },
@@ -5818,7 +5791,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // the recovery face, chat, the math adapters, and whether the math-job FILE MIRROR really has its `fs` seam
           // (`admission().fileMirror` is the module's own answer, so status cannot claim a mirror the job face refuses).
           ids: !!ids, resume: !!resume, chat: !!chat, mathadapters: !!mathadapters,
-          mathjobsFileMirror: mathjobs && typeof mathjobs.admission === 'function' ? !!mathjobs.admission().fileMirror : null,
+          mathjobsFileMirror: (() => { const mj = resolveFace(null, 'vmu.mathjobs'); return mj && typeof mj.admission === 'function' ? !!mj.admission().fileMirror : null })(),
           timer: scheduler.status().timerShape !== null,
           // ★ PHASE 6 / K1: whether a self-drive loop is actually RUNNING and what the construction-time attempt said.
           // Reported, not promised: a reader must be able to tell "the schedule is driven" from "the schedule is a

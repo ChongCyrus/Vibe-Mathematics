@@ -34,7 +34,11 @@ const ok = (cond, label, detail) => {
 
 const R = await import(K + 'records.js')
 const S = await import(K + 'resume.js')
-const M = await import(K + 'mathjobs.js')
+const M = await import(K + '../packs/research-core/mathjobs.js')
+// ★ TB-2794 Step 5: the shared primitive safeRelDir moved to kernel/jobbudget.js.
+const B = await import(K + 'jobbudget.js')
+// ★ TB-2794 Step 5: the mirror primitive lives in kernel/jobmirror.js (shared by the kernel Lean engine).
+const J = await import(K + 'jobmirror.js')
 
 console.log('=== 1. records: “24 documented keys, and the partition 24 = wired + unwired is asserted (disjoint)” ===')
 {
@@ -106,23 +110,23 @@ console.log('=== 3. mathjobs: the header’s “hard invariants” that are read
     '★ every terminal state is also a job state (the two lists cannot drift apart)', { orphan: M.TERMINAL_STATES.filter((s) => !M.JOB_STATES.includes(s)) })
   ok(M.JOB_STATES.includes('queued') && M.JOB_STATES.includes('running') && M.JOB_STATES.includes('interrupted'),
     '★ ⑪ “四态 ＋ 恢复四分支” — the recovery-relevant states (queued/running/interrupted) exist', { states: M.JOB_STATES })
-  ok(M.ENFORCED_SCOPE === 'evaluated-so-far',
-    '★ the enforced-scope label is the documented one (receipts say WHICH rule was evaluated)', { got: M.ENFORCED_SCOPE })
+  ok(B.ENFORCED_SCOPE === 'evaluated-so-far',
+    '★ the enforced-scope label is the documented one (receipts say WHICH rule was evaluated)', { got: B.ENFORCED_SCOPE })
   ok(Object.isFrozen(M.MATH_KEYS) && M.MATH_KEYS.length > 0 && M.MATH_KEYS.every((k) => typeof k === 'string' && k.startsWith('vmu.math.')),
     '★ the wired-key table is frozen and every entry is a `vmu.math.*` key (no stray literal)', { n: M.MATH_KEYS && M.MATH_KEYS.length })
-  ok(typeof M.createMathJobs === 'function' && typeof M.createJobMirror === 'function',
-    '★ the jobs face and the mirror face are both exported (⑩ mirror + ① spawn seam)', { f: [typeof M.createMathJobs, typeof M.createJobMirror] })
+  ok(typeof M.createMathJobs === 'function' && typeof J.createJobMirror === 'function',
+    '★ the jobs face and the mirror face are both exported (⑩ mirror + ① spawn seam)', { f: [typeof M.createMathJobs, typeof J.createJobMirror] })
 }
 
 console.log('=== 4. mathjobs: safeRelDir — the mirror path must never escape the root (pure function, no seam needed) ===')
 {
-  ok(M.safeRelDir('/etc/passwd') === null, '★ a POSIX-absolute mirror path is REFUSED (returns null, not a path)', { got: M.safeRelDir('/etc/passwd') })
-  ok(M.safeRelDir('C:/Windows') === null, '★ a Windows drive-absolute path is REFUSED', { got: M.safeRelDir('C:/Windows') })
-  ok(M.safeRelDir('Math/../../etc') === null, '★ a `..` traversal is REFUSED', { got: M.safeRelDir('Math/../../etc') })
-  ok(typeof M.safeRelDir('Math/Jobs') === 'string' && M.safeRelDir('Math/Jobs').includes('Math'),
-    '★ …while a legitimate relative mirror dir is ACCEPTED (the guard is not simply always-null)', { got: M.safeRelDir('Math/Jobs') })
-  ok(M.safeRelDir('') === 'Math/Jobs' || typeof M.safeRelDir('') === 'string',
-    '★ the documented default mirror dir (`Math/Jobs`) is what an empty request resolves to', { got: M.safeRelDir('') })
+  ok(B.safeRelDir('/etc/passwd') === null, '★ a POSIX-absolute mirror path is REFUSED (returns null, not a path)', { got: B.safeRelDir('/etc/passwd') })
+  ok(B.safeRelDir('C:/Windows') === null, '★ a Windows drive-absolute path is REFUSED', { got: B.safeRelDir('C:/Windows') })
+  ok(B.safeRelDir('Math/../../etc') === null, '★ a `..` traversal is REFUSED', { got: B.safeRelDir('Math/../../etc') })
+  ok(typeof B.safeRelDir('Math/Jobs') === 'string' && B.safeRelDir('Math/Jobs').includes('Math'),
+    '★ …while a legitimate relative mirror dir is ACCEPTED (the guard is not simply always-null)', { got: B.safeRelDir('Math/Jobs') })
+  ok(B.safeRelDir('') === 'Math/Jobs' || typeof B.safeRelDir('') === 'string',
+    '★ the documented default mirror dir (`Math/Jobs`) is what an empty request resolves to', { got: B.safeRelDir('') })
 }
 
 console.log('=== 5. mathjobs: BEHAVIOURAL claims (discovery first, so a wrong method name FAILS loudly instead of being papered over) ===')
@@ -162,9 +166,9 @@ ok(typeof submitFn === 'function', '★ the face exposes a submit method (discov
       '★ ⑬ “crossProcess:’not-enforced’（具名，不假装）” — admission().crossProcess is that exact string',
       a && { crossProcess: a.crossProcess })
   }
-  ok(M.RECOVERY_LEASE_TTL_MS === 120000 && M.RECOVERY_LEASE_TTL_MS > 0,
+  ok(B.RECOVERY_LEASE_TTL_MS === 120000 && B.RECOVERY_LEASE_TTL_MS > 0,
     '★ the recovery lease TTL is a positive named constant (120000 ms), not a magic number inline',
-    { ttl: M.RECOVERY_LEASE_TTL_MS })
+    { ttl: B.RECOVERY_LEASE_TTL_MS })
   ok(M.MATH_KEYS.includes('vmu.math.jobs.recover'),
     '★ the module SELF-REPORTS the key it reads for the recovery mode: `vmu.math.jobs.recover` is in its own key table (see also :464)',
     { has: M.MATH_KEYS.includes('vmu.math.jobs.recover') })

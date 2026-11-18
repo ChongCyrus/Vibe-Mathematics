@@ -1999,8 +1999,25 @@ export function toHostSpec(spec, kernel = null) {
         // ★ RUN 228: EVERY face says who acted, not only the pack faces. This is the one place that holds both the
         // result and the execution context, so the disclosure cannot be forgotten by a face that returns early.
         const outNow = await spec.run(args || {}, exec)
+        // ★ round-11 (frozen-layer field attribution): an Error RETURNED as the result is a refusal, never a success value.
+        // A pack service that resolves to its own `refuse(...)` Error (packs/research-core/*.js do this) used to be merged
+        // into `Object.assign({ ok:true, … })` by a tool module and reached the model as an ok:true receipt with only a
+        // `code`/`hint` — the one undecorated signal in the 187-receipt corpus. Throwing it reuses the ONE catch below.
+        if (outNow instanceof Error) throw outNow
         // ★ round-10 boundary: a face that RETURNS {ok:false} carries the same means/hint forms as a thrown refusal.
-        if (outNow && typeof outNow === 'object' && !Array.isArray(outNow) && outNow.ok === false) decorateRefusal(outNow, { form: exec && exec.receiptForm === 'short' ? 'short' : 'full' })
+        // ★ round-11: a returned receipt carrying a NAMED REFUSAL CODE (`VMU_*`) or a top-level refusal `code` is a
+        // refusal even when `ok` is absent or wrong — the shape must not decide whether a refusal is decorated. The
+        // normalization is narrow on purpose: it looks at the CODE (a refusal vocabulary), not at prose.
+        if (outNow && typeof outNow === 'object' && !Array.isArray(outNow)) {
+          const namedRefusalCode = typeof outNow.code === 'string' && /^VMU_/.test(outNow.code)
+          if (outNow.ok === false || namedRefusalCode) {
+            if (outNow.ok !== false) {
+              if (typeof outNow.message !== 'string') outNow.message = outNow.code + ' (returned as a receipt with ok:true; normalized to a refusal)'
+              outNow.ok = false
+            }
+            decorateRefusal(outNow, { form: exec && exec.receiptForm === 'short' ? 'short' : 'full' })
+          }
+        }
         // RUN 239: the two branches below must read as ONE shape (a refusal is a receipt of the same species as a
         // success). The waiter lift happens INSIDE the envelope for both, so neither branch nests them differently.
         return boundedToolResult(liftFiredWaiters(discloseActOnSeat(kernel, exec, args, outNow, spec.name)))

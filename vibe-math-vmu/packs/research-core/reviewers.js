@@ -124,12 +124,26 @@ export function createReviewers({ clock = () => 0, log = () => {}, settings = {}
     return Object.assign({ ok: true, conflictChecked: hit.length > 0, coiPolicy: c.coiPolicy, load: load + 1, cap: c.maxLoad }, row)
   }
 
-  /** Rule ②: unbinding is what breaks the blind, so it needs a reason and it is traced with who did it. */
-  function unbind({ assignmentId = null, reason = null, by = null } = {}) {
+  /** Rule ②: unbinding is what breaks the blind, so it needs a reason and it is traced with who did it.
+   *  ★ ROUND-11 contract alignment (P1): the tool/docs address an assignment by (reviewerId, submissionId), while this
+   *  function only accepted assignmentId; the refusal used to be masked by Object.assign({ok:true}) and is now REAL.
+   *  BOTH forms are accepted: an explicit assignmentId, or the OPEN assignment identified by (reviewerId, submissionId). */
+  function unbind({ assignmentId = null, reviewerId = null, submissionId = null, reason = null, by = null } = {}) {
     const c = cfg()
     keysUsed.add('vmu.reviewers.blindUnbindRequiresReason')
-    const a = assignments.get(str(assignmentId))
-    if (!a) return deny('VMU_INVALID_ARGUMENT', 'no such assignment: ' + String(assignmentId), 'assign() first')
+    const rid = str(reviewerId)
+    const sid = str(submissionId)
+    let a = assignmentId === null || assignmentId === undefined ? null : assignments.get(str(assignmentId))
+    if (!a && rid !== null && sid !== null) {
+      for (const row of assignments.values()) {
+        if (row.reviewerId === rid && row.submissionId === sid && row.unboundAt === null) { a = row; break }
+      }
+    }
+    if (!a) {
+      return deny('VMU_INVALID_ARGUMENT',
+        'no such open assignment: ' + String(assignmentId === null || assignmentId === undefined ? rid + '/' + sid : assignmentId),
+        'pass assignmentId (from the assign receipt) or reviewerId+submissionId of an OPEN assignment')
+    }
     if (a.unboundAt !== null) return Object.assign({ ok: true, alreadyUnbound: true }, a)
     const hasReason = typeof reason === 'string' && reason.trim() !== ''
     if (a.blind && c.blindUnbindRequiresReason && !hasReason) {

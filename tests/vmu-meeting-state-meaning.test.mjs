@@ -144,3 +144,5 @@ for (const m of waiterSrc.matchAll(/w\.state = '(armed|fired|expired|cancelled)'
 console.log(failures.length === 0
   ? '\n=== VMU MEETING STATE MEANING: ' + passed + ' passed, 0 failed ==='
   : '\nFAILURES:\n' + failures.map((f) => '  FAIL ' + f).join('\n') + '\n=== VMU MEETING STATE MEANING: ' + passed + ' passed, ' + failed + ' failed ===')
+// ★ CI INTEGRITY: a failed assertion MUST make the process non-zero (this suite used to print `failed` and still exit 0).
+if (failed > 0) process.exitCode = 1

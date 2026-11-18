@@ -523,7 +523,9 @@ if (SELF_PROBE) {
   // ceiling still exists to catch RUNAWAY growth; it is re-pinned just above the measured value with the cause written down.
   // ★ TB-2794 Step 4 re-pin (measured value + cause): formal/fidelity are contributed now, so servicesProvided names two more
   // faces (measured 10415 bytes, was 10271). The ceiling is still a runaway guard; re-pinned just above the measurement.
-  ok(text.length <= 10415, '★ 真装配（v5r pack）下 status 默认 summary ≤ 10415 字节（10003 → Step3 10271 → Step4 实测 10415：servicesProvided 再增 vmu.formal/vmu.fidelity；C#15 块不在 summary）', 'bytes=' + text.length)
+  // ★ TB-2794 Step 5 re-pin (measured + cause): lean/mathjobs are contributed now, so servicesProvided names two more
+  // faces (measured 10557, was 10415). Same runaway guard; re-pinned just above the measurement.
+  ok(text.length <= 10557, '★ 真装配（v5r pack）下 status 默认 summary ≤ 10557 字节（Step4 10415 → Step5 实测 10557：servicesProvided 再增 vmu.lean/vmu.mathjobs；C#15 块不在 summary）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),

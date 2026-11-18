@@ -158,7 +158,7 @@ export const MAX_PARALLEL_KEY = 'vmu.math.maxParallel'
  * THE ONE READER for the math concurrency cap (G2 / ledger line 59: 数学工具可用，但并发上限由所办设置，避免 CPU/OOM).
  *
  * WHY IT IS A NAMED EXPORT AND NOT A LINE IN THE `K` SNAPSHOT (measured defect): `vmu.math.maxParallel` is a live
- * H1 key, and TWO faces enforce it — this policy layer (`plan()`'s ⑩ rail) and the job queue (`kernel/mathjobs.js`
+ * H1 key, and TWO faces enforce it — this policy layer (`plan()`'s ⑩ rail) and the job queue (`packs/research-core/mathjobs.js`
  * `cfg().maxParallel`). Reading it into `K` at construction made the two readers disagree: in a live run the office
  * set `vmu.math.maxParallel=2` with `vibe_v5_set`, `mathjobs` honoured 2, and this face kept refusing the second
  * concurrent run against the stale snapshot — the status face even read back `maxParallel:1`. The setting is
@@ -914,9 +914,9 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
           readAt: clock(),
           // Informational only: this is the value `K` captured at construction. It is NOT enforced any more.
           snapshotAtConstruction: K.maxParallelAtConstruction,
-          enforcedBy: ['kernel/mathtools.js plan() ⑩', 'kernel/mathjobs.js slot gate'],
+          enforcedBy: ['kernel/mathtools.js plan() ⑩', 'packs/research-core/mathjobs.js slot gate'],
           reader: 'readMaxParallel() — the one function both faces call',
-          note: 'the value is read AT CALL TIME through readMaxParallel() (the same helper kernel/mathjobs.js uses), so an operator write is in force on the very next plan()/status(); `snapshotAtConstruction` is disclosed only to show it is stale-by-design and does not rail',
+          note: 'the value is read AT CALL TIME through readMaxParallel() (the same helper packs/research-core/mathjobs.js uses), so an operator write is in force on the very next plan()/status(); `snapshotAtConstruction` is disclosed only to show it is stale-by-design and does not rail',
         },
         policy: { network: K.network, seedRequired: K.requireSeed, deterministic: K.deterministic, cacheEnabled: K.cacheEnabled, crossProject: K.crossProject, onCorrupt: K.cacheOnCorrupt, sorryPolicy: K.sorryPolicy, strictDimensions: K.strictDimensions, convergence: K.convergence, stability: K.stability, style: K.style, language: K.language },
         keys: keysSnapshot(),

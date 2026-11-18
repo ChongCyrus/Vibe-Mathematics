@@ -41,6 +41,19 @@ ok(JSON.stringify(spec.parameters.action.enum) === JSON.stringify(ACTIONS),
     'and the enum matches the service s own method list one for one, so neither can drift', { enum: [...ACTIONS].sort(), serviceMethods })
 }
 
+console.log('=== 2b. UNBIND FORWARDS reason AND THE OPTIONAL assignmentId ===')
+{
+  const seen = []
+  const spy = { unbind: async (arg) => { seen.push(arg); return { ok: true, echo: arg } } }
+  const s = specOf({ reviewers: spy }, { reviewersTool: true })
+  await s.run({ action: 'unbind', reviewerId: 'r-1', submissionId: 'rec-1', reason: 'author asked' })
+  ok(seen.length === 1 && seen[0].reviewerId === 'r-1' && seen[0].submissionId === 'rec-1' && seen[0].reason === 'author asked',
+    'the pair form forwards reviewerId+submissionId+reason (a dropped reason would refuse a legitimate blind unbind)', seen)
+  await s.run({ action: 'unbind', assignmentId: 'ra-1', reason: 'author asked' })
+  ok(seen.length === 2 && seen[1].assignmentId === 'ra-1' && seen[1].reason === 'author asked',
+    'the id form forwards assignmentId+reason (both documented forms reach the service)', seen)
+}
+
 console.log('=== 3. THE TOOL DELEGATES RATHER THAN REIMPLEMENTS ===')
 {
   const calls = []

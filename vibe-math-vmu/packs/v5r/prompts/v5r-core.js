@@ -50,6 +50,9 @@ import { createPublication } from '../../research-core/publication.js'
 // ★ TB-2794 Step 4: formal + fidelity contributed as services (generic code in packs/research-core).
 import { createFormal } from '../../research-core/formal.js'
 import { createFidelityRegistry } from '../../research-core/fidelity.js'
+// ★ TB-2794 Step 5: lean face (engine stays in kernel/lean.js; policy read by the wrapper) + math jobs face.
+import { createLeanResearchFace } from '../../research-core/lean-face.js'
+import { createMathJobs } from '../../research-core/mathjobs.js'
 // PHASE 7 / goal 2 (first batch): THE TOOL FACE. `packs/v5r` used to declare ZERO tools while its prompts taught
 // members to call `vibe_v5_record_* / say / message` (docs/acceptance/phase7-coverage-matrix.md §2: 17 names taught,
 // 0 declared). The six names live in `../tools.js` and are declared below as the manifest's `tools[]` - the SAME
@@ -126,6 +129,32 @@ export const PACK = Object.freeze({
         clock: facade.guardedClock,   // the SEAM (lazy): a bad clock is refused when the face is used, not at apply
         log: facade.log,
       }),
+    },
+    {
+      name: 'vmu.lean', apiVersion: 1,
+      // Declines in an assembly with no spawn/spawnHandle seam: the engine needs a subprocess seam, and an inert face
+      // would tell tools a capability exists (the kernel used to create NO lean face then).
+      optional: true,
+      create: ({ facade }) => ((facade.spawn || facade.spawnHandle) ? createLeanResearchFace({ facade }) : null),
+    },
+    {
+      name: 'vmu.mathjobs', apiVersion: 1,
+      create: ({ facade }) => {
+        const face = createMathJobs({
+          settings: facade.settingsSnapshot(),
+          bus: { emit: facade.emit },
+          clock: facade.clock, log: facade.log,
+          spawn: facade.spawn, spawnHandle: facade.spawnHandle, timer: facade.timer,
+          ids: facade.ids, fs: facade.fs, root: facade.root,
+        })
+        // The kernel used to start on-load recovery at construction; the contributor starts it now.
+        try {
+          if (facade.settingsSnapshot()['vmu.math.jobs.recover'] === 'on-load' && face && typeof face.recover === 'function') {
+            Promise.resolve().then(() => face.recover()).catch(() => {})
+          }
+        } catch { /* recovery is best-effort; admission reports its own state */ }
+        return face
+      },
     },
     {
       name: 'vmu.formal', apiVersion: 1,

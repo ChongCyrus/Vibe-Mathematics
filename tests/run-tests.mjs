@@ -915,7 +915,61 @@ function namedFailureLines(text) {
   return out
 }
 
+/**
+ * FALSE-GREEN GUARD (final28 incident): a suite that PRINTS `N passed, M failed` with M>0 must not exit 0.
+ * The T1 runner (and every caller of it) trusts the exit code, so a suite whose `ok()` only increments a
+ * counter hides a real failing assertion behind `exit=0` - final28 proved exactly that (`60 passed, 1
+ * failed` reported PASS, and a stale baseline in that suite had been failing for a full round).
+ *
+ * Parsing rule (deliberately narrow: only TERMINAL summary shapes, so a narration line mentioning
+ * "1 failed" cannot red a green suite):
+ *   - `=== <anything>: P passed, M failed ...`   (the repo's `=== NAME: P passed, M failed ===` family)
+ *   - `ALL GREEN: P passed, M failed ...`
+ *   - `TOTAL P PASS M FAIL ...`                  (legacy runner line)
+ *   - a bare final line `P passed, M failed` / `P passed / M failed`
+ * The LAST match in the job's combined stdout+stderr wins (a suite may print per-section lines; only the
+ * terminal summary is authoritative). No match => no verdict from this guard: the exit code rules alone
+ * (so probes that print no summary are unaffected).
+ *
+ * `applySummaryGuard(r)` annotates the result and CLEARS `r.ok` on a false green. A job that expects a
+ * non-zero exit (probe semantics) is exempt from the `M>0 && exit=0` rule only when its exit is the
+ * required one - the rule is about a zero exit, because that is what callers mistake for a pass.
+ */
+function summaryFailing(text) {
+  const found = []
+  for (const line of String(text || '').split(/\r?\n/)) {
+    let m = /^\s*===\s*[^\n]*?:\s*(\d+)\s+passed,\s*(\d+)\s+failed\b/.exec(line)
+    if (!m) m = /^\s*ALL GREEN:\s*(\d+)\s+passed,\s*(\d+)\s+failed\b/.exec(line)
+    if (!m) m = /^\s*TOTAL\s+\d+\s+PASS\s+(\d+)\s+FAIL\s+(\d+)\b/.exec(line)
+    if (!m) m = /^\s*(\d+)\s+passed,\s*(\d+)\s+failed\s*$/.exec(line)
+    if (!m) m = /^\s*(\d+)\s+passed\s*\/\s*(\d+)\s+failed\w*\s*$/.exec(line)
+    if (m) found.push({ line: line.trim(), passed: Number(m[1]), failed: Number(m[2]) })
+  }
+  return found.length ? found[found.length - 1] : null
+}
+
+function applySummaryGuard(r) {
+  if (typeof r.ok !== 'boolean') r.ok = r.code === r.job.expectExit
+  if (r.timedOut) return r                       // a killed run's output is truncated: TIMEOUT already names it
+  const summary = summaryFailing(String(r.out || '') + '\n' + String(r.err || ''))
+  r.summary = summary
+  if (!summary) return r
+  if (summary.failed > 0 && r.code === 0) {
+    r.falseGreen = 'FALSE-GREEN: reported ' + summary.failed + ' failed but exited 0 (summary: "' + summary.line.slice(0, 120) + '")'
+    r.ok = false
+  } else if (summary.failed === 0 && r.code !== r.job.expectExit) {
+    r.exitWithoutFailure = 'EXIT-WITHOUT-REPORTED-FAILURE: summary says ' + summary.passed + ' passed, 0 failed but exit=' + r.code
+      + ' (required ' + r.job.expectExit + '); the suite aborted, crashed, or its exit code is wrong (summary: "' + summary.line.slice(0, 120) + '")'
+  }
+  return r
+}
+
 function failureDetail(r) {
+  const guard = [r.falseGreen, r.exitWithoutFailure].filter(Boolean)
+  const body = failureDetailBody(r)
+  return guard.length ? guard.concat(body) : body
+}
+function failureDetailBody(r) {
   const lines = (String(r.out || '') + '\n' + String(r.err || '')).split('\n').map((l) => l.replace(/\s+$/, '')).filter(Boolean)
   const named = namedFailureLines(String(r.out || '') + '\n' + String(r.err || ''))
   const chosen = (named.length ? named : lines).slice(-40)
@@ -928,7 +982,9 @@ function failureDetail(r) {
 function failedLine(b) {
   const kind = '[' + b.job.kind + ']'
   const why = b.timedOut ? 'TIMEOUT after ' + Math.round(jobLimit(b.job) / 1000) + 's'
+    : b.falseGreen ? b.falseGreen
     : 'exit ' + b.code + (b.job.expectExit ? ', required exit ' + b.job.expectExit : '')
+      + (b.exitWithoutFailure ? ' — ' + b.exitWithoutFailure : '')
   return '  FAILED: ' + label(b.job) + ' ' + kind + ' (' + why + ')'
 }
 
@@ -947,6 +1003,29 @@ if (process.argv.includes('--self-check')) {
   const okReal = namedFailureLines('  FAIL - ★★★ real failure\n').length === 1
   const okAbort = namedFailureLines('TypeError: boom\n').length === 1
   console.log((okReal && okAbort ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a genuine FAIL line and an abort marker are still extracted')
+  // FALSE-GREEN GUARD (final28): parsing + verdict on the REAL runSuite path. A suite that prints
+  // `N passed, M failed` with M>0 and exits 0 must be a named FAIL; the same output with M=0 must stay
+  // green; narration lines that merely MENTION a failure count must not parse as a terminal summary.
+  const synSummary = summaryFailing('=== SYN: 3 passed, 1 failed ===')
+  const synOk = summaryFailing('=== SYN: 3 passed, 0 failed ===')
+  const synTotal = summaryFailing('TOTAL 15 PASS 14 FAIL 1  (suites 15 · probes 0)')
+  const synMid = summaryFailing('=== A: 1 passed, 0 failed ===\n=== B: 2 passed, 0 failed ===')
+  const parserOk = !!synSummary && synSummary.passed === 3 && synSummary.failed === 1
+    && !!synOk && synOk.failed === 0 && !!synTotal && synTotal.failed === 1
+    && !!synMid && synMid.passed === 2
+  console.log((parserOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': terminal summary shapes parse (=== / ALL GREEN / TOTAL / bare); the LAST summary wins')
+  const falseGreenRun = await runSuite({ file: '(synthetic-false-green)', args: [], expectExit: 0, kind: 'suite', eval: "console.log('=== SYN FALSE GREEN: 2 passed, 1 failed ==='); process.exit(0)" })
+  applySummaryGuard(falseGreenRun)
+  const caught = falseGreenRun.ok === false && /FALSE-GREEN/.test(String(falseGreenRun.falseGreen)) && /1 failed/.test(String(falseGreenRun.falseGreen))
+  console.log((caught ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a REAL child that reports 1 failed and exits 0 is a named false green (' + String(falseGreenRun.falseGreen) + ')')
+  const greenRun = await runSuite({ file: '(synthetic-green)', args: [], expectExit: 0, kind: 'suite', eval: "console.log('=== SYN GREEN: 2 passed, 0 failed ==='); process.exit(0)" })
+  applySummaryGuard(greenRun)
+  const staysGreen = greenRun.ok === true && !greenRun.falseGreen && !greenRun.exitWithoutFailure
+  console.log((staysGreen ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': a REAL child that reports 0 failed and exits 0 stays green (no false positive)')
+  const abortRun = await runSuite({ file: '(synthetic-abort)', args: [], expectExit: 0, kind: 'suite', eval: "console.log('=== SYN ABORT: 2 passed, 0 failed ==='); process.exit(3)" })
+  applySummaryGuard(abortRun)
+  const namedAbort = abortRun.ok === false && /EXIT-WITHOUT-REPORTED-FAILURE/.test(String(abortRun.exitWithoutFailure))
+  console.log((namedAbort ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': an exit that contradicts a "0 failed" summary is named (exit=3, reported 0 failed)')
   // TIMEOUT case on the REAL path: a synthetic job that sleeps past a 1 s per-job limit, run through
   // the SAME runSuite/reporting path the gate uses. A string-only check could pass with a half-armed
   // timer; this one cannot, because it reads the run own timedOut/exit and the line the reporter builds.
@@ -1547,6 +1626,7 @@ async function runOne(i, list, out, skippedSet, baselineLabel) {
   const r = await runSuite(job)
   const tail = String(r.out).trim().split('\n').filter(Boolean).slice(-1)[0] || ''
   r.ok = r.code === r.job.expectExit
+  applySummaryGuard(r)   // false-green guard: reported M>0 with exit 0 is a FAIL by name (final28)
   out[i] = r
   // STORE ONLY A PASS. A timeout, a non-zero exit or a job that expects a non-zero exit never becomes a cache
   // entry, so no stored verdict can ever launder a failure into a later "PASS". A write failure is a named

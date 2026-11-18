@@ -2,7 +2,7 @@
 
 > 状态：**草案 v0.2**（v0.1 的现状描述**全部保留**，本版只做扩充与校准）
 > 上位：`01-philosophy.md`（R2 能力齐备 / R1 零策略 / R11 具名拒绝 / R12 可复现）、`02-architecture.md`（内核 G 分区）
-> 立场：内核提供**计算/形式化能力与适配器接口**；**"何时要求形式化、什么算证明、要不要编译、超时多少"全部由 settings/中间件/pack 决定**。★ **TB-2794 现状（按「已迁/待迁」写）**：**引擎/作业/归档原语在 kernel**（`kernel/lean.js`、`kernel/mathjobs.js`）；**形式化面的构造与 `formalVerify`／`leanInitiative` 等政策键的读者**仍在 kernel、正在迁 `packs/research-core/`（Step 2/3）——逐面清单见 `02-architecture.md` §1.1（C#7 口径）。
+> 立场：内核提供**计算/形式化能力与适配器接口**；**"何时要求形式化、什么算证明、要不要编译、超时多少"全部由 settings/中间件/pack 决定**。★ **TB-2794 现状（按「已迁/待迁」写）**：**引擎/作业/归档原语在 kernel**（`kernel/lean.js`、`packs/research-core/mathjobs.js`）；**形式化面的构造与 `formalVerify`／`leanInitiative` 等政策键的读者**仍在 kernel、正在迁 `packs/research-core/`（Step 2/3）——逐面清单见 `02-architecture.md` §1.1（C#7 口径）。
 > 复用：共享模块 `math-computation.js`（v2–v5r 共用，探测判决＝"原样复用"）＋ vmu 侧接线 `host-math.js` ✓。
 > **口径（本卷与 15 卷共用）**：正文对**已实现**的键按 04 卷登记如实引用 ✓；对**计划**中的设置一律只写**通配家族**（如 `vmu.math.<族>.*`）✗ 不写具体键名 —— 具体拟增键统一在任务回报中登记，由 04 卷落定 ✓。未实现的能力/工具/协议一律带标记词 **⛔**。
 
@@ -376,7 +376,7 @@ MathJob = { id, kind, engine, input, timeoutMs, budget?, async?, createdAt, stat
 - **事件日志上限** ✓：Lean 作业事件日志有常量上限（超出计数丢弃、不静默）；
 - **隔离** ✓：作业在受控目录内运行；路径策略与写保护由 `vmu.safety.*` 决定（越界 ⇒ `VMU_NOT_PERMITTED`）；
 - **审计** ✓：作业起止、命令摘要、结果摘要入审计（**不落全文**，正文放文件）；
-- **持久化/断点续算**：**计算面 ✓**（`kernel/mathjobs.js`：耐久镜像 ＋ 状态全集 ＋ 恢复四分支，见 §4.1）与 **Lean 作业面 ✓**（`kernel/lean.js` 接**同一套原语** `createJobMirror`：镜像 `Formal/Jobs/<jobId>.json`，与 v5r 的路径拼写一致；状态 `queued|running|settled|failed|timeout|interrupted`；恢复四分支同 §4.1）。
+- **持久化/断点续算**：**计算面 ✓**（`packs/research-core/mathjobs.js`：耐久镜像 ＋ 状态全集 ＋ 恢复四分支，见 §4.1）与 **Lean 作业面 ✓**（`kernel/lean.js` 接**同一套原语** `createJobMirror`：镜像 `Formal/Jobs/<jobId>.json`，与 v5r 的路径拼写一致；状态 `queued|running|settled|failed|timeout|interrupted`；恢复四分支同 §4.1）。
 - **子进程可终止（F17，Round 4 ✓）**：见 §4.3 —— 本地预算 ＋ `SubprocessHandle.terminate()`，接缝形状自动识别，不可终止时**具名**说明。
 - **跨进程独占创建（Round 3 ✓ 已实现，宿主可降级）**：注入的 fs 接缝若提供 `writeTextExclusive(rel, text)`（宿主用 `{flag:'wx'}` / `O_EXCL` 实现，Windows 即 `CREATE_NEW`），**作业镜像的首次写入就是一次原子占号**：两个进程铸出同一个 `jobId` 时，后来者得到具名拒 `VMU_MATH_JOB_ID_TAKEN`，**绝不覆盖**前者的镜像（`admission().exclusiveCreate=true`、`crossProcess:'enforced-by-exclusive-create'`）。没有该接缝时**降级但仍具名**：`exclusiveCreate:false`、`crossProcess:'not-enforced'`，并在 `notes` 里写清"缺了会怎样（后写者覆盖）＋ 谁需要它（多进程/多会话共用一个研究所目录的部署）"。
 - **大结果引用** ⛔ **未做（具名登记）**：超过 `captureStdoutBytes` 的输出目前只有**计数式截断**（`receipt.droppedBytes`），没有内容寻址的 `Math/Results/<sha256>` 引用面。缺了会怎样：被截断的完整输出只能在归档文件里找，**回执引用不到它**；谁需要它：要在**另一台机器/另一次会话**复核大输出的读者（复现包与审计链）。
@@ -419,7 +419,7 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 `collected.{stdout,stderr}.readFrom(fromByte)` 做**非消耗式**读取并在截断时给 `lossy` ＋ `spillPath`。
 缺的只是 vmu 的**接缝形状**：旧 `spawn` 被当成 promise 用，于是超时只能"报超时"、不能真的杀进程。
 
-- **唯一原语**：`kernel/mathjobs.js` 的 `createChildBudget({timer})`（导出名就是它；三个面共用：Lean、
+- **唯一原语**：`packs/research-core/mathjobs.js` 的 `createChildBudget({timer})`（导出名就是它；三个面共用：Lean、
   计算作业、脚本桥）。`timer` 可注入（`(cb,ms)=>disposer`，同 `ctx.timeout`；缺省用全局 `setTimeout`），
   所以"到点"在测试里是**被控制的**而不是等出来的。
 - **三种调用形状自动识别**（无开关可接错）：① 宿主原生 handle（同步返回、有 `done`）⇒ 用它的 `done`
@@ -428,7 +428,7 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 - **`graceMs`**：作为**请求**随 spec 一起传给宿主；真正的约束力来自本地预算（两者同时存在才既"可请求"
   又"可控"）。
 - **`maxBytes`（输出上限）**：**同一个键 `vmu.math.captureStdoutBytes` 有两个读者、一个默认**——
-  `kernel/mathjobs.js:363`（作业面：`tail()` 截断 stdout/stderr，`:505/:506`）与 `kernel/lean.js:166`
+  `packs/research-core/mathjobs.js:363`（作业面：`tail()` 截断 stdout/stderr，`:505/:506`）与 `kernel/lean.js:166`
   （F17 的 per-stream 上限）；**两面的缺席值都是 65536**（＝schema 的 `def`，Lean 侧的常量名是
   `LEAN_OUTPUT_MAX_BYTES = 64*1024`）——本轮把 mathjobs 的老默认 20000 对齐掉，否则"一个键两个默认"。
   截断**计数**（`stdoutDroppedBytes` / `stderrDroppedBytes`，计算面为 `receipt.droppedBytes`）；宿主自己的
@@ -495,7 +495,7 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 
 > **R1 静态门**：内核里找不到"必须形式化""形式化权重"这类策略字样；上表右侧的**具体键名一律不在内核**。
 >
-> ★ **TB-2794 现状（本表的"策略外置"是设计口径，不是已完成态）**：**形式化引擎/作业/归档是 kernel 原语**（`kernel/lean.js`／`kernel/mathjobs.js`，Lead 裁决 2026-11-17 21:02）；**形式化面（`createFormal`）与 `vmu.math.formalVerify`／`leanInitiative` 政策键的读者**仍由 `kernel/index.js` 本地构造，**待迁** `packs/research-core/`（Step 2/3）。已迁的只有 paper 流程（`packs/research-core/paper-flow.js`）。
+> ★ **TB-2794 现状（本表的"策略外置"是设计口径，不是已完成态）**：**形式化引擎/作业/归档是 kernel 原语**（`kernel/lean.js`／`packs/research-core/mathjobs.js`，Lead 裁决 2026-11-17 21:02）；**形式化面（`createFormal`）与 `vmu.math.formalVerify`／`leanInitiative` 政策键的读者**仍由 `kernel/index.js` 本地构造，**待迁** `packs/research-core/`（Step 2/3）。已迁的只有 paper 流程（`packs/research-core/paper-flow.js`）。
 
 ---
 
@@ -643,7 +643,7 @@ LeanJobMirror  = { schema:'vmu/lean-job@1',  jobId, statement, file, state, atte
 
 ## 附录 A：**已实现键面**（23 个；逐键口径）
 
-> 说明：Compute 6 键由 `host-math.js` 接线 ✓；Lean 8 键由 `kernel/lean.js` 接线 ✓（该文件是**唯一口径**：每个键只在一处被读 ⇒ `keysUsed()` 与实现必然一致；A7–A14 之后另有 4 个 `vmu.math.jobs.*` 也由该面真读，见下）；A15–A23 为目标 5（Round 2）新增，由 `kernel/mathadapters.js`（A15–A21）与 `kernel/mathjobs.js`（A22–A23）**以字面量真读** ✓。新增 9 键的权威定义在 `settings/schema.js`（由 vmu-core 登记）；本表的计数与 README 口径由 `scripts/update-doc-counts.mjs` 统一刷新。
+> 说明：Compute 6 键由 `host-math.js` 接线 ✓；Lean 8 键由 `kernel/lean.js` 接线 ✓（该文件是**唯一口径**：每个键只在一处被读 ⇒ `keysUsed()` 与实现必然一致；A7–A14 之后另有 4 个 `vmu.math.jobs.*` 也由该面真读，见下）；A15–A23 为目标 5（Round 2）新增，由 `kernel/mathadapters.js`（A15–A21）与 `packs/research-core/mathjobs.js`（A22–A23）**以字面量真读** ✓。新增 9 键的权威定义在 `settings/schema.js`（由 vmu-core 登记）；本表的计数与 README 口径由 `scripts/update-doc-counts.mjs` 统一刷新。
 
 | # | 键 | 类型 | 默认 | 域/枚举 | 谁改 | 热改 | 说明 |
 |---|---|---|---|---|---|---|---|

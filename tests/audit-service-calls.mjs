@@ -18,7 +18,7 @@
 // scanner to tell them apart.
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, "..")
@@ -30,17 +30,28 @@ const VMU = join(REPO, "vibe-math-vmu")
  *  `pdfReading` guard) looked like a call to a service this scan had never constructed. The finding was a scanner
  *  calibration gap, not a product defect: the site guards `kernel.latex && typeof …pdfReading === "function"`.
  */
-export function servicesOf(createKernel) {
+export function servicesOf(createKernel, factories = null) {
   const variants = [
     { clock: () => 0, settings: {} },
     { clock: () => 0, settings: {}, slots: [{ id: "member", capacity: 0, permissions: ["speak", "vote"] }, { id: "chair", capacity: 1, permissions: ["convene"] }] },
     { clock: () => 0, settings: {}, root: VMU, host: null, slots: [{ id: "member", capacity: 0, permissions: ["speak", "vote"] }] },
     { clock: () => 0, settings: {}, spawn: () => ({}) },
+    // ★ TB-2794 Step 5: the research faces are PACK-contributed now; this variant provides the generic faces through the
+    // same service seam a pack uses, so a call such as kit/extras.js -> kernel.lean is checked against the REAL face.
+    { clock: () => 0, settings: {}, spawn: () => ({}), withFaces: true },
   ]
   const out = new Map()
   for (const opts of variants) {
     let k = null
     try { k = createKernel(opts) } catch { continue }
+    if (opts.withFaces && factories) {
+      try {
+        k.provideService({ name: 'vmu.formal', apiVersion: 1, impl: factories.createFormal({ clock: () => 0, settings: {} }), by: 'audit-fixture' })
+        k.provideService({ name: 'vmu.fidelity', apiVersion: 1, impl: factories.createFidelityRegistry({ clock: () => 0 }), by: 'audit-fixture' })
+        k.provideService({ name: 'vmu.mathjobs', apiVersion: 1, impl: factories.createMathJobs({ clock: () => 0, settings: {}, spawn: () => ({}) }), by: 'audit-fixture' })
+        k.provideService({ name: 'vmu.lean', apiVersion: 1, impl: factories.createLeanFace({ clock: () => 0, settings: {}, spawn: () => ({}) }), by: 'audit-fixture' })
+      } catch { /* a fixture face that cannot construct is left out; the scan then reports a real gap */ }
+    }
     for (const key of Object.keys(k)) {
       const svc = k[key]
       if (svc && typeof svc === "object") {
@@ -168,7 +179,11 @@ if (process.argv.includes("--selftest")) {
 }
 
 const { createKernel } = await import("file:///" + VMU.replace(/\\/g, "/").replace(/ /g, "%20") + "/kernel/index.js")
-const services = servicesOf(createKernel)
+const { createFormal } = await import(pathToFileURL(join(VMU, 'packs', 'research-core', 'formal.js')).href)
+const { createFidelityRegistry } = await import(pathToFileURL(join(VMU, 'packs', 'research-core', 'fidelity.js')).href)
+const { createMathJobs } = await import(pathToFileURL(join(VMU, 'packs', 'research-core', 'mathjobs.js')).href)
+const { createLeanFace } = await import(pathToFileURL(join(VMU, 'kernel', 'lean.js')).href)
+const services = servicesOf(createKernel, { createFormal, createFidelityRegistry, createMathJobs, createLeanFace })
 const known = declaredKeys()
 const files = collectFiles()
 

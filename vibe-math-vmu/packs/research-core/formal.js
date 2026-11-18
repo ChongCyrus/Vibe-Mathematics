@@ -14,7 +14,7 @@
 //   · ids   —— 可选：`kernel/ids.js` 的实例（缺省用模块级单例）⇒ 记录号经**唯一铸号者**（D-15）
 
 import { mint as mintId } from '../../kernel/ids.js'
-import { ENFORCED_SCOPE } from '../../kernel/mathjobs.js'   // Step 5 will switch this to kernel/jobprimitives   // C-45 的口径常量（拒绝/回执都带作用域）
+import { ENFORCED_SCOPE } from '../../kernel/jobbudget.js'   // Step 5 will switch this to kernel/jobprimitives   // C-45 的口径常量（拒绝/回执都带作用域）
 
 
 export const FORMAL_KEYS = Object.freeze([

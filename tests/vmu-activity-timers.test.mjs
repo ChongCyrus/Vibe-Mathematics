@@ -21,7 +21,8 @@ import { dirname, join } from 'node:path'
 import { stripComments } from './_lib/strip-comments.mjs'
 import { createScheduler } from '../vibe-math-vmu/kernel/scheduler.js'
 import { createBus } from '../vibe-math-vmu/kernel/bus.js'
-import { createChildBudget } from '../vibe-math-vmu/kernel/mathjobs.js'
+// ★ TB-2794 Step 5: the child-budget primitive moved to kernel/jobbudget.js.
+import { createChildBudget } from '../vibe-math-vmu/kernel/jobbudget.js'
 import { createHostSpawn } from '../vibe-math-vmu/host-spawn.js'
 import { createStore } from '../vibe-math-vmu/kernel/store.js'
 import { createMailbox } from '../vibe-math-vmu/kernel/mailbox.js'
@@ -64,7 +65,9 @@ const VERDICT = {
   'kernel/bus.js': { timers: 1, clears: 1, verdict: 'finally-clear', note: 'the hook budget is cleared in `finally`, so a fast hook and a timed-out hook both release it (probe §4)' },
   'kernel/activity.js': { timers: 1, clears: 1, verdict: 'cleanup-on-every-branch', note: 'the platform fallback is armed through the one cleanup(); success/timeout/abort/arming-failure all run it (probe: tests/vmu-activity-kernel.test.mjs §1/§2/§5/§7)' },
   'kernel/scheduler.js': { timers: 0, clears: 0, verdict: 'seam-only', note: 'no GLOBAL timer at all (the `timer.setTimeout` calls are the seam dispatcher): every handle path (fire/cancel/disarm) releases it (probes §2)' },
-  'kernel/mathjobs.js': { timers: 1, clears: 2, verdict: 'disposer-default-FIXED', note: 'ROUND 12 RECHECK (vmu-activity): the COUNTS are still exact — 1 global setTimeout (:110) and 2 clearTimeout (:111, :152) read CODE ONLY, so the `clearTimeout` that is visible at :129 (inside a doc comment) does not count, which is the D7 lesson in miniature. But this note had DRIFTED: the disposer lives at :110-111 (not :125-126) and `disposeTimer` at :148 with the raw Timeout cleared at :152 (not :132-133). It also understated the discipline: the child-budget race disposes the timer in a `finally` (:224) and a cleanup FAILURE is NAMED (`timer-cleanup-failed`, :230/:233) rather than swallowed. §5 keeps the regression probe (success branch leaves nothing armed, timeout branch still fires and releases)' },
+  // ★ TB-2794 Step 5: the ONE global timer site moved from mathjobs to the kernel job-budget primitive (the pack no
+  // longer arms a timer; the engine primitive is shared). Same discipline, same counts.
+  'kernel/jobbudget.js': { timers: 1, clears: 2, verdict: 'disposer-default-FIXED', note: 'ROUND 12 RECHECK (vmu-activity): the COUNTS are still exact — 1 global setTimeout (:110) and 2 clearTimeout (:111, :152) read CODE ONLY, so the `clearTimeout` that is visible at :129 (inside a doc comment) does not count, which is the D7 lesson in miniature. But this note had DRIFTED: the disposer lives at :110-111 (not :125-126) and `disposeTimer` at :148 with the raw Timeout cleared at :152 (not :132-133). It also understated the discipline: the child-budget race disposes the timer in a `finally` (:224) and a cleanup FAILURE is NAMED (`timer-cleanup-failed`, :230/:233) rather than swallowed. §5 keeps the regression probe (success branch leaves nothing armed, timeout branch still fires and releases)' },
   'host-spawn.js': { timers: 3, clears: 2, verdict: 'budget-FIXED', note: 'the host-path default budget timer has its own handle, is `unref`ed, and is cleared in `finally` with a NAMED failure (`VMU_SPAWN_TIMER_CLEANUP`); G1 added the LOCAL fallback seam, whose budget timer is likewise `unref`ed and cleared after the settle — the finding stays CLOSED, and §5 keeps a regression probe' },
   'math-computation.js': { timers: 2, clears: 0, verdict: 'NAMED-FINDING-uncancellable', note: 'two awaited sleeps with no handle bound, so no abort path can release them (math-computation.js:617,728) — named in §5' },
   // ★ PHASE 6 / K1 COMPLETION: the ENTRY now hands the kernel the platform timer, so a declared `vmu.schedule.autoArm`
@@ -126,7 +129,7 @@ const VERDICT = {
   // A row that declares ZERO sites is a declaration of ABSENCE (`kernel/scheduler.js` uses only the seam), so it is
   // not "stale" when the scan cannot see it — a row that declares a real site must still be found.
   const stale = known.filter((f) => !found.includes(f) && (VERDICT[f].timers > 0 || VERDICT[f].clears > 0))
-  ok(unclassified.length === 0, '★ every file that creates or clears a GLOBAL timer is CLASSIFIED (a new timer site cannot appear unnoticed — this scan found `kernel/mathjobs.js`, which the first hand-grep had missed)', { unclassified, found })
+  ok(unclassified.length === 0, '★ every file that creates or clears a GLOBAL timer is CLASSIFIED (a new timer site cannot appear unnoticed — this scan found `packs/research-core/mathjobs.js`, which the first hand-grep had missed)', { unclassified, found })
   ok(stale.length === 0, 'and no classified row is stale (a removed timer site must be removed from the table too)', stale)
   // RULE E (round 4, vmu-verify's fingerprint `A:for:known`): the per-row comparison used to be one `ok(...)` per
   // iteration, so an EMPTY `known` table made the whole check vanish. The mismatches are now ACCUMULATED and the
@@ -139,7 +142,7 @@ const VERDICT = {
     { rows: known.length, mismatches })
   ok(intervalTotal === 0, '★ the framework has ZERO setInterval sites (the class that is hardest to clean up does not exist)', intervalTotal)
   const leaks = known.filter((k) => VERDICT[k].verdict.startsWith('NAMED-FINDING'))
-  ok(leaks.length === 1, 'one site remains a NAMED finding (outside this task write scope); `kernel/mathjobs.js` and `host-spawn.js` were the other two and are now FIXED by their owners', leaks)
+  ok(leaks.length === 1, 'one site remains a NAMED finding (outside this task write scope); `packs/research-core/mathjobs.js` and `host-spawn.js` were the other two and are now FIXED by their owners', leaks)
   // ★ PHASE 6 / K1 COMPLETION: this was `found.length === 5` with a message that said "five ... scheduler.js is the
   // sixth row". The ENTRY became a sixth timer site when it started forwarding the platform timer for a declared
   // `vmu.schedule.autoArm`, so the literal went stale - which is exactly what a hand-typed count does. The number is
@@ -333,7 +336,7 @@ console.log('=== 5. THE NAMED FINDINGS: two CLOSED by their owners (regression-g
     'and a process that never settles still TIMES OUT on the budget while leaving nothing armed (non-vacuous: the default timer really arms)',
     { timedOut: stuck.timedOut, before: beforeStuck, after: afterStuck })
   await settle(120)   // let anything a failed clear would have left expire before the next baseline
-  // (b) kernel/mathjobs.js — CLOSED by its owner (round 4): the default budget seam now returns a real disposer
+  // (b) packs/research-core/mathjobs.js — CLOSED by its owner (round 4): the default budget seam now returns a real disposer
   //     (`() => clearTimeout(h)`) and `disposeTimer` clears a raw Timeout object too. What remains here is the
   //     REGRESSION PROBE the finding's own text asked for: the success branch must leave nothing armed, and the
   //     timeout branch must still FIRE (otherwise "no leak" would be vacuous — a seam that never arms proves nothing).

@@ -4,7 +4,7 @@
 // something that must be returned even when the body throws — a lock, a timer, a listener. Three instances of the
 // class were found by hand before this gate existed:
 //   · `kernel/index.js:1953` — the exit-flush single-flight flag; the THROWING exit leaked it (narrow mutant only).
-//   · `kernel/mathjobs.js:587` — the concurrency slot; its `finally` turned out to be DEFENSIVE (executeInner
+//   · `packs/research-core/mathjobs.js:587` — the concurrency slot; its `finally` turned out to be DEFENSIVE (executeInner
 //     returns failures as receipts), so the load-bearing line is `releaseSlot` — named, not silently dropped.
 //   · `records`/`store` — NO `finally` at all, because those faces hold nothing across a call (0 acquisition sites);
 //     the honest form is a TRIPWIRE: the moment one appears, this gate goes red.
@@ -155,7 +155,7 @@ function verifyGatePointers(gates, file) {
 const RULINGS = {
   'host-spawn.js': { word: '成对-finally', why: 'the child budget timer has its own handle, is `unref`ed and is cleared in a `finally` with a NAMED failure (VMU_SPAWN_TIMER_CLEANUP)' },
   'kernel/bus.js': { word: '成对-finally', why: 'the hook budget is cleared in `finally`, so a fast hook and a timed-out hook both release it' },
-  'kernel/mathjobs.js': { word: '成对-finally', why: 'the child-budget race disposes its timer in a `finally` (:224) and a cleanup failure is NAMED (timer-cleanup-failed)' },
+  'packs/research-core/mathjobs.js': { word: '成对-finally', why: 'the child-budget race disposes its timer in a `finally` (:224) and a cleanup failure is NAMED (timer-cleanup-failed)' },
   'kernel/resume.js': { word: '成对-finally', why: 'F18: the recovery lock is taken around `recover()` and released in `finally` on EVERY path (throw/early-return included), proven by tests/vmu-resume-falsify.test.mjs' },
   'kernel/activity.js': { word: '他门已守', gates: ['tests/vmu-activity-timers.test.mjs', 'tests/vmu-activity-kernel.test.mjs'],
     why: 'the platform fallback timer and the abort listener are released through ONE idempotent `cleanup()` funnel on every settle path (no `finally` because the funnel is the single exit); the F15 table classifies this file `cleanup-on-every-branch` and the kernel probes drive all four branches' },

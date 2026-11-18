@@ -79,6 +79,26 @@ void INV
   ok(oa.blind === false && open.unbind({ assignmentId: oa.id }).ok === true, 'mode=open blinds nothing, so no reason is demanded')
 }
 
+// round-11 contract alignment: unbind accepts BOTH the assignment id and (reviewerId, submissionId) of an OPEN assignment
+{
+  const f = mk({})
+  f.register({ id: 'r' })
+  const a = f.assign({ reviewerId: 'r', submissionId: 's1' })
+  // pair form without a reason is still a REAL named refusal (the blind rule is not bypassed by the pair form)
+  ok(f.unbind({ reviewerId: 'r', submissionId: 's1' }).code === 'VMU_BLIND_UNBIND_DENIED',
+    'the (reviewerId, submissionId) form finds the OPEN assignment and still demands the blind reason')
+  const done = f.unbind({ reviewerId: 'r', submissionId: 's1', reason: 'author requested', by: 'chair' })
+  ok(done.ok === true && done.id === a.id && done.unbindReason === 'author requested' && done.unboundBy === 'chair',
+    '=== and with a reason it unbinds THAT open assignment (id form and pair form are the same contract)', done)
+  // the PAIR form only searches OPEN assignments; the id form reports the already-unbound row by name
+  ok(f.unbind({ assignmentId: a.id, reason: 'again' }).alreadyUnbound === true,
+    'the id form reports the already-unbound assignment by name (the pair form only targets OPEN rows)')
+  const missing = f.unbind({ reviewerId: 'r', submissionId: 'no-such-open', reason: 'x' })
+  // research-core's refuse() returns an Error (C#25 contract); the tool boundary unwraps it by throwing.
+  ok(missing instanceof Error && missing.code === 'VMU_INVALID_ARGUMENT' && /assignmentId|OPEN assignment/.test(String(missing.hint || '')),
+    'a pair that names no OPEN assignment is REFUSED by name with both reachable forms in the hint (never a fake success)', missing)
+}
+
 // quorum
 {
   const q = mk({ 'vmu.review.quorum': 2 })

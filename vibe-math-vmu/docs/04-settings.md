@@ -225,7 +225,7 @@ vmu.packs.active: [v5r]
 - **默认值从哪来**：`vmu.math.engines` 的 8 个候选（`python,r,octave,julia,matlab,maple,wolfram,cli`）由 **v5r pack 的 `packs/v5r/settings/defaults.json` 声明**（复刻原 v5r 默认），运行面来源记 `pack:v5r`；schema 里那条声明（`settings/schema.js`）只是**声明层**，本身不物化。
 - **可用性以探活为准**：一个引擎"可用"＝描述符 + PATH/安装目录发现 + `--version` 探活（`math-computation.js` 的 `probeMathEngines`）；**不需要在设置里写命令路径**（那是 `vmu.math.adapters.python` 的语义：显式解释器、绝不猜）。首次数学调用最多串行探 8 个候选，探活超时首个候选 20s、其后 45s（`math-computation.js:609`）、结果按会话缓存 ⇒ 有一次性成本，不是每次调用都付。
 - **`cli` 不自动探活**：它是"调用方给命令"的通道，即使声明在列表里也不会被自动探测；要用须显式给命令。
-- **引擎不可用时是具名降级，不是静默**：`kernel/mathjobs.js:733`（"未声明任何引擎（vmu.math.engines 为空）"）与 `:734`（"引擎未声明：X"）。显式设 `[]` ⇒ 同样具名拒；H2 热改 ⇒ 运行期可收窄/清空；部署要与 pack 默认不同值时，走 O4 的具名门（`vmu.packs.activeOverrides` 点名或 `vmu.packs.allowKernelOverride`），不许静默覆盖。
+- **引擎不可用时是具名降级，不是静默**：`packs/research-core/mathjobs.js:404`（"未声明任何引擎（vmu.math.engines 为空）"）与 `:405`（"引擎未声明：X"）。显式设 `[]` ⇒ 同样具名拒；H2 热改 ⇒ 运行期可收窄/清空；部署要与 pack 默认不同值时，走 O4 的具名门（`vmu.packs.activeOverrides` 点名或 `vmu.packs.allowKernelOverride`），不许静默覆盖。
 - **Lean 不是引擎**：形式化走 `vmu.math.leanCommand`（`kernel/lean.js`、`packs/research-core/formal.js`），与 `vmu.math.engines` 无关——"真机跑过 Lean"不能推出"引擎已声明"。
 
 ---
@@ -381,7 +381,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.leanArgs` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：Lean 附加参数（显式 -R/--root 优先于 searchPaths） |
 | `vmu.math.leanTimeoutMs` | — | int ≥0 | `120000` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/lean.js` | P3：单次 Lean 编译预算 |
 | `vmu.math.leanAsync` | — | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/lean.js` | P3：后台队列编译；只有"退出 0 且文件内容哈希未变"才可标 passed |
-| `vmu.math.leanInitiative` | — | enum | `normal` | `off`∣`normal`∣`eager` | 会话 | H2 | office | ✅ 已接线 | `kernel/lean.js` | P3：日常形式化积极性（**本运行时只回显：policy().initiativeEffect=display-only，不参与判定**；与 formalVerify 正交） |
+| `vmu.math.leanInitiative` | — | enum | `normal` | `off`∣`normal`∣`eager` | 会话 | H2 | office | ✅ 已接线 | `packs/research-core/lean-face.js` | P3：日常形式化积极性（**本运行时只回显：policy().initiativeEffect=display-only，不参与判定**；与 formalVerify 正交） |
 | `vmu.math.leanSearchPaths` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：额外 -R 根（去重后注入，自动 VibMath 根之前） |
 | `vmu.math.leanJobsMaxParallel` | — | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | P3：后台编译并发（1＝串行） |
 | `vmu.safety.pathPolicy` | — | enum | `workspace-only` | `workspace-only`∣`workspace+shared` | 会话 | **H3** | office | ✅ 已接线 | `host-spawn.js` | 写保护范围 |
@@ -637,12 +637,12 @@ vmu.packs.active: [v5r]
 | `vmu.collusion.maxMutualShare` | — | ratio | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 互投/雷同份额阈值 |
 | `vmu.collusion.minEvidence` | — | int ≥0 | `2` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 判定嫌疑所需最少证据数 |
 | `vmu.collusion.onSuspect` | — | enum | `report` | `report`∣`freeze-review` | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 嫌疑处理（默认只报告；冻结审查须显式开启） |
-| `vmu.math.maxParallel` | — | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | **数学运行**并发上限（作业/编译；超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 4 Lead 裁决：本键**只**管数学运行并发（对齐 v5r 的 `leanJobsMaxParallel:1`）；**不要**拿它当"每轮唤醒几名成员"——那是**成员策略**，由 `vmu.limits.maxLiveMembers` 表达（v5r 写 3）。**两个不同策略不许强行相等**（轮 4 撤销过一次错误的镜像；那个旧的 jobs 作用域名字已从 schema 移除，此处不复写键名）。 |
-| `vmu.math.maxJobs` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业总量上限（0＝不限） |
-| `vmu.math.keepReceipts` | — | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 回执保留条数（溢出必计数） |
-| `vmu.math.requireSeedForRandom` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 随机作业必须有种子 |
-| `vmu.math.denyNetwork` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 默认禁网（作为 env 传给 spawn；真正拦截在宿主 ✗） |
-| `vmu.math.workspaceOnly` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 默认限工作区（同上，拦截在宿主 ✗） |
+| `vmu.math.maxParallel` | — | int ≥1 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | **数学运行**并发上限（作业/编译；超限 ⇒ 具名拒，不自旋等待 ✗）。★ 轮 4 Lead 裁决：本键**只**管数学运行并发（对齐 v5r 的 `leanJobsMaxParallel:1`）；**不要**拿它当"每轮唤醒几名成员"——那是**成员策略**，由 `vmu.limits.maxLiveMembers` 表达（v5r 写 3）。**两个不同策略不许强行相等**（轮 4 撤销过一次错误的镜像；那个旧的 jobs 作用域名字已从 schema 移除，此处不复写键名）。 |
+| `vmu.math.maxJobs` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/mathjobs.js` | 作业总量上限（0＝不限） |
+| `vmu.math.keepReceipts` | — | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/mathjobs.js` | 回执保留条数（溢出必计数） |
+| `vmu.math.requireSeedForRandom` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/mathjobs.js` | 随机作业必须有种子 |
+| `vmu.math.denyNetwork` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/mathjobs.js` | 默认禁网（作为 env 传给 spawn；真正拦截在宿主 ✗） |
+| `vmu.math.workspaceOnly` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/mathjobs.js` | 默认限工作区（同上，拦截在宿主 ✗） |
 | `vmu.math.captureStdoutBytes` | — | int ≥0 | `65536` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | stdout 捕获上限（触界报丢弃字节 ✗） |
 | `vmu.formal.axiomWhitelist` | — | string[] | `[propext,Classical.choice,Quot.sound]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/formal.js` | 受信公理白名单（白名单外 ⇒ 具名拒并点名 ✓） |
 | `vmu.formal.allowSorry` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/formal.js` | 是否允许 sorry（默认 false：出现即拒并点名位置 ✗✓） |
@@ -1038,7 +1038,7 @@ vmu.packs.active: [v5r]
 | `vmu.math.adapters.probeCache` | — | enum | `session` | `session`∣`call` | 会话 | H2 | office | ✅ 已接线 | `kernel/mathadapters.js` | 环境绑定探测缓存口径（session＝每会话一次；call＝每次调用重探） |
 | `vmu.math.adapters.maxArrayElements` | — | int ≥0 | `10000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathadapters.js` | 数组/DataFrame 元素上限（超限计数式截断，dropped 必报） |
 | `vmu.math.adapters.maxStringBytes` | — | int ≥0 | `65536` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathadapters.js` | 符号/字符串结果字节上限（超限计数式截断） |
-| `vmu.math.jobs.recover` | — | enum | `on-load` | `on-load`∣`manual`∣`off` | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 作业镜像启动恢复口径（on-load＝构造时扫镜像；manual＝只由 jobsRecover 触发；off＝不恢复） |
+| `vmu.math.jobs.recover` | — | enum | `on-load` | `on-load`∣`manual`∣`off` | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业镜像启动恢复口径（on-load＝构造时扫镜像；manual＝只由 jobsRecover 触发；off＝不恢复） |
 | `vmu.math.jobs.keepMirrors` | — | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业镜像保留条数（溢出计数式驱逐 droppedMirrors） |
 | `vmu.report.enabled` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 自动汇报总开关；默认 false＝零机制（另有 vmu.report.reports 默认空表，两道闸）；false ⇒ 已声明的汇报全部停发，但仍在 status().reporting 里具名报出 disabled |
 | `vmu.report.reports` | — | obj[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/report.js` | 汇报声明清单；每项 {name, trigger:{kind:event|period|threshold, …}, template, to:[], channel, enabled?}；空＝零机制（不声明就什么都不发生） |
@@ -1055,7 +1055,7 @@ vmu.packs.active: [v5r]
 | `vmu.report.requireReason` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 改参是否必须给理由；true ⇒ 无理由具名拒 VMU_REPORT_PARAM_REASON_REQUIRED |
 | `vmu.report.auditChanges` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 参数改动是否写入审计（默认写；无 audit 接缝时具名上报 VMU_REPORT_AUDIT_UNAVAILABLE） |
 | `vmu.ids.persistEvery` | — | int ≥0 | `1` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/ids.js` | id 计数器写穿频率（1＝每次 mint；写穿丢几次也由 observeIds 的"已观测最大后缀"兜底 ⇒ 复用不可能） |
-| `vmu.math.jobs.dir` | — | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业镜像目录（root 相对；空 ⇒ `Math/Jobs`）。三个真读者：`kernel/lean.js:128`、`kernel/mathjobs.js:192`、`kernel/mathtools.js:194` —— 三者都按**字符串路径**处理（非字符串即归一；越界 ⇒ `VMU_LEAN_JOBS_DIR_UNSAFE`／`VMU_MATH_JOBS_DIR_UNSAFE`）。 |
+| `vmu.math.jobs.dir` | — | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业镜像目录（root 相对；空 ⇒ `Math/Jobs`）。三个真读者：`kernel/lean.js:128`、`packs/research-core/mathjobs.js:192`、`kernel/mathtools.js:194` —— 三者都按**字符串路径**处理（非字符串即归一；越界 ⇒ `VMU_LEAN_JOBS_DIR_UNSAFE`／`VMU_MATH_JOBS_DIR_UNSAFE`）。 |
 | `vmu.resume.writeThrough` | — | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/resume.js` | 状态型投影是否在每次被包方法返回后**写穿**一次（fire-and-forget，失败进 `resume/projection-error`）；关掉则只在显式 `snapshot()` 时写。读者：`kernel/resume.js` 的 `attachProjection`（reader-a）。 |
 | `vmu.activity.timeoutMs` | — | int ≥0 | `30000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 活动等待的默认超时（毫秒）。读者：`kernel/activity.js` 的 `wait()`。 |
 | `vmu.activity.timeoutMinMs` | — | int ≥0 | `10000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/activity.js` | 超时下界（请求低于此值时按 `vmu.activity.timeoutPolicy` 处置）。 |
@@ -1073,8 +1073,8 @@ vmu.packs.active: [v5r]
 | `vmu.paper.officeConsultOnTimeout` | — | enum | `hold` | `hold`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | 咨询超时处置：`hold`＝挂起等待（默认，与 human 面同口径）；`refuse`＝具名拒。**没有 default-allow 这一档**。 |
 | `vmu.paper.officeConsultExemptRoles` | — | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `packs/research-core/paper-flow.js` | 豁免角色：**默认为空＝不豁免任何人**（Lead F4 裁决：v5r 的 C-30 原场景正是"office 自己定稿前也必须先咨询所内"，把 office 默认豁免掉等于没实现那条；"默认不豁免"是保守侧，与 `hold` 同一纪律）。部署要豁免就显式声明角色。 |
 | `vmu.paper.finalizer` | — | enum | `editor` | `editor`∣`contributor`∣`any` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 定稿权限**规则**（不是角色名！v5r 的 `paperEditor:'academician'` 是**机构角色**；本键是**规则**，v5r 等价＝`editor` ＋创建时把 paper 的 `editor` 指定为主持人）。★ 轮 8：域外值 ⇒ **具名拒** `VMU_INVALID_ARGUMENT`（列出声明的域），**绝不静默回落** ✗✓；读者：declared-not-wired（迁移期）——`kernel/paper.js` 已删除，当前无 live reader；见 `docs/acceptance/paper-migration-inert-keys.md` 的迁移口径，Step 4/5 由 pack 政策读取者接管。 |
-| `vmu.math.jobs.logMax` | — | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
-| `vmu.math.jobs.persist` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js`（R202：回执写的是镜像，不是造一张卡；三态计数 persisted/unwired/failed 在回执与 status().receipts 上）。 |
+| `vmu.math.jobs.logMax` | — | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 作业日志保留条数（溢出必计数）。读者：`packs/research-core/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
+| `vmu.math.jobs.persist` | — | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`packs/research-core/mathjobs.js`、`kernel/mathtools.js`（R202：回执写的是镜像，不是造一张卡；三态计数 persisted/unwired/failed 在回执与 status().receipts 上）。 |
 | `vmu.meetings.tier` | — | enum | `formal` | `formal`∣`light` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
 | `vmu.meetings.allowLight` | — | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
 | `vmu.ballot.reopenFloor` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |

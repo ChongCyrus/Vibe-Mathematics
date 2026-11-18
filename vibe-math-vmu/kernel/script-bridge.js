@@ -17,7 +17,7 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
-import { createChildBudget } from './mathjobs.js'
+import { createChildBudget } from './jobbudget.js'
 
 /** The failure policies an M3 entry may declare (docs/05 §7). */
 export const FAILURE = Object.freeze({ OPEN: 'open', CLOSED: 'closed', ABORT: 'abort' })

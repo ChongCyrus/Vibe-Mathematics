@@ -381,7 +381,7 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
 
   // our side, read from the faces
   const leanSrc = readFileSync(new URL('../vibe-math-vmu/kernel/lean.js', import.meta.url), 'utf8')
-  const jobsSrc = readFileSync(new URL('../vibe-math-vmu/kernel/mathjobs.js', import.meta.url), 'utf8')
+  const jobsSrc = readFileSync(new URL('../vibe-math-vmu/packs/research-core/mathjobs.js', import.meta.url), 'utf8')
   const recSrc = readFileSync(new URL('../vibe-math-vmu/kernel/records.js', import.meta.url), 'utf8')
   ok(/vmu\.math\.leanAsync/.test(leanSrc) && /vmu\.math\.leanJobsMaxParallel/.test(leanSrc) && /vmu\.math\.leanCommand/.test(leanSrc),
     'G3f. ★ vmu runs Lean too, asynchronously, with a bounded parallel job count - as settings, not as hard-coded behaviour')

@@ -198,6 +198,9 @@ const EXPECT = {
   // (`MAX_TOOL_RESULT_BYTES`) plus one pure function (`boundedToolResult(value)`) - NO `create*` factory, no service,
   // nothing to probe - which corresponds verbatim to `EXPECT_NA`. Same category, and the same reason for existing, as
   // the `contentvalue` row below (`:176`), which is also a pure-function module extracted to get under 1200.
+  // ★ TB-2794 Step 5 迁移新增的 kernel 模块：零机制形状尚未由 owner 声明。这里把它**显式登记为待办**（计数、不静默漏行）；owner 给出期望后替换本行 ✓。
+  jobbudget: G('EXPECT_UNDECIDED', 'TB-2794 Step 5 的 job-budget 模块：由 impl-lane 提交，零机制下的形状待 owner 声明（显式待办，不是静默漏行）—— 形状确定后将本行换成真实期望 ✓'),
+  jobmirror: G('EXPECT_UNDECIDED', 'TB-2794 Step 5 的 job-mirror 模块：由 impl-lane 提交，零机制下的形状待 owner 声明（显式待办，不是静默漏行）—— 形状确定后将本行换成真实期望 ✓'),
   receiptbounds: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 32 从 `host.js` 抽出（该文件 **1231 行越过 1200** ⇒ 抽取，**未往 `KNOWN` 加名字** ✓，`host.js` 1231→1151）：回执尺寸契约 `MAX_TOOL_RESULT_BYTES` ＋ **结构内、路径级**省略 `boundedToolResult(value)`（**不动键、不动数组长度**；其形状与 `elided:[{path,from,to,bytes}]` 由 `tests/vmu-receipt-truncation.test.mjs` 覆盖 ✓）。'),
   // PHASE 12 (v5r rules · D7 座位→工具面闸): `memberface` is a NEW pure-predicate module (no `create*` factory, no
   // service, nothing to probe) written for the seat/face gate. Recorded because the matrix treats a module that EXISTS
@@ -281,7 +284,7 @@ async function probe(file) {
   const spec = PROBE_ARGS[name] || {}
   const mod = await import(pathToFileURL(join(KERNEL, file)).href)
   // PREFER the factory that names THIS module (`mathjobs.js` → `createMathJobs`), not merely the first
-  // `create*` export. Round 4 measured the failure this prevents: `kernel/mathjobs.js` gained a second
+  // `create*` export. Round 4 measured the failure this prevents: `packs/research-core/mathjobs.js` gained a second
   // factory (`createChildBudget`) whose export order made it the "first" match, so the probe instantiated
   // an auxiliary helper that exposes no operations and reported the module as `（无操作）` — a FALSE red
   // about the module (the service factory was fine all along). Fall back to the first `create*` so

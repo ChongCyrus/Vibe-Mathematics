@@ -20,8 +20,10 @@
 //
 // Budgets are MEASURED, not guessed (this repo's own rule: "a family budget is measured, never guessed"):
 //   end-to-end        1.9 s   (gate-load amplification measured on this tree: +15 % at T1 concurrency 3)
-//   meeting-matrix   12.9-17.0 s INSIDE this gate (standalone 8.4 s); the 17.0 s reading is contention from a heavy peer
-//                    in the same wave (k=3), so the baseline is the concurrent maximum, not the quiet cost (see the doc)
+//   meeting-matrix   12.9-17.0 s INSIDE this gate (standalone 8.4 s); the 17.0 s reading was contention from a heavy
+//                    peer in the same wave (k=3) and was NOT adopted as the baseline: every baseline in
+//                    docs/acceptance/sim-gate-scope.md §0 is the QUIET-WINDOW user-CPU median; the 1.25x drift factor
+//                    is what absorbs real concurrency (a red run still prints the contention picture).
 //   audit/all        43-58 s quiet, 75.0 s under T1 concurrency 3 (measured: 75.03 s, the run that raised this cap)
 //   determinism pair  2 x 1.9 s
 //   => the three named segments sum to ~90 s quiet against the 150 s total backstop; audit/all's OWN segment cap is
@@ -581,13 +583,13 @@ writeFileSync(slowWrapper, [
 ].join(NL))
 const e2eBase = Number(baselineSpec['end-to-end'])
 const e2eAllowed = Math.max(Math.round(e2eBase * driftFactor), Math.round(e2eBase + driftFloorMs))
-const e2eCpuBase = measured[0].costMs
-// The drag is derived from the documented allowance and the CPU this run actually measured: to exceed an allowance
-// expressed in CPU, the wrapper must burn (allowance - baseline) + 500 ms of CPU. A fixed 3000 ms stopped proving
-// anything as soon as the numbers moved (the old proof failed while the rule behind it was still correct).
-// 1000 ms of margin: the wrapper's own startup is not part of the e2e child's CPU, so a drag that only just crosses
-// the allowance can land short (measured: 1422 ms of visible growth for a 1985 ms burn, TB-2728 self-proof attempt 1).
-const dragMs = Math.max(250, Math.ceil(e2eAllowed - e2eCpuBase) + 1000)
+// ★ SELF-PROOF CALIBRATION (final27 flake fix): find the segment BY NAME (the old `measured[0]` silently assumed array
+// order). The drag below is then calibrated against a SAME-SHAPE control run in the same window, because the old
+// derivation mixed two different runs -- this gate's own e2e CPU (2453 in T1) versus the wrapper's inner e2e CPU
+// (~1407), so the fixed +1000 ms margin was eaten by the cross-run difference and self-proof (i) missed by 46 ms
+// (3687 <= allowed 3733) while the DRIFT RULE itself had judged the same run correctly.
+const e2eSegment = measured.find((s) => s.name === 'end-to-end')
+const e2eCpuBase = e2eSegment ? e2eSegment.costMs : 0
 /** Run the wrapper in `mode` and return the CPU its tree burned plus the wall it took. */
 function runSlowProof(mode, ms) {
   const before = cpuRows().length
@@ -608,10 +610,24 @@ function runSlowProof(mode, ms) {
   const burn = cpuOf(cpuRows().slice(before))
   return { run, elapsed, cpuMs: burn.userMs, totalCpuMs: burn.totalMs }
 }
+// ① SAME-SHAPE CONTROL RUN (drag=0, same wrapper, same args, same window): its CPU is the honest "what this wrapper's
+//    own e2e run costs right now". The drag is then allowance - control + 500, so concurrency moves BOTH numbers
+//    together instead of being absorbed by a fixed budget. (Not adopted: a concurrency slack on `allowed` -- that would
+//    hide a real 10-25 % growth, see docs/acceptance/sim-gate-scope.md §0.0.)
+const control = runSlowProof('busy', 0)
+const controlProof = driftFindings([{ name: 'end-to-end', elapsed: control.cpuMs }], baselineSpec)
+ok(control.run.status === 0, 'self-proof (i) calibration: the 0-drag CONTROL run (same wrapper, same args) exits 0, so the calibration number is a real run', { status: control.run.status, elapsed: control.elapsed, cpuMs: control.cpuMs })
+ok(control.cpuMs <= e2eAllowed, 'self-proof (i) calibration: the control run itself stays inside the documented allowance (' + control.cpuMs + ' <= ' + e2eAllowed + ' ms), so a red self-proof cannot be excused as "the machine was busy"', { controlCpuMs: control.cpuMs, e2eCpuBase, e2eAllowed, wouldDrift: controlProof.drifted.length > 0 })
+const proofMarginMs = 500
+const dragMs = Math.max(250, Math.ceil(e2eAllowed - control.cpuMs) + proofMarginMs)
 const dragged = runSlowProof('busy', dragMs)
 const draggedProof = driftFindings([{ name: 'end-to-end', elapsed: dragged.cpuMs }], baselineSpec)
 ok(dragged.run.status === 0, 'self-proof (i): the dragged end-to-end run still exits 0, so the slow reading is a real run and not a crashed one', { status: dragged.run.status, elapsed: dragged.elapsed, cpuMs: dragged.cpuMs })
-ok(draggedProof.drifted.length === 1 && draggedProof.drifted[0].name === 'end-to-end', 'self-proof (i): end-to-end with ' + dragMs + ' ms of EXTRA CPU burned (a real run, measured, not synthesised) is judged a drift', { cpuMs: dragged.cpuMs, wallMs: dragged.elapsed, baseline: e2eBase, allowed: draggedProof.rows[0].allowed, dragMs })
+ok(draggedProof.drifted.length === 1 && draggedProof.drifted[0].name === 'end-to-end', 'self-proof (i): end-to-end with ' + dragMs + ' ms of EXTRA CPU burned (a real run, measured, not synthesised) is judged a drift', { cpuMs: dragged.cpuMs, wallMs: dragged.elapsed, baseline: e2eBase, allowed: draggedProof.rows[0].allowed, dragMs, controlCpuMs: control.cpuMs })
+// (i-b) ATTRIBUTION: the drag must show up in the measured CPU. If the probe under-records (a segment line lost, the
+// NODE_OPTIONS seam broken), the dragged run could land just at the edge and the attribution would fail HERE by name
+// instead of silently reading "self-proof passed" on a ruler that no longer sees the burn.
+ok(dragged.cpuMs - control.cpuMs >= Math.floor(dragMs * 0.8), 'self-proof (i-b): the visible CPU growth (' + (dragged.cpuMs - control.cpuMs) + ' ms) is >= 80 % of the ' + dragMs + ' ms burn, so the probe attributed the drag (an under-recording ruler is a named red, not a silent pass)', { controlCpuMs: control.cpuMs, draggedCpuMs: dragged.cpuMs, visibleGrowthMs: dragged.cpuMs - control.cpuMs, dragMs, requiredMs: Math.floor(dragMs * 0.8) })
 // (v) the complement: the SAME wrapper sleeping the same time adds wall but no CPU, and must stay green. Without this
 // half, "judged by CPU" would be a sentence nobody tests; with it, a future change that quietly goes back to wall time
 // turns this proof red on the spot.

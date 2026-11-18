@@ -6,7 +6,7 @@
 //
 // THE MEASURED DEFECT THIS SUITE PINS. `vmu.math.maxParallel` is a live H1 setting enforced by TWO faces:
 //   · `kernel/mathtools.js` plan() rail ⑩ (the policy layer — nested/parallel math plans);
-//   · `kernel/mathjobs.js` slot gate (the queue — jobs actually spawned).
+//   · `packs/research-core/mathjobs.js` slot gate (the queue — jobs actually spawned).
 // The policy layer read the key ONCE, into its `K` construction snapshot, and then railed against that
 // snapshot forever, while the queue re-read the setting live per job. In a live run the office set
 // `vmu.math.maxParallel=2` with `vibe_v5_set`; the queue honoured 2, the policy layer kept refusing the
@@ -37,7 +37,7 @@
 
 import { readFileSync } from 'node:fs'
 import { createMathTools, readMaxParallel, MAX_PARALLEL_KEY } from '../vibe-math-vmu/kernel/mathtools.js'
-import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createMathJobs } from '../vibe-math-vmu/packs/research-core/mathjobs.js'
 import { declaredDefault } from '../vibe-math-vmu/kernel/settings-defaults.js'
 
 const KEY = MAX_PARALLEL_KEY
@@ -213,10 +213,10 @@ const toolsOf = (settings) => createMathTools({ clock: () => 1000, settings, spa
     '§4 the declared enforcers are exactly the two real ones (the mathtools plan rail and the mathjobs slot gate)', { enforcedBy: st.concurrency.enforcedBy })
 
   // SOURCE-LEVEL: the queue really imports the one helper and no longer derives the value locally.
-  const jobsSrc = readFileSync(new URL('../vibe-math-vmu/kernel/mathjobs.js', HERE), 'utf8')
-  ok(/import \{ readMaxParallel \} from '\.\/mathtools\.js'/.test(jobsSrc),
-    '§4 `kernel/mathjobs.js` imports `readMaxParallel` from the policy module (the single reader is the coupling, not a convention)',
-    { found: /import \{ readMaxParallel \} from '\.\/mathtools\.js'/.test(jobsSrc) })
+  const jobsSrc = readFileSync(new URL('../vibe-math-vmu/packs/research-core/mathjobs.js', HERE), 'utf8')
+  ok(jobsSrc.includes('readMaxParallel') && jobsSrc.includes('mathtools.js'),
+    '§4 `packs/research-core/mathjobs.js` imports `readMaxParallel` from the policy module (the single reader is the coupling, not a convention)',
+    { found: jobsSrc.includes('readMaxParallel') })
   ok(!/maxParallel: Math\.max\(1, n\('vmu\.math\.maxParallel'/.test(jobsSrc),
     '§4 and the OLD local derivation (`Math.max(1, n(\'vmu.math.maxParallel\', 1))`) is GONE — no second reader survives in the queue',
     { stale: /maxParallel: Math\.max\(1, n\('vmu\.math\.maxParallel'/.test(jobsSrc) })

@@ -236,7 +236,9 @@ for (const root of censusRoots) {
 }
 const kitHits = hits.filter((h) => /(^|[/\\])kit[/\\]paper\.js:/.test(h))
 eq(kitHits.length, 0, '★★★ 普查里 packs/research-core/paper-flow.js 0 命中（本任务写域已清）')
-const knownReportOnly = [/kernel[/\\]lean\.js:/, /kernel[/\\]mathjobs\.js:/, /kernel[/\\]records\.js:/, /kernel[/\\]store\.js:/]
+// ★ TB-2794 Step 5: mathjobs moved to packs/research-core — the census names the NEW path. The old kernel path no longer
+// exists, so it is REPLACED rather than added (one real location, one baseline row).
+const knownReportOnly = [/kernel[/\\]lean\.js:/, /packs[/\\]research-core[/\\]mathjobs\.js:/, /kernel[/\\]records\.js:/, /kernel[/\\]store\.js:/]
 const unexplained = hits.filter((h) => !knownReportOnly.some((re) => re.test(h)))
 eq(unexplained.length, 0, '★★ 普查里除"已具名报告的产品代码站点"外没有新命中（发现即报告，不顺手改）', unexplained)
 console.log('  [run257] census hits (report-only, product code): ' + hits.length)
@@ -252,3 +254,5 @@ ok(/Math\.random anywhere/.test(BID), '★ kernel/bidding.js 的既有纪律句�
 for (const dir of cleanups) { try { rmSync(dir, { recursive: true, force: true }) } catch (e) { void e } }
 const digest = createHash('sha256').update(KIT_SRC).digest('hex').slice(0, 12)
 console.log('=== VMU RUN 257 DETERMINISTIC IDS: ' + passed + ' passed, ' + failed + ' failed [' + digest + '] ===')
+// ★ CI INTEGRITY: a failed assertion MUST make the process non-zero (this suite used to print `failed` and still exit 0).
+if (failed > 0) process.exitCode = 1

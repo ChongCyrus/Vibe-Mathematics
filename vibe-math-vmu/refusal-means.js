@@ -448,6 +448,140 @@ export const REFUSAL_MEANS = Object.freeze({
     short: 'Recovery is unavailable: no durable store.',
     reachable: 'Construct the kernel with { store } (a durable root) — docs/07 §3 — or skip recovery for this deployment.',
   }),
+  // ── KERNEL-SERVICE CODES THAT REACH THE MODEL THROUGH TOOL RECEIPTS (round-11 corpus attribution): these are
+  // emitted by kernel services and surface in tool回执 (thrown → host catch, or returned as data → normalized at the
+  // host boundary). They need a means for the SAME reason the tool modules do: the model reads the code off a tool receipt.
+  VMU_NOT_FOUND: Object.freeze({
+    means: 'The id/name this call names is not in the registry/collection it was looked up in — absence, not a failed check (nothing was compared). Distinct from VMU_NO_SUCH_OBJECT by vocabulary only: this code is the registry/collection face\'s own name for the same absence.',
+    short: 'The named id/name does not exist in that registry.',
+    reachable: 'List that registry/collection first and pass an existing id (the receipt names the registry), or create the row before referring to it.',
+  }),
+  VMU_RECORDS_REINDEX_BLOCKED: Object.freeze({
+    means: 'A records reindex/rebuild was refused because the store cannot be reindexed safely in this state (a live writer/conflicting generation) — the index is left as it was rather than rebuilt on unsafe input.',
+    short: 'The records reindex was refused; the index is unchanged.',
+    reachable: 'Stop/complete the concurrent write (receipt names it) and retry the reindex, or read the existing index without rebuilding.',
+  }),
+  VMU_CONTROL_PARAM_UNAVAILABLE: Object.freeze({
+    means: 'A control-tune parameter was asked for but this deployment does not declare it (vmu.control.* unknown) — the parameter is ABSENT, not silently defaulted.',
+    short: 'That control parameter is not declared here.',
+    reachable: 'Read status/keysUsed to see the declared control parameters, or declare the key in vmu.control.* before tuning it.',
+  }),
+  VMU_FORMAL_REPRO_INCOMPLETE: Object.freeze({
+    means: 'A formal record is missing part of its reproduction evidence (artifact/command/digest set), so it cannot be treated as reproducible — the gate refuses rather than accepting a partial record.',
+    short: 'The formal record\'s reproduction evidence is incomplete.',
+    reachable: 'Fill the missing reproduction fields the receipt lists (artifact/command/digest), then re-read or re-verify.',
+  }),
+  VMU_MAILBOX_NO_SUCH_ENTRY: Object.freeze({
+    means: 'The mailbox entry this call names does not exist in that box (wrong box, already purged, or a typo) — absence in a specific box, not a permission refusal.',
+    short: 'That mailbox entry does not exist in this box.',
+    reachable: 'List the box first (inbox shows ids) and use an existing entry id; a purged entry cannot be read again.',
+  }),
+  VMU_REPORT_PARAM_NOT_DECLARED: Object.freeze({
+    means: 'A report face was given a parameter no report handler declares — the report vocabulary is DECLARED, so an undeclared parameter is refused instead of being dropped.',
+    short: 'The report parameter is not declared by that handler.',
+    reachable: 'Use the parameter names the report face declares (docs/18 / its parameter table), or pass the report body the handler expects.',
+  }),
+  VMU_ENV_UNKNOWN_NEED: Object.freeze({
+    means: 'An environment need was referenced that this deployment never declared in vmu.env.needs — the deployment declares which external needs exist, so an unknown name is a typo/config gap.',
+    short: 'That environment need is not declared here.',
+    reachable: 'Declare the need in vmu.env.needs (or use a declared name — env.probe/list names them) before probing it.',
+  }),
+  VMU_MATH_UNSUPPORTED_OP: Object.freeze({
+    means: 'The requested math operation is not supported by the available engine/adapter — the ENGINE cannot carry this op (not a bad argument), so it is refused rather than approximated silently.',
+    short: 'No available math engine supports that operation.',
+    reachable: 'Use an operation the engine supports (math status names the capabilities), or install/declare an engine that provides it.',
+  }),
+  VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF: Object.freeze({
+    means: 'A debate was asked to run on a one-line subject that carries no addressable proof carrier — v5r requires either a card whose written proof is finished, or a file reference, so the subject cannot be debated as stated.',
+    short: 'The debate subject has no addressable proof carrier.',
+    reachable: 'Pass a card with proofRef + proofState:"complete" (or a verified row / passed Lean run), or a subject_evidence.file; a bare sentence is not a carrier.',
+  }),
+  VMU_MAILBOX_DELIVERY_FAILED: Object.freeze({
+    means: 'A mailbox delivery raised while performing the send — the mail seam exists and failed; the refusal names the failure instead of reporting a delivered message.',
+    short: 'The mailbox delivery failed.',
+    reachable: 'Read the failure the receipt names (box/permission/transport), fix it, and resend; do not assume the message arrived.',
+  }),
+  VMU_DIRECTION_INCOMPLETE: Object.freeze({
+    means: 'A direction/plan entry is missing required parts (goal/steps/owner), so the institution\'s direction set cannot be used as declared — refused rather than accepted half-defined.',
+    short: 'The direction entry is incomplete.',
+    reachable: 'Fill the fields the receipt names and re-submit; read the current directions to see the declared shape.',
+  }),
+  VMU_CHAT_ALREADY_SPOKE: Object.freeze({
+    means: 'The member already spoke in this chat round — one voice per member per round, so a second utterance is refused instead of appending twice.',
+    short: 'This member already spoke in this round.',
+    reachable: 'Wait for the next round, or edit your earlier utterance through the round-owning face; do not repeat the same speech.',
+  }),
+  VMU_ACTIVITY_INVALID_TIMEOUT: Object.freeze({
+    means: 'The activity/wait timeout is not a value the face accepts (negative/non-finite/outside the declared range) — a CALL-SHAPE refusal on the timeout parameter.',
+    short: 'The activity timeout is not a usable value.',
+    reachable: 'Pass a finite timeout in the declared range (activity status shows the accepted shape), or omit it to use the declared default.',
+  }),
+  // ── ROUND-11 FROZEN-LAYER CODES (the other scenarios' refusal vocabulary; same surface, read off tool receipts).
+  VMU_OFFICE_CONSULT_REQUIRED: Object.freeze({
+    means: 'The paper action needed the office/chair consult answer first (vmu.paper.officeConsult) and none is recorded — the policy gate refuses the step rather than proceeding unconsulted.',
+    short: 'The office consult answer is required first.',
+    reachable: 'Have a declared consult role answer on the paper consult face, then repeat the action (or change vmu.paper.officeConsult if this deployment does not require it).',
+  }),
+  VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING: Object.freeze({
+    means: 'A paper step needs a LaTeX/executor seam this deployment does not publish (no engine/executor) — the artifact cannot be produced here, so the step is refused rather than faked.',
+    short: 'No paper executor/LaTeX engine is available.',
+    reachable: 'Install/declare the missing engine (the receipt names it), or take the route that does not need an executor.',
+  }),
+  VMU_RESOURCE_BUDGET: Object.freeze({
+    means: 'A declared resource budget (jobs/tokens/load class) would be exceeded by this call — a POLICY quota refusal, not a malformed request.',
+    short: 'This call would exceed a declared resource budget.',
+    reachable: 'Wait for capacity or raise the declared budget (vmu.resource.*), then retry; the receipt names which budget was hit.',
+  }),
+  VMU_LATE_ADMISSION_REFUSED: Object.freeze({
+    means: 'The member arrived after the declared late-arrival boundary and this meeting\'s lateAdmission policy is "refuse" (or the chair has not admitted them) — attending is a policy decision, not an error.',
+    short: 'Late admission is refused by this meeting\'s policy.',
+    reachable: 'Ask the chair to admit the seat (meeting {action:"admit"}), or attend the next meeting on time (late boundary is vmu.meetings.lateAfterMs).',
+  }),
+  VMU_TASK_BRIEF_MISSING: Object.freeze({
+    means: 'A task update that requires the brief found no brief on the task — v5r requires the task to carry its own brief before this update can apply.',
+    short: 'The task has no brief yet.',
+    reachable: 'Write the brief first (task {action:"brief"}), then repeat the update.',
+  }),
+  VMU_RESUME_READBACK_DRIFT: Object.freeze({
+    means: 'A resume readback did not match what was persisted (the restored view differs from the durable row) — a DRIFT reading, reported instead of silently accepting a divergent state.',
+    short: 'Resume readback drifted from what was persisted.',
+    reachable: 'Re-open the durable store/ledger and re-run recovery; if the drift repeats, report the receipt (it names both readings).',
+  }),
+  VMU_QUOTA_EXCEEDED: Object.freeze({
+    means: 'A declared quota (per-member/per-face/global) is exhausted by this call — the quota is policy, the shape is fine.',
+    short: 'A declared quota is exhausted.',
+    reachable: 'Free capacity or raise the declared quota (the receipt names which one), then retry.',
+  }),
+  VMU_HUMAN_APPROVAL_PENDING: Object.freeze({
+    means: 'The human-in-the-loop gate registered this action and is WAITING for an approval decision — a pending human step, distinct from a refusal of the action itself.',
+    short: 'A human approval is pending for this action.',
+    reachable: 'Have the declared decider approve on the human face (the receipt names the request/decider), then retry the action.',
+  }),
+  VMU_TURN_PARKED_NEEDS_OWNER: Object.freeze({
+    means: 'A parked turn needs an owner seat to resume it and none is recorded — the turn cannot continue anonymously.',
+    short: 'A parked turn has no owner to resume it.',
+    reachable: 'Name the owner seat (drive/member context) that should resume the parked turn, then resume it.',
+  }),
+  VMU_TURN_NO_FENCE: Object.freeze({
+    means: 'A reply was expected in a fenced block and the turn carried none — the loop cannot parse an unfenced reply, so it refuses instead of guessing.',
+    short: 'The turn reply has no fenced block.',
+    reachable: 'Write the reply inside the taught fence (the channel prompt shows its shape), then re-submit.',
+  }),
+  VMU_TURN_ALREADY_PARKED: Object.freeze({
+    means: 'This turn is already parked — parking twice would lose the first reason, so the second park is refused.',
+    short: 'This turn is already parked.',
+    reachable: 'Resume the existing parked turn (its face lists the parked row) instead of parking it again.',
+  }),
+  VMU_TURN_STALE_REPLY: Object.freeze({
+    means: 'A reply arrived for a turn that is no longer the current one (stale round/sequence) — accepting it would write into the wrong turn, so it is refused by name.',
+    short: 'The reply belongs to a stale turn.',
+    reachable: 'Read the current turn/receipt (the status face names the expected round) and reply to THAT turn.',
+  }),
+  VMU_TASK_BLOCKED: Object.freeze({
+    means: 'The task cannot proceed because it is blocked by a declared dependency/blocker — the task state machine refuses the step, not the call shape.',
+    short: 'The task is blocked by a dependency.',
+    reachable: 'Resolve or remove the blocking dependency (task board lists blockers), then retry the step.',
+  }),
 })
 
 /** The means for a code, or null. `null` is HONEST ABSENCE (the validator turns it into a red gate). */

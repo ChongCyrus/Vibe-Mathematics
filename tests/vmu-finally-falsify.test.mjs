@@ -5,8 +5,8 @@
 // policy layer that holds nothing across a call), so the only real `finally` users in the kernel worth falsifying are
 //
 //   · `kernel/index.js`      :1953  `try { return await run } finally { exitFlushInFlight = null }`
-//   · `kernel/mathjobs.js`   :587   `try { return await executeInner(job) } finally { releaseSlot() }`
-//   · `kernel/mathjobs.js`   :224   the child-budget timer, disposed in a `finally` (its reading is the timer rail)
+//   · `packs/research-core/mathjobs.js`   :587   `try { return await executeInner(job) } finally { releaseSlot() }`
+//   · `packs/research-core/mathjobs.js`   :224   the child-budget timer, disposed in a `finally` (its reading is the timer rail)
 //
 // The question this family answers is the one a `finally` exists FOR: does the resource come back on the exit that
 // does NOT fall through the happy path? Both cases therefore read the THROWING exit, with a control that shows the
@@ -42,11 +42,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
-import { createMathJobs } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { createMathJobs } from '../vibe-math-vmu/packs/research-core/mathjobs.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const KERNEL = join(HERE, '..', 'vibe-math-vmu', 'kernel', 'index.js')
-const MATHJOBS = join(HERE, '..', 'vibe-math-vmu', 'kernel', 'mathjobs.js')
+const MATHJOBS = join(HERE, '..', 'vibe-math-vmu', 'packs', 'research-core', 'mathjobs.js')
 const KERNEL_DIR = join(HERE, '..', 'vibe-math-vmu', 'kernel')
 
 let passed = 0

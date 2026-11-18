@@ -111,9 +111,13 @@ const kernel = createKernel({ clock: () => 0, settings: {}, root: VMU, host: nul
   const { pathToFileURL } = await import('node:url')
   const ufh = (rel) => pathToFileURL(join(VMU, rel)).href
   const { createFormal } = await import(ufh('packs/research-core/formal.js'))
+  const { createMathJobs } = await import(ufh('packs/research-core/mathjobs.js'))
+  const { createLeanFace } = await import(ufh('kernel/lean.js'))
   const { createFidelityRegistry } = await import(ufh('packs/research-core/fidelity.js'))
   kernel.provideService({ name: "vmu.formal", apiVersion: 1, impl: createFormal({ clock: () => 0, settings: {} }), by: "audit-face-fixture" })
   kernel.provideService({ name: "vmu.fidelity", apiVersion: 1, impl: createFidelityRegistry({ clock: () => 0 }), by: "audit-face-fixture" })
+  kernel.provideService({ name: "vmu.mathjobs", apiVersion: 1, impl: createMathJobs({ clock: () => 0, settings: {}, spawn: async () => ({ exitCode: 0 }) }), by: "audit-face-fixture" })
+  kernel.provideService({ name: "vmu.lean", apiVersion: 1, impl: createLeanFace({ clock: () => 0, settings: {}, spawn: async () => ({ exitCode: 0 }) }), by: "audit-face-fixture" })
 }
 const specs = toolSpecs({ kernel, settings: { "vmu.tools.faces": ["*"], "vmu.tools.allowAll": true }, instance: "audit" })
 const sources = new Map()

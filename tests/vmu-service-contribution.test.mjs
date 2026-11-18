@@ -310,13 +310,62 @@ const newTree = (tag) => {
 }
 
 
+// ── 4e. TB-2794 Step 5: lean + mathjobs are pack-contributed (engine stays in kernel); lean declines without a spawn seam.
+{
+  const km = await importFrom(SRC, 'kernel/index.js')
+  const packm = await importFrom(SRC, 'kernel/pack.js')
+  const v5r = await importFrom(SRC, 'packs/v5r/prompts/v5r-core.js')
+  const mk = async () => {
+    const k = km.createKernel({ clock: () => 1000, root: mkdtempSync(join(tmpdir(), 'vmu-step5-')) })
+    return { k, loader: packm.createPackLoader({ kernel: k, registry: k.registry }) }
+  }
+  {
+    const { k, loader } = await mk()
+    ok(k.lean === null && k.mathjobs === null,
+      '★★ Step5: a NO-PACK kernel has no lean/mathjobs face (absence, not a stub)', { lean: !!k.lean, mathjobs: !!k.mathjobs })
+    ok(k.status().registry.services.filter((s) => s.name === 'vmu.lean' || s.name === 'vmu.mathjobs').length === 0,
+      '★★ Step5: and the registry does not publish either name')
+    const applied = await loader.apply(v5r.PACK)
+    ok(applied.ok === true && applied.services.some((s) => s.name === 'vmu.mathjobs' && s.contributed === true),
+      '★★ Step5: v5r publishes vmu.mathjobs (no local-name CONFLICT)', applied.services)
+    // No spawn seam in this fixture ⇒ the OPTIONAL lean contribution DECLINES, by name (the old kernel created no lean
+    // face without a seam either; publishing an inert face would make tools believe a capability exists).
+    ok(applied.services.some((s) => s.name === 'vmu.lean' && s.contributed === false && s.reason === 'optional-declined') && k.lean === null,
+      '★★ Step5: without a spawn seam the OPTIONAL lean contribution declines by name and no face is published', applied.services)
+    ok(!!k.mathjobs && typeof k.mathjobs.submit === 'function', '★★ Step5: the contributed mathjobs face resolves')
+    const reg = k.status().registry.services.filter((s) => s.name === 'vmu.mathjobs')
+    ok(reg.length === 1 && reg[0].providedBy === 'v5r-core', '★★ Step5: registry providedBy = the pack id (LEAN has no row without a seam)', reg)
+    const un = await loader.unload(v5r.PACK.id)
+    ok(un.ok === true && un.residueFree === true && k.mathjobs === null,
+      '★★ Step5: unload retracts mathjobs residue-free', { residueFree: un.residueFree, mathjobs: !!k.mathjobs })
+  }
+  // With a spawn seam the lean face IS contributed and KEEPS its own registry row (the pre-Step-5 bug: vmu.lean had none).
+  {
+    const k = km.createKernel({ clock: () => 1000, root: mkdtempSync(join(tmpdir(), 'vmu-step5b-')), spawn: async () => ({ exitCode: 0, stdout: '', stderr: '', ms: 1 }) })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    const applied = await loader.apply(v5r.PACK)
+    ok(!!k.lean && typeof k.lean.policy === 'function', '★★ Step5: with a spawn seam the contributed Lean face exists (policy seam present)', { lean: !!k.lean })
+    const reg = k.status().registry.services.filter((s) => s.name === 'vmu.lean')
+    ok(reg.length === 1 && reg[0].providedBy === 'v5r-core', '★★★ Step5: vmu.lean finally has a REGISTRY ROW (it had none before the migration) with the pack as owner', reg)
+    ok(k.status().servicesProvided.some((s) => s.name === 'vmu.lean'), '★★ Step5: servicesProvided names the lean contribution')
+    // policy keys are read by the PACK wrapper, not the kernel engine
+    const used = k.lean.keysUsed()
+    ok(used.includes('vmu.math.leanCommand') && used.includes('vmu.math.formalVerify') && used.includes('vmu.math.leanInitiative'),
+      '★★ Step5: face keysUsed reports engine keys AND the two policy keys the wrapper read', used)
+    await loader.unload(v5r.PACK.id)
+    ok(k.lean === null && k.status().registry.services.filter((s) => s.name === 'vmu.lean').length === 0,
+      '★★ Step5: after unload the lean face and its registry row are gone')
+  }
+}
+
+
 // ── 5. LAMPS: remove one ingredient in a COPY and require the matching assertion to go red ──────────────────────────
 for (const [tag, mutate, expectedRed] of [
   ['getter-fallback', (dir) => {
     const p = join(dir, 'vibe-math-vmu', 'kernel', 'index.js')
     const s = readFileSync(p, 'utf8')
     // the getter stops resolving contributed faces (the pre-Step-0 shape)
-    writeFileSync(p, s.replace("    get lean() { return resolveFace(lean, 'vmu.lean') },", '    get lean() { return lean },'), 'utf8')
+    writeFileSync(p, s.replace("    get lean() { return resolveFace(null, 'vmu.lean') },", '    get lean() { return null },'), 'utf8')
   }, 'getter resolves contributed face'],
   ['unload-retract', (dir) => {
     const p = join(dir, 'vibe-math-vmu', 'kernel', 'pack.js')
@@ -471,9 +520,7 @@ for (const [tag, mutate, expectedRed] of [
   try {
     const cp = join(dir4, 'vibe-math-vmu', 'kernel', 'index.js')
     const src4 = readFileSync(cp, 'utf8')
-    const a4 = src4.indexOf('    resolveService: (name) => {')
-    const b4 = a4 < 0 ? -1 : src4.indexOf(String.fromCharCode(10) + '    },', a4)
-    writeFileSync(cp, a4 >= 0 && b4 > a4 ? src4.slice(0, a4) + src4.slice(b4 + 7) : src4, 'utf8')
+    writeFileSync(cp, src4.replace('    resolveService: (name) => resolveFace(null, name),', ''), 'utf8')
     const entry = await importFrom(join(dir4, 'vibe-math-vmu'), 'vibe-math-vmu.js')
     const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async () => () => {} } }
     const h = entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root: join(dir4, 'boot-root') })
@@ -482,6 +529,73 @@ for (const [tag, mutate, expectedRed] of [
     ok(out.executed.length === 0 && out.skipped[0] && out.skipped[0].code === 'VMU_TURN_FACE_NOT_WIRED',
       'LAMP(step4-resolver): a construction-time face map reports the pack formal field as face-not-wired — the lazy resolver is load-bearing',
       out.skipped)
+  } finally { rmSync(dir4, { recursive: true, force: true, maxRetries: 10 }) }
+}
+
+
+// ── 5d. TB-2794 Step 5 LAMPS (four) ───────────────────────────────────────────────────────────────────────────────────
+{
+  // ① no services declarations for lean/mathjobs
+  const dir = newTree('step5-no-services')
+  try {
+    const cp = join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-core.js')
+    let src = readFileSync(cp, 'utf8')
+    src = src.replace("name: 'vmu.lean', apiVersion: 1,", "nameOff: 'vmu.lean', apiVersion: 1,")
+    src = src.replace("name: 'vmu.mathjobs', apiVersion: 1,", "nameOff: 'vmu.mathjobs', apiVersion: 1,")
+    writeFileSync(cp, src, 'utf8')
+    const km = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir, 'vibe-math-vmu'), 'kernel/pack.js')
+    const v5r = await importFrom(join(dir, 'vibe-math-vmu'), 'packs/v5r/prompts/v5r-core.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir, 'root'), spawn: async () => ({ exitCode: 0 }) })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    try { await loader.apply(v5r.PACK) } catch { /* refused declaration; absence is the point */ }
+    ok(k.mathjobs === null && k.lean === null,
+      'LAMP(step5-no-services): without the declarations both faces are ABSENT — the declaration is load-bearing', { mathjobs: !!k.mathjobs, lean: !!k.lean })
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10 }) }
+  // ② the child budget IGNORES the injected timer (uses the platform timer): the injection is load-bearing
+  const dir2 = newTree('step5-timer')
+  try {
+    const jbPath = join(dir2, 'vibe-math-vmu', 'kernel', 'jobbudget.js')
+    const jsrc = readFileSync(jbPath, 'utf8')
+    writeFileSync(jbPath, jsrc.replace("const setT = typeof timer === 'function' ? timer : defaultTimer", "const setT = defaultTimer  /* lamp: injected timer ignored */"), 'utf8')
+    const bm = await importFrom(join(dir2, 'vibe-math-vmu'), 'kernel/jobbudget.js')
+    let calls = 0
+    const fakeTimer = (cb, ms) => { calls += 1; const h = setTimeout(cb, ms); return () => clearTimeout(h) }
+    const withBudget = bm.createChildBudget({ timer: fakeTimer })
+    await withBudget({ call: async () => ({ exitCode: 0, stdout: '', stderr: '' }), timeoutMs: 50, label: 'lamp' })
+    ok(calls === 0,
+      'LAMP(step5-timer): with the injected timer IGNORED the seam is never called — the injection is load-bearing', { calls })
+  } finally { rmSync(dir2, { recursive: true, force: true, maxRetries: 10 }) }
+  // ③ unload does not retract the contributed mathjobs service
+  const dir3 = newTree('step5-unload-retract')
+  try {
+    const cp = join(dir3, 'vibe-math-vmu', 'kernel', 'pack.js')
+    writeFileSync(cp, readFileSync(cp, 'utf8').replace("        undo.push(() => { try { return kernel.retractService({ name: svc.name, by: manifest.id }) } catch { /* unload must still proceed; the failure is not silent because the next status shows it */ } })", ''), 'utf8')
+    const km = await importFrom(join(dir3, 'vibe-math-vmu'), 'kernel/index.js')
+    const packm = await importFrom(join(dir3, 'vibe-math-vmu'), 'kernel/pack.js')
+    const k = km.createKernel({ clock: () => 1000, root: join(dir3, 'root') })
+    const loader = packm.createPackLoader({ kernel: k, registry: k.registry })
+    await loader.apply({ id: 'lamp5-pack', version: '1.0.0', services: [{ name: 'vmu.probe.step5', apiVersion: 1, create: () => ({ ping: () => 1 }) }] })
+    await loader.unload('lamp5-pack')
+    ok(k.service('vmu.probe.step5') !== null,
+      'LAMP(step5-unload-retract): without the undo the contributed face SURVIVES unload — the retract is load-bearing', k.status().servicesProvided)
+  } finally { rmSync(dir3, { recursive: true, force: true, maxRetries: 10 }) }
+  // ④ policy wrapper removed: leanInitiative/formalVerify settings stop being honoured (engine reads no policy key)
+  const dir4 = newTree('step5-policy')
+  try {
+    const lp = join(dir4, 'vibe-math-vmu', 'packs', 'research-core', 'lean-face.js')
+    writeFileSync(lp, readFileSync(lp, 'utf8')
+      .replace("formalVerify: String(settings['vmu.math.formalVerify'] || 'off'),", "formalVerify: 'off',")
+      .replace("leanInitiative: String(settings['vmu.math.leanInitiative'] || 'normal'),", "leanInitiative: 'normal',"), 'utf8')
+    const lm = await importFrom(join(dir4, 'vibe-math-vmu'), 'packs/research-core/lean-face.js')
+    const face = lm.createLeanResearchFace({ facade: {
+      settingsSnapshot: () => ({ 'vmu.math.formalVerify': 'require', 'vmu.math.leanInitiative': 'eager' }),
+      spawn: async () => ({ exitCode: 0, stdout: '', stderr: '', ms: 1 }), clock: () => 1000,
+      spawnHandle: null, timer: null, ids: null, fs: null, root: null, log: () => {},
+    } })
+    const pol = face && typeof face.policy === 'function' ? face.policy() : null
+    ok(pol && pol.formalVerify === 'off',
+      'LAMP(step5-policy): with the wrapper CONSTANT the deployed policy is ignored — the settings-to-policy read is load-bearing', pol)
   } finally { rmSync(dir4, { recursive: true, force: true, maxRetries: 10 }) }
 }
 

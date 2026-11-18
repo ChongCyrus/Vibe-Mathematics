@@ -230,3 +230,5 @@ try {
   console.log(NL + '=== VMU RUN 259 RECOVERY STEPS: ' + passed + ' passed, ' + failed + ' failed ===')
   if (failed > 0) { console.log('failures:'); for (const f of failures) console.log('  - ' + f) }
 }
+// ★ CI INTEGRITY: a failed assertion MUST make the process non-zero (this suite used to print `failed` and still exit 0).
+if (failed > 0) process.exitCode = 1

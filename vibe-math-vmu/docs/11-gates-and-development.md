@@ -201,7 +201,7 @@
 **⇒ ★ R15 状态更新（G2 台账已清空、生成器已补规则）**：R14 判定的"原子下一步"**已落地** —— `scripts/generate-planned-settings.mjs:221` 现在带 `后随 ( 即调用` 的跳过（＋`:189` 的 `serviceCall` 桶），因此 **planned 114 → 111**（三个"幽灵键"——两处 dissemination 服务方法＋meetings 的 open——不再被登记）。★ **本节因此改写成服务限定短写：把这三个名字裸写回正文，会让 `group G` 当场报"未登记"**（我本轮就是这样把门弄红的，见上面第 ⑧ 条；`vmu-comms2` 与 `vmu-pack2` 也各自独立抓到同一条），`--check` ⇒ **`up to date (111 planned keys)`**，`vmu-planned-settings` ⇒ **ALL GREEN (planned=111, 39/0)**。G2 的具名台账随之**清空**（`KNOWN_CALL_ONLY = []`，注释写明 **REPAIRED, not merely pardoned**）—— 这正是台账语义：**修好一个就删掉它那一行**。
 
 **⇒ ★ R21 新增硬要求：「引用前先落一行核验」的加强版 —— 报告任何真机读数之前，先证明【跑的是哪个字节】**
-**事实（实测，哈希级）**：R17–R21 期间某些真机会话的宿主，加载的是 `D:\_tmp\r17-home\profiles\ext\node_modules\dsh-vibe-math\vibe-math-vmu\` 下的**一份快照** —— entry `vibe-math-vmu.js` sha256[0:16] ＝ **`13DA3E536C9187BF`（mtime 2026-10-15 00:29:09 +0800）**，而**同刻仓库**是 **`EA836778F2197B12`（mtime 17:13:49 +0800）**。**机制**：R17 用 `Copy-Item -Recurse` 从 `ext-home` 建 scratch home，而那一层是 **SymbolicLink → 仓库** ⇒ **`Copy-Item` 把链接解引用成了一份快照**（默认行为、不可见）。**Delta（相对当时的仓库）**：**10 个文件不同**（`host.js`／`kernel/index.js`／`kernel/lean.js`／`kernel/mathjobs.js`／`kernel/meetingmarker.js`／`kernel/meetings.js`／`kernel/pack.js`／`packs/v5r/prompts/v5r-core.js`／`settings/schema.js`／`vibe-math-vmu.js`）＋ **1 个文件只在仓库**（`packs/v5r/middleware/artifact-counter.js`）。⇒ **该快照里没有 R17 之后的任何修复**（ordermode 的读取侧、`artifact-counter`、`kernel.rules.validate` 的 plan 侧、H2 守卫都不在）。
+**事实（实测，哈希级）**：R17–R21 期间某些真机会话的宿主，加载的是 `D:\_tmp\r17-home\profiles\ext\node_modules\dsh-vibe-math\vibe-math-vmu\` 下的**一份快照** —— entry `vibe-math-vmu.js` sha256[0:16] ＝ **`13DA3E536C9187BF`（mtime 2026-10-15 00:29:09 +0800）**，而**同刻仓库**是 **`EA836778F2197B12`（mtime 17:13:49 +0800）**。**机制**：R17 用 `Copy-Item -Recurse` 从 `ext-home` 建 scratch home，而那一层是 **SymbolicLink → 仓库** ⇒ **`Copy-Item` 把链接解引用成了一份快照**（默认行为、不可见）。**Delta（相对当时的仓库）**：**10 个文件不同**（`host.js`／`kernel/index.js`／`kernel/lean.js`／`packs/research-core/mathjobs.js`／`kernel/meetingmarker.js`／`kernel/meetings.js`／`kernel/pack.js`／`packs/v5r/prompts/v5r-core.js`／`settings/schema.js`／`vibe-math-vmu.js`）＋ **1 个文件只在仓库**（`packs/v5r/middleware/artifact-counter.js`）。⇒ **该快照里没有 R17 之后的任何修复**（ordermode 的读取侧、`artifact-counter`、`kernel.rules.validate` 的 plan 侧、H2 守卫都不在）。
 **⇒ 两条纪律**
 1. **报告真机读数前，必须证明"宿主实际加载的 payload 哈希 ＝ 仓库哈希"**，并核**关键新文件在场**（缺一即该读数**不得**标注为"当前树"）。★ 推论：**"我改了代码 ⇒ 我的实验测到了它"是一个需要证明的假设，不是默认**。
 2. **凡依赖 payload 落地时间之后才有的修复/模块的结论，只能标注"对那份快照成立"** —— 既**不许**一刀切作废，也**不许**一刀切保留（**按 payload 分档**）。
@@ -872,6 +872,8 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `ids` · `status()` | ok | — | — | ok 或 object（实测（轮 2）：零声明下 status() ⇒ **ok**（唯一 id 分配面：无声明仍可读状态，**不拒** ✓）） |
 | `index` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `ip` · `list()` | ok | — | enforced=[1] fired=[0] dropped=0 enforcedScope=evaluated-so-far truncated=false | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[1] fired=[0] dropped=0` ⇒ 清单可读、**不拒** ✓）） |
+| `jobbudget` | （无操作） | — | — | EXPECT_UNDECIDED（TB-2794 Step 5 的 job-budget 模块：由 impl-lane 提交，零机制下的形状待 owner 声明（显式待办，不是静默漏行）—— 形状确定后将本行换成真实期望 ✓） |
+| `jobmirror` · `list()` | array[0] | — | — | EXPECT_UNDECIDED（TB-2794 Step 5 的 job-mirror 模块：由 impl-lane 提交，零机制下的形状待 owner 声明（显式待办，不是静默漏行）—— 形状确定后将本行换成真实期望 ✓） |
 | `latex` · `check()` | refusal | VMU_EXTERNAL_UNAVAILABLE | — | 具名拒（带 code）（PHASE 7：无 spawn 接缝 ⇒ `check()` 具名拒 VMU_EXTERNAL_UNAVAILABLE（本面绝不假跑）；有接缝才建面） |
 | `lean` · `submit()` | refusal | VMU_LEAN_STATEMENT_REQUIRED | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓） |
 | `library-policy` · `registerVocabulary()` | ok | — | enforced=[2] fired=[0] | EXPECT_NA（非服务模块（无 `status()`；返回六个纯检查器 ✓）—— 行为由调用它的 library 套件覆盖 ✓） |
@@ -881,7 +883,6 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `mailbox` · `list()` | ok | — | — | ok 或 object（实测（轮 2）：零声明下 plan() ⇒ **ok**（自曝 enforced=[1] ⇒ 投递计划可读、**不拒** ✓）；无收件人⇒无可投递对象 ✓） |
 | `math` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：数学请求体） |
 | `mathadapters` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[2] enforcedScope=evaluated-so-far | 具名拒（带 code）（实测（轮 2）：零声明下 plan() ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（零机制＝无适配请求 ⇒ **具名拒即真实形状** ✓；不假装成功 ✗）） |
-| `mathjobs` · `list()` | ok | — | dropped=0 | ok 或 object（**两侧都写清** ✓（★ 轮 4 更正读数 ✗✓）：**状态/列表面 `list()` ⇒ `{ok:true,count:0,dropped:0,jobs:[]}`（object 信封；零机制＝无作业 ⇒ 空列表放行 ✓）**；`submit()` 缺参 ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（task-214 实测，保留 ✓）。★★ 为什么改：轮 2 这行写"`list()` ⇒ array[0]"，而**当时探针没有固定 op**（`mathjobs` 同时有 `submit`/`list`，谁先匹配谁被调）⇒ 那个形状可能来自另一个方法、也可能是模块自身的形状变化 ✗ ⇒ 本轮**固定探针 op＝`list`**（见 `PROBE_ARGS.mathjobs`）后按**实测**改写；`submit` 的具名拒仍由既有 task-214 断言守着 ✓） |
 | `mathtools` · `plan()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`plan()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（带口径 `enforced=[0] enforcedScope=evaluated-so-far`）⇒ 零机制＝无计划入参 ⇒ 具名拒即真实形状 ✓（补参后应见 `ok + enforced:[]`，届时改"具名拒或 ok" ✓）） |
 | `meeting` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `meetingdomain` · `read()` | refusal | VMU_NO_SUCH_OBJECT | — | 具名拒（带 code）（轮 31 从 `meetings.js` 抽出（11 个严格域：读取侧具名拒，不再静默夹取；`meetings.js` 1199→1196，被顶满的文件**下降**）。**实测零机制形状**：工厂 `createMeetingDomains({clock})`（**不注入任何接缝**）仍能建（表是纯的、11 键回落声明默认值）⇒ 探针调 `read()`（无参 ⇒ 问一个未声明键）⇒ **具名拒 `VMU_NO_SUCH_OBJECT`**（"no declared domain for undefined"）⇒ 零机制＝"**问我没声明过的东西就具名拒**"，不静默 `null`、不臆造默认值 ✓。★ 期望词表是**闭集**：本行取闭集里的 `具名拒（带 code）`（实测 `shape=refusal` ＋ `VMU_NO_SUCH_OBJECT` 与之逐字对应；`judge()` 判"无名拒"为红）。） |
@@ -935,7 +936,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 103 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 12 n/a ===
+=== ZERO-MECHANISM MATRIX: 104 modules, 0 mismatches, 0 unregistered, 2 EXPECT_UNDECIDED, 9 probe-errors, 12 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

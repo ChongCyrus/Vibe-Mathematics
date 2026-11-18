@@ -296,7 +296,8 @@ test('searchPaths are deduped and injected before the automatic root', async () 
 
 // ── formalVerify=off ⇒ **零策略**（不要求、不提示）；encourage/require 正交于 initiative ─
 test('formalVerify=off yields zero policy; initiative stays orthogonal', async () => {
-  const off = createLeanFace({ settings: mkSettings({ 'vmu.math.formalVerify': 'off', 'vmu.math.leanInitiative': 'eager' }), spawn: async () => ({ exitCode: 0 }), root: dir })
+  // TB-2794 Step 5: policy is INJECTED now (the engine reads no policy key); the wrapper passes it from settings.
+  const off = createLeanFace({ settings: mkSettings({}), policy: { formalVerify: 'off', leanInitiative: 'eager' }, spawn: async () => ({ exitCode: 0 }), root: dir })
   const p1 = off.policy()
   assert.equal(p1.formalVerify, 'off')
   assert.equal(p1.requireFormal, false)
@@ -304,7 +305,7 @@ test('formalVerify=off yields zero policy; initiative stays orthogonal', async (
   assert.equal(p1.initiative, 'eager', '日常主动性只如实回显，不受 formalVerify 影响')
   // G5 F2: display-only must be visible in the receipt, not only in a comment.
   assert.equal(p1.initiativeEffect, 'display-only', 'policy self-reports that the initiative value is display-only')
-  const req = createLeanFace({ settings: mkSettings({ 'vmu.math.formalVerify': 'require' }), spawn: async () => ({ exitCode: 0 }), root: dir })
+  const req = createLeanFace({ settings: mkSettings({}), policy: { formalVerify: 'require' }, spawn: async () => ({ exitCode: 0 }), root: dir })
   assert.equal(req.policy().initiativeEffect, 'display-only', 'the effect marker is independent of the value/formalVerify')
   assert.equal(req.policy().requireFormal, true)
   passed += 1
