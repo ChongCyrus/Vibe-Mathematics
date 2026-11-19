@@ -1308,6 +1308,52 @@ if (SELF_PROBE) {
     'and each rejected config reports ok:false (CLI exit 1 follows from this)')
 }
 
+// ---- 33. RUN-88 P1: a pack-owned settings namespace must survive the merge (configured value REALLY in force)
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-entry-packns-'))
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock, root, packs: ['v5r'], vmu: { 'v5r': { fixtureMode: 'no-tools' } } })
+  await handle.ready()
+  const settingsStatus = () => (handle.kernel.status({ detail: 'settings' }).settings || {})
+  const st = settingsStatus()
+  const row = (st.resolved || {})['vmu.v5r.fixtureMode']
+  ok(row && row.value === 'no-tools' && row.source === 'config',
+    'P1-run88 ★★★ a pack-namespace key from config is IN FORCE after the async install (value no-tools, source config)', row)
+  ok(!(st.rejected || []).some((r) => r.key === 'vmu.v5r.fixtureMode'),
+    'P1-run88: and it is NOT a VMU_SETTING_NAMESPACE_UNKNOWN rejection', st.rejected)
+
+  // default arm: no deployment value ⇒ the pack-declared default (tools) is what is in force, never a rejection.
+  const h2 = fakeCtx()
+  const handle2 = entry.apply(h2.ctx, { clock, root: await mkdtemp(join(tmpdir(), 'vmu-entry-packns-default-')), packs: ['v5r'] })
+  await handle2.ready()
+  const st2 = (handle2.kernel.status({ detail: 'settings' }).settings || {})
+  const row2 = (st2.resolved || {})['vmu.v5r.fixtureMode']
+  ok(row2 && row2.value === 'tools',
+    'P1-run88: WITHOUT a deployment value the resolved value is the declared default tools', row2)
+  ok(!(st2.rejected || []).some((r) => r.key === 'vmu.v5r.fixtureMode'),
+    'P1-run88: and the declared key is never rejected merely because the pack install is async', st2.rejected)
+
+  // LAMP: remove the deferred-namespace argument from a COPY ⇒ construction screens BEFORE registration, so the
+  // deployment value is rejected and the resolved row has NO value (the RUN-88 live defect).
+  const lampDir = await mkdtemp(join(tmpdir(), 'vmu-entry-packns-lamp-'))
+  try {
+    await cp(join(REPO, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+    const lampFile = join(lampDir, 'vibe-math-vmu', 'vibe-math-vmu.js')
+    const lampSrc = await readFile(lampFile, 'utf8')
+    ok(lampSrc.includes('deferredPackNamespaces, root'), 'lamp-setup: the deferred-namespace handoff is locatable')
+    await writeFile(lampFile, lampSrc.replace('deferredPackNamespaces, root', 'root'), 'utf8')
+    const lampEntry = await import(pathToFileURL(lampFile).href + '?ns=' + Date.now())
+    const lh = fakeCtx()
+    const lhHandle = lampEntry.apply(lh.ctx, { clock, root: join(lampDir, 'root'), packs: ['v5r'], vmu: { 'v5r': { fixtureMode: 'no-tools' } } })
+    await lhHandle.ready()
+    const ls = (lhHandle.kernel.status({ detail: 'settings' }).settings || {})
+    const lrow = (ls.resolved || {})['vmu.v5r.fixtureMode']
+    const lrej = (ls.rejected || []).some((r) => r.key === 'vmu.v5r.fixtureMode' && r.code === 'VMU_SETTING_NAMESPACE_UNKNOWN')
+    ok(lrej || !lrow || lrow.value !== 'no-tools',
+      'P1-run88 LAMP RED-worthy: merging BEFORE the declarations register turns the config value into a named rejection (no value)', { rejected: lrej, row: lrow })
+  } finally { await rm(lampDir, { recursive: true, force: true }).catch(() => {}) }
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

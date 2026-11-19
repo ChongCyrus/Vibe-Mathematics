@@ -2116,9 +2116,17 @@ export function toJsonSchema(defs = SETTING_DEFS) {
  *     must not silently DELETE a key it does not know, and must not break the session either);
  *   · `reason:'outside …'`  ⇒ declared but the value is out of domain: recorded + declared default substituted.
  */
-export function screenSettings(input = {}, { source = 'config' } = {}) {
+export function screenSettings(input = {}, { source = 'config', allowNamespaces = null } = {}) {
   const accepted = {}
   const rejected = []
+  // ★ RUN-88 P1: namespaces that a REQUESTED pack will declare, but whose declarations module is only imported by
+  // the ASYNC pack install. Rejecting their keys at construction silently dropped a deployment value (measured:
+  // vmu.v5r.fixtureMode became a rejection with NO value and the default stayed). In a deferred namespace the key is
+  // ACCEPTED as-is and reported as deferred; the kernel re-screens it after the declarations register (one named
+  // resolution, not a silent second guess).
+  const deferred = []
+  const allow = allowNamespaces instanceof Set ? allowNamespaces
+    : (Array.isArray(allowNamespaces) ? new Set(allowNamespaces) : null)
   for (const [k, v] of Object.entries(input || {})) {
     const decl = BY_KEY.get(resolveKey(k)) || null
     if (!decl) {
@@ -2127,6 +2135,11 @@ export function screenSettings(input = {}, { source = 'config' } = {}) {
       const parts = String(k).split('.')
       const token = parts.length >= 3 && parts[0] === 'vmu' ? parts[1] : null
       const frameworkTokens = new Set(SETTING_DEFS.map((d) => d.key.split('.')[1]).filter(Boolean))
+      if (token !== null && allow && allow.has(token) && !PACK_SETTING_NAMESPACES.has('vmu.' + token)) {
+        accepted[k] = v
+        deferred.push({ key: k, value: v, namespace: 'vmu.' + token, source })
+        continue
+      }
       if (token !== null && !frameworkTokens.has(token) && !PACK_SETTING_NAMESPACES.has('vmu.' + token)) {
         rejected.push({ key: k, value: v, code: 'VMU_SETTING_NAMESPACE_UNKNOWN',
           reason: 'unknown settings namespace "vmu.' + token + '" — no framework key and no registered pack namespace owns it (registered pack namespaces: ' + ([...PACK_SETTING_NAMESPACES.keys()].join(', ') || '(none)') + ')',
@@ -2146,7 +2159,7 @@ export function screenSettings(input = {}, { source = 'config' } = {}) {
     }
     accepted[decl.key] = v
   }
-  return { accepted, rejected }
+  return { accepted, rejected, deferred }
 }
 
 /**

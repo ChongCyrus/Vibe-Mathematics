@@ -755,6 +755,10 @@ export function createKernel({
   // that are TRUE for this build.
   reportFeedback = null,
   settings = {},
+  // ★ RUN-88 P1: namespaces whose owning pack will register its declarations during the ASYNC pack install. Their
+  // config values are ACCEPTED (deferred) at construction and re-screened by reconcileDeferredPackSettings() after
+  // the declarations register — refusing them here silently dropped a deployment value.
+  deferredPackNamespaces = null,
   root = null,
   // ★★ ROUND 52: the DSH session this kernel serves (the entry knows it through `ctx.sessionId`). Settings resolve
   // PER KERNEL, so a member's own kernel can hold a different `vmu.turn.objective` than the kernel that delivered the
@@ -858,8 +862,11 @@ export function createKernel({
   // disposition is the MERGE-FACE one (see screenSettings): NOT ACCEPTED + RECORDED BY NAME + the declared default
   // stays. A hard refusal here would turn "one key mistyped" into "the session never starts".
   const settingsRejected = []
+  // deferred config keys: accepted at construction, validated once their pack declarations exist.
+  const deferredSettings = new Map()
   {
-    const screened = screenSettings(settings, { source: 'config' })
+    const screened = screenSettings(settings, { source: 'config', allowNamespaces: deferredPackNamespaces })
+    for (const d of screened.deferred || []) deferredSettings.set(d.key, { value: d.value, namespace: d.namespace, source: d.source || 'config' })
     for (const r of screened.rejected) {
       settingsRejected.push(r)
       // An UNDECLARED key is recorded and LEFT ALONE (readers ignore it; deleting a key this face does not own is a
@@ -5202,6 +5209,41 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return { ok: true, applied, previous }
     },
     /**
+     * ★ RUN-88 P1: re-screen the config keys that belong to a pack namespace not yet registered at construction.
+     * The async pack install imports the declarations (the ONE namespace registration seam); calling this right after
+     * the install turns each deferred value into either an ACCEPTED setting (validated against its declaration, source
+     * 'config') or a NAMED rejection with the declared default in force. finalize:true treats a namespace that never
+     * registered as VMU_SETTING_NAMESPACE_UNKNOWN and removes the value (so status cannot show "exists but no value").
+     */
+    reconcileDeferredPackSettings({ finalize = false } = {}) {
+      const applied = []
+      const rejected = []
+      for (const [key, entry] of [...deferredSettings.entries()]) {
+        const screened = screenSettings({ [key]: entry.value }, { source: entry.source || 'config' })
+        if (Object.prototype.hasOwnProperty.call(screened.accepted, key)) {
+          settings[key] = screened.accepted[key]
+          markSettingWriter(settings, key, entry.source === 'config' ? null : entry.source)
+          deferredSettings.delete(key)
+          applied.push(key)
+          continue
+        }
+        if (screened.rejected.length > 0) {
+          for (const r of screened.rejected) { settingsRejected.push(r); rejected.push(r) }
+          settings[key] = screened.rejected[0].default
+          deferredSettings.delete(key)
+          continue
+        }
+        if (finalize) {
+          const r = { key, value: entry.value, code: 'VMU_SETTING_NAMESPACE_UNKNOWN',
+            reason: 'the requested pack never registered the namespace ' + entry.namespace + ' (its declarations module did not load)', source: entry.source || 'config', default: undefined }
+          settingsRejected.push(r); rejected.push(r)
+          delete settings[key]
+          deferredSettings.delete(key)
+        }
+      }
+      return { ok: true, applied, rejected, pending: [...deferredSettings.keys()] }
+    },
+    /**
      * ROUND 1 / K5: WHERE a key came from, in one call. `pack:<id>` for a pack's settings layer, `runtime` for a
      * `setSettingsValue`, the entry's own layer label (e.g. `pack:v5r` for a pack default folded in before construction,
      * `config` for a deployment value) and `null` for a key nobody wrote. It is the accessor the pack loader asks,
@@ -5587,6 +5629,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         resolved[def.key] = {
           value: has ? settings[def.key] : def.def,
           source,
+          // ★ RUN-88: human-readable provenance beside the exact layer: a deployment value vs a declared default
+          // (framework default OR a pack's defaults.json layer) — an auditor can tell them apart without knowing packs.
+          origin: source === 'config' ? 'config' : ((source === 'default' || String(source).startsWith('pack:')) ? 'declared-default' : 'runtime'),
           hot: def.hot,
           who: def.who,
           overridden: source === 'default' ? [] : overridden,

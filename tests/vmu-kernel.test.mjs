@@ -1206,6 +1206,35 @@ const FALLBACK_KEYS = [
   ok(b1 && b1.middlewareRan === 0,
     '★ 对照：外层 middlewareRan 是 control/heartbeat 的，仍为 0（两个钩子不再混为一谈）', b1 && b1.middlewareRan)
 }
+// ---- RUN-88 P1: deferred pack namespaces (config key accepted before its pack declarations register)
+{
+  const schema = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href)
+  const NS = 'vmu.defertest'
+  const KEY = 'vmu.defertest.flag'
+  // A kernel constructed BEFORE the pack's declarations module registers its namespace: the config value is deferred,
+  // not rejected (this is exactly the boot order the live run measured).
+  const k = m.createKernel({ clock, settings: { [KEY]: true }, deferredPackNamespaces: new Set(['defertest']) })
+  const before = k.status({ detail: 'settings' }).settings || {}
+  ok(!(before.rejected || []).some((r) => r.key === KEY),
+    'P1-run88(kernel): a deferred pack-namespace key is NOT rejected at construction', before.rejected)
+  // the declarations register (the async pack install does this in the real entry)
+  schema.registerPackSettings({ pack: 'defertest', namespace: NS, defs: [{ key: KEY, type: 'boolean', def: false, hot: 'H1', who: 'office', doc: 'deferred-namespace probe' }] })
+  const rec = k.reconcileDeferredPackSettings({ finalize: true })
+  const after = k.status({ detail: 'settings' }).settings || {}
+  const row = (after.resolved || {})[KEY]
+  ok(rec && rec.applied.includes(KEY) && row && row.value === true && row.source === 'config',
+    'P1-run88(kernel) ★★★ reconcile after registration makes the configured value EFFECTIVE (value true, source config)', { rec, row })
+  ok(!(after.rejected || []).some((r) => r.key === KEY),
+    'P1-run88(kernel): and the key is not left as a namespace rejection', after.rejected)
+  // finalize with NO registration: the value is named-rejected and removed, so status never shows "exists but no value".
+  schema.retractPackSettings({ namespace: NS, reason: 'kernel-test' })
+  const k2 = m.createKernel({ clock, settings: { [KEY]: true }, deferredPackNamespaces: new Set(['defertest']) })
+  const rec2 = k2.reconcileDeferredPackSettings({ finalize: true })
+  const st2 = k2.status({ detail: 'settings' }).settings || {}
+  ok(rec2.rejected.some((r) => r.key === KEY && r.code === 'VMU_SETTING_NAMESPACE_UNKNOWN') && !(st2.resolved || {})[KEY],
+    'P1-run88(kernel): a namespace that never registers is NAMED (VMU_SETTING_NAMESPACE_UNKNOWN) and the dangling value is removed', { rec2, row: (st2.resolved || {})[KEY] })
+}
+
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

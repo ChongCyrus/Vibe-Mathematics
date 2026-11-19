@@ -589,6 +589,13 @@ export const REFUSAL_MEANS = Object.freeze({
     short: 'The pack prompt policy is not registered yet; await readiness.',
     reachable: 'Await handle.ready() (it waits for the pack install) before dispatching turns; status().promptPolicies.policiesReady reports the same readiness — once settled with NO policy, a data-only pack is legitimate and the dispatcher switches nothing.',
   }),
+  // ── RUN-88 P1 deferred-namespace reconcile (final31 G1): after the pack install settles, deferred setting
+  // values are re-screened against the real declarations; a value that is still illegal/unknown is reported by name.
+  VMU_SETTINGS_INVALID: Object.freeze({
+    means: 'A settings value failed the declaration screen at the deferred-namespace reconcile: the key is not declared (or its namespace is still unknown after the pack install settled) or the value is outside its type/domain, so it is REJECTED by name instead of being silently kept or silently defaulted.',
+    short: 'A settings value/key is invalid at the deferred reconcile.',
+    reachable: 'Read the rejection and fix the value: run check-settings --json (or read status.settings.rejected) to see key + reason, then correct the key name / type / enum value or declare the namespace (packs/<id>/settings/declarations.js) before re-running.',
+  }),
 })
 
 /** The means for a code, or null. `null` is HONEST ABSENCE (the validator turns it into a red gate). */

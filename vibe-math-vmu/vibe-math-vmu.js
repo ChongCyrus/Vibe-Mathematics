@@ -498,6 +498,17 @@ export function apply(ctx, config = {}) {
       hint: 'the session value WINS (pack 默认 < preset Config／会话 settings); to accept the pack value on purpose, list "' + k + '" in vmu.packs.activeOverrides (or set vmu.packs.allowKernelOverride) - O4 forbids a silent collision' })
   }
   const settingsWithPackDefaults = Object.assign({}, packDefaults, settings)
+  // ★ RUN-88 P1: namespaces a REQUESTED pack will register during the ASYNC install. Their config keys are accepted
+  // (deferred) instead of rejected before the declarations exist; the install reconciles them by name.
+  const requestedPackIds = new Set([
+    ...(Array.isArray(config.packs) ? config.packs.filter((x) => typeof x === 'string') : []),
+    ...(Array.isArray(settings['vmu.packs.active']) ? settings['vmu.packs.active'].filter((x) => typeof x === 'string') : []),
+  ])
+  const deferredPackNamespaces = new Set()
+  for (const k of [...Object.keys(packDefaults), ...Object.keys(settingsWithPackDefaults)]) {
+    const parts = String(k).split('.')
+    if (parts.length >= 3 && parts[0] === 'vmu' && requestedPackIds.has(parts[1])) deferredPackNamespaces.add(parts[1])
+  }
   // Where each merged key CAME FROM, so the resolved view never calls a pack default "config" (the entry is the only
   // layer that knows this; the kernel sees one flat object). Consumed by kernel.status().settings.resolved.
   const settingsSources = {}
@@ -899,7 +910,7 @@ export function apply(ctx, config = {}) {
     : (String(settingsWithPackDefaults['vmu.report.transport'] || '') === 'mailbox'
         ? createMailboxReportTransport({ getKernel: () => kernelBox.value, officeSeats: OFFICE_SLOTS })
         : null)
-  const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDeclarations, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+  const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDeclarations, deferredPackNamespaces, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
     // TB-2618: a folded manifest's role slots / record tracks / task stages reach the CONSTRUCTORS (roster at build
     // time is also what makes the audience seam resolvable at all - `{to:'all'}` used to refuse in every real entry).
     ...(foldedDeclarations && foldedDeclarations.options.slots.length > 0 ? { slots: foldedDeclarations.options.slots } : {}),
@@ -1519,6 +1530,12 @@ export function apply(ctx, config = {}) {
             packErrors.push({ id, code: (e && e.code) || 'VMU_PACK_MISSING', message: String((e && e.message) || e), ...(e && e.facts ? { facts: e.facts } : {}) })
             try { process.stderr.write('vmu: pack ' + id + ' was not applied: ' + ((e && e.code) || '') + ' ' + String((e && e.message) || e) + '\n') } catch { /* stderr may be gone */ }
           }
+        }
+        // ★ RUN-88 P1: the pack install just imported the declarations modules — the requested pack namespaces now
+        // EXIST. Re-screen the deferred config values against their real declarations (accepted ⇒ in force with
+        // source 'config'; still unknown after settle ⇒ named rejection + default). Must run BEFORE adapter.install().
+        try { kernel.reconcileDeferredPackSettings({ finalize: true }) } catch (e) {
+          packErrors.push({ id: '(settings-reconcile)', code: (e && e.code) || 'VMU_SETTINGS_INVALID', message: String((e && e.message) || e) })
         }
         // AFTER the packs settle: a pack can make tools available that did not exist at install time (bus
         // entries, a roster, a durable root). install() is serialised and idempotent.

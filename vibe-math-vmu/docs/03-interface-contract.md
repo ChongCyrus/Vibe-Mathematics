@@ -828,6 +828,7 @@
 | `VMU_LEAN_ARCHIVE_DRIFT` | **归档引用的内容已变**（哈希不符）⇒ `read()` 具名拒且**不返回旧内容** ✓ | 形式化面（`kernel/lean.js` ✓） | ✅（**只引不复制**的执行点 ✓） |
 | `VMU_LEAN_ARCHIVE_NOT_FOUND` / `VMU_LEAN_ARCHIVE_NAME_TAKEN` / `VMU_LEAN_ARCHIVE_NAME_REQUIRED` | 归档三动词：条目不存在／**重名**（不静默覆盖 ✗）／未给 `name` | 形式化面（`kernel/lean.js` ✓） | ✅ |
 | `VMU_SERVICE_CONFLICT` | ★ **TB-2794 Step 0**：`provideService` 想发布的服务名**已由内核本地构造**（同一次装配里一个名字一个提供者）⇒ 具名拒，防止「本地实现 + pack 贡献」双实现；已迁移的面（本地构造删除后）才允许提供 | 服务贡献（`vibe-math-vmu/kernel/index.js` 的 `provideService`；registry 的 O4 重名规则同一答案） | ✅（hint 必须说「本地面先迁走再提供」并指向迁移步骤） |
+| `VMU_SETTINGS_INVALID` | ★ **RUN-88 P1 / final31**：★ **deferred 设置值在 pack install settle 后的复核中仍不合法**（键仍未声明、命名空间 settle 后仍未知，或值越出声明的 type/domain）—— ★ 旧行为是静默保留/静默回默认；现在**具名拒绝**并记入 `packErrors`（id `(settings-reconcile)`） | 插件入口 `vibe-math-vmu.js` 的 `reconcileDeferredPackSettings({finalize:true})`（调用方：`screenSettings` 的 deferred 窗口） | ✅（两条出路：用 `check-settings --json` 或读 `status.settings.rejected` 看到 key+reason，修正键名/type/枚举值，或让该命名空间被 pack 声明（`packs/<id>/settings/declarations.js`）） |
 | `VMU_SETTING_NAMESPACE_UNKNOWN` | ★ **C#3**：部署/pack 交来一个**未知设置命名空间**（`vmu.<token>.*` 且该 token 既不是框架键、也不属于任何已注册 pack 命名空间）⇒ 具名拒并列出**已注册的 pack 命名空间**；修复是加载该 pack 的 `settings/declarations.js`（它经 `registerPackSettings` 注册），不是改框架 schema | 设置筛查（`vibe-math-vmu/settings/schema.js` 的 `screenSettings`） | ✅（hint 必须给已注册命名空间清单与「pack 声明文件」这条唯一出路） |
 | `VMU_SETTING_NAMESPACE_TAKEN` | ★ **C#3**：pack 想注册的命名空间 token 与**框架命名空间**同名（`vmu.core` 等）⇒ 具名拒；框架命名空间只属于核心表，pack 不得占用 | 设置注册（`registerPackSettings`） | ✅（须点名冲突 token 与「换一个 pack 专属词」） |
 | `VMU_SETTING_NAMESPACE_CONFLICT` | ★ **C#3**：同一设置键被声明两次（框架表＋pack，或两个 pack）⇒ 具名拒；绝不静默合并/覆盖（O4） | 设置注册（`registerPackSettings`） | ✅（须点名重复键与「一键一主」） |
@@ -1542,7 +1543,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **536** 个码，**逐行**给出状态 ✓：其中 **490** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **537** 个码，**逐行**给出状态 ✓：其中 **491** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **46** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -2014,9 +2015,10 @@
 | `VMU_SEED_UNREADABLE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_SEED_WRITE_FAILED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_SERVICE_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_SETTINGS_INVALID` | **已实现 ✓** | `vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_SETTING_NAMESPACE_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
 | `VMU_SETTING_NAMESPACE_TAKEN` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
-| `VMU_SETTING_NAMESPACE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
+| `VMU_SETTING_NAMESPACE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
 | `VMU_SETTING_PROFILE_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
 | `VMU_SETTING_RETRACT_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/pack.js` | 代码里有该码字符串 ✓ |
 | `VMU_SKILL_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/skills.js` | 代码里有该码字符串 ✓ |
