@@ -93,6 +93,11 @@ export const REFUSAL_MEANS = Object.freeze({
     short: 'The text uses a glyph the declared fonts cannot cover.',
     reachable: 'Replace the uncovered glyph (the receipt names it) or add a font that covers it, then render again.',
   }),
+  VMU_PAPER_CROSS_REVIEW_UNMET: Object.freeze({
+    means: 'The paper cannot pass the cross-review gate: fewer than two DISTINCT non-author reviewers hold a counted deliverable verdict on the current text (the receipt names crossReviewers/required/staleReviews).',
+    short: 'The paper still lacks the required distinct non-author cross-reviews.',
+    reachable: 'Get the missing non-author reviewers to file a counted deliverable review of the current text (re-file after any part rewrite), then retry final.',
+  }),
   VMU_SCOPE_REFUSED: Object.freeze({
     means: 'A member-scope rule (the seat\'s permissible tool/face set for this turn) refuses the call — this is the institution\'s scope policy, distinct from a role permission.',
     short: 'This seat\'s member scope does not include the call.',

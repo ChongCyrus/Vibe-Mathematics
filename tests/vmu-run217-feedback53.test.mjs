@@ -75,7 +75,7 @@ ok(SRC_PAPER.includes('TEX_MATH_GLYPH') && SRC_PAPER.includes("'≥': '\\\\geq'"
   '★ ① unicode math glyphs are re-spelled as LaTeX math (the font has no ≥ / ∎: xelatex logged "Missing character")', SRC_PAPER.includes('TEX_MATH_GLYPH'))
 ok(SRC_PAPER.includes("'∎': '\\\\blacksquare'"),
   '★ ① and ∎ becomes \\blacksquare rather than a dropped glyph', SRC_PAPER.includes('\\\\blacksquare'))
-ok(SRC_PAPER.includes('function PaperTexBody(') && SRC_PAPER.includes('function PaperTex({ target } = {}) { return PaperTexBody({ target }).tex }'),
+ok(SRC_PAPER.includes('function PaperTexBody(') && SRC_PAPER.includes('function PaperTex({ target, statusOverride = null } = {}) { return PaperTexBody({ target, statusOverride }).tex }'),
   '★ ① the .tex source and its repair counts come from the same pass (a second pass would let them disagree)', SRC_PAPER.includes('PaperTexBody'))
 ok(SRC_PAPER.includes('READS AS TEXT in the PDF instead of as mathematics'),
   '★ ① and the receipt says what an escaped caret MEANS: the formula reads as text', SRC_PAPER.includes('READS AS TEXT'))

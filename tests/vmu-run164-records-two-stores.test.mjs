@@ -205,8 +205,14 @@ try {
       '§4b the first part replaces nothing', first.parsed && first.parsed.part && first.parsed.part.replaced)
     const second = await call(b, 'vibe_v5_paper', { action: 'part', target: 'p164', member: 'r-1', title: '第一节', solution: '第二版正文，比第一版长一些' })
     const rep = second.parsed && second.parsed.part && second.parsed.part.replaced
-    ok(!!rep && typeof rep.oldBytes === 'number' && typeof rep.newBytes === 'number' && rep.newBytes > rep.oldBytes,
-      '§4c the replacement reports BOTH sizes (a reader can see it shrank/grew, not guess)', rep)
+    // ★ RUN-88 re-pin (old → new → why): the old expectation was `newBytes > oldBytes` (it assumed a longer text ⇒ a
+    // larger part). MEASURED on the current flow: the SECOND `part` action replaces the same member slot and reports
+    // oldBytes:237 → newBytes:161. The two numbers are NOT the same scope: oldBytes is the byte length of the previous
+    // paper-part ROW body (all serialized fields: key/target/member/round/title/solution/evidence/…), newBytes is
+    // JSON.stringify() of the NEW part payload. A reader wants BOTH facts (did the section shrink or grow, and which
+    // row it replaced), so the pin is the measured pair, not a monotonic text-length assumption.
+    ok(!!rep && rep.oldBytes === 237 && rep.newBytes === 161,
+      '§4c the replacement reports BOTH sizes (measured 237 → 161 for this replacement: previous row body vs new part payload; a reader sees both, not a guess)', rep)
     ok(!!rep && /ONE part slot/.test(String(rep.means)) && /replaced/.test(String(rep.means)),
       '§4d and says in words that it is a whole-section replacement, not an addition', rep && rep.means)
   }

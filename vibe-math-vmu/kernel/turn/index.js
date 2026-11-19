@@ -174,7 +174,7 @@ export const FIELD_OWNERS = Object.freeze({
  * @param permission the permission that grants a closure vote. Defaults to the framework's own README word only as
  *                   a last resort; a deployment should set `vmu.turn.closureVotePermission`.
  */
-export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null, rows = [], solvedThisRound = new Map(), finalizedAt = null, finalizedAtSource = null } = {}) {
+export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null, rows = [], rowsAll = null, window = null, solvedThisRound = new Map(), finalizedAt = null, finalizedAtSource = null } = {}) {
   const enfranchised = roster
     .map((m) => String(m && m.id !== undefined ? m.id : m))
     .filter((id) => {
@@ -249,6 +249,38 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       // explanation - this face has a size pin (docs/17), so the sentence stays inside it.
       ? 'the map is this orchestrator\'s, but every vote is also written to the durable fold key "closure_votes", so it spans the INSTITUTE. `missing` means "no recorded judgement" this reading can see; a member who voted in ANOTHER session IS visible here through that fold'
       : 'this reading was computed for the named meeting',
+    // ★ RUN-88 F-87-03: THE COUNTING WINDOW MUST BE READABLE, NOT INFERRED. Same fold/window used to read 2→3→4
+    // because archived rows, the live session map and the current fold were merged without saying which of them counted.
+    // rowsRead = raw rows the caller supplied (all windows); rowsCounted = the CURRENT-window rows this tally used;
+    // rowsArchivedByWindow = rowsRead - current-window rows (kept on file, excluded by name, never silently dropped).
+    rowsRead: Array.isArray(rowsAll) ? rowsAll.length : (Array.isArray(rows) ? rows.length : 0),
+    // ONE row per member per window: a repeated vote restates the same judgement, so the count cannot grow.
+    rowsCounted: (() => {
+      const set = new Set()
+      for (const r of Array.isArray(rows) ? rows : []) {
+        if (r && typeof r.member === 'string' && typeof r.solved === 'boolean') set.add(String(r.member))
+      }
+      return set.size
+    })(),
+    rowsArchivedByWindow: (() => {
+      const all = Array.isArray(rowsAll) ? rowsAll : null
+      if (!all) return 0
+      const w = window === null || window === undefined ? null : Number(window)
+      if (w === null || !Number.isFinite(w)) return 0
+      return all.filter((r) => r && (r.window === undefined || r.window === null ? 1 : Number(r.window)) !== w).length
+    })(),
+    rowsByWindow: (() => {
+      const all = Array.isArray(rowsAll) ? rowsAll : (Array.isArray(rows) ? rows : [])
+      const out = {}
+      for (const r of all) {
+        const w = r && r.window !== undefined && r.window !== null ? Number(r.window) : 1
+        if (!Number.isFinite(w)) continue
+        out[String(w)] = (out[String(w)] || 0) + 1
+      }
+      return out
+    })(),
+    countWindow: window === null || window === undefined ? null : Number(window),
+    countWindowMeans: 'rowsCounted = rows whose window equals countWindow (the live closure_window); rowsArchivedByWindow are kept on file but excluded BY NAME; a repeated vote does not raise the count because the writer keeps ONE row per member in the window',
     cast,
     // ★ LIVE RUN 7 (agent feedback item j): `cast` READS like "the votes were cast", but this predicate is "closure was
     // CONFIRMED unanimously" — the acceptance agent reported the field's meaning as inverted from its name, and it was
@@ -333,6 +365,17 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       return forIt.concat(against).map((id) => String(id) + '@' + String((from.get(String(id)) || {}).where || '?')).sort()
     })(),
     votersMeans: 'who voted, one row per member, the LATEST judgement wins',
+    votersWindows: (() => {
+      const out = {}
+      for (const row of Array.isArray(rowsAll) ? rowsAll : []) {
+        if (!row || typeof row.member !== 'string') continue
+        const w = row.window === undefined || row.window === null ? 1 : Number(row.window)
+        if (!Number.isFinite(w)) continue
+        out[String(row.member)] = w
+      }
+      return out
+    })(),
+    votersWindowsMeans: 'per-member window stamp of the durable row this tally read (archived-window votes are visible here but not counted)',
     // ★★★ TB-2782 (RUN 83 attempt-1, audit6): THE VOTE WINDOW VS THE FINALISATION ORDER WAS UNREADABLE. On the 83rd run
     // r-acad voted at 13:06 and the paper was finalised at 13:42; the receipt carried `cast:false` (3:1) with no way to
     // see that the tally was decided by a vote cast BEFORE the finalisation it was about. This projects the two instants

@@ -118,6 +118,11 @@ ok(bySeatA && bySeatA.turn === turnA,
   '★★★ §2a and the page is r-1\'s OWN turn, not the most recent turn in the process', { got: bySeatA && bySeatA.turn, want: turnA, other: turnB })
 ok(bySeatA && bySeatA.promptFor && bySeatA.promptFor.member === 'r-1',
   '★★ §2b the receipt says which seat asked (`promptFor.member`)', bySeatA && bySeatA.promptFor)
+ok(bySeatA && bySeatA.promptSources && bySeatA.promptSources.settings && bySeatA.promptSources.settings['vmu.v5r.fixtureMode'] &&
+  bySeatA.promptSources.settings['vmu.v5r.fixtureMode'].value === 'tools' && bySeatA.promptSources.settings['vmu.v5r.fixtureMode'].source,
+  '★★ §2d RUN-88 P2-2: the page carries the resolved settings it was assembled under (fixtureMode value/source/origin)', bySeatA && bySeatA.promptSources)
+ok(bySeatA && bySeatA.retention && bySeatA.retention.cacheLimit > 0 && typeof bySeatA.retention.policy === 'string' && Array.isArray(bySeatA.retention.retainedTurns),
+  '★★ §2e RUN-88 P2-2: the retention window is DISCLOSED (cache limit, retained turns, eviction policy)', bySeatA && bySeatA.retention)
 ok(bySeatA && bySeatA.promptFor && bySeatA.promptFor.turnId === turnA && bySeatA.promptFor.turnMember === 'r-1',
   '★★★ §2c and which seat the ARCHIVE says assembled this text — the reader can compare the two instead of trusting the echo',
   bySeatA && bySeatA.promptFor)
@@ -173,7 +178,7 @@ import { readFileSync } from 'node:fs'
 const src = readFileSync(join(REPO, 'vibe-math-vmu', 'tools', 'turn.js'), 'utf8')
 ok(/wantMember/.test(src) && /IS A SELECTOR, NOT DECORATION/.test(src),
   '§6 the face records that a seat is a selector (the 79th run\'s failure mode is written down where it is fixed)')
-ok(/promptFor\s*\}/.test(src), '§6a the receipt spreads `promptFor` into the page')
+ok(/promptFors*,/.test(src), '§6a the receipt spreads `promptFor` (and now promptSources/retention) into the page')
 ok(/REACHABLE INSTEAD: drop `member`/.test(src), '§6b the disagreement refusal carries its two routes in source')
 
 console.log('')

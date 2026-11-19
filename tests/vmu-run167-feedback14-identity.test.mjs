@@ -77,7 +77,7 @@ const newRoot = async (tag) => { const r = await mkdtemp(join(BASE, tag + '-'));
   ok(/but every vote is also written to the durable fold key "closure_votes"/.test(turn) &&
     /`missing` means "no recorded judgement"/.test(turn),
     '§0 F9: the closure reading still explains `missing` inside the window field, and now names the shared fold that makes it institute-wide (the small face has a size pin)')
-  ok(/const review = \{ target: str\(state\.target\), member:/.test(paper) && /const part = \{\s*\n\s*target: str\(state\.target\)/.test(paper),
+  ok(/const review = \{ target: str\(state\.target\), member:/.test(paper) && /const part = \{\s*\n\s*key: partKey, target: str\(state\.target\)/.test(paper),
     '§0 F6 follow-up: a paper row NAMES its paper (content-only fingerprints exclude the title, so the paper id must be in the body)')
   ok(/function narrowInEffectMeans\(face, notNarrowed, inEffect\)/.test(tools) && /narrowing\.reason !== 'type-declares-no-narrowing'/.test(tools) && /const narrowingInEffect = face\.narrowed === true && notNarrowed\.length === 0/.test(tools),
     '§0 F5: the round receipt classifies the rows by their own reason, and reports DECLARED-AND-INSTALLED (the effect), not merely declared')

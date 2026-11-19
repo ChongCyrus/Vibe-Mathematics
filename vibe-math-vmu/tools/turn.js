@@ -311,6 +311,26 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         // `null` says the face cache answered without that fact and which route did.
         const archived = kernel.turn && typeof kernel.turn.promptOf === 'function' ? kernel.turn.promptOf(id) : null
         const statusBlockIncluded = archived && typeof archived.statusBlockIncluded === 'boolean' ? archived.statusBlockIncluded : null
+        // ★ RUN-88 P2-2: the settings the prompt was assembled under must travel WITH the page (a prompt is not
+        // reproducible without them). Two deployment-critical keys, read from the SAME resolved view (value/source/origin),
+        // and a retention statement naming what is kept and what proves a page is gone.
+        const promptSources = (() => {
+          try {
+            const settled = kernel.status({ detail: 'settings' })
+            const resolvedMap = settled && settled.settings && settled.settings.resolved ? settled.settings.resolved : {}
+            const pick = (key, redact) => {
+              const row = resolvedMap[key]
+              if (!row) return null
+              return { key, value: redact ? '«redacted»' : row.value, source: row.source || null, origin: row.origin || null }
+            }
+            return { settings: { 'vmu.v5r.fixtureMode': pick('vmu.v5r.fixtureMode', false), 'vmu.budget.tokens': pick('vmu.budget.tokens', true) },
+              means: 'resolved values for the two deployment-critical keys this prompt depends on; token BUDGET value is redacted by convention, source names the layer (config / pack:<id> / default) and origin the human reading (config / declared-default / runtime)' }
+          } catch (e) { return { settings: null, means: 'settings provenance UNREADABLE: ' + String((e && e.message) || e) } }
+        })()
+        const retainedTurns = Array.from(new Set([...promptCache.keys(), ...kernelTurns])).slice(-20)
+        const retention = { cacheLimit: PROMPT_CACHE_LIMIT, retainedTurns, kept: retainedTurns.length,
+          policy: 'retention is BOUNDED by policy: this face keeps at most ' + PROMPT_CACHE_LIMIT + ' assembled prompts (oldest evicted), and the kernel archive keeps its own declared cap; a turn that has been evicted is NOT readable through op:"prompt"',
+          overWindowHint: 'if a turn id you expect is absent, it was EVICTED (cache limit ' + PROMPT_CACHE_LIMIT + ' or kernel archive cap) — read it right after the turn ends; the reply archive Members/<member>/Turns/<turn>.md is the durable copy' }
         return { ok: true, turn: id, chars: text.length, offset, limit,
           limitClamped: limit !== askedLimit, end, done: end >= text.length,
           nextOffset: end >= text.length ? null : end,
@@ -323,7 +343,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             : 'read from the kernel archive, which stores the EXACT string the delivery seam received: true means the status text (' + String(archived.statusBlockChars) + ' characters) is inside `text`, so the member was handed it; false means the assembly produced a prompt without the block it composed - a framework defect, not a rendering choice',
           // null when the caller named no seat (the page answers "the latest prompt"); an object when it did, so the page
           // can be checked against the seat instead of trusted because the name was echoed back.
-          promptFor }
+          promptFor, promptSources, retention }
       }
       if (op === 'status') {
     // ★★★ TB-2724 / RUN 77 (D — the status receipt was 51 988 B against the host's 12 000 B bound): `detail` now

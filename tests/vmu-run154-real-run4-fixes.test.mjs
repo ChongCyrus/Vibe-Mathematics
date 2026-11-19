@@ -108,7 +108,7 @@ const stateOf = (flow, T) => { const got = flow.state(T); return got && got.stat
 /** Write one part per participant and move the paper into cross-review. */
 function toReviewing(flow, T, { mids = ['r-1', 'r-2'] } = {}) {
   flow.start({ target: T, participants: mids })
-  for (const m of mids) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: m + ' 的解法' })
+  for (const m of mids) flow.recordPart({ target: T, member: m, title: m + ' 的标题', solution: m + ' 的解法' + String.fromCharCode(10) + '证据等级：draft' })
   return flow.advance({ target: T })
 }
 /** Simulate "the state snapshot lost the reviews cache while the review ROWS stayed on disk". */
@@ -249,7 +249,7 @@ console.log('§2 H1：缓存丢了评审条目，磁盘上的评审行仍然作�
       // `VMU_REVIEW_STALE` (staleReviews names r-1) or, because staleReviewReading now calls the same vote FRESH, falls
       // to the named "only N crossers" refusal with crossReviewers missing r-1. BOTH are "the cross-round vote was
       // treated as void" — the old fact, in the new shape. The main assertions above are NOT relaxed.
-      const lampRed = !!lamp && ((lamp.threw === 'VMU_REVIEW_STALE' && JSON.stringify(lamp.staleReviews || []).includes('r-1'))
+      const lampRed = !!lamp && ((lamp.threw === 'VMU_PAPER_CROSS_REVIEW_UNMET' && !(Array.isArray(lamp.crossReviewers) && lamp.crossReviewers.includes('r-1'))) || (lamp.threw === 'VMU_REVIEW_STALE' && JSON.stringify(lamp.staleReviews || []).includes('r-1'))
         || (lamp.threw === 'VMU_INVALID_ARGUMENT' && /互审必须由两位不同的/.test(lamp.message)
           && !(Array.isArray(lamp.crossReviewers) && lamp.crossReviewers.includes('r-1'))))
       ok(lampRed,

@@ -50,6 +50,7 @@ export const v5rPaperWriteSection = Object.freeze({
     '· **系统梳理**：动笔前把**原问题**与所里已有的**全部有价值产物**——命题卡、方法卡、子问题卡、进展日志、表决记录、形式化证据——过一遍，按九个章节归位；缺证据的章节明写「未定论」，不要用概括性套话填补。',
     '· **分工与合并**：全所已把章节**分派**给各成员，各写自己负责的部分（`action:"part"`），由定稿代表把各部分**合并**成一篇；你不要改写别人负责的章节，发现缺口就在互审里指出。',
     '· ★ **一位成员只有一个部分槽位**：`action:"part"` 写的是**你自己那一段**，同一位成员再调一次是**替换**上一段的正文，不会变成第二段（回执的 `replaced` 会给 `oldBytes → newBytes` 并明说「it did not add a second section」）。要写多节就把它们写进这一段正文里分小节；第 2/3 轮打磨也是**改这一段**，不是新增。动笔前用 `vibe_v5_paper { action:"status", target }` 看清现在正文里是哪几段、分别是谁的。',
+    '· ★ **标题保持稳定；实验性字符只放正文**：`part` 的 `part`（标题）是这一段的**身份键**——同一成员再调用是替换同一条，标题一改就会在 paper-state 里留下一条新的 live 行（RUN 88 实测 F-87-02：把 ⨀ 写进标题后返工改标题，旧行仍 live）。所以标题只写普通文字，**表外字符/返工内容一律写进 `body`**，标题不要跟着一个字一个字改。',
     '· 若这是第 2 轮及以后：上一轮互审给你的意见会随本轮状态给出；据此修订，若不同意该意见，在 limits 里写明理由。',
     '· 语言与格式沿用本次论文的声明（中文论文的 PDF 用 xelatex，英文用 pdflatex）。',
     // ★★★ RUN 217 (run 54 / FEEDBACK53 ①-4, MEASURED): the members wrote `Σ_{i=1}^{n}` as bare text, so every `^` and `_`
@@ -79,6 +80,7 @@ export const v5rPaperReviewSection = Object.freeze({
   scope: Object.freeze({ phase: 'paper-review' }),
   text: [
     '【最终论文·互审】',
+    '· ★ **前置：主席必须先把论文 `advance` 到 `reviewing`，再派 review 回合**——在 `writing` 期投 `review` 会被 `VMU_PACK_V5R_CORE_PAPER_STATE` 具名拒（RUN 88 实测：两席各白跑一个回合）。评审是 `reviewing` 阶段的行为；若你还是 `writing`，先把稿件交主席推进。',
     '请审阅**分配给你的那一位同事**写的部分，判断它是否可以交付。审阅要点：证据是否充分；是否与已定论的表决一致；有无编造或未标注的未决项；术语与符号是否清楚。',
     '',
     '· **面向读者的四项质量要求**：**系统**（从原问题到结论走得通）、**正确**（每条论断都有证据）、**完整**（所有有价值的产物都收进来）、**严谨清晰**（术语与符号交代清楚）——逐项落进你的评审意见：这四项是**人判**的，没有自动判定这四条的算法，靠你与同事的互审（不满足就投 `false` 并写清理由）。但**交付**另有一条机器门：进入 `awaiting-editor`／`finalized` 后渲染时，`paper.js` 的 `qualityGate` 会按四条具名规则拒交——小节标题缺失、引用指向不存在的记录（`CITATION_UNKNOWN`）、某个部分没有任何证据（`EVIDENCE_MISSING`，拒因点名是哪个部分——一个部分有证据不能替另一个部分作证）、正文漏掉本所真的已 verified 的结论或已解子问题（`VERIFIED_MISSING`，判据是**正文里是否出现该结论的标题**——渲染时 §3/§4 的自动填充只进渲染文件，不能代替正文）；还在撰写／互审的稿子可自由渲染（门会跳过并写明 `draft:<status>`）。',
@@ -114,7 +116,8 @@ export const v5rPaperFinalSection = Object.freeze({
     '',
     '谁可以拍板：',
     '· 本流程的**定稿席位就是院士（即主席席）**——运行时纸面装配里 `finalizerSlot: "chair"`；其他席位调用 `final` 会被具名拒（`VMU_NOT_PERMITTED`，回执指出你的席位）。',
-    '· 若本次论文声明由**所办（office）**定稿：原版要求**所办先与全所交流（至少一条所办消息）并至少召开一次会议**，结论写进定稿说明——★ 这条前置在本实现里**未接线**（会以具名说明拒绝 office 定稿），不要在未咨询、未开会的情况下声称已定稿。',
+    '· ★ **定稿前的所办咨询是必过门（两段式，不是可预先清空的 pending）**：`vmu.paper.officeConsult:"required"` 的部署里，**首次** `final {decision:"deliverable"}` 必然被 `VMU_OFFICE_CONSULT_REQUIRED` 拦——正确顺序是 **final → 被拦 → 所办 `vibe_v5_paper {action:"consult", …}` 作答 → 再 final 重试**；`consult_state` 的 `awaiting` 为空只说明**当前没有待答问询**，不等于这道门已经过（RUN 88 实测：把它当「门已过」会误判）。',
+    '· ★ **定稿后重投（V21）的判据**：结题票只走 `vibe_vmu_vote`，以回执字段 `vote_solved` 判定（`vote_solved` 是书账字段，永不单独计票；四票 `at`/`votersAsOf` **都晚于 paper-state 的 `finalizedAt`**，`voteStaleness.afterFinalization:true` 是旁证）；pdf 行的定稿时刻若面未暴露 `compiledAt`，按 **PRODUCT-MISSING** 记录（不要去找一个不存在的字段）。',
     '',
     '定稿前检查清单：',
     '· 每个参与成员的部分都在（合并稿里按成员列示）；',
@@ -127,7 +130,7 @@ export const v5rPaperFinalSection = Object.freeze({
     '    vibe_v5_paper { action: "final", target: "本次论文的目标对象", member: "你的成员 id",',
     '                    decision: "deliverable", note: "定稿说明（含对最后分歧的处理）", conclusion: "论文结论的正式陈述" }',
     '· ★ 它**是**一个工具：早先靠回执字段 `paper_final` 提交的做法已经取消，回执里写那个字段会被判 `VMU_TURN_UNKNOWN_FIELD`。',
-    '· ★ **定稿主体只有主席席（即院士）**；所办只做归档与流程（留痕、索引、对外转达），**不代签**：所办调 `final` 会被角色门禁具名拒（`VMU_NOT_PERMITTED`）——E4 的所办前置在本实现里未接线，那是另一道手续，不放松这条角色门禁。',
+    '· ★ **定稿主体只有主席席（即院士）**；所办只做归档与流程（留痕、索引、对外转达），**不代签**：所办调 `final` 会被角色门禁具名拒（`VMU_NOT_PERMITTED`）——**所办作为定稿人（E4）**在本实现里未接线（所办调 final 会被角色门禁拒）；这与**定稿前的 office-consult 咨询门**是两件事——后者是必过的（见上一条）。',
     '· ★ 产物四件：md / tex / pdf / meta。渲染会写出 md、tex、meta；**pdf 由内核的 LaTeX 编译执行器产出**（引擎顺序 ' + PAPER_ENGINE_ORDER.zh.join(' → ') + '）。执行器是否可用要看部署：可用时定稿回执写 `pdf.produced:true` 与 `pdfBytes`（并给出 `engine`）；不可用时回执**具名说明为什么没产出**，不会假装四件齐全。**以回执为准，不要预先假定不可用**。',
   ].join('\n'),
 })

@@ -3208,6 +3208,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // in-memory `votes` Map, so a judgement made in one session could never reach another, and the office's `missing` named a
   // member who had already answered. The map stays per-session (that IS its honest scope), but every vote now ALSO lands in
   // the durable fold under its own key, and every closure reading merges the fold in: one institute, one tally.
+  const closureVoteRawRows = () => {
+    try {
+      if (!recordsStore || typeof recordsStore.read !== 'function') return []
+      const rows = recordsStore.read(CLOSURE_VOTES_FOLD)
+      return Array.isArray(rows) ? rows : []
+    } catch (e) { log('vmu closure_votes raw read: ' + String((e && e.message) || e)); return [] }
+  }
   const closureVoteFoldRows = () => {
     try {
       if (!recordsStore || typeof recordsStore.read !== 'function') return []
@@ -3226,12 +3233,30 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   const closureVotesMerged = () => {
     const out = new Map()
     for (const row of closureVoteFoldRows()) out.set(String(row.member), row.solved === true)
+    // ★ RUN-88 F-87-03: the session map is the fresher copy of the SAME window. After a reopen, an OLD-window row in
+    // this map must not be re-counted (that was the 2→3→4 drift: fold rows were window-filtered, the live map was not).
+    const win = closureWindowValue()
+    let localRows = []
+    try { localRows = turn && typeof turn.status === 'function' ? (turn.status().closureVoteLocalRows || []) : [] } catch { localRows = [] }
+    const haveWindowed = Array.isArray(localRows) && localRows.some((r) => r && r.window !== undefined && r.window !== null)
+    if (haveWindowed) {
+      for (const row of localRows) {
+        if (!row || typeof row.member !== 'string') continue
+        const w = row.window === undefined || row.window === null ? 1 : Number(row.window)
+        if (Number.isFinite(w) && w === win && typeof row.solved === 'boolean') out.set(String(row.member), row.solved === true)
+      }
+      return out
+    }
     const live = turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : null
     if (live && typeof live.forEach === 'function') live.forEach((v, k) => out.set(String(k), v === true))
     return out
   }
   const closureVoteInput = () => ({
     votes: closureVotesMerged(),
+    // ★ RUN-88 F-87-03: the raw fold rows (ALL windows) travel beside the current-window rows, and the window number is
+    // explicit, so closureVoteOf can report rowsRead/rowsCounted/rowsArchivedByWindow instead of leaving a reader to guess.
+    rowsAll: closureVoteRawRows(),
+    window: closureWindowValue(),
     // ★★★ TB-2782 (RUN 83 attempt-1): the finalisation instant the vote-staleness reading compares against. It is READ,
     // never invented: the paper track's newest row whose body says status:"finalized" dates that finalisation (the row was
     // rewritten at that moment). No such row ⇒ null, and the reading says the comparison is not judgeable. A build without

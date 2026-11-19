@@ -48,6 +48,9 @@ export const PAPER_CODES = Object.freeze({
   PDF_NEEDS_KERNEL: 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
   EXECUTOR: 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING',
   PDF_FAILED: 'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED',
+  // ★ RUN-88 P2-1: the cross-review gate had no CODE of its own (it reused VMU_INVALID_ARGUMENT), so a report could
+  // not name 'cross-review unmet' by grep. One registered code (docs/03 §8) for this gate.
+  CROSS_REVIEW_UNMET: 'VMU_PAPER_CROSS_REVIEW_UNMET',
   // ★ E4 — the pre-finalisation office consult. These are INSTITUTION codes (registered in docs/03 §8), passed into the
   // kit because the kit invents no codes: the gate is declared here, the mechanism that runs it lives in packs/research-core/paper-flow.js.
   OFFICE_CONSULT_REQUIRED: 'VMU_OFFICE_CONSULT_REQUIRED',

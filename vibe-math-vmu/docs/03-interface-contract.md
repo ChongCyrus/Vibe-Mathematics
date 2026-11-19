@@ -155,7 +155,7 @@
 
 | 工具 | 语义 | 参数（宿主视图） | 出现条件 | 具名拒 |
 |---|---|---|---|---|
-| `vibe_vmu_status` | 只读总览：接缝/注册面/中间件条目/生效整合包/**实例身份**/`settings.resolved`/`auditTail`/`prompt`；★ 默认 `detail:'summary'` 是**紧凑可读**（含 `closureVote`、live 成员 id/slot/state、计数，实测 <4000 字符）；`detail:'full'` 才回全量；`detail:'closure'` 只回结题读数（<1500 字符） | —（对象 schema，无必填） | `vmu.core.enabled !== false` | `VMU_MIDDLEWARE_FAILED` |
+| `vibe_vmu_status` | 只读总览：接缝/注册面/中间件条目/生效整合包/**实例身份**/`settings.resolved`/`auditTail`/`prompt`；★ 默认 `detail:'summary'` 是**紧凑可读**（含 `closureVote`、live 成员 id/slot/state、计数，实测 <4000 字符）；`detail:'full'` 才回全量；`detail:'closure'` 只回结题读数（**上限 2200 字符**；F-87-03 的四元组 `rowsRead`/`rowsCounted`/`rowsArchivedByWindow`/`votersWindows` 是必要的诚实读数，实测 2021 —— 不许为塞进旧 1500 而删字段） | —（对象 schema，无必填） | `vmu.core.enabled !== false` | `VMU_MIDDLEWARE_FAILED` |
 | `vibe_vmu_tools` ★ PHASE 8 / B-1（轮 39 补调用者路径） | 该成员**真实可见**的工具表：**回合内调用**时名字来自**调用者 Agent 的 `ctx.tools.schemas()`**（one-shot child 的 memberSession 映射可能尚未学到）；**回合外**走内核 `turn.visibleToolsOf`；每项 `{name,purpose}`；无 live Agent ⇒ **具名拒**，绝不返回空清单假装成功。`vibe_v5_tool_help` 应转调同一读数 | `member`（必填） | `vmu.members.*` 或 `vmu.tools.faces` 声明该面 | `VMU_NO_SUCH_OBJECT`／`VMU_ENGINE_UNAVAILABLE`／`VMU_INVALID_ARGUMENT` |
 | `vibe_vmu_vote` ★ PHASE 8 / 轮 37 | 结题表决作为**工具**：写入 `turn.recordClosureVote`，与回执 `vote_solved` **同一写入者、同一账本**；非票权/未落座 ⇒ 具名拒。用途：投票回合只挂这一个工具，避免"无工具⇒把调用写进正文⇒`VMU_TURN_NO_FENCE`" | `member`（必填）、`solved`（必填 boolean）、`why`（可选） | `vmu.turn.*` 或 `vmu.tools.faces` 声明该面 | `VMU_NO_SUCH_OBJECT`／`VMU_NOT_PERMITTED`／`VMU_INVALID_ARGUMENT`／`VMU_ENGINE_UNAVAILABLE` |
 | `vibe_vmu_env` ★ PHASE 9 / 轮 4 | 环境适配面：`probe` 用注入 spawn 跑需求表里的 probe，`list` 看表＋最近结果，`report` 把缺失写成 records finding；**探测失败是正常 ok:false**；**本面绝不执行 installCommand／不联网／不请求权限** | `action`（probe/list/report）、`need`／`needs`、`why`／`detail` | `vmu.env.*` 或任一 `vmu.math.*` 声明 | `VMU_ENV_UNKNOWN_NEED`／`VMU_ENGINE_UNAVAILABLE`／`VMU_INVALID_ARGUMENT` |
@@ -929,6 +929,7 @@
 | `VMU_PAPER_LATEX_TIMEOUT` | ★ **PHASE 7**：编译超过声明的预算（`vmu.paper.latexTimeoutMs` 或调用方 timeoutMs） | 论文/LaTeX | ✅（调大预算/简化文档） |
 | `VMU_PAPER_LATEX_INTERRUPTED` | ★ **PHASE 7**：编译被取消/中断（与 timeout 分开） | 论文/LaTeX | ✅（重跑；signal 在回执里） |
 | `VMU_PAPER_LATEX_NO_OUTPUT` | ★ **PHASE 7**：exit 0 但 outDir 里没有 PDF（或目录不可写）——不假成功 | 论文/LaTeX | ✗（检查 outDir/文档） |
+| **RUN-88 · `VMU_PAPER_CROSS_REVIEW_UNMET`** | 论文**互审门未达成**：`final` 要求两位 DISTINCT、非作者的成员对**当前正文**持有 count 的 deliverable 互审，未达到 ⇒ 具名拒（`gates[].name:"cross-review"` 带 `required:2`、`message`、`crossReviewers`、`staleReviews`）；此前复用 `VMU_INVALID_ARGUMENT`，报告无法按门检索 | 论文/互审（`packs/research-core/paper-flow.js` 的 `requireCrossReview`；码声明 `packs/v5r/paper.js`；登记 `vibe-math-vmu/refusal-means.js`） | ✅（须给 `crossReviewers/required/staleReviews` 与可达修法：让缺的成员对当前正文重投 deliverable 互审） |
 | **TB-2768/TB-2772 · `VMU_PAPER_GLYPH_UNCOVERED`** | **编译成功但 PDF 缺字 ⇒ `final` 具名拒并回滚**：编译 exit 0、PDF 已写出，但引擎日志有 `Missing character`（字体丢了正文里的 unicode 数学符号，如 ℤ/∀/∣/∩/∪/⋯/∉/⌊/⌋/①②③④⑤）⇒ `final` 返回 `ok:false`、`code:"VMU_PAPER_GLYPH_UNCOVERED"`、`finalized:false`，**stage 回滚到 `awaiting-editor`**（回执 `rolledBack:{from:"finalized",to:"awaiting-editor"}`、`reviseAvailable:true`、`keptEarlierFinal`），并带 `glyphLossDetected:true`/`missingCharacterCount`/`glyphsUnrepaired:[{char,u,count,font,where}]`/`logPath`/`logRead`；**没有 override——缺字的 PDF 不是可交付物**，修正文后重 `final`。★ TB-2785：`final` **一次评估全部门**并按优先级取顶层 code（`gates:[{name,ok,code,detail}]`，优先级 glyph-coverage > cross-review > evidence-grade-line > office-consult）——字符门与互审/等级行/所办门**同屏可见**，不再「遇第一个失败门就返回」；回执带 `primaryGate`/`gatePriority`，字符门失败时顶层同时给 `glyphLossDetected`/`glyphsUnrepaired`/`missingCharacterCount`/`logPath`。`compile`/`status` 仍以同一读数（`math` 与 `pdf` 块）报检测结果；`final`/`compile` 的 `pdf` 块另带 `pdfSha256` + `pdfSha256Means`（`null` = 本次无哈希，具名缺失） | 论文/LaTeX（`kernel/latex.js` 的 `glyphLossReading()`；`packs/research-core/paper-flow.js` 的 `final` 回滚闸与 `compile` 回执；pack 面 `vibe_v5_paper` 的 `final`/`compile`/`status`） | ✅（须给**缺哪个字形、各几次、字体与 .tex 行号**、`rolledBack.from/to`、`missingCharacterCount`；hint 必须可照抄） |
 | **TB-2786 · `VMU_PAPER_GRADE_LINE_MISSING`** | **每个 part 的正文必须有具名证据等级行**：`final` 在任一部分正文缺 `证据等级：draft｜verified-by-citation｜mechanically-checked｜lean-verified` 之一时具名拒（`ok:false`，`gates[].name:"evidence-grade-line"` 带 `missingSections:[{member,title,recordId}]`、`acceptedGrades`、`format`），hint 指出哪一节、四值词表与格式；卡片等级（`fromCards`）**不等于**正文等级（`fromBody`/`bodyGradeLine`），卡片永远不能替代正文行——这是第 84 次 V22 假 PASS（consult 声称「每节均带具名行」而正文没有）的产品侧防线 | 论文/证据等级（`packs/research-core/paper-flow.js` 的 `gradeLineOfText`/`gradeAuditOfState`/`final` 门；`packs/v5r/tools.js` 的 `status.evidenceGrades.fromBody`/`fromCards`/`bodyGradeLine`） | ✅（须给**缺哪个 section、四值词表与行格式**；正文补行后重 `final`） |
 | `VMU_BALLOT_RULE_UNKNOWN` | ★ **PHASE 7**：`ballot.open({ rules })` 里出现未声明的规则名（避免拼写错误静默变成全局默认） | 票箱 | ✗（给 minVotes／allowRevote／maxChoices／minChoices／mode 之一） |
@@ -1543,7 +1544,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **537** 个码，**逐行**给出状态 ✓：其中 **491** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **538** 个码，**逐行**给出状态 ✓：其中 **492** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **46** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1905,6 +1906,7 @@
 | `VMU_PANEL_NO_SUCH_MEMBER` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_PANEL_TIME_KEY` | **已实现 ✓** | `vibe-math-vmu/kernel/panel.js` | 代码里有该码字符串 ✓ |
 | `VMU_PANEL_UNKNOWN_FIELD` | **已实现 ✓** | `vibe-math-vmu/kernel/panel.js` | 代码里有该码字符串 ✓ |
+| `VMU_PAPER_CROSS_REVIEW_UNMET` | **已实现 ✓** | `vibe-math-vmu/packs/research-core/paper-flow.js`、`vibe-math-vmu/packs/v5r/paper.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_GLYPH_UNCOVERED` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js`、`vibe-math-vmu/packs/research-core/paper-flow.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_GRADE_LINE_MISSING` | **已实现 ✓** | `vibe-math-vmu/packs/research-core/paper-flow.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_LATEX_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js` | 代码里有该码字符串 ✓ |
@@ -2032,7 +2034,7 @@
 | `VMU_STORE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/lean.js`、`vibe-math-vmu/kernel/mailbox.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/store.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/kernel/work.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_STORE_MIGRATION` | **已实现 ✓** | `vibe-math-vmu/kernel/store.js` | 代码里有该码字符串 ✓ |
 | `VMU_TASK_BLOCKED` | **已实现 ✓** | `vibe-math-vmu/kernel/tasks.js` | 代码里有该码字符串 ✓ |
-| `VMU_TASK_BRIEF_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/tasks.js` | 代码里有该码字符串 ✓ |
+| `VMU_TASK_BRIEF_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/tasks.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_TASK_DEPENDENCY_CYCLE` | **已实现 ✓** | `vibe-math-vmu/kernel/tasks.js` | 代码里有该码字符串 ✓ |
 | `VMU_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_TOOL_FACE_UNRESOLVED` | **已实现 ✓** | `vibe-math-vmu/host-pack-tools.js`、`vibe-math-vmu/kernel/memberface.js` | 代码里有该码字符串 ✓ |

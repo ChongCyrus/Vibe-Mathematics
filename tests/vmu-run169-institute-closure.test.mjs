@@ -136,8 +136,8 @@ const SEATS = [['r-acad', 'chair'], ['r-1', 'member'], ['r-2', 'member'], ['r-te
       unanimous && { votesCast: unanimous.votesCast, for: unanimous.for, missing: unanimous.missing })
     break again
   }
-  ok(JSON.stringify(B.kernel.closureVoteView()).length < 1500,
-    '§1 the reading still fits its documented size pin (docs/17: detail:"closure" < 1500)',
+  ok(JSON.stringify(B.kernel.closureVoteView()).length < 2200,
+    '§1 the reading still fits its documented size pin (docs/03 §2 tool table: detail:"closure" < 2200 — old→new: 1500→2200 because F-87-03 added the FOUR necessary count-window readings rowsRead/rowsCounted/rowsArchivedByWindow/votersWindows; measured 2021, no field removed)',
     { chars: JSON.stringify(B.kernel.closureVoteView()).length })
 }
 

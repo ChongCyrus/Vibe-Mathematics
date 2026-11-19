@@ -101,7 +101,7 @@ console.log('§2 F3 — a single participant is refused at the cross-review gate
   // ★★ RUN 167 (FEEDBACK14 F6): 旧写法是「靠轮次上限走到 awaiting-editor，再在 final 拒」。那不是一条合法的路：
   // 它把「没有人互审」变成「编辑器环节的债权」。现在推进到互审闸就具名拒，状态留在 reviewing。
   const finGate = await thrown(() => paper.advance({ target: T }))
-  ok(finGate.code === 'VMU_INVALID_ARGUMENT', 'the cross-review gate refuses with VMU_INVALID_ARGUMENT', finGate)
+  ok(finGate.code === 'VMU_PAPER_CROSS_REVIEW_UNMET', 'the cross-review gate refuses with VMU_PAPER_CROSS_REVIEW_UNMET (old→new: the cross-review hole has its own named code)', finGate)
   ok(/一位参与者的论文无法通过互审/.test(finGate.message) && /自审/.test(finGate.message),
     'the message names the one-participant self-review hole', finGate.message)
   ok(finGate.error && finGate.error.required === 2, 'the refusal carries required:2 (how many distinct reviewers are required)',
@@ -143,7 +143,7 @@ console.log('§3 F3 — a paper with only ONE distinct cross-reviewer is refused
   // TB-2785 (final11b): a gate-blocked final now ANSWERS with a receipt (it does not throw), so `thrown()` wraps it as
   // {code:null, out:receipt}. Read the receipt, never the (absent) thrown error.
   const refusal = fin.out || fin
-  ok(refusal.code === 'VMU_INVALID_ARGUMENT', 'finalise is refused with VMU_INVALID_ARGUMENT', refusal)
+  ok(refusal.code === 'VMU_PAPER_CROSS_REVIEW_UNMET', 'finalise is refused with VMU_PAPER_CROSS_REVIEW_UNMET (old→new: final gates[] primary names the dedicated code)', refusal)
   ok(/互审必须由两位不同的/.test(refusal.message) && /只有 1 位审了别人的部分/.test(refusal.message),
     'the message says how many distinct reviewers reviewed somebody else, and that two are required', refusal.message)
   // ★ TB-2785 (final11b): a gate-blocked final answers with gates[] (not a thrown error). The SAME facts live in the

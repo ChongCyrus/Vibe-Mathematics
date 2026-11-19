@@ -1138,14 +1138,14 @@ ok(outOfScopeSpecs.length === Object.keys(PENDING_SCOPE).length && pendingPointC
 ok(hostOwned.length === 0, 'every no-kernel-call in-scope receipt is declared in NOT_FROM_KERNEL (coverage cannot shrink silently)', hostOwned.length ? hostOwned.map((u) => u.key) : undefined)
 ok(boundedWithoutElision.length === 0, 'bounded sections: every declared-bounded receipt ACTUALLY elides keys it names (a bounded declaration that suppresses nothing is not a licence, it is a lie)', boundedWithoutElision.length ? boundedWithoutElision.map((r) => r.key) : undefined)
 ok(deadDeclaredPaths.length === 0, 'NOT_FROM_KERNEL paths: every composedOf/internalReads path names a LIVE function on the booted kernel (a renamed path would be a decoration that can never go red)', deadDeclaredPaths.length ? deadDeclaredPaths : undefined)
-// The bounded-summary licence must be DOCUMENTED, not just declared: the status/- summary elides exactly 38 kernel keys
+// The bounded-summary licence must be DOCUMENTED, not just declared: the status/- summary elides exactly 40 kernel keys
 // (docs/acceptance/host-receipt-single-producer.md lists them by section) and the run must show that many named keys.
 // If the host ever stops eliding, this assertion goes red on the count; if the kernel adds a key, class A catches it.
 const statusSuppressed = suppressedKeys.filter((s) => s.key === 'vibe_vmu_status/-')
 const statusSuppressedNames = new Set(statusSuppressed.map((s) => s.path))
-const statusNamedHits = ['settings.detail', 'settings.resolvedDetail', 'bus.hooks', 'prompt.bindings', 'loader.stats'].filter((k) => statusSuppressedNames.has(k))
-ok(statusSuppressed.length === 38 && statusNamedHits.length >= 3,
-  'bounded summary: status/- suppresses exactly the documented 38 kernel keys, with named evidence (count=' + statusSuppressed.length + ', namedHits=' + statusNamedHits.join('/') + ')',
+const statusNamedHits = ['settings.detail', 'settings.resolvedDetail', 'bus.hooks', 'prompt.bindings', 'loader.stats', 'closureVote.countWindowMeans', 'closureVote.votersWindowsMeans'].filter((k) => statusSuppressedNames.has(k))
+ok(statusSuppressed.length === 40 && statusNamedHits.length >= 5,
+  'bounded summary: status/- suppresses exactly the documented 40 kernel keys, with named evidence (count=' + statusSuppressed.length + ', namedHits=' + statusNamedHits.join('/') + ')',
   { count: statusSuppressed.length, sample: [...statusSuppressedNames].slice(0, 12), namedHits: statusNamedHits })
 ok(findingsA.length === 0 || findingsA.every((f) => f.tool && f.path && f.kernelSource), 'every class A finding is named tool/action/path/kernelSource (not only counted)')
 

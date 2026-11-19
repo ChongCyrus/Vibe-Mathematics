@@ -812,7 +812,19 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // map the count is. Both are short, so they stay.
             const rIn = out.settings.resolvedIn || null
             const rSession = rIn && rIn.kernelSession ? String(rIn.kernelSession) : null
+            // ★ RUN-88 P2-3: the summary may elide the WHOLE map, but a CONFLICT must not be elided with it: the
+            // rejected keys travel with their resolved reading ({value, source, origin}) so an operator can see what
+            // is actually in force beside what was refused — without paying for the full table.
+            const fullResolved = out.settings.resolved && typeof out.settings.resolved === 'object' ? out.settings.resolved : {}
+            const rejectedRows = Array.isArray(out.settings.settingsRejected) ? out.settings.settingsRejected.slice(0, 8) : []
+            const rejectedResolved = rejectedRows.map((r) => {
+              const row = r && r.key ? fullResolved[r.key] : null
+              return { key: r && r.key ? r.key : null, code: r && r.code ? r.code : null, reason: r && r.reason ? r.reason : null,
+                resolved: row ? { value: row.value === undefined ? null : row.value, source: row.source || null, origin: row.origin || null } : null }
+            })
             out.settings = { keys: out.settings.keys, engineEnabled: out.settings.engineEnabled, dryRun: out.settings.dryRun,
+              ...(rejectedResolved.length > 0 ? { settingsRejected: rejectedRows, settingsRejectedCount: out.settings.settingsRejectedCount, rejectedResolved,
+                rejectedResolvedMeans: 'for every refused setting the summary still names the value actually in force (resolved.value) and its provenance (source/origin) — the resolved map itself stays elided' } : {}),
               resolvedCount: out.settings.resolved && typeof out.settings.resolved === 'object' ? Object.keys(out.settings.resolved).length : 0,
               resolvedIn: rIn,
               // A SHORT sentence, because the summary has a byte bound (the host face is read by models, and the

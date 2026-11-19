@@ -161,7 +161,9 @@ ok([ACAD, R1, OFFICE].every((id) => rosterNow.includes(id)) && rosterNow.length 
 // The compiler is stubbed at the kernel seam the kit actually calls (`kernel.latex.check`); it WRITES a real file so
 // every byte number below can be measured against the disk instead of trusted from the receipt (F72-6).
 const PDF_TEXT = '%PDF-1.4\n% RUN 252 fake pdf (measured, not assumed)\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+let lastCompileSource = ''
 const writeFakePdf = async (request) => {
+  lastCompileSource = String(request.source || '')
   await mkdir(request.outDir, { recursive: true })
   const pdfPath = join(request.outDir, request.sourceName.replace(/\.tex$/, '.pdf'))
   await writeFile(pdfPath, PDF_TEXT, 'utf8')
@@ -265,6 +267,13 @@ ok(card.parsed && card.parsed.ok === true && card.parsed.recordId === 'p-md-1',
 const part = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: T, member: ACAD, part: '第一部分', solution: '测试用的解法正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/p-md-1.md'] })
 ok(part.parsed && part.parsed.ok === true && part.parsed.part && part.parsed.part.ok === true,
   '★ 正：part 记下一份写作（证据指针当场解析）', part.parsed && part.parsed.part && part.parsed.part.code)
+// ★ RUN-88 F-87-02: a TITLE change renames display text; the identity is (target, member) and the old row is marked
+// superseded — it must not read as a second live section.
+const partRenamed = await receipt(v5r, 'vibe_v5_paper', { action: 'part', target: T, member: ACAD, part: '第一部分（改名后的标题）', solution: '测试用的解法正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ['Members/' + ACAD + '/Propos/p-md-1.md'] })
+ok(partRenamed.parsed && partRenamed.parsed.part && partRenamed.parsed.part.partKey && part.parsed.part.partKey &&
+  partRenamed.parsed.part.partKey === part.parsed.part.partKey && partRenamed.parsed.part.identity && partRenamed.parsed.part.identity.titleChanged === true,
+  'F-87-02 ★★★ a TITLE change keeps the SAME stable partKey and reports titleChanged (no second live section)',
+  { before: part.parsed.part.partKey, after: partRenamed.parsed.part && partRenamed.parsed.part.partKey, identity: partRenamed.parsed.part && partRenamed.parsed.part.identity })
 const adv1 = await receipt(v5r, 'vibe_v5_paper', { action: 'advance', target: T })
 eq(adv1.parsed && adv1.parsed.advance && adv1.parsed.advance.to, 'reviewing', '★ 正：advance 到 reviewing')
 const rvw1 = await receipt(v5r, 'vibe_v5_paper', { action: 'review', target: T, member: ACAD, deliverable: true, notes: '可交付' })
@@ -295,8 +304,18 @@ ok(!!fin && !(Array.isArray(fin.missing) && fin.missing.length > 0 && fin.pdf &&
   '★★★ 互斥：final 的 produced:true ⇒ missing 为空')
 ok(!!fin && (fin.missing.filter((n) => (fin.toolchainAbsent || []).includes(n)).length === 0),
   '★★★ 互斥：final 的 missing 与 toolchainAbsent 不重叠')
+// ★ RUN-88 F-87-06: the PDF that finalisation delivers must not carry the PRE-final status label.
+ok(/状态：finalized/.test(lastCompileSource) && !/状态：awaiting-editor/.test(lastCompileSource),
+  'F-87-06 ★★★ the FINAL compile source says 状态：finalized, never awaiting-editor (the delivered PDF was self-contradictory)',
+  { finalized: /状态：finalized/.test(lastCompileSource), awaiting: /状态：awaiting-editor/.test(lastCompileSource) })
 
 const stAfter = (await receipt(v5r, 'vibe_v5_paper', { action: 'status', target: T })).parsed
+// ★ RUN-88 F-87-04: the finalisation instant and the compile instant are BOTH readable (one field each, same block).
+ok(fin && fin.final && (typeof fin.final.finalizedAt === 'number' || typeof fin.final.finalizedAt === 'string'),
+  'F-87-04 ★★★ the signed final RECORD carries finalizedAt (same instant as the paper-state field)', { nested: fin && fin.final && fin.final.finalizedAt, top: finRaw.parsed && finRaw.parsed.finalizedAt })
+ok(stAfter && stAfter.pdfCompiled && (stAfter.pdfCompiled.compiledAt !== undefined && stAfter.pdfCompiled.compiledAt !== null) && stAfter.pdfCompiled.finalizedAt !== undefined,
+  'F-87-04 ★★ status.pdfCompiled carries BOTH compiledAt and finalizedAt (the two clocks, one reading)',
+  stAfter && stAfter.pdfCompiled && { compiledAt: stAfter.pdfCompiled.compiledAt, finalizedAt: stAfter.pdfCompiled.finalizedAt })
 // F72-9 — the live run read `paper.status:"finalized"` and the teaching said published/complete. Two different questions,
 // and now both are visible on ONE receipt: the state is finalized, and the archive row reading says NOT complete.
 eq(stAfter && stAfter.paper && stAfter.paper.status, 'finalized', '★★ 正(F72-9)：状态机的终态叫 finalized')

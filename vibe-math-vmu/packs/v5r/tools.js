@@ -1146,6 +1146,24 @@ async function toolAssign(args = {}, { kernel } = {}) {
       // `readable:true` in the SAME receipt (one receipt, one reading).
       if (fresh) created = Object.assign({}, created, fresh, { assignmentUnreadable: false, assignmentMeans: null })
     }
+    // ★ RUN-88 F-87-01: the CREATE door above plants the owner without going through assign(); this face must still
+    // apply the SAME readiness criterion the task face publishes in readyWhy. Calling assign() here makes the two doors
+    // agree by construction (it refuses VMU_TASK_BRIEF_MISSING when the brief write did not land) instead of accepting an
+    // unreadable assignment and letting readyWhy contradict the receipt.
+    const assigned = await tasks.assign(taskId, to)
+    if (assigned && assigned.ok === false) {
+      throw refuse((assigned.refused && assigned.refused.code) || 'VMU_TASK_BRIEF_MISSING',
+        (assigned.refused && assigned.refused.message) || 'the assignment was refused by the task face',
+        (assigned.refused && assigned.refused.hint) || 'attach the brief first, then assign')
+    }
+    // the assign() call just bumped the revision: refresh the created row so the receipt's `revision` matches the board
+    // (run80 §6l compares them; a receipt one revision behind feeds the next compare-and-set a stale number).
+    if (created) {
+      const listedAfter = await tasks.list()
+      const rowsAfter = Array.isArray(listedAfter) ? listedAfter : (listedAfter && Array.isArray(listedAfter.tasks) ? listedAfter.tasks : [])
+      const freshAfter = rowsAfter.filter((r) => r && r.id === created.id)[0] || null
+      if (freshAfter) created = Object.assign({}, created, freshAfter)
+    }
   } else {
     // an EXISTING task: assign refuses when it has no brief, so hand it the same work statement first — but only when it
     // really lacks one (briefOf throws VMU_NO_SUCH_OBJECT for "no brief", which is an absence, not a failure).
@@ -7384,6 +7402,10 @@ async function toolPaper(args = {}, { kernel, exec = null } = {}) {
             pdfPath: ledger.pdfPath === undefined ? null : ledger.pdfPath,
             pdfBytes: ledger.pdfBytes === undefined ? null : ledger.pdfBytes,
             engine: ledger.engine === undefined ? null : ledger.engine,
+            // ★ RUN-88 P2 (F-87-04): the two instants a V21-style audit needs: the compile time and the finalisation
+            // time, on the SAME pdfCompiled block (one reading, not a second lookup).
+            compiledAt: ledger.compiledAt === undefined ? null : ledger.compiledAt,
+            finalizedAt: stateBody && stateBody.finalizedAt !== undefined ? stateBody.finalizedAt : null,
             // ★★★ RUN 2691 (TB-2691 / F75-15): the file's sha256, as the compile recorded it from the SAME buffer it
             // counted. Run 75's archive row had only a body fingerprint, so the verifier's "sha256(disk) == row sha"
             // leg was ARITHMETIC-BLOCKED. `null` means "this row predates the hash" — named, not silently equal.

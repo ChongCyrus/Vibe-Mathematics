@@ -323,6 +323,16 @@ try {
   const assigned = await receipt(v5rBoot, 'vibe_v5_assign', { to: 'r-2', subject: '核验边界情形', why: '这是引理 A 的缺口', acceptance: '给出 n≤3 的全部情形' })
   ok(assigned.parsed && assigned.parsed.ok === true && !!assigned.parsed.taskId && !!assigned.parsed.notice,
     'assign: 正 — the task is created and assigned, and why/acceptance reached the assignee as mail', assigned.parsed && { taskId: assigned.parsed.taskId, notice: !!assigned.parsed.notice })
+  // ★ RUN-88 F-87-01: the v5r assign face must satisfy the SAME readiness criterion the task face publishes in
+  // readyWhy. It composes create({owner}) + brief + assign, and this call proves the receipt and readyWhy agree.
+  const rawTask = await v5rBoot.handle.kernel.tasks.create({ title: '无 brief 的原始任务' })
+  const assignedExisting = await receipt(v5rBoot, 'vibe_v5_assign', { to: 'r-2', task_id: rawTask.id, why: '接手已有任务', acceptance: '给出结论' })
+  const assignedList = await v5rBoot.handle.kernel.tasks.list()
+  const assignedRows = Array.isArray(assignedList) ? assignedList : (assignedList && Array.isArray(assignedList.tasks) ? assignedList.tasks : [])
+  const assignedRowAfter = assignedRows.filter((r) => r && r.id === rawTask.id)[0] || null
+  ok(assignedExisting.parsed && assignedExisting.parsed.ok === true && assignedRowAfter && assignedRowAfter.ready === true && assignedRowAfter.hasBrief === true && assignedRowAfter.readyCode === null,
+    'F-87-01 ★★★ assign an EXISTING unbriefed task: the face writes the brief, and the task row it leaves behind is ready:true with readyWhy agreeing (one criterion source)',
+    { assigned: assignedExisting.parsed && assignedExisting.parsed.ok, row: assignedRowAfter && { ready: assignedRowAfter.ready, hasBrief: assignedRowAfter.hasBrief, readyCode: assignedRowAfter.readyCode } })
 
   const nudgeNoWhy = await receipt(v5rBoot, 'vibe_v5_nudge', { to: 'r-1' })
   ok(nudgeNoWhy.parsed && nudgeNoWhy.parsed.ok === false && nudgeNoWhy.parsed.code === 'VMU_INVALID_ARGUMENT', 'nudge: 反 — a nudge without a reason is refused by name', nudgeNoWhy.parsed)

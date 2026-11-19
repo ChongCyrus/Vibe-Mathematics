@@ -1354,6 +1354,31 @@ if (SELF_PROBE) {
   } finally { await rm(lampDir, { recursive: true, force: true }).catch(() => {}) }
 }
 
+// ---- 34. RUN-88 P2-2 LAMP: removing the promptSources injection must make run79 §2d fail (snapshot absent).
+{
+  const lampDir = await mkdtemp(join(tmpdir(), 'vmu-entry-promptsrc-lamp-'))
+  try {
+    await cp(join(REPO, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+    const turnFile = join(lampDir, 'vibe-math-vmu', 'tools', 'turn.js')
+    const src = await readFile(turnFile, 'utf8')
+    ok(src.includes('promptFor, promptSources, retention'), 'P2-2 lamp-setup: the promptSources return is locatable')
+    await writeFile(turnFile, src.replace('promptFor, promptSources, retention }', 'promptFor, retention }'), 'utf8')
+    const lampEntry = await import(pathToFileURL(join(lampDir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?ps=' + Date.now())
+    const state = { specs: [] }
+    const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (s) => { state.specs.push(s); return () => {} } } }
+    const h = lampEntry.apply(ctx, { clock, packs: ['v5r'], turn: true, deliverMode: 'caller', root: join(lampDir, 'root') })
+    await h.ready()
+    const spec = state.specs.find((s) => s.name === 'vibe_vmu_turn')
+    const start = state.specs.find((s) => s.name === 'vibe_v5_start')
+    await start.execute({ researcherCount: 2 }, {})
+    const step = JSON.parse(await spec.execute({ op: 'step', member: 'r-1' }, {}))
+    const pr = JSON.parse(await spec.execute({ op: 'prompt', turn: step.memberPrompt && step.memberPrompt.turnId }, {}))
+    ok(pr && pr.ok === true && pr.promptSources === undefined,
+      'P2-2 LAMP RED-worthy: without promptSources the prompt page carries NO settings snapshot (run79 §2d would fail by name)',
+      { hasPromptSources: pr && pr.promptSources !== undefined, ok: pr && pr.ok })
+  } finally { await rm(lampDir, { recursive: true, force: true }).catch(() => {}) }
+}
+
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

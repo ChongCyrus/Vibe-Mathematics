@@ -247,6 +247,7 @@ export function createPaperFlow({
           // ★★ RUN 176 (run 21 A2): the ledger read answers "is there a PDF?" and, when there is, the bytes/engine the
           // compile recorded — the same facts the receipt needs, so the face does not re-open the row and get it wrong.
           const entry = { id: row.id, title: row.title, pdfPath: body.pdfPath,
+            compiledAt: body.compiledAt === undefined || body.compiledAt === null ? (Number.isFinite(Number(row.updatedAt)) ? Number(row.updatedAt) : null) : body.compiledAt,
             pdfBytes: body.pdfBytes === undefined ? null : body.pdfBytes,
             // ★★★ RUN 2691 (TB-2691 / F75-15): the file hash the compile recorded from the SAME buffer it counted. A
             // ledger row written before this run has no such field (`null`), and the status face names that absence
@@ -970,8 +971,11 @@ export function createPaperFlow({
         ? 'the paper is FINALIZED: no part can be written into it any more — this is the delivered version and `advance` only answers moved:false on it. If this work must change, start a NEW paper with vibe_v5_paper { action: "start", target: "<new name>", participants: [...] }; the finalized record stays exactly as it is'
       : 'the paper is in REVIEW: the move this state accepts is vibe_v5_paper { action: "advance", target: "' + state.target + '" } — it closes the round, and a reviewer who did NOT answer deliverable sends the paper back to writing; only at awaiting-editor is the editor door (final { decision: "revise" }) accepted')
     if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant of this paper', 'participants: ' + state.participants.join(', '))
+    // ★ RUN-88 P2 (F-87-02): THE IDENTITY IS (target, member), never the SECTION TITLE. A title change renames the
+    // display line only; it must not leave the old record looking like a second live section.
+    const partKey = 'paper-part|' + str(state.target) + '|' + str(member)
     const part = {
-      target: str(state.target), member: str(member), round: state.round, title: str(title).slice(0, 300),
+      key: partKey, target: str(state.target), member: str(member), round: state.round, title: str(title).slice(0, 300),
       solution: str(solution).slice(0, 20000), methods: str(methods).slice(0, 20000),
       rules: str(rules).slice(0, 12000), limits: str(limits).slice(0, 12000),
       evidence: Array.isArray(evidence) ? evidence.map(String).slice(0, 50) : [],
@@ -985,10 +989,24 @@ export function createPaperFlow({
     // round. Run 19 read `{"round":1,"at":1}` and a reviewer counted "at 1" as an epoch. The round IS the time this
     // subsystem keeps; name it once. `at` stays for old readers but is now the same number, and every NEW row carries
     // `round` (the slot already had it — this literal existed only to be misread).
-    state.parts[part.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, round: part.round, at: state.round, title: part.title }
+    state.parts[part.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, round: part.round, at: state.round, title: part.title, key: partKey }
+    // mark the REPLACED record so a reader of the raw paper track can tell it is superseded (the slot above already
+    // points at the live one). Title-only changes are reported as titleChanged, never as a new live section.
+    let titleChanged = false
+    if (previous && previous.recordId && previous.recordId !== (put && put.id)) {
+      titleChanged = String(previous.title || '') !== String(part.title || '')
+      try {
+        const got = records.get({ id: previous.recordId })
+        const row = got && got.record ? got.record : got
+        const oldBody = JSON.parse(String((row && row.body) || '{}'))
+        records.put({ id: previous.recordId, track: TRACK, kind: 'paper-part', title: (row && row.title) || recordName(state.target, 'part|' + part.member),
+          body: JSON.stringify(Object.assign({}, oldBody, { superseded: true, supersededBy: put && put.id, supersededAtRound: state.round, titleChanged })), by: author })
+      } catch { /* a marker failure must not undo the write; the receipt still names the replacement */ }
+    }
     state.updatedRound = state.round
     writeState(state)
     return { ok: true, recorded: part.member, round: state.round, recordId: put && put.id, fingerprint: put && put.fingerprint,
+      partKey, identity: { key: partKey, stable: true, titleChanged, means: 'a part is identified by (paper target, member); the title is DISPLAY TEXT only — a renamed section replaces the same identity, it does not create a second live section' },
       // ★ G7 finding: the old state kept ONE part per member, so a second `part` silently replaced the first. This
       // minimal fix does not claim a multi-slot model; it NAMES what was replaced so the caller can re-record it.
       // ★★ RUN 164 (FEEDBACK12 item 5): "replaced" named WHICH record went away but not how much text it carried, so a
@@ -1350,7 +1368,7 @@ export function createPaperFlow({
     // review cannot turn a paper reviewed by its only author into a cross-reviewed one. Refuse by name (with the facts a
     // caller can act on) instead of letting it reach the editor through the round cap.
     if (participants.length < 2) {
-      throw refuse('VMU_INVALID_ARGUMENT',
+      throw refuse(CODES.CROSS_REVIEW_UNMET || 'VMU_PAPER_CROSS_REVIEW_UNMET',
         '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）',
         '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审',
         { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2, staleReviews })
@@ -1372,7 +1390,7 @@ export function createPaperFlow({
     const message = participants.length < 2
       ? '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）'
       : '互审必须由两位不同的、非该作者的成员完成：' + participants.length + ' 位参与者里只有 ' + crossers.length + ' 位审了别人的部分（' + (crossers.join('、') || '无') + '），其余选票没有评审对象，不能算全体一致'
-    throw refuse('VMU_INVALID_ARGUMENT', message,
+    throw refuse(CODES.CROSS_REVIEW_UNMET || 'VMU_PAPER_CROSS_REVIEW_UNMET', message,
       staleReviewHint === null ? '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审' : staleReviewHint,
       { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2, staleReviews })
   }
@@ -1986,9 +2004,13 @@ export function createPaperFlow({
           format: 'add ONE line to each part BODY: 证据等级：draft（or verified-by-citation / mechanically-checked / lean-verified）',
         },
         means: 'every part body must name its own evidence grade; a card-level grade is NOT a body line' })
-      // the character gate: compile ONCE here, and keep the result for the finalisation below
+      // the character gate: compile ONCE here, and keep the result for the finalisation below.
+      // ★ RUN-88 F-87-06: THE PDF IS THE FINAL ARTEFACT, SO ITS STATUS LINE MUST SAY SO. The compile used to run while
+      // state.status was still 'awaiting-editor' and its tex/md header carried that label into the delivered PDF — a
+      // finalized paper whose own PDF said awaiting-editor. The status is projected INTO THE SOURCE ONLY (render-side
+      // override; the paper state is not written early), so the PDF text and the finalized record agree with no second compile.
       let gateCompiled = null
-      try { gateCompiled = { ok: true, produced: true, ...(await compilePdf({ target })) } } catch (e) {
+      try { gateCompiled = { ok: true, produced: true, ...(await compilePdf({ target, statusOverride: state.status === 'awaiting-editor' ? 'finalized' : null })) } } catch (e) {
         // the SAME failure structure the compile door and the old final path carry (one shape, both doors)
         gateCompiled = { ok: false, produced: false, code: (e && e.code) || null, faceCode: (e && e.faceCode) || null,
           message: String((e && e.message) || ''), argv: Array.isArray(e && e.argv) ? e.argv.slice(0, 16) : [],
@@ -2204,7 +2226,13 @@ export function createPaperFlow({
         state.finalPdfSha256 = pdf.pdfSha256 === undefined || pdf.pdfSha256 === null ? null : String(pdf.pdfSha256)
         writeState(state)
       }
-      return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: missingAfter, pdf,
+      // ★ RUN-88 P2 (F-87-04): the FINALISATION instant is recorded once on the state, so paper-state and the PDF ledger
+      // can both be dated (the PDF row carries compiledAt).
+      try { state.finalizedAt = clock() } catch { state.finalizedAt = null }
+      // the signed final record carries the same instant, so `final.finalizedAt` and the state's field cannot disagree.
+      fin.finalizedAt = state.finalizedAt
+      writeState(state)
+      return { ok: true, finalized: true, target: state.target, final: fin, finalizedAt: state.finalizedAt, artifacts: rendered.artifacts, missing: missingAfter, pdf,
         ...(engineAbsent ? { pdfEnvironmentMissing: true, pdfEnvironmentMeans: 'this assembly has no LaTeX face (`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`): the paper is finalised and the PDF artefact stays named in `missing` — an environment gap, not a body that failed to compile. A compile that really ran and failed does NOT finalise (RUN 176).' } : {}),
         // ★ E4: the receipt says WHICH way the consult rule was satisfied ("off" / "answered" / "exempt"): a finalisation
         // that claims the office was consulted when the gate was simply off is the sort of quiet lie this pack refuses.
@@ -2274,9 +2302,12 @@ export function createPaperFlow({
   /** ⑦ markdown: rebuilt from the parts (by id + fingerprint), one section per the original's list.
    *  `rawMd` is the UNFILLED markdown (the seam below is applied on top); it is exported as `PaperMdRaw` so a pack that
    *  owns the fill can also produce its AUDIT from the same base instead of calling the filled version twice. */
-  function rawMd({ target } = {}) {
+  function rawMd({ target, statusOverride = null } = {}) {
     const { state } = requireState(target)
-    const lines = ['# 论文：' + state.target, '', '状态：' + state.status + '｜轮次：' + state.round + '｜编辑：' + state.editor, '']
+    // ★ RUN-88 F-87-06: an ARTEFACT may project the status it is being produced FOR (the delivered PDF is the final
+    // artefact, so it must say finalized) without mutating/persisting the paper's current state.
+    const statusLabel = statusOverride === null || statusOverride === undefined ? state.status : String(statusOverride)
+    const lines = ['# 论文：' + state.target, '', '状态：' + statusLabel + '｜轮次：' + state.round + '｜编辑：' + state.editor, '']
     // ★ EACH SECTION OWNS AT MOST ONE FIELD, and each member contributes to it ONCE. The previous shape emitted the whole part
     // under every heading, which is why the live .md carried the full body in all nine sections.
     for (let i = 0; i < SECTIONS.length; i += 1) {
@@ -2321,9 +2352,9 @@ export function createPaperFlow({
   }
 
   /** ⑧ tex: same body, with the engine order's preamble needs (ctex for Chinese). */
-  function PaperTexBody({ target } = {}) {
+  function PaperTexBody({ target, statusOverride = null } = {}) {
     const state = requireState(target).state
-    const md = PaperMd({ target })
+    const md = PaperMd({ target, statusOverride })
     // ★ ** is MARKDOWN bold and it is not a TeX character - it used to travel into the .tex verbatim. Convert it first,
     // then escape.
     // ★★ RUN 152 (real machine, run 2): the ORDER was backwards — the bold conversion inserted a literal `\\textbf{…}`
@@ -2434,7 +2465,7 @@ export function createPaperFlow({
   }
 
   /** The .tex source alone (unchanged contract for callers that only want the text). */
-  function PaperTex({ target } = {}) { return PaperTexBody({ target }).tex }
+  function PaperTex({ target, statusOverride = null } = {}) { return PaperTexBody({ target, statusOverride }).tex }
 
   /** ⑨ the four artefacts. Missing is NAMED; the PDF is the one this kernel cannot make (no LaTeX executor). */
   function PaperArtifacts({ target } = {}) {
@@ -2524,9 +2555,9 @@ export function createPaperFlow({
     const slug = raw.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '')
     return slug === '' ? 'paper' : slug
   }
-  async function compilePdf({ target, engineOrder = null, timeoutMs = null } = {}) {
+  async function compilePdf({ target, engineOrder = null, timeoutMs = null, statusOverride = null } = {}) {
     const { state } = requireState(target)
-    const tex = PaperTex({ target })
+    const tex = PaperTex({ target, statusOverride })
     const latexFace = kernel && kernel.latex
     if (!latexFace || typeof latexFace.check !== 'function') {
       throw refuse(CODES.EXECUTOR, 'This assembly has no LaTeX face, so a PDF cannot be compiled (host injected no spawn seam)',
@@ -2654,7 +2685,10 @@ export function createPaperFlow({
         glyphLossCode: r.glyphLossCode === undefined ? null : r.glyphLossCode,
         glyphLossMeans: r.glyphLossMeans === undefined ? null : r.glyphLossMeans,
         glyphLossHint: r.glyphLossHint === undefined ? null : r.glyphLossHint,
-        logPath: r.logPath === undefined ? null : r.logPath, logRead: r.logRead === true }),
+        logPath: r.logPath === undefined ? null : r.logPath, logRead: r.logRead === true,
+        // ★ RUN-88 P2 (F-87-04): the compile INSTANT travels with the row, so a reader can compare it with the
+        // paper's finalisation instant instead of having only one of the two clocks.
+        compiledAt: (() => { try { return clock() } catch { return null } })() }),
       settled: true, by: author,
     })
     return { ok: true, target: state.target, engine: r.engine, pdfPath: r.pdfPath, pdfBytes: r.pdfBytes, pdfSha256: r.pdfSha256 === undefined ? null : r.pdfSha256,

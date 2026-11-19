@@ -104,8 +104,10 @@ console.log('§1 单人论文：不能自审，也不能以"全体一致"定稿 
   // 它不是一条「可接受的路」，而是一条「先放过去再在门口拒」的债权。advance 现在就在互审闸上具名拒，状态留在 reviewing。
   let crossErr = null
   try { flow.advance({ target: T }) } catch (e) { crossErr = e }
-  ok(crossErr && crossErr.code === 'VMU_INVALID_ARGUMENT',
-    '★★ F3a 正（互审闸）：单人论文在 advance 上就被具名拒（不再靠轮次上限放行）', crossErr && crossErr.code)
+  // RUN-88 P2-1 (old→new→why): the cross-review gate used the generic VMU_INVALID_ARGUMENT; it now has its own
+  // registered code (VMU_PAPER_CROSS_REVIEW_UNMET), so reports can name the gate.
+  ok(crossErr && crossErr.code === 'VMU_PAPER_CROSS_REVIEW_UNMET',
+    '★★ F3a 正（互审闸）：单人论文在 advance 上就被具名拒（专用码 VMU_PAPER_CROSS_REVIEW_UNMET，不再靠轮次上限放行）', crossErr && crossErr.code)
   ok(crossErr && /一位参与者的论文无法通过互审/.test(String(crossErr.message)) && /a paper with one participant cannot pass 互审/.test(String(crossErr.message)),
     '★★ 拒的名字就是缺失的那一半："一位参与者的论文无法通过互审"（中英各一）', crossErr && crossErr.message)
   ok(crossErr && Array.isArray(crossErr.crossReviewers) && crossErr.crossReviewers.length === 0 && crossErr.required === 2,

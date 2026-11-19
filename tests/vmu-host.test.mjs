@@ -527,7 +527,9 @@ if (SELF_PROBE) {
   // faces (measured 10557, was 10415). Same runaway guard; re-pinned just above the measurement.
   // ★ ROUND-12 P2 re-pin (measured + cause): status gained servicesDeclined + its means sentence so a deployment can tell
   // "no provider" from "declared but no subprocess seam" (measured 11013, was 10557). Same runaway guard.
-  ok(text.length <= 11013, '★ 真装配（v5r pack）下 status 默认 summary ≤ 11013 字节（Step5 10557 → P2 实测 11013：status 新增 servicesDeclined + means 段；C#15 块不在 summary）', 'bytes=' + text.length)
+  // ★ RUN-88 P2 re-pin (measured + cause): status.settings now carries conflict provenance/reason text (and servicesDeclined
+  // from the previous batch); measured 11160. Same runaway guard.
+  ok(text.length <= 11160, '★ 真装配（v5r pack）下 status 默认 summary ≤ 11160 字节（P2 实测 11160：settings 摘要携带 conflict 的 resolved/origin 读数；C#15 块不在 summary）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),
@@ -544,6 +546,45 @@ if (SELF_PROBE) {
     '★ 被移出的每一个键在 detail:"closure" 上都是原文长句（不是被删掉）', { omitted, got: Object.keys(closureParsed.closureVote || {}) })
   await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
+
+// ── RUN-88 P2-3: a REJECTED setting travels with its resolved reading on the SUMMARY (not only elided)
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-host-rejected-'))
+  const k = km.createKernel({ clock, root, settings: { 'vmu.budget.tokens': 'many' } })
+  const host = fakeHost()
+  const adapter = hm.createHostAdapter({ ctx: host.ctx, kernel: k, settings: {} })
+  await adapter.install()
+  const statusSpec = host.state.specs.find((s) => s.name === 'vibe_vmu_status')
+  const parsed = JSON.parse(await statusSpec.execute({ detail: 'summary' }, {}))
+  ok(parsed.settings && Array.isArray(parsed.settings.settingsRejected) && parsed.settings.settingsRejected.some((r) => r.key === 'vmu.budget.tokens'),
+    'P2-3 ★★★ a REJECTED setting is visible on the summary (not silently elided with the resolved map)', parsed.settings && parsed.settings.settingsRejected)
+  const rr = parsed.settings && Array.isArray(parsed.settings.rejectedResolved) ? parsed.settings.rejectedResolved : []
+  ok(rr.length > 0 && rr[0].resolved && rr[0].resolved.value !== undefined && (rr[0].resolved.origin === 'declared-default' || rr[0].resolved.source),
+    'P2-3 ★★ and it carries the value actually in force with provenance (resolved.value/source/origin)', rr)
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+
+  // LAMP: a COPY with the rejectedResolved spread removed must drop the reading (the summary then only elides).
+  const lampDst = join(REPO, 'vibe-math-vmu', '.lamp-host-' + process.pid + '.mjs')
+  try {
+    const src = await readFile(MODULE, 'utf8')
+    const a = src.indexOf('              ...(rejectedResolved.length > 0 ? {')
+    const b = a < 0 ? -1 : src.indexOf('} : {}),', a)
+    ok(a >= 0 && b > a, 'P2-3 lamp-setup: the rejectedResolved spread is locatable')
+    await writeFile(lampDst, src.slice(0, a) + src.slice(b + 8), 'utf8')
+    const lampHost = await import(pathToFileURL(lampDst).href + '?lamp=' + Date.now())
+    const lroot = await mkdtemp(join(tmpdir(), 'vmu-host-rejected-lamp-'))
+    const lk = km.createKernel({ clock, root: lroot, settings: { 'vmu.budget.tokens': 'many' } })
+    const lhost = fakeHost()
+    const ladapter = lampHost.createHostAdapter({ ctx: lhost.ctx, kernel: lk, settings: {} })
+    await ladapter.install()
+    const lspec = lhost.state.specs.find((s) => s.name === 'vibe_vmu_status')
+    const lp = JSON.parse(await lspec.execute({ detail: 'summary' }, {}))
+    ok(lp.settings && lp.settings.rejectedResolved === undefined && lp.settings.settingsRejected === undefined,
+      'P2-3 LAMP RED-worthy: without the spread the summary only elides (no rejectedResolved, no settingsRejected) — the reading is load-bearing', lp.settings)
+    await rm(lroot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+  } finally { await rm(lampDst, { force: true }).catch(() => {}) }
+}
+
 
 // ── 9. ★ PHASE 7 (goal 4): MEMBER TOOL FACE — kernel capability, host applier, real schemas diff ────────────
 {
