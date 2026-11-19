@@ -423,9 +423,51 @@
           "scenario": "mainline",
           "step": "record/reindex",
           "side": "refuse"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/incomplete",
+          "side": "refuse",
+          "note": "TB-2795/MAIN.4–13 拒绝侧：outline 节点缺必需字段 ⇒ VMU_BLUEPRINT_FIELDS_MISSING，回执 detail.missing/missingCn/nodes/shape 逐字段可核（round-17 B4）"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/complete",
+          "side": "allow",
+          "note": "十字段齐全的 outline 提案写入成功（outlineCount=2）"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/codesign",
+          "side": "allow",
+          "note": "同一草案的共同设计续写（fs-first 同 mdPath），adopt 前的留痕"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/adopt",
+          "side": "allow",
+          "note": "十字段齐全的草案被 adopt 成 current，state 面才有可读的 outline fields（draft 阶段 state 只列 current）"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/read",
+          "side": "allow",
+          "note": "read 回 outline[].fields（十键）+ fieldsComplete:true + outlineFieldsComplete:true 聚合"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/state",
+          "side": "allow",
+          "note": "state 面同源报告 outlineFieldsComplete:true（读面与提案面一致）"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/legacy-read",
+          "side": "allow",
+          "note": "schema 之前的旧 revision 读 outlineFieldsComplete:false（不装扮成完整）"
         }
       ],
-      "notes": "record/reindex now carries a named refusal: since RUN 259 a reindex blocks on a member plain markdown draft (VMU_RECORDS_REINDEX_BLOCKED), so the rule is evidenced by blueprint/propose and blueprint/adopt; the refused step is kept (side=refuse) because deleting it would hide that the scenario still reindexes."
+      "notes": "record/reindex now carries a named refusal: since RUN 259 a reindex blocks on a member plain markdown draft (VMU_RECORDS_REINDEX_BLOCKED), so the rule is evidenced by blueprint/propose and blueprint/adopt; the refused step is kept (side=refuse) because deleting it would hide that the scenario still reindexes. ｜ round-17 B4：新增 fieldsSchema 的拒绝/允许/读面/旧 revision 规则步（VMU_BLUEPRINT_FIELDS_MISSING 逐字段 detail、fieldsComplete:true、legacy false），把 TB-2795 的十字段门从 test-only 提升到规则步可核。"
     },
     "B5": {
       "rule": "蓝图由院士+常驻研究员共同设计",
@@ -1008,9 +1050,15 @@
           "scenario": "meetings",
           "step": "close/motion-vote/r-1",
           "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "close/closure-count-window",
+          "side": "allow",
+          "note": "F-87-03：closure 读数在规则步回执里带 rowsRead/rowsCounted/rowsArchivedByWindow/countWindow，且 archived = read − counted（counted ≤ read）"
         }
       ],
-      "notes": "证明投票板/动议表决与议题绑定，但不能证明「投票板不用于辩论」的反面用例（没有辩论中的投票板步骤）。"
+      "notes": "证明投票板/动议表决与议题绑定，但不能证明「投票板不用于辩论」的反面用例（没有辩论中的投票板步骤）。 ｜ F-87-03：补 close/closure-count-window 规则步，计票窗口四元组可核（round-17）。"
     },
     "E20": {
       "rule": "任务板：设置与认领交派",
@@ -1057,9 +1105,15 @@
           "scenario": "meetings",
           "step": "close/motion-vote/r-2",
           "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "close/closure-count-window",
+          "side": "allow",
+          "note": "F-87-03：closure 读数在规则步回执里带 rowsRead/rowsCounted/rowsArchivedByWindow/countWindow，且 archived = read − counted（counted ≤ read）"
         }
       ],
-      "notes": "回执带 quorum，但投票板的 floor（min_votes）不是会议法定人数 m，两者不要混。"
+      "notes": "回执带 quorum，但投票板的 floor（min_votes）不是会议法定人数 m，两者不要混。 ｜ F-87-03：补 close/closure-count-window 规则步，计票窗口四元组可核（round-17）。"
     },
     "E24": {
       "rule": "lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意",

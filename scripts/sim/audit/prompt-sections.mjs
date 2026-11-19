@@ -33,6 +33,12 @@ import { REPO, boot, tmpRoot } from '../harness.mjs'
 
 export const DEFAULT_SLOTS = ['chair', 'member', 'temp']
 export const DEFAULT_PHASES = ['normal', 'meeting', 'checkpoint', 'verify']
+// ROUND-17: the three PAPER phases are assembled by the prompt pipeline directly (the kernel turn loop only accepts the
+// seven turn phases), so the paper guides enter the same section matrix the audit reads.
+export const PAPER_PHASES = Object.freeze(['paper-write', 'paper-review', 'paper-final'])
+// The CLI matrix renders the paper phases too (they have no turn-loop equivalent); the GATES keep their 4-phase default
+// so the duplicate criterion measures the same slot×phase set it has always measured.
+export const MATRIX_PHASES = Object.freeze([...DEFAULT_PHASES, ...PAPER_PHASES])
 
 function argOf(flag) {
   const i = process.argv.indexOf(flag)
@@ -40,7 +46,7 @@ function argOf(flag) {
 }
 const OUT = argOf('--out') || join(gateTmpRoot(), 'sim')
 const SLOTS = (argOf('--slots') || DEFAULT_SLOTS.join(',')).split(',').map((s) => s.trim()).filter(Boolean)
-const PHASES = (argOf('--phases') || DEFAULT_PHASES.join(',')).split(',').map((s) => s.trim()).filter(Boolean)
+const PHASES = (argOf('--phases') || MATRIX_PHASES.join(',')).split(',').map((s) => s.trim()).filter(Boolean)
 
 /** Split one assembled text on the `# <section-id>` heading lines the pipeline emits. */
 export function splitSections(text) {
@@ -106,14 +112,28 @@ export function classifyDuplicate(sentence, ids, textOf) {
 }
 
 /** Collect real assemblies for slots × phases. Returns {combos, sections}. */
-export async function collect({ slots = SLOTS, phases = PHASES } = {}) {
+export async function collect({ slots = DEFAULT_SLOTS, phases = DEFAULT_PHASES } = {}) {
   const root = tmpRoot('p240-sections-')
   const harness = await boot({ root, withPrompt: true })
+  let paperPipeline = null
+  let paperSettings = null
+  const paperText = async (slot, phase) => {
+    if (!paperPipeline) {
+      const { createPromptPipeline } = await import('../../../vibe-math-vmu/kernel/prompt/index.js')
+      const { promptSettings } = await import('../settings.mjs')
+      const pack = (await import('../../../vibe-math-vmu/packs/v5r/prompts/v5r-core.js')).PACK
+      paperPipeline = createPromptPipeline({ sections: pack.sections, bindings: pack.bindings })
+      paperSettings = promptSettings({})
+    }
+    const holder = slot === 'chair' ? 'r-acad' : slot === 'temp' ? 't-1' : 'r-1'
+    const label = slot === 'chair' ? '院士' : slot === 'temp' ? '临时工' : '常驻研究员'
+    return String((await paperPipeline.assemble({ member: holder, role: slot, roleLabel: label, phase, round: 3, settings: paperSettings })).text)
+  }
   const sections = []
   const combos = []
   for (const slot of slots) {
     for (const phase of phases) {
-      const text = await harness.prompts.assembleFor({ seat: slot, phase })
+      const text = PAPER_PHASES.includes(phase) ? await paperText(slot, phase) : await harness.prompts.assembleFor({ seat: slot, phase })
       const parts = splitSections(text)
       const empty = parts.filter((p) => p.text.replace(/\s/g, '') === '').length
       combos.push({ slot, phase, chars: text.length, headings: parts.length, empty })

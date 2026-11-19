@@ -415,6 +415,37 @@ export async function meetings(h, { log = () => {} } = {}) {
     motionVotes.push(await step('close/motion-vote/' + seat, () => h.call('vibe_vmu_meeting', { action: 'vote', meeting: quorumId, motion: motionId, member: seat, value: 1 }, as(seat))))
   }
   const closed = await step('close/close', () => h.call('vibe_vmu_meeting', { action: 'close', id: quorumId, member: 'r-acad', by: 'r-acad', reason: '议程完成，主席关会。' }))
+
+  // ── F-87-03 (RUN-88): the closure COUNT WINDOW must be readable from a RULE step. E19/E23 previously proved only
+  //    `meetings/close/motion-vote/*` (tally/quorum, no window); the four-tuple lived only in non-rule steps
+  //    (actions-extra/M/meeting/close, vibe_vmu_turn status, vibe_vmu_status). This step reads the closure reading and
+  //    keeps the values SELF-consistent: counted <= read, and archived == read - counted (a window excludes rows BY NAME,
+  //    it never loses them).
+  const closureWindow = await step('close/closure-count-window', () => h.call('vibe_vmu_status', { detail: 'closure' }))
+  const closureVoteReading = closureWindow && closureWindow.closureVote ? closureWindow.closureVote : null
+  const countWindowReading = closureVoteReading ? {
+    rowsRead: num(closureVoteReading.rowsRead), rowsCounted: num(closureVoteReading.rowsCounted),
+    rowsArchivedByWindow: num(closureVoteReading.rowsArchivedByWindow), countWindow: closureVoteReading.countWindow,
+    votersWindows: closureVoteReading.votersWindows || null,
+  } : null
+  // The four-tuple is the honesty reading; its ARITHMETIC has two legal shapes in-process:
+  //   (a) folded rows present : rowsCounted <= rowsRead and rowsArchivedByWindow == rowsRead - rowsCounted;
+  //   (b) session-only votes   : rowsRead counts the DURABLE fold rows (0 here) while rowsCounted counts the current
+  //       session's window — the product's own comment says the session map is the fresher copy of the SAME window, and
+  //       the round-17 layer's canonical shape for an ordinary in-process close is `0/0/0/1` while close-vote sessions
+  //       read `0/N/0/1`. A rule step must READ this rather than pretend the arithmetic always has shape (a).
+  const hasWindow = Boolean(countWindowReading
+    && Number.isFinite(countWindowReading.rowsRead) && Number.isFinite(countWindowReading.rowsCounted)
+    && Number.isFinite(countWindowReading.rowsArchivedByWindow)
+    && typeof countWindowReading.countWindow === 'number')
+  const foldedShape = Boolean(hasWindow
+    && countWindowReading.rowsCounted <= countWindowReading.rowsRead
+    && countWindowReading.rowsArchivedByWindow === countWindowReading.rowsRead - countWindowReading.rowsCounted)
+  const sessionOnlyShape = Boolean(hasWindow && countWindowReading.rowsRead === 0 && countWindowReading.rowsArchivedByWindow === 0)
+  if (!(hasWindow && (foldedShape || sessionOnlyShape))) {
+    failures.push({ code: 'SIM_F87_03_COUNT_WINDOW', step: 'close/closure-count-window', message: 'closure reading does not carry a readable count window', means: 'the F-87-03 four-tuple (rowsRead/rowsCounted/rowsArchivedByWindow/countWindow) must be present and explained: either folded arithmetic or the named session-only shape; a missing/NaN window leaves the rule step non-auditable', receipt: countWindowReading })
+  }
+  highlights.closureCountWindow = { reading: countWindowReading, shape: foldedShape ? 'folded' : (sessionOnlyShape ? 'session-only' : 'unreadable'), consistent: foldedShape || sessionOnlyShape, means: 'F-87-03 in a RULE step: the closure reading reports the counting window (rowsRead/rowsCounted/rowsArchivedByWindow/countWindow); in-process closes are session-only (read=0, archived=0) while folded sessions keep counted<=read and archived=read-counted — both are read, neither is guessed' }
   highlights.close = {
     closureVotes: closureVotes.map((r) => pick(r, ['ok', 'member', 'solved', 'persistedToFold', 'foldKey'])),
     motion: pick(motion, ['ok', 'meeting', 'motion', 'motionQualified', 'status']),

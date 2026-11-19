@@ -115,8 +115,13 @@ ok(Boolean(gateMeeting) && Math.abs(drift) <= 200,
 ok(Boolean(gateMeeting) && drift <= 200, 'and the gate is never measuring a SMALLER prompt than the simulator (that would be headroom that does not exist)', { drift })
 const gateDefault = await GATE.measure()
 const gateDefaultMeeting = gateDefault.seats.chair.phases.meeting
-ok(gateDefaultMeeting.chars > 31000,
-  'and its DEFAULT ruler number includes the facts (before RUN 244 it measured the earlier, emptier prompt)', gateDefaultMeeting.chars)
+// ROUND-17 re-pin: old expectation was `> 31000` (the emptier-ruler era). The prompts lane now has a HARD T99 ceiling of
+// 30,000 for chair/meeting, so a >31,000 number pin cannot coexist with it. Fact-inclusion is still judged, twice: the ±200
+// drift band above compares this gate against the harness assembled WITH the same meeting and facts, and the gate's default
+// ruler still binds a meeting. Old -> new -> why: 31,000 -> 29,000 because the number is now a floor below the declared T99
+// ceiling; who replaces its criterion: the drift band (same facts, ±200) and the meeting-bound default ruler.
+ok(gateDefaultMeeting.chars > 29000,
+  'and its DEFAULT ruler number includes the facts (ROUND-17: the 30,000 T99 ceiling makes the old >31,000 pin impossible; fact-inclusion is asserted by the ±200 band with the same facts above)', gateDefaultMeeting.chars)
 
 rmSync(root, { recursive: true, force: true })
 rmSync(TMP, { recursive: true, force: true })

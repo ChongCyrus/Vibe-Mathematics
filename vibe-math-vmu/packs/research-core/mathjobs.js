@@ -651,7 +651,11 @@ export function createMathJobs(opts) {
       jobsDir: c.jobsDir,
       keepMirrors: c.keepMirrors,
       removeText: !!(fsSeam && typeof fsSeam.removeText === 'function'),
+      // ★ Round-17 P3: `retention` is an OBJECT on vibe_vmu_turn{op:"prompt"}; here it was a STRING under the same
+      // name (same name, different shape). The string survives as a DEPRECATED alias; new readers use evictionPolicy.
       retention: mirrorFor().status().retention,
+      evictionPolicy: mirrorFor().status().retention,
+      evictionPolicyMeans: 'evictionPolicy = the mirror store policy string; `retention` on this face is a DEPRECATED alias kept for old readers (the turn prompt face uses an OBJECT named retention — do not conflate them)',
       recoverMode: c.recoverMode,
       exclusiveCreate: xc,
       crossProcess: xc ? 'enforced-by-exclusive-create' : 'not-enforced',

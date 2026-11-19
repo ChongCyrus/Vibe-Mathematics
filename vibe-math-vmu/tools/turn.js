@@ -327,10 +327,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
               means: 'resolved values for the two deployment-critical keys this prompt depends on; token BUDGET value is redacted by convention, source names the layer (config / pack:<id> / default) and origin the human reading (config / declared-default / runtime)' }
           } catch (e) { return { settings: null, means: 'settings provenance UNREADABLE: ' + String((e && e.message) || e) } }
         })()
-        const retainedTurns = Array.from(new Set([...promptCache.keys(), ...kernelTurns])).slice(-20)
-        const retention = { cacheLimit: PROMPT_CACHE_LIMIT, retainedTurns, kept: retainedTurns.length,
-          policy: 'retention is BOUNDED by policy: this face keeps at most ' + PROMPT_CACHE_LIMIT + ' assembled prompts (oldest evicted), and the kernel archive keeps its own declared cap; a turn that has been evicted is NOT readable through op:"prompt"',
-          overWindowHint: 'if a turn id you expect is absent, it was EVICTED (cache limit ' + PROMPT_CACHE_LIMIT + ' or kernel archive cap) — read it right after the turn ends; the reply archive Members/<member>/Turns/<turn>.md is the durable copy' }
+        const retention = promptRetentionReading({ faceTurns: [...promptCache.keys()], kernelTurns, faceLimit: PROMPT_CACHE_LIMIT, archiveLimit: Number(kernel.turn && kernel.turn.promptArchiveCap) || 12 })
         return { ok: true, turn: id, chars: text.length, offset, limit,
           limitClamped: limit !== askedLimit, end, done: end >= text.length,
           nextOffset: end >= text.length ? null : end,
@@ -773,5 +770,27 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       },
       execute: executeTurn,
       run: runTurn,
+  }
+}
+
+/** ★ Round-17 P2: the tool-face cache and the kernel prompt archive are SEPARATE stores with separate bounds.
+ *  A single kept count could exceed cacheLimit and look self-contradictory; this pure builder names each kept count
+ *  with its OWN limit plus an overflow fact, and keeps the union list a reader uses. */
+export function promptRetentionReading({ faceTurns = [], kernelTurns = [], faceLimit = 6, archiveLimit = 12 } = {}) {
+  const face = [...new Set((Array.isArray(faceTurns) ? faceTurns : []).map(String))]
+  const archive = [...new Set((Array.isArray(kernelTurns) ? kernelTurns : []).map(String))]
+  const faceOver = Math.max(0, face.length - Math.max(0, Number(faceLimit) || 0))
+  const archiveOver = Math.max(0, archive.length - Math.max(0, Number(archiveLimit) || 0))
+  const retainedTurns = [...new Set(face.concat(archive))].slice(-20)
+  return {
+    faceCacheLimit: faceLimit, kernelArchiveLimit: archiveLimit,
+    keptFaceCache: face.length, keptKernelArchive: archive.length,
+    faceCacheWithinLimit: faceOver === 0, kernelArchiveWithinLimit: archiveOver === 0,
+    ...(faceOver > 0 ? { faceCacheOverflowBy: faceOver, faceCacheOverflowMeans: "the tool-face cache holds MORE than faceCacheLimit: a defect at the cache bound, not a normal reading" } : {}),
+    ...(archiveOver > 0 ? { kernelArchiveOverflowBy: archiveOver, kernelArchiveOverflowMeans: "the kernel prompt archive holds MORE than kernelArchiveLimit: a defect at the archive bound, not a normal reading" } : {}),
+    retainedTurns, kept: retainedTurns.length,
+    keptMeans: "kept = DISTINCT turns reachable through EITHER store (union), never a sum; keptFaceCache and keptKernelArchive are the two counts, each against its own limit",
+    policy: "retention has TWO separate bounds: the tool-face cache keeps at most " + String(faceLimit) + " assembled prompts (oldest evicted), the kernel prompt archive at most " + String(archiveLimit) + "; a turn evicted from one may still be readable from the other — keptFaceCache/keptKernelArchive say which",
+    overWindowHint: "if a turn id you expect is absent, it was evicted from BOTH stores (face cache " + String(faceLimit) + " / kernel archive " + String(archiveLimit) + ") — read it right after the turn ends; Members/<member>/Turns/<turn>.md is the durable copy",
   }
 }

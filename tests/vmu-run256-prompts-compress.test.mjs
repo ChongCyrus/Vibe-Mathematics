@@ -94,7 +94,7 @@ const RUN272_RUN79_RESTORE = { chair: 30, member: 30, temp: 30, sum: 90 }
 // levels; its correction is pinned by the new judge against `assistant.json` directly.
 // Measured per seat after ROUND-3 (2026-11-17): chair 29 499→28 673 (-826), member 26 001→25 198 (-803), temp 22 668→21 846 (-822); ROUND-3 deleted the five legacy correction sections and applied P0-b/P1/P2;
 // three-seat sum 78 168→75 717 (-2 451); cap/ratchet untouched and the REAL end-to-end render is 35 325 ≤ 36 400 (margin 1 075).
-const TB2752_RUN80_FIXES = { chair: -3567, member: -992, temp: -2326, sum: -6885 } // final30b ROUND-9: each seat +84 and sum +252 from the fixtureMode wording fix (显式仿真模式/真实部署默认 + 默认 tools 头) — the SAME teaching batch; deltas re-measured, not tuned // ROUND-2: P0/P1 fixes + reply-channel merge (net growth much smaller than R1: the merge removed historical lines) // ROUND-1 + B2 restores (scheduling facts, capture lines, formal required params, correction trims) // ROUND-1 P0/P1 prompt fixes (leaderless wording, formal shape, dangerous legacy lines removed, chair/meeting compression, warrant reading, release/phase/temp/roster teaching); measured on the same collect() ruler
+const TB2752_RUN80_FIXES = { chair: -4263, member: -1041, temp: -2326, sum: -7630 } // final30b ROUND-9: each seat +84 and sum +252 from the fixtureMode wording fix (显式仿真模式/真实部署默认 + 默认 tools 头) — the SAME teaching batch; deltas re-measured, not tuned // ROUND-2: P0/P1 fixes + reply-channel merge (net growth much smaller than R1: the merge removed historical lines) // ROUND-1 + B2 restores (scheduling facts, capture lines, formal required params, correction trims) // ROUND-1 P0/P1 prompt fixes (leaderless wording, formal shape, dangerous legacy lines removed, chair/meeting compression, warrant reading, release/phase/temp/roster teaching); measured on the same collect() ruler
 // ★ TB-2765 (2026-11-13, prompt-lane text side): A-3 formula teaching in the paper-write prompt, plus A-1/A-2/D-7 read-face
 // notes in the OFFICE persona (hostPrompt). All three additions land OUTSIDE the phases this ruler measures
 // (paper-write is not in collect()'s normal/meeting set; the office persona enters no seat prompt), so the measured
@@ -104,11 +104,11 @@ const TB2752_RUN80_FIXES = { chair: -3567, member: -992, temp: -2326, sum: -6885
 // replacements (run 82 lost 23 glyphs), and the `part` prompt carries a self-check line. Both land in the paper-write
 // phase — outside collect()'s normal/meeting set and outside the budget gate's phases — so the measured water levels
 // are UNCHANGED again: TB2752_RUN80_FIXES stays { chair: 51, member: 45, temp: 0, sum: 96 }.
-const CHAIR_NORMAL_MEASURED = 25932 // ROUND-9 re-baseline: 25848 + 84 = the fixtureMode wording fix, measured live (final30b) // ROUND-8 re-baseline: live chair/normal measurement (itemised history lives in TB2752_RUN80_FIXES and §20.13)
+const CHAIR_NORMAL_MEASURED = 25236 // ROUND-9 re-baseline: 25848 + 84 = the fixtureMode wording fix, measured live (final30b) // ROUND-8 re-baseline: live chair/normal measurement (itemised history lives in TB2752_RUN80_FIXES and §20.13)
 // ceiling derivation (cross-checked by run80 §3b): baseline + RUN272_RUN79_RESTORE.chair + TB2752_RUN80_FIXES.chair
 const CHAIR_NORMAL_MARGIN = Math.max(Math.ceil(CHAIR_NORMAL_MEASURED * 0.01), 3) // 287
 const CHAIR_NORMAL_CEILING = CHAIR_NORMAL_MEASURED + CHAIR_NORMAL_MARGIN // 28960
-const NORMAL_SUM_MEASURED = 71283 // ROUND-9 re-baseline: 71031 + 252 = 3 x 84 (the shared fixtureMode wording renders into all three normal seats), measured live (final30b) // ROUND-8 re-baseline: live three-seat normal sum
+const NORMAL_SUM_MEASURED = 70538 // ROUND-9 re-baseline: 71031 + 252 = 3 x 84 (the shared fixtureMode wording renders into all three normal seats), measured live (final30b) // ROUND-8 re-baseline: live three-seat normal sum
 // ceiling derivation (cross-checked by run80 §3c): baseline + RUN272_RUN79_RESTORE.sum + TB2752_RUN80_FIXES.sum
 const NORMAL_SUM_MARGIN = Math.max(Math.ceil(NORMAL_SUM_MEASURED * 0.01), 3) // 783
 const NORMAL_SUM_CEILING = NORMAL_SUM_MEASURED + NORMAL_SUM_MARGIN // 76474

@@ -1158,7 +1158,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::召集只对 chair 席开放"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::真正召集是院士的工具"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::enforced on BOTH doors",
@@ -1166,7 +1166,8 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::真机69 非主席召集被具名拒并点名 chair 席"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
-      "next": ""
+      "next": "",
+      "note": "｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。"
     },
     {
       "id": "E4",
@@ -1225,14 +1226,14 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::可选**的独立名称"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议预约·<主席>】<标题>"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::kindSource\":\"default"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
       "next": "",
-      "note": "r122a 量到默认 kind 冒充标签（F-122a）；修法=保留默认值并把来源印成 kindSource/kindSourceMeans，判据「默认值可以是合法的，但它必须说自己是被填上的」（§217.3）"
+      "note": "r122a 量到默认 kind 冒充标签（F-122a）；修法=保留默认值并把来源印成 kindSource/kindSourceMeans，判据「默认值可以是合法的，但它必须说自己是被填上的」（§217.3） ｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。"
     },
     {
       "id": "E7",
@@ -1246,12 +1247,13 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::故意不给推荐骨架"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::六种类型："
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_meeting {type:\"debate\", subject:\"rec-1\"}` ⇒ `ok:true`"
       ],
-      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
+      "note": "｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。"
     },
     {
       "id": "E8",
@@ -1376,12 +1378,13 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::故意不给推荐骨架"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::六种类型（ordinary/academic/debate/closure/paper/planning）"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::真机已演练 3/6"
       ],
-      "ruleText": "正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。"
+      "ruleText": "正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。",
+      "note": "｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。"
     },
     {
       "id": "E14",
@@ -1641,7 +1644,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::步骤只是**建议"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::单次发言版群聊"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE",
@@ -1649,7 +1652,7 @@
       ],
       "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。",
       "next": "已由 r132 全证（群聊轮内 r-1 第二次发言被 VMU_CHAT_ALREADY_SPOKE 拒；会议面按 speeches 计分属记分板，不是这条规则的面）；后续轮次只做回归。",
-      "note": "单次表态规则的面是「群聊单次发言轮」（round），不是会议发言面——两者都读到了，只有前者拦重复。"
+      "note": "单次表态规则的面是「群聊单次发言轮」（round），不是会议发言面——两者都读到了，只有前者拦重复。 ｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。"
     },
     {
       "id": "E26",
@@ -2066,13 +2069,14 @@
         "vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议进行中的一切内容、控制、活动都由你的命令决定"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议进行中**的内容与节奏由你的命令决定"
       ],
       "status": "DONE",
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":2400000,\"extendedMs\":600000"
-      ]
+      ],
+      "note": "｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。"
     },
     {
       "id": "E31",
@@ -2087,7 +2091,7 @@
         "vibe_vmu_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::步骤只是**建议"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::是**编排建议**，不是结论"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::binding\":\"recommendation"
@@ -2095,7 +2099,7 @@
       "status": "DONE",
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
       "next": "",
-      "note": "r124a：学术会/论文会的 procedure.binding 都是 recommendation，步骤只作推荐"
+      "note": "r124a：学术会/论文会的 procedure.binding 都是 recommendation，步骤只作推荐 ｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。"
     },
     {
       "id": "E32",
@@ -2127,7 +2131,7 @@
         "vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议类型六种"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::六种类型（ordinary/academic/debate/closure/paper/planning）"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::count\":6",
@@ -2137,7 +2141,7 @@
       ],
       "text": "会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。",
       "next": "",
-      "note": "r124a：types 读面读回六型 + 目录来源 第 69 次真机未触达辩论类型（无「证明已完成」对象，G-1）——类型目录读数 6/6 已验，辩论类型本身未验。",
+      "note": "r124a：types 读面读回六型 + 目录来源 第 69 次真机未触达辩论类型（无「证明已完成」对象，G-1）——类型目录读数 6/6 已验，辩论类型本身未验。 ｜ prompt 证据重锚（G2 trim 后原句不在 v5r-blocks-b.js）：改锚到现存的同义句，理由见本条 note。",
       "rule": "47"
     },
     {

@@ -438,6 +438,11 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-migration.test.mjs:A:outcomes',
   'vmu-minutes-tool.test.mjs:A:line',
   'vmu-pack-manifest-pointers.test.mjs:A:for:dirs',
+  // ★ ROUND 17 / final34: PURE ADDITION. `tests/vmu-paper-phases-matrix.test.mjs` is the prompt-lane's paper
+  //   phase-matrix companion (three seats × three paper phases = 9 combos); its loop over `got.combos` is a
+  //   RULE-E shape-A occurrence, so it belongs in this baseline. The file is new in this round (git A), which is
+  //   why it was the only `added` fingerprint when the gate ran — nothing was renamed or re-blessed here.
+  'vmu-paper-phases-matrix.test.mjs:A:for:got.combos',
   'vmu-planned-settings.test.mjs:A:keys',
   'vmu-prompt-v5r-bridge.test.mjs:A:names',
   'vmu-prompt-v5r-bridge.test.mjs:A:v5rPromptSections',
@@ -556,7 +561,7 @@ export const MULTILINE_C_BASELINE_FINGERPRINTS = Object.freeze([
 ])
 // MULTILINE-C-BASELINE-END
 /** Kept for visibility: the COUNT is reported, but the enforcement is the fingerprint SET below. */
-export const A_CLASS_BASELINE = 193
+export const A_CLASS_BASELINE = 194
 export function aClassGrowth(violations, baseline = A_CLASS_BASELINE) {
   const a = violations.filter((v) => /\[A\]/.test(v)).length
   return {

@@ -7495,7 +7495,9 @@ export function createTurnOrchestrator({
       const hit = statusBlockReadings.get(id)
       return hit ? Object.assign({}, hit) : null
     },
-    promptTurns: () => Array.from(promptArchive.keys()),    memberSession: (member) => memberSessions.get(String(member)) || null,
+    promptTurns: () => Array.from(promptArchive.keys()),
+    // ★ Round-17 P2: the archive's OWN bound is readable, so a receipt can name it instead of saying "its own cap".
+    promptArchiveCap: PROMPT_ARCHIVE_CAP,    memberSession: (member) => memberSessions.get(String(member)) || null,
     // ★ F-115a: which member ran in this child session? `null` is a real answer (root/office session, or a child this
     // kernel never learned). Read from the LOCAL map first; the kernel may also fill it from the shared fold.
     memberBySession: (sessionId) => sessionOwners.get(String(sessionId)) || null,

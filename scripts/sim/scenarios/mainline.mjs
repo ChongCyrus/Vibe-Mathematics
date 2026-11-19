@@ -137,6 +137,78 @@ export async function mainline(h, { log = () => {} } = {}) {
     member: 'r-acad',
   }))
   const blueprintRead = await step('blueprint/read', () => h.call('vibe_v5_blueprint', { action: 'read', id: draftId }))
+
+  // ── TB-2795 / MAIN.4–13 (round-17 audit B4): the TEN-field schema was only reachable from the TEST, never from a
+  //    RULE-mapped step: every rule-mapped propose had `outlineCount:0`, so `VMU_BLUEPRINT_FIELDS_MISSING` never
+  //    appeared in a rule-step receipt and `outlineFieldsComplete` lived only in non-rule steps. These steps are the
+  //    rule-level evidence: ① an incomplete node is REFUSED with missing/missingCn/nodes/shape readable per field;
+  //    ② a complete node writes; ③ read/state carry outline[].fields (ten keys) + outlineFieldsComplete:true;
+  //    ④ a revision written BEFORE the schema reads outlineFieldsComplete:false — never dressed up as complete.
+  const fieldNode = {
+    evaluationNow: '当前评价：结构已能承载十字段，但只验机制不评数学。',
+    initialPlan: { plan: '先立蓝图骨架，再逐节点补字段。', inspiration: '规则要求每方向/路线/节点记录十字段。', initialTargets: '让 propose/read 都能逐字段复核。' },
+    relatedPlans: ['前 n 个奇数之和 = n^2 的归纳证明路线'],
+    feasibility: { assessment: '可行：字段是声明式 schema，写入前已逐项校验。', reasons: 'TB-2795 在 blueprint.js 里用同一份 schema 校验与读取。' },
+    value: { assessment: '价值：规则层因此可以逐字段审计，而不是只看散文。', reasons: '字段缺失会被具名拒，完整会被聚合读数确认。' },
+    findings: [{ kind: 'proposition', note: '前 n 个奇数之和 = n^2（占位命题，不声称已证）' }],
+    obstacles: [{ what: '旧 revision 没有 fields', why: 'schema 是后加的，读面必须区分旧记录与完整记录' }],
+    obstacleSolutions: [{ obstacleRef: '旧 revision 没有 fields', plan: '旧记录读 fields:null/fieldsComplete:false，新提案严格校验' }],
+    implementation: { status: '已实施：propose 严格校验、read/state 聚合读数。', effects: '规则步现在能逐字段复核。', lessons: '结构必须随行与读面一起走，否则测试绿而规则盲。' },
+    pastExperience: ['round-17 审计 B4：没有规则步读 fields/fieldsSchema 就是盲区。'],
+  }
+  const fieldsIncomplete = await step('blueprint/fields/incomplete', () => h.call('vibe_v5_blueprint', {
+    action: 'propose', path: 'Shared/Fields.md', member: 'r-acad', text: '节点字段校验（缺字段）',
+    fieldsSchema: 'vmu.blueprint.fields@1',
+    outline: [{ id: 'n1', title: '节点一（缺字段）', depth: 1, fields: { evaluationNow: '只有一条字段' } }],
+  }))
+  if (fieldsIncomplete && fieldsIncomplete.ok === false && fieldsIncomplete.code === 'VMU_BLUEPRINT_FIELDS_MISSING') {
+    expectedRefusals.push({ seq: lastSeq(), tool: 'vibe_v5_blueprint', code: 'VMU_BLUEPRINT_FIELDS_MISSING', why: 'TB-2795 严格 schema：outline 节点缺必需字段必须具名拒并逐字段点名（MAIN.4–13 拒绝侧规则步）' })
+  } else {
+    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_MISSING_NOT_REFUSED', step: 'blueprint/fields/incomplete', message: '缺字段的 outline 节点没有被 VMU_BLUEPRINT_FIELDS_MISSING 具名拒', means: 'TB-2795 的严格校验必须能在规则步上被看到；一条不拒就等于规则层无法区分「校验在」与「校验不在」', receipt: fieldsIncomplete })
+  }
+  const fieldDetail = (fieldsIncomplete && fieldsIncomplete.detail) || null
+  if (!(fieldDetail && Array.isArray(fieldDetail.missing) && fieldDetail.missing.length === 9 && Array.isArray(fieldDetail.missingCn) && fieldDetail.missingCn.length === 9 && Array.isArray(fieldDetail.nodes) && fieldDetail.nodes.length === 1 && typeof fieldDetail.shape === 'string' && fieldDetail.schema === 'vmu.blueprint.fields@1')) {
+    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_DETAIL_NOT_FIELDWISE', step: 'blueprint/fields/incomplete', message: '拒绝回执的 detail 没有逐字段点名（missing/missingCn/nodes/shape/schema）', means: '规则层要逐字段可核：只有一个 code 的拒绝，审的人不知道缺的是哪九个字段', receipt: fieldDetail })
+  }
+  const fieldsCompleteProposal = await step('blueprint/fields/complete', () => h.call('vibe_v5_blueprint', {
+    action: 'propose', path: 'Shared/Fields.md', member: 'r-acad', text: '节点字段校验（十字段齐全）',
+    materialize: true, // fs-first is the production default; this step asks the kernel to write the draft by NAME so the read below has a real row id
+    fieldsSchema: 'vmu.blueprint.fields@1',
+    outline: [{ id: 'n1', title: '节点一（十字段齐全）', depth: 1, fields: fieldNode }, { id: 'n2', title: '节点二（十字段齐全）', depth: 2, fields: fieldNode }],
+  }))
+  const completeId = (fieldsCompleteProposal && (fieldsCompleteProposal.id || fieldsCompleteProposal.recordId)) || null
+  const fieldsCodesign = await step('blueprint/fields/codesign', () => h.call('vibe_v5_blueprint', {
+    action: 'propose', draft: completeId, path: 'Shared/Fields.md', member: 'r-1',
+    mdPath: (fieldsCompleteProposal && fieldsCompleteProposal.mdPath) || 'Shared/Drafts/Fields-r1.md',
+    text: '## 共同设计补充｜r-1' + NL + '- 十字段形状复核完成，同意进入 current。' + NL,
+  }, { as: { agent: { id: 'r-1' } } }))
+  const fieldsAdopt = await step('blueprint/fields/adopt', () => h.call('vibe_v5_blueprint', {
+    action: 'adopt', path: 'Shared/Fields.md', draft: completeId, member: 'r-acad',
+  }))
+  const fieldsRead = await step('blueprint/fields/read', () => h.call('vibe_v5_blueprint', { action: 'read', id: completeId }))
+  const outlineRows = fieldsRead && Array.isArray(fieldsRead.outline) ? fieldsRead.outline : []
+  const tenKeys = ['evaluationNow', 'initialPlan', 'relatedPlans', 'feasibility', 'value', 'findings', 'obstacles', 'obstacleSolutions', 'implementation', 'pastExperience']
+  const rowsComplete = outlineRows.length === 2 && outlineRows.every((r) => r && r.fieldsComplete === true && r.fields && tenKeys.every((k) => Object.prototype.hasOwnProperty.call(r.fields, k)) && (!r.fieldsMissing || r.fieldsMissing.length === 0))
+  if (!(fieldsRead && fieldsRead.ok !== false && rowsComplete && fieldsRead.outlineFieldsComplete === true && fieldsRead.fieldsSchema === 'vmu.blueprint.fields@1' && Array.isArray(fieldsRead.outlineFieldsMissing) && fieldsRead.outlineFieldsMissing.length === 0)) {
+    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_READ_SURFACE', step: 'blueprint/fields/read', message: 'read 没有回 outline[].fields（十键）+ fieldsComplete:true + outlineFieldsComplete:true 的聚合', means: 'MAIN.4–13 的允许侧要有逐字段读面：没有它，「字段齐全」只是测试里的一句话', receipt: { outlineCount: fieldsRead && fieldsRead.outlineCount, outlineFieldsComplete: fieldsRead && fieldsRead.outlineFieldsComplete, rows: outlineRows.map((r) => ({ id: r.id, fieldsComplete: r.fieldsComplete, keys: r.fields ? Object.keys(r.fields).length : null })) } })
+  }
+  const fieldsState = await step('blueprint/fields/state', () => h.call('vibe_v5_blueprint', { action: 'state', path: 'Shared/Fields.md' }))
+  if (!(fieldsState && fieldsState.action === 'state' && fieldsState.outlineFieldsComplete === true && fieldsState.fieldsSchema === 'vmu.blueprint.fields@1')) {
+    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_STATE_SURFACE', step: 'blueprint/fields/state', message: 'state 面没有给 outlineFieldsComplete:true 的聚合读数', means: '读面与提案面必须同源：只在一个面上对，等于另一个面上的读者仍盲', receipt: { action: fieldsState && fieldsState.action, outlineFieldsComplete: fieldsState && fieldsState.outlineFieldsComplete, fieldsSchema: fieldsState && fieldsState.fieldsSchema } })
+  }
+  const fieldsLegacy = await step('blueprint/fields/legacy-read', () => h.call('vibe_v5_blueprint', { action: 'read', id: draftId }))
+  const legacyOutline = fieldsLegacy && Array.isArray(fieldsLegacy.outline) ? fieldsLegacy.outline : []
+  if (!(fieldsLegacy && fieldsLegacy.ok !== false && fieldsLegacy.outlineFieldsComplete === false && legacyOutline.length === 0 && fieldsLegacy.fieldsSchema === 'vmu.blueprint.fields@1' && typeof fieldsLegacy.fieldsMeans === 'string')) {
+    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_LEGACY_READ', step: 'blueprint/fields/legacy-read', message: 'schema 之前的 revision 读面没有如实报 outlineFieldsComplete:false（且没有把旧记录装扮成完整）', means: 'legacy 记录必须与完整记录可区分：读面把旧记录说成 complete 就是假读数', receipt: { outlineCount: fieldsLegacy && fieldsLegacy.outlineCount, outlineFieldsComplete: fieldsLegacy && fieldsLegacy.outlineFieldsComplete, fieldsSchema: fieldsLegacy && fieldsLegacy.fieldsSchema } })
+  }
+  const blueprintFields = {
+    incomplete: { code: fieldsIncomplete && fieldsIncomplete.code, detail: fieldDetail && { schema: fieldDetail.schema, missing: fieldDetail.missing, missingCn: fieldDetail.missingCn, nodes: Array.isArray(fieldDetail.nodes) ? fieldDetail.nodes.length : null, shape: fieldDetail.shape } },
+    complete: { id: completeId, ok: fieldsCompleteProposal && fieldsCompleteProposal.ok !== false, outlineCount: fieldsCompleteProposal && fieldsCompleteProposal.outlineCount },
+    read: { outlineCount: fieldsRead && fieldsRead.outlineCount, outlineFieldsComplete: fieldsRead && fieldsRead.outlineFieldsComplete, perNode: outlineRows.map((r) => ({ id: r.id, fieldsComplete: r.fieldsComplete, keys: r.fields ? Object.keys(r.fields) : [], fieldsMissing: r.fieldsMissing })) },
+    state: { outlineFieldsComplete: fieldsState && fieldsState.outlineFieldsComplete },
+    legacy: { outlineFieldsComplete: fieldsLegacy && fieldsLegacy.outlineFieldsComplete, outlineCount: fieldsLegacy && fieldsLegacy.outlineCount },
+    means: 'MAIN.4–13 rule-step evidence: per-field refusal (missing/missingCn/nodes/shape), complete node writes, read/state aggregate true, legacy revision reads false (never dressed up)',
+  }
   const reindex = await step('record/reindex', () => h.call('vibe_vmu_records', { action: 'reindex', track: 'blueprint' }))
   // TB-2650 (MEASURED): the plain md draft this scenario wrote for the member is still on disk after adoption, and
   // `not-a-vmu-md` is one of the classes RUN 259 made blocking. The refusal is predictd here BY SEQ so the agent ledger
@@ -225,6 +297,6 @@ export async function mainline(h, { log = () => {} } = {}) {
     receipts: h.receipts,
     promptChars,
     tree: h.tree ? h.tree() : [],
-    highlights: { started, claim, draft, codesign, adopted, blueprintRead, reindex, paper, part, advanced, reviewed, rendered, compiled, closed, contract },
+    highlights: { started, claim, draft, codesign, adopted, blueprintRead, reindex, paper, part, advanced, reviewed, rendered, compiled, closed, contract, blueprintFields },
   }
 }

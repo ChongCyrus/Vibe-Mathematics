@@ -757,11 +757,11 @@ export const v5rFixtureTools = Object.freeze({
  */
 const V5R_PROSE_CHAIR = Object.freeze([
     "★★ 回执里的 `progress` 必须是对象：`\"progress\":{\"track\":\"progress\",…}`（不是字符串，写成字符串会被拒）。",
-    "★ 论文流程 start→part→advance→review→final→render：`final`（**仅 chair 席**）才 compile 并写 pdf 行（`pdfBytes` 只由 compile/final 写），`render` **永不编译**；`ok:true` 只表示请求接受（完成看 `complete`/`renderOk`，缺看 `missing`/`toolchainAbsent`）；**advance 后可能撞门**：被 `VMU_OFFICE_CONSULT_REQUIRED` 拦时先让所办 `vibe_v5_paper { action:\"consult\", … }` 答复再重试 `final`。",
+    "★ 论文流程 start→part→advance→review→final→render：`final`（**仅 chair 席**）才 compile 并写 pdf 行（`pdfBytes` 只由 compile/final 写），`render` **永不编译**；`ok:true` 只表示请求接受（完成看 `complete`/`renderOk`，缺看 `missing`/`toolchainAbsent`）；**advance 后可能撞门**：被 `VMU_OFFICE_CONSULT_REQUIRED` 拦时先让所办 consult 再重试 `final`。",
     "★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认）。",
     "★ 留言（信箱）不需要立即阅读，有空再看。",
     "★ 查看顺序：先看列表，再挑一封读；读过自动标已读，要跟进标待办。",
-    "★ 等回信用 vibe_v5_wait（等到就返回），不要反复轮询。",
+    "★ 等回信用 vibe_v5_wait。",
     "★ 动手前先探环境：跑 python／Lean／LaTeX 前先 vibe_vmu_env {action:'probe', need:'…'}，探通了再跑。",
     "★★ 探不通不要硬试：探测失败是正常结果（ok:false），不要反复重试或改系统——框架不会替你安装，也不会静默假装成功。",
     "★★ 探不通就上报：用 vibe_vmu_env {action:'report', need:'…', why:'为什么这轮需要它'} 记一条 environment-missing 的 finding ⇒ 主代理会读到。",

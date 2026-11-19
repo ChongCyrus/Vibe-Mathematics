@@ -121,8 +121,26 @@ ok(bySeatA && bySeatA.promptFor && bySeatA.promptFor.member === 'r-1',
 ok(bySeatA && bySeatA.promptSources && bySeatA.promptSources.settings && bySeatA.promptSources.settings['vmu.v5r.fixtureMode'] &&
   bySeatA.promptSources.settings['vmu.v5r.fixtureMode'].value === 'tools' && bySeatA.promptSources.settings['vmu.v5r.fixtureMode'].source,
   '★★ §2d RUN-88 P2-2: the page carries the resolved settings it was assembled under (fixtureMode value/source/origin)', bySeatA && bySeatA.promptSources)
-ok(bySeatA && bySeatA.retention && bySeatA.retention.cacheLimit > 0 && typeof bySeatA.retention.policy === 'string' && Array.isArray(bySeatA.retention.retainedTurns),
-  '★★ §2e RUN-88 P2-2: the retention window is DISCLOSED (cache limit, retained turns, eviction policy)', bySeatA && bySeatA.retention)
+ok(bySeatA && bySeatA.retention && bySeatA.retention.faceCacheLimit > 0 && bySeatA.retention.kernelArchiveLimit > 0 && typeof bySeatA.retention.policy === 'string' && Array.isArray(bySeatA.retention.retainedTurns),
+    '★★ §2e RUN-88 P2-2: the retention window is DISCLOSED (cache limit, retained turns, eviction policy)', bySeatA && bySeatA.retention)
+  const rt = bySeatA && bySeatA.retention
+  ok(rt && rt.keptFaceCache <= rt.faceCacheLimit && rt.keptKernelArchive <= rt.kernelArchiveLimit && rt.faceCacheWithinLimit === true && rt.kernelArchiveWithinLimit === true,
+    '§2f Round-17 P2: kept is SPLIT (keptFaceCache/keptKernelArchive), each within its OWN limit — no mixed count over cacheLimit',
+    rt && { face: rt.keptFaceCache, faceLimit: rt.faceCacheLimit, archive: rt.keptKernelArchive, archiveLimit: rt.kernelArchiveLimit })
+  ok(rt && Array.isArray(rt.retainedTurns) && rt.kept === new Set(rt.retainedTurns).size && rt.keptMeans,
+    '§2g Round-17 P2: kept is the DISTINCT union (kept === retainedTurns unique count), never a sum of the two stores',
+    rt && { kept: rt.kept, union: rt.retainedTurns && new Set(rt.retainedTurns).size })
+  // LAMP: construct an over-limit face cache. The reading must EXPLAIN it (within false + overflowBy), not silently print a big kept.
+  const turnMod = await import('../vibe-math-vmu/tools/turn.js')
+  const lampRt = turnMod.promptRetentionReading({ faceTurns: ['t-1','t-2','t-3','t-4','t-5','t-6','t-7','t-8','t-9'], kernelTurns: [], faceLimit: 6, archiveLimit: 12 })
+  ok(lampRt.keptFaceCache === 9 && lampRt.faceCacheWithinLimit === false && lampRt.faceCacheOverflowBy === 3 && /defect/.test(String(lampRt.faceCacheOverflowMeans)),
+    '§2h Round-17 P2 LAMP: an over-limit face cache is SELF-EXPLAINING (within:false + overflowBy + defect sentence)',
+    { kept: lampRt.keptFaceCache, within: lampRt.faceCacheWithinLimit, over: lampRt.faceCacheOverflowBy })
+  const mathjobsMod = await import('../vibe-math-vmu/packs/research-core/mathjobs.js')
+  const mj = mathjobsMod.createMathJobs({ settings: {}, clock: () => 0, spawn: async () => ({ exitCode: 0 }) })
+  ok(mj.admission().evictionPolicy === mj.admission().retention && /DEPRECATED/.test(String(mj.admission().evictionPolicyMeans)),
+    '§2i Round-17 P3: mathjobs names its string policy evictionPolicy; retention stays a DEPRECATED alias (no same-name/different-shape surprise)',
+    { policy: mj.admission().evictionPolicy, means: mj.admission().evictionPolicyMeans && String(mj.admission().evictionPolicyMeans).slice(0, 60) })
 ok(bySeatA && bySeatA.promptFor && bySeatA.promptFor.turnId === turnA && bySeatA.promptFor.turnMember === 'r-1',
   '★★★ §2c and which seat the ARCHIVE says assembled this text — the reader can compare the two instead of trusting the echo',
   bySeatA && bySeatA.promptFor)

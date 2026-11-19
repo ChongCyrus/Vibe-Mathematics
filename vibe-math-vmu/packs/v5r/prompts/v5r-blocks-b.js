@@ -63,7 +63,7 @@ const REPLY_COMPACT_TEXT_TEMP = REPLY_COMPACT_TEXT.split('\n').filter((l) => !l.
 // and drops the CATALOGUE restatement (~1.8k); member/temp keep the catalogue (they have no other field table).
 const REPLY_CHANNEL_LINES = replyChannelLines()
 const REPLY_CATALOGUE_COMPACT = replyCatalogueLines({ mode: 'compact' })
-const REPLY_COMPACT_TEXT_CHAIR = REPLY_COMPACT_TEXT.split('\n').filter((l) => !REPLY_CATALOGUE_COMPACT.includes(l)).join('\n')
+const REPLY_COMPACT_TEXT_CHAIR = REPLY_COMPACT_TEXT.split('\n').filter((l) => !REPLY_CATALOGUE_COMPACT.includes(l) && !/任务的合法转移|复杂工具首次使用前调 vibe_v5_tool_help|回执字段（7 常用|contextPct仅在有依据时填/.test(l)).join('\n')
 export const CHARTER_BLOCKS_B = Object.freeze([
   {
     name: 'v5r-turn-acad-leads',
@@ -73,7 +73,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ role: Object.freeze(['chair']) }),
     texts: {
       shared: [
-        '作为院士，除了做研究，你还要**统筹全所**：用 vibe_v5_overview 看清谁在做什么、',
+      '作为院士，除了做研究，你还要统筹全所：用 vibe_v5_overview 看谁在做什么；拆任务用 vibe_v5_assign 分派；必要时 vibe_v5_nudge 督办。',
         '哪里是瓶颈；把工作拆成任务并用 vibe_v5_assign 分派；必要时用 vibe_v5_nudge 督办。',
       ].join('\n'),
     },
@@ -321,7 +321,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '【回执最小形状】围栏写**字段本身**，不是工具参数：' + String.fromCharCode(96) + '{"say":"…","solved":false}' + String.fromCharCode(96) + '（一个字段也要成句）；**围栏不要写 ' + String.fromCharCode(96) + 'op' + String.fromCharCode(96) + '**；只有**所办代转**才用工具调用参数 ' + String.fromCharCode(96) + 'vibe_vmu_turn {op:"reply", member, report:{…}}' + String.fromCharCode(96) + '——那是参数不是围栏形状；**一次回复至少一个字段**。',
+        '【回执最小形状】围栏写**字段本身**：' + String.fromCharCode(96) + '{"say":"…","solved":false}' + String.fromCharCode(96) + '（一个字段也要成句）；**围栏不要写 ' + String.fromCharCode(96) + 'op' + String.fromCharCode(96) + '**；所办代转才用工具参数 ' + String.fromCharCode(96) + 'vibe_vmu_turn {op:"reply", member, report:{…}}' + String.fromCharCode(96) + '；**一次回复至少一个字段**。',
       ].join('\n'),
       researcher: [
         '【回执最小形状】回复正文围栏里写**字段本身**：最小合法形状 `{"say":"…","solved":false}`（一个已登记字段也要成句：键 + 值）；**围栏里不要写 `op`**（那是所办代转的工具参数，不是回复字段）。',
@@ -1021,13 +1021,14 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ phase: Object.freeze(['meeting']) }),
     texts: {
       academician: [
-        '【开会与预约：按事件时机的顺序（你的手册）】会议类型六种：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型；动议 kind 为 topic/procedural/resolution；**可用的命令随类型与身份不同**。辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权；上面这些动词只是常用手段，不是穷举。**会议进行中的一切内容、控制、活动都由你的命令决定**——但每个成员的动作（发言、投票、签到）仍由成员自己在其回合做完，你编排的是顺序与时机。',
-        '  · ① 先定议程：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 读议程条目、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——`agendaitems`/`agendaclose` 这两个动词只认**内核原语会**（`vibe_vmu_meeting { action:"open" }` 开的）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`title` 是**可选**的独立名称（非字符串会被具名拒）。`open` 回执里的 `procedureNote` 是**建议**（`procedure` 同源，`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：`ordinary` 类型**故意不给推荐骨架**，其余五种的步骤只是**建议**，可跳过、可重排，是否遵循由你决定。　★ **正式议程要条目就给数组**：`formal_agenda` 传 `["条目", {title:"条目2", kind:"review"}]` 才逐条落库（`formalAgendaItems` 读得到）；传 `true` 只是**声明**（`formalAgendaDeclared:true`、`formalAgendaItems:null` ＋ `formalAgendaItemsWhy`），读者一条都看不到',
-        '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做；有 roster 未到场者时，`close` 前先问 `status.present`）。召集成功会对除主席外每位在册者发出 `meeting-appointment` **耐久邮件**（`channel:"mail"`，每个被邀者一条，含议题/时间/你的席位/可照抄的入席调用）：回执 `invitation.delivered`＝已投递——对方**下个回合提示最上方的 `[新到的消息]` 块**里会出现一行 `【会议预约·<你>】…`，在其 `mailbox ack` 之前每回合都在（也可用 `vibe_v5_inbox` 读），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。预约/召集的回执还直接给内核投递三数组：`notified`（真拿到行的成员）、`notifyRows`（每人 mailId）、`notifyFailed`（逐人具名原因，附 `noticesMeans`）——`notifyFailed` 里的人才是你要补发的，别把「约过」当「通知到」。不必逐个私信催：没投出去的人会具名出现在 `unreachable`／open 回执的 `notifyFailed` 里，只有他们需要补消息；被邀者迟迟不 attend 是他自己回合的事，不是你没通知到。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
-'  · ③ 预约/会前：`at` 收 epoch ms／ISO-8601／相对偏移（如 "+120s"——**你没有自己的钟**，由内核换算）。开始前的治理动作都被具名拒；例外：`attend` 可提前签到（不开会）、主席可 `proceed` 提前开。**到点不会自己开会**：下一次 touch 只结算一次考勤——人已齐才直接开，否则落 `waiting`，`waitingFor` 给原因——`"quorum"`＝人没齐；`"chair-proceed"`＝人齐了等你；等待到期只置 `waitDecisionDue`（提醒，不开会）；`requiresChairProceed:true` 的准确含义是「开会不是框架按钟自己决定的」；`nextActions` 列此刻能接的动作——`proceed` 是你开、`lapse` 弃会、`recess` 体会。迟到入席按每会 `lateAdmission`（open|chair|refuse，缺省 chair）。',
-        '  · ⑦ 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
-        '  · ⑧ 面别记错：`vibe_v5_meeting` 只**召集/预约**；`close`/`attend`/`hand`/`admit`/`status`/`summary` 走 `vibe_vmu_meeting { action, id, member?, actor? }`，拿错面会被具名拒 `VMU_INVALID_ARGUMENT`。',
-        '  · ⑨ 以**主席名义**的动作（召集、裁决、放行迟到）不能代做：先 `vibe_vmu_turn { op:"drive", member: "<院士 id>" }` 给院士派一回合，否则具名拒 `VMU_CHAIR_ACT_NOT_DELEGATED`。辩论的 `subject` 必须是**证明已完成**的命题卡（`proofRef`+`proofState:"complete"`、已进 verified，或跑通的 Lean 结果）或 `subject_evidence.file`；一句话命题会被具名拒 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`。',
+        '【开会与预约：按事件时机的顺序（你的手册）】六种类型：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型。**`ordinary` 故意不给推荐骨架**；上面这些动词**只是常用手段，不是穷举**。结题表决用 `vote_solved`。**会议进行中**的内容与节奏由你的命令决定。',
+        '  · 回读提示词：`vibe_vmu_turn { op:"prompt", turn }` 只保留最近若干回合（回执 `retention` 给窗口），**超窗不可取**；交付回合结束就立即取。回执的 `promptSources` 两键＋脱敏说明来源。',
+        '  · ① 议程：`agenda` 是议程文本（`open` 时给）；`agendaitems` 读条目、`agendaclose` 按 `target` 关闭（必须 `reason`）——这两个动词只认**内核原语会**；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`procedureNote` 是**建议**（`binding:"recommendation"`）。`formal_agenda` 传数组才逐条落库；传 `true` 只是声明（`formalAgendaItems:null`）',
+        '  · ② 召集/关闭只对 chair（`conveneRequiresChair`/`closeRequiresChair`，其他席位拒 `VMU_NOT_PERMITTED`；未到场者先看 `status.present`）。召集发 `meeting-appointment` 耐久邮件；回执 `notified`/`notifyRows`/`notifyFailed`，`notifyFailed` 里的人要补发。被邀者仍须自己 `attend`',
+        '  · ③ 预约：`at` 收 epoch ms／ISO-8601／相对偏移（**你没有自己的钟**，由内核换算）。开始前治理动作都被具名拒；例外：`attend` 可提前签到（不开会）、主席可 `proceed` 提前开。**到点不会自己开会**：人齐才开，否则 `waiting`（`waitingFor`：`"quorum"`＝人没齐；`"chair-proceed"`＝人齐了等你）；`requiresChairProceed:true` 意思是「开会不是框架按钟自己决定的」；`nextActions`（`proceed`/`lapse` 弃会/`recess` 体会）。迟到入席按 `lateAdmission`（open|chair|refuse，缺省 chair）',
+        '  · ⑦ 一次连排多场：`sequence` 数组一次召集（回执 `sequence.index/total/next`），也可逐场 `at`。',
+        '  · ⑧ 面：`vibe_v5_meeting` 只召集/预约；其余走 `vibe_vmu_meeting`。',
+        '  · ⑨ 主席名义的动作（召集、裁决）不能代做：先 `vibe_vmu_turn { op:"drive", member:"<院士 id>" }`，否则拒 `VMU_CHAIR_ACT_NOT_DELEGATED`。辩论 `subject` 须为**证明已完成**的命题卡。',
       ].join('\n'),
       temp: [
         '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning）；动议 kind 为 topic/procedural/resolution；被邀请不等于签到——临时工席位不参会：`attend` 被具名拒（`vmu.meetings.attendDeniedSeats`），无表决权。',

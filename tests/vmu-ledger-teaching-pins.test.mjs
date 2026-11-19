@@ -93,7 +93,11 @@ ok(!paper.includes('本流程**没有**自动质检门'),
   'F4: the false "there is no quality gate at all" claim is gone (the four reader-facing qualities are human-judged; the delivery gate is mechanical)')
 
 // ── E12/E13: commands follow type + identity; the six real types ────────────
-PIN('v5r-blocks-b.js', blocksB, '可用的命令随类型与身份不同', 'E12')
+// ★ final34 / G2 trim re-anchor (old -> new -> why): the live teaching now reads 命令随类型与身份不同（辩论须先 ...）;
+// the trimmed copy dropped the leading 可用的. The PIN is a literal of the LIVE sentence, so it follows the live wording
+// (the ledger row E3..E33 evidence was re-anchored the same way). Re-anchoring is not a relaxation: the needle still
+// names the same teaching, and a future rewrite that drops it still reds this line.
+PIN('v5r-blocks-b.js', blocksB, '命令随类型与身份不同', 'E12')
 for (const t of ['ordinary', 'academic', 'debate', 'closure', 'paper', 'planning']) {
   ok(blocksB.includes(t), 'E13 pin: meeting type "' + t + '" is listed')
 }
@@ -122,7 +126,9 @@ ok(blocksB.includes('临时工不进成果库') && blocksB.includes('`progress` 
 ok(blocksB.includes('产出由临时工在回执里交回（指派者只核对、不代写）') && !blocksB.includes('产出由指派者归档'),
   'L10 pin: a temp output goes back in ITS OWN receipt - the assigner checks, never writes')
 // L32 (rule: 院士通过命令…决策会议进行中的一切内容、控制、活动) — chair authority is the FALLBACK authority
-ok(blocksB.includes('都由你的命令决定'), 'L32 pin: inside a running meeting, the chair\'s commands decide content/control/activity')
+ok(blocksB.includes('由你的命令决定'), 'L32 pin: inside a running meeting, the chair\'s commands decide content/control/activity')
+// ★ final34 / G2 trim re-anchor: the live sentence is **会议进行中**的内容与节奏由你的命令决定 — the trimmed copy dropped
+// 都 and moved 内容/控制/活动 to 内容与节奏. The pin follows the live sentence that carries the same chair-authority teaching.
 ok(blocksB.includes('只是常用手段，不是穷举'), 'L32 pin: the listed verbs are common means, not an exhaustive list')
 // L32 (rule: 框架推荐流程骨架…是否遵循完全由院士决定) — the skeleton is ADVISORY, not a gate
 ok(blocksB.includes('`procedureNote` 是**建议**'), 'L32 pin: procedure/procedureNote in the open receipt are advice (meeting-procedures.js binding:\'recommendation\')')

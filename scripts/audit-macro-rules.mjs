@@ -208,6 +208,19 @@ function main() {
       if ((/^(GAP|HALF-BUILT)$/.test(String(r.verdict).replace(/\*/g,'').trim())) && !/owner/i.test(r.impl + ' ' + r.completeness)) warnings.push({ code: 'NO_OWNER_IN_ROW', message: r.id + ': GAP/HALF-BUILT row should name an owner' })
     }
     stats.verdicts = verdicts
+    // ★ TB-2795 §0 CONSISTENCY: the matrix's own 判定 counts row must EQUAL the row verdicts. A hand-edited §0
+    // that disagrees with the rows is a FAILURE, not a display detail (the round-17 audit found 64/11 vs 74/1).
+    {
+      const matrixText = readFileSync(MATRIX, 'utf8')
+      const m = /^\|\s*判定\s*\|\s*CONFORMS (\d+) · GAP (\d+) · HALF-BUILT (\d+) · NOT-APPLICABLE (\d+)\s*\|/m.exec(matrixText)
+      if (!m) problems.push({ code: 'SOC_COUNTS_MISSING', message: 'matrix §0 lacks the 判定 counts row' })
+      else {
+        const declared = { CONFORMS: +m[1], GAP: +m[2], 'HALF-BUILT': +m[3], 'NOT-APPLICABLE': +m[4] }
+        for (const k of Object.keys(declared)) {
+          if (declared[k] !== (verdicts[k] || 0)) problems.push({ code: 'SOC_COUNTS_MISMATCH', message: '§0 says ' + k + '=' + declared[k] + ' but rows give ' + (verdicts[k] || 0) })
+        }
+      }
+    }
     stats.evidence = { simOrTest: evSimTest, simOrTestRatio: +(evSimTest / rows.length).toFixed(3), docsOnly: evDocsOnly, docsOnlyRatio: +(evDocsOnly / rows.length).toFixed(3), realRows }
     if (evSimTest / rows.length < 0.6) problems.push({ code: 'SIM_TEST_FLOOR', message: 'sim/test coverage ' + evSimTest + '/' + rows.length + ' < 60%' })
     if (evDocsOnly / rows.length > 0.25) problems.push({ code: 'DOCS_CEILING', message: 'docs-only ' + evDocsOnly + '/' + rows.length + ' > 25%' })

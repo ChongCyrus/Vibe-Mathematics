@@ -523,6 +523,7 @@
     "tests/vmu-packs-add-not-remove.test.mjs",
     "tests/vmu-panel-falsify.test.mjs",
     "tests/vmu-paper-consult-tool.test.mjs",
+    "tests/vmu-paper-phases-matrix.test.mjs",
     "tests/vmu-paper-quality.test.mjs",
     "tests/vmu-partnership.test.mjs",
     "tests/vmu-phase12-closures.test.mjs",
