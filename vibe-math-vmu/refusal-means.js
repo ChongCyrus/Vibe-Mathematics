@@ -582,6 +582,13 @@ export const REFUSAL_MEANS = Object.freeze({
     short: 'The task is blocked by a dependency.',
     reachable: 'Resolve or remove the blocking dependency (task board lists blockers), then retry the step.',
   }),
+  // ── RUN-87 P1 readiness hardening (final30b G1): the prompt-policy dispatcher refuses BY NAME instead of
+  // switching nothing when pack contributions are declared but the async install has not settled yet.
+  VMU_PROMPT_POLICY_NOT_READY: Object.freeze({
+    means: 'packs are declared but their prompt policy contribution is not registered yet: the async pack install has not settled, so dispatching now would silently switch NO policy (and render mutually-exclusive fixture sections); the dispatcher refuses by name instead of switching nothing.',
+    short: 'The pack prompt policy is not registered yet; await readiness.',
+    reachable: 'Await handle.ready() (it waits for the pack install) before dispatching turns; status().promptPolicies.policiesReady reports the same readiness — once settled with NO policy, a data-only pack is legitimate and the dispatcher switches nothing.',
+  }),
 })
 
 /** The means for a code, or null. `null` is HONEST ABSENCE (the validator turns it into a red gate). */

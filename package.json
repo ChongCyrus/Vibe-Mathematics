@@ -172,6 +172,7 @@
     "scripts/sim/compare/run.mjs",
     "scripts/sim/harness.mjs",
     "scripts/sim/redteam/corpus-copy.mjs",
+    "scripts/sim/scenarios/fixture-mode-precedence.mjs",
     "scripts/sim/scenarios/md-ownership.mjs",
     "scripts/sim/scenarios/meeting-matrix.mjs",
     "scripts/sim/settings.mjs",

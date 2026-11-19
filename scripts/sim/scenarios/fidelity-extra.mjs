@@ -43,6 +43,10 @@ export const settings = {
   }],
   // task stage machine: `stage`/`advance` refuse by name when no stages are declared at all
   'vmu.tasks.stages': ['draft', 'verify', 'done'],
+  // budget: the face is published only when a `vmu.budget.*` key is DECLARED (host.js resolveFaces: settings-family
+  // declaration, not a schema default). The 18:32 re-harvest carries `vibe_vmu_budget` as the 70th live tool, so the
+  // scenario declares the budget family and walks its actions (G11) instead of leaving it uncompared.
+  'vmu.budget.tokens': 1000000,
 }
 
 const pick = (out, keys) => {
@@ -796,6 +800,21 @@ export async function scenario(h, { log = () => {} } = {}) {
     }
     notes.driftReceiptKeys = keys.slice().sort()
   }
+
+  // ── G11 the BUDGET face (the 70th live tool in the 18:32 re-harvest): release-ready refuses "compared 69 of 70",
+  //    and an unexercised tool is not a comparison. Walk every action so the receipt carries the paths live runs read;
+  //    the hard `requireFields` half applies like every other G-section (a missing live field stays a failure, it is
+  //    not excused by this scenario).
+  const budget = {}
+  budget.open = await step('G11/budget/open', () => h.call('vibe_vmu_budget', { action: 'open', scope: 'sim:fidelity', limits: { maxLiveMembers: 3, memoryCeilingMb: 512, toolCallsPerTurnCap: 40, wallClockMs: 1800000 }, perTaskShare: 0.25 }))
+  budget.charge = await step('G11/budget/charge', () => h.call('vibe_vmu_budget', { action: 'charge', scope: 'sim:fidelity', kind: 'tokens', amount: 12 }))
+  budget.reserve = await step('G11/budget/reserve', () => h.call('vibe_vmu_budget', { action: 'reserve', scope: 'sim:fidelity', ratio: 0.2 }))
+  budget.remaining = await step('G11/budget/remaining', () => h.call('vibe_vmu_budget', { action: 'remaining', scope: 'sim:fidelity', kind: 'tokens' }))
+  budget.status = await step('G11/budget/status', () => h.call('vibe_vmu_budget', { action: 'status' }))
+  budget.list = await step('G11/budget/list', () => h.call('vibe_vmu_budget', { action: 'list' }))
+  budget.totals = await step('G11/budget/totals', () => h.call('vibe_vmu_budget', { action: 'totals' }))
+  budget.perTaskShare = await step('G11/budget/per-task-share', () => h.call('vibe_vmu_budget', { action: 'perTaskShare' }))
+  highlights.budget = budget
 
   notes.settings = Object.keys(settings)
   notes.fidelity = fidelity

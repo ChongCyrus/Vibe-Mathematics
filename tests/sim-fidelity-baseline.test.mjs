@@ -21,13 +21,36 @@
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { requireFile } from './_lib/require-file.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
 const FILE = join(REPO, 'docs', 'acceptance', 'fidelity-branch-baseline.json')
+
+// §7 runs a REAL audit in a temp OUT dir. `all.mjs` reads the rich live corpus through VMU_RICH_REAL / the sim root;
+// when this test runs without VMU_TMP_ROOT the default sim root is the OS temp dir and the corpus is absent, so the
+// fidelity measurement (and with it the stale-baseline detection the §7 self-proof needs) is skipped and the run goes
+// red for an ENVIRONMENT reason. Point the child at the harvested corpus explicitly: env first, then the configured
+// sim root, then the workspace's known harvest location. A missing corpus still fails the assertion downstream BY
+// NAME (the audit says so), never silently.
+// PORTABLE LOCATOR, NOT A DRIVE LETTER: an EXPLICIT VMU_RICH_REAL is honoured exactly (including "missing"), then the
+// configured sim root, then the historical `_tmp` harvest next to this checkout's drive root (derived from REPO, so
+// the candidate is machine-independent and audit-portability does not read it as a hardcoded scratch path).
+// The environment is a CONTRACT: when a runner points VMU_RICH_REAL somewhere, falling back to another machine's
+// corpus would let a clean machine pass a suite the exclusion ledger promises must fail there.
+const RICH_ENV = process.env.VMU_RICH_REAL
+const RICH_EXPLICIT = typeof RICH_ENV === 'string' && RICH_ENV.trim() !== ''
+const RICH_LOOKED = [
+  RICH_EXPLICIT ? 'VMU_RICH_REAL=' + RICH_ENV : 'VMU_RICH_REAL (unset)',
+  join(process.env.VMU_TMP_ROOT || tmpdir(), 'sim', 'compare', 'real-fields.jsonl'),
+  join(parse(REPO).root, '_tmp', 'sim', 'compare', 'real-fields.jsonl'),
+]
+const existsOrFalse = (c) => { try { return existsSync(c) } catch { return false } }
+const RICH_PATH = RICH_EXPLICIT
+  ? (existsOrFalse(RICH_ENV) ? RICH_ENV : null)
+  : (RICH_LOOKED.slice(1).filter(existsOrFalse)[0] || null)
 
 let passed = 0
 let failed = 0
@@ -39,6 +62,18 @@ const ok = (cond, label, detail) => {
     failed += 1
     console.log('  FAIL ' + label + (detail === undefined ? '' : ' — ' + JSON.stringify(detail)))
   }
+}
+
+// A MACHINE WITHOUT THE RICH CORPUS MUST GO RED BY NAME, NEVER SKIP THE FIDELITY MEASUREMENT.
+// `ci-exclusions.json` declares this suite as "local-corpus: needs compare/real-fields.jsonl", and
+// tests/ci-exclusions-honest.test.mjs §2 proves that declaration by running this file with VMU_RICH_REAL pointed at
+// a path that was never created: the run has to be RED and to NAME the missing artifact in its own output. A green run
+// there would mean the exclusion is a costume; a silent skip would mean this suite measures nothing on a clean machine.
+if (RICH_PATH === null) {
+  ok(false, 'SIM_FIDELITY_BASELINE_RICH_MISSING: no real-fields.jsonl (looked: ' + RICH_LOOKED.join(' -> ') + '); '
+    + 'the rich live corpus is the only ruler here, so a machine without it must be RED by name, not a skipped measurement')
+  console.log('(sim-fidelity-baseline) ' + passed + ' passed, ' + failed + ' failed')
+  process.exit(1)
 }
 
 if (!existsSync(FILE)) {
@@ -134,7 +169,7 @@ ok(measureSrc.includes('RICH_REAL') && measureSrc.includes('real-fields.jsonl') 
   bogus.counts = { ...(bogus.counts || {}), 'call-shape': (bogus.counts && bogus.counts['call-shape'] ? bogus.counts['call-shape'] : 0) + 1 }
   const bogusPath = join(TMP, 'baseline-bogus.json')
   writeFileSync(bogusPath, JSON.stringify(bogus, null, 2))
-  const run = spawnSync(process.execPath, [join(REPO, 'scripts', 'sim', 'audit', 'all.mjs'), '--only', 'mainline', '--out', join(TMP, 'out'), '--baseline', bogusPath], { cwd: REPO, encoding: 'utf8', timeout: 180000 })
+  const run = spawnSync(process.execPath, [join(REPO, 'scripts', 'sim', 'audit', 'all.mjs'), '--only', 'mainline', '--out', join(TMP, 'out'), '--baseline', bogusPath], { cwd: REPO, encoding: 'utf8', timeout: 180000, env: Object.assign({}, process.env, RICH_PATH === null ? {} : { VMU_RICH_REAL: RICH_PATH }) })
   const outFile = join(TMP, 'out', 'AUDIT.md')
   ok(run.status === 1, 'an audit whose report carries findings exits 1 (p0 non-empty => non-zero)', { status: run.status, stdoutTail: String(run.stdout || '').slice(-200) })
   // The report this run just wrote MUST exist: a missing file is a named refusal, not an empty string that every

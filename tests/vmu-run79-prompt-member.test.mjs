@@ -11,7 +11,7 @@
 //      names the two routes that do exist;
 //   3. the receipt carries `promptFor:{member,turnId,turnMember}` so a reader can check the page against the seat instead
 //      of trusting an echoed name — and `promptFor:null` says "you named no seat", not "the seat you named was ignored".
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -57,6 +57,28 @@ const promptA = (stepA && stepA.memberPrompt && stepA.memberPrompt.text) || ''
   const status = typeof h.handle.promptPoliciesStatus === 'function' ? h.handle.promptPoliciesStatus() : null
   ok(status && status.effective === true && status.ids.length === 1 && status.ids[0] !== '(anonymous policy)' && status.builtin[0] !== null,
     '§0e promptPoliciesStatus().effective is TRUE for a REAL reason (composed policy named), never list.length>0', status)
+  // ★ RUN-87 P0: with NO vmu.v5r.fixtureMode injected, a REAL deployment must render the TOOLS fixture (the old default
+  // laid 「本回合你没有任何工具可用」 into a real run; seats stopped using tools and cross-review/final deadlocked).
+  ok(/本轮.*可以且应该.*调用你自己的工具|【SLV 夹具约束｜本轮调用工具】/.test(promptA) && !/没有任何工具/.test(promptA),
+    '§0f DEFAULT fixtureMode renders the TOOLS variant and never says 没有任何工具', { tools: /本轮.*可以且应该.*调用你自己的工具/.test(promptA), none: /没有任何工具/.test(promptA) })
+  ok(!/【SLV 夹具约束｜显式 no-tools 仿真模式/.test(promptA),
+    '§0g and the explicit no-tools constraint does not render by default')
+  ok((promptA.match(/^# v5r-tools-/gm) || []).length > 0,
+    '§0g2 DEFAULT/tools: the per-role tool CATALOGUE is present (tools and catalogue travel together)', (promptA.match(/^# v5r-tools-/gm) || []).length)
+  // ★ RUN-87 P1: EXPLICIT no-tools must render the constraint and ZERO tool-catalogue sections (the measured
+  // contradiction was 「本轮不调用工具」 beside a 24-tool list).
+  {
+    const ntRoot = mkdtempSync(join(tmpdir(), 'vmu-run79-notools-'))
+    const nt = await boot({ root: ntRoot, clock: () => 1_800_000_000_000, settings: { 'vmu.turn.deliverMode': 'caller', 'vmu.v5r.fixtureMode': 'no-tools' } })
+    await nt.call('vibe_v5_start', { researcherCount: 2 })
+    const ntStep = await nt.call('vibe_vmu_turn', { op: 'step', member: 'r-1' })
+    const ntText = (ntStep && ntStep.memberPrompt && ntStep.memberPrompt.text) || ''
+    const catalogues = (ntText.match(/^# v5r-tools-/gm) || []).length
+    ok(ntText.includes('显式 no-tools 仿真模式') && catalogues === 0,
+      '§0h EXPLICIT no-tools: the constraint renders and ZERO «# v5r-tools-» catalogue sections do',
+      { catalogues, hasConstraint: ntText.includes('显式 no-tools 仿真模式') })
+    try { rmSync(ntRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }) } catch { /* best effort */ }
+  }
 }
 
 const closedA = turnA ? await h.call('vibe_vmu_turn', { op: 'abandon', turn: turnA, why: 'suite: free the single parked slot' }) : null

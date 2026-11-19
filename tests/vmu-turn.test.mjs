@@ -43,6 +43,45 @@ const fence = (obj) => 'some prose first\n\n```json\n' + JSON.stringify(obj, nul
 
 const pipeline = () => createPromptPipeline({ sections: v5rPromptSections, clock: () => '2026-01-01T00:00:00.000Z' })
 const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), ...extra })
+// ★ RUN-87 P0: the DEFAULT fixture mode is 'tools' (a real deployment's seats have tools); 'no-tools' is EXPLICIT.
+const enabledSectionsOf = (settings) => {
+  const decided = DECIDE_SECTIONS({ settings: settings || {}, turn: { member: 'r-2', role: 'member', phase: 'normal', round: 1 } })
+  const list = Array.isArray(decided) ? decided : (decided && Array.isArray(decided.decisions) ? decided.decisions : [])
+  return new Set(list.filter((d) => d && d.enabled !== false).map((d) => d.name))
+}
+{
+  const def = enabledSectionsOf({})
+  ok(def.has('v5r-fixture-tools') && !def.has('v5r-fixture-constraint'),
+    'P0-run87: DEFAULT settings enable the TOOLS fixture and DISABLE the no-tools constraint', [...def].filter((n) => /fixture/.test(n)))
+  const no = enabledSectionsOf({ 'vmu.v5r.fixtureMode': 'no-tools' })
+  ok(no.has('v5r-fixture-constraint') && !no.has('v5r-fixture-tools'),
+    'P0-run87 LAMP: EXPLICIT no-tools flips it (constraint on, tools off) — the default was the only defect', [...no].filter((n) => /fixture/.test(n)))
+  // ★ RUN-87 P1: the switch must cover the TOOL CATALOGUES, not just the fixture sentence.
+  const CATALOGUES = ['v5r-tools-academician', 'v5r-tools-researcher', 'v5r-tools-temp']
+  ok(CATALOGUES.every((n) => def.has(n)),
+    'P0-run87b: DEFAULT/tools enables the per-role TOOL CATALOGUES', CATALOGUES.filter((n) => !def.has(n)))
+  ok(CATALOGUES.every((n) => !no.has(n)),
+    'P0-run87b ★★★ EXPLICIT no-tools DISABLES every tool catalogue (constraint and a 24-tool list must never co-render)',
+    CATALOGUES.filter((n) => no.has(n)))
+  // LAMP: remove the catalogue decisions from a COPY ⇒ no-tools leaves the catalogues ON (the measured contradiction).
+  const lampDir = mkdtempSync(join(tmpdir(), 'vmu-p1-toolcatalogue-lamp-'))
+  try {
+    cpSync(join(REPO_DIR, 'vibe-math-vmu'), join(lampDir, 'vibe-math-vmu'), { recursive: true })
+    const lampFile = join(lampDir, 'vibe-math-vmu', 'packs', 'v5r', 'middleware', 'prompt-switches.js')
+    const lampSrc = readFileSync(lampFile, 'utf8')
+    const marker = 'for (const name of TOOL_CATALOGUE_SECTIONS) decisions.push({ name, enabled: fixtureMode === \'tools\' })'
+    ok(lampSrc.includes(marker), 'P0-run87b lamp-setup: the catalogue-decision line is locatable')
+    writeFileSync(lampFile, lampSrc.replace(marker, '/* LAMP: catalogue decisions removed */'), 'utf8')
+    const lampPolicy = await import(pathToFileURL(lampFile).href + '?p1lamp=1')
+    const lampDecided = lampPolicy.decideSections({ settings: { 'vmu.v5r.fixtureMode': 'no-tools' }, turn: { member: 'r-2', role: 'member', phase: 'normal', round: 1 } })
+    const lampList = Array.isArray(lampDecided) ? lampDecided : ((lampDecided && lampDecided.decisions) || [])
+    const lampDisabled = new Set(lampList.filter((d) => d && d.enabled === false).map((d) => d.name))
+    ok(CATALOGUES.some((n) => !lampDisabled.has(n)),
+      'P0-run87b LAMP RED-worthy: without the catalogue decisions no-tools leaves the tool catalogues ON (default-enabled)', CATALOGUES.filter((n) => !lampDisabled.has(n)))
+  } finally { rmSync(lampDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }) }
+
+}
+
 
 // ① assembly comes from the pipeline, and its absence is a NAMED refusal rather than self-composition
 {

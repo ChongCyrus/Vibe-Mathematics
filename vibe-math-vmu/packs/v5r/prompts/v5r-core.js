@@ -655,8 +655,10 @@ export const v5rFixtureConstraint = Object.freeze({
   range: 'pack',
   source: 'v5r-fixture:slv',
   text: [
-    '【SLV 夹具约束｜本轮不调用工具】',
+    '【SLV 夹具约束｜显式 no-tools 仿真模式：本轮不调用工具】',
+    '（本段只在部署显式声明 `vmu.v5r.fixtureMode:"no-tools"` 时出现；真实部署默认是 tools 模式。）',
     '本轮不要调用任何工具（不要 read/grep/搜索/写文件）；只读本轮状态块推理，最后只输出一个 json 围栏回执。',
+    '★ 这是**显式仿真模式**（`fixtureMode:"no-tools"`，用于历史 run 可比/无工具环境测试），**不是真实部署默认**；真实部署默认是 `tools` 档（有工具面）。',
     'closure poll 的正确回执样例（照抄形状）：{"vote_solved": true} 或 {"vote_solved": false}；只写这一句，不写 progress。',
     // ★ PHASE 8 round 32 (real-machine defect, 19850): with tools switched OFF the model had no tool channel and wrote a
     // DSML tool call INTO THE BODY, which parses as no JSON at all ⇒ VMU_TURN_NO_FENCE and the vote never landed. The
@@ -682,7 +684,8 @@ export const v5rFixtureConstraint = Object.freeze({
  * text would make the previous rounds' `cast:true` results and historical runs incomparable (the same reason the
  * original corpus is hash-locked).
  *
- * THE SWITCH: `vmu.v5r.fixtureMode` ∈ `no-tools | tools` (default `no-tools`), read at **CALL time** by
+ * THE SWITCH: `vmu.v5r.fixtureMode` ∈ `no-tools | tools` (default `tools`: a real deployment's seats have tools;
+ * `no-tools` is an EXPLICIT simulation mode for historical-comparable runs), read at **CALL time** by
  * `decideSections` (the pack's prompt policy, which the pipeline consults per assembly with the CALL's settings — see
  * `kernel/prompt/index.js` "the policy is read from the CALL's settings"), so the value layer is enough and no kernel
  * change is needed. The two sections are MUTUALLY EXCLUSIVE: `decideSections` enables exactly one of them.
@@ -700,8 +703,9 @@ export const v5rFixtureTools = Object.freeze({
   // forbidden). The v5r words academician/researcher therefore NEVER match; the slots are the real vocabulary.
   scope: Object.freeze({ role: Object.freeze(['chair', 'member', 'temp']) }),
   text: [
-    "【SLV 夹具约束｜本轮调用工具】",
+    "【SLV 夹具约束｜默认：本轮可以调用工具】",
     "本轮**可以且应该**调用你自己的工具，边做边记。",
+    '★ 这是**真实部署的默认语义**：按自己的工具面调用工具；只有显式 `fixtureMode:"no-tools"` 才关闭工具面（两档互斥，不会同屏）。',
     "★ 本提示词的「本角色可用的工具」段是角色职责清单，不承诺「本回合已挂载」。★ 所办只派回合与转达，**写入由席位自己完成**；代转记 `officeRelayedActs`。★ 记录本契约：看回执 `roots.libraryRoot`；只有回执显示**另一个**根时才是本地草稿。★ 蓝图/协议（blueprint）草案不是私有的——**共享的是行、私有的是文件**：propose 的段落进共享草案、别人会续写；md 是你自己的文件（只有你能改）；只有院士席能 adopt；采纳前可 prune。",
     "★ 回执**即本次回复的正文**：末尾围栏包一个 JSON 对象；**activation（宿主派发）**：你的回复就是本回合的文字输出，只写围栏；**成员/临时工不要调用** `op:\"reply\"`。**caller 代转**（所办代转时）：`vibe_vmu_turn { op:\"reply\", report:{…} }`（或 `op:\"step\"` 带 reply）是唯一通道；分支详见【动作边界】。形状问题（`VMU_TURN_NO_FENCE`/围栏 JSON 不合法=`VMU_TURN_BAD_JSON`/`VMU_TURN_DELIVERY_SHAPE`/`VMU_TURN_DELIVERY_NO_PAYLOAD`）**不等于引擎不可用**：改回执，不要去 probe 引擎。**成员/临时工：`vibe_vmu_turn` 只有 `op:\"status\"` 有意义**（step/drive/abandon 归所办/主席）。",
     "★★ 回执契约（本夹具的收敛口径）：字段以【回执字段目录】为准，不要从任何副本背字段清单——不在表里的判 `VMU_TURN_UNKNOWN_FIELD`（hint 列 `known fields: …`），据此改写调用；**示例（不是白名单）**：progress / say / solved / vote_solved；记账与会议交接这类动作，本夹具要求用工具做、不要写回执。",

@@ -816,14 +816,18 @@ try {
   const fixtureMarkers = fixtureSections.map((s) => String(s.text).split('\n')[0])
   ok(new Set(fixtureMarkers).size === 2 && fixtureMarkers.filter((m) => m.includes('夹具约束')).length === 2,
     '★ their markers are UNIQUE and both belong to the fixture family', fixtureMarkers)
-  const constraintMarker = '【SLV 夹具约束｜本轮不调用工具】'
-  const toolsMarker = '【SLV 夹具约束｜本轮调用工具】'
+  // RUN-87 P0: the no-tools section title now says it is an EXPLICIT simulation mode.
+  const constraintMarker = '【SLV 夹具约束｜显式 no-tools 仿真模式：本轮不调用工具】'
+  const toolsMarker = '【SLV 夹具约束｜默认：本轮可以调用工具】'
   // ① the POLICY: exactly one variant enabled in each mode (the positive proof of mutual exclusion)
   const decDefault = v5r.decideSections({ settings: {} }).decisions.filter((d) => d.name.startsWith('v5r-fixture-'))
   const decTools = v5r.decideSections({ settings: { 'vmu.v5r.fixtureMode': 'tools' } }).decisions.filter((d) => d.name.startsWith('v5r-fixture-'))
+  // RUN-87 P0 (old → new → why): old pin said the DEFAULT is no-tools. That default was the footgun: the policy had
+  // long been silently not running (both variants rendered), so once round-12 fixed the policy, a real seat was told
+  // 「没有任何工具」 and the run deadlocked. The DEFAULT is now tools; no-tools is an EXPLICIT simulation mode.
   ok(decDefault.length === 2 && decDefault.filter((d) => d.enabled === true).length === 1 &&
-    decDefault.filter((d) => d.name === 'v5r-fixture-constraint' && d.enabled === true).length === 1 && decDefault.filter((d) => d.name === 'v5r-fixture-tools' && d.enabled === false).length === 1,
-    '★ 反（默认）: only the CONSTRAINT variant is enabled (mode defaults to no-tools)', decDefault)
+    decDefault.filter((d) => d.name === 'v5r-fixture-tools' && d.enabled === true).length === 1 && decDefault.filter((d) => d.name === 'v5r-fixture-constraint' && d.enabled === false).length === 1,
+    '★ 默认: only the TOOLS variant is enabled (a real deployment has tools; no-tools must be explicit)', decDefault)
   ok(decTools.length === 2 && decTools.filter((d) => d.enabled === true).length === 1 &&
     decTools.filter((d) => d.name === 'v5r-fixture-tools' && d.enabled === true).length === 1 && decTools.filter((d) => d.name === 'v5r-fixture-constraint' && d.enabled === false).length === 1,
     '★ 正: fixtureMode=tools enables ONLY the tools variant (the constraint is disabled)', decTools)
@@ -846,18 +850,19 @@ try {
   }
   const defaultText = await assembleAs({})
   const toolsText = await assembleAs({ 'vmu.v5r.fixtureMode': 'tools' })
-  ok(defaultText.includes(constraintMarker) && !defaultText.includes(toolsMarker),
-    '★ 反（经真管线 + 真实策略应用步骤）: the default assembly carries the CONSTRAINT marker and NOT the tools marker', { len: defaultText.length })
+  // RUN-87 P0: the DEFAULT assembly carries the TOOLS marker and not the constraint marker.
+  ok(defaultText.includes(toolsMarker) && !defaultText.includes(constraintMarker),
+    '★ 默认（经真管线 + 真实策略应用步骤）: the default assembly carries the TOOLS marker and NOT the constraint marker', { len: defaultText.length })
   ok(toolsText.includes(toolsMarker) && !toolsText.includes(constraintMarker),
-    '★★ 正（经真管线）: fixtureMode=tools carries the TOOLS marker and NOT the constraint marker', { len: toolsText.length })
+    '★★ 正（经真管线）: fixtureMode=tools carries the TOOLS marker and NOT the constraint marker', { len: toolsText.length, tools: toolsText.includes(toolsMarker), constraint: toolsText.includes(constraintMarker) })
   ok([defaultText, toolsText].filter((t) => t.includes(constraintMarker) && t.includes(toolsMarker)).length === 0,
     '★★★ 互斥性: in NEITHER assembly do the two markers co-occur (the positive form of "exactly one")',
     { defaultBoth: defaultText.includes(constraintMarker) && defaultText.includes(toolsMarker), toolsBoth: toolsText.includes(constraintMarker) && toolsText.includes(toolsMarker) })
   // ③ the value layer keeps the historical default so previous rounds' results stay comparable
   const installedFixtureMode = kernel.settingsSnapshot()['vmu.v5r.fixtureMode']
-  ok(installedFixtureMode === 'no-tools',
-    '★ the pack\'s value layer ships fixtureMode = no-tools (the historical instruction stays the default ⇒ old runs remain comparable)', installedFixtureMode)
-
+  // RUN-87 P0: the DECLARED default is tools too (a real deployment has tools; explicit no-tools is the fixture mode).
+  ok(installedFixtureMode === 'tools',
+    '★ RUN-87 P0: the pack value layer ships fixtureMode = tools (a real deployment has tools); no-tools is an EXPLICIT simulation mode', installedFixtureMode)
   // ── ③l THE PAPER DISPATCH STATUS (round 14): registered through the GENERAL `vmu.status` service ────────────
   // Round 11 could not do this: a pack module got a `{read}`-only kernel facade. The framework now hands a module's
   // LOAD-TIME factory the capability-gated `services` accessor and honours a module `dispose()` on unload, so the pack

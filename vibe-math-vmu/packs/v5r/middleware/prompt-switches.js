@@ -45,6 +45,17 @@ export const HOST_ONLY_SECTIONS = Object.freeze([
   'v5r-effective-tools-temp',
 ])
 
+/** ★ RUN-87 P1: THE TOOL-CATALOGUE SECTIONS. These are the PER-ROLE 「这是你的工具清单」 blocks.
+ *  A no-tools fixture says 「本回合你没有任何工具可用」, so leaving the catalogue on renders the exact self-contradiction
+ *  the office measured (constraint + a 24-tool list on the same screen). The list is NAMED, never a wildcard prefix:
+ *  a new section with a different name must be added here deliberately (the same discipline as HOST_ONLY_SECTIONS).
+ */
+export const TOOL_CATALOGUE_SECTIONS = Object.freeze([
+  'v5r-tools-academician',
+  'v5r-tools-researcher',
+  'v5r-tools-temp',
+])
+
 /** The two reply catalogues. The original sends one or the other, never both. */
 const CATALOGUES = Object.freeze({ compact: 'v5r-reply-compact', full: 'v5r-reply-spec' })
 
@@ -139,19 +150,25 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   const errors = []
 
   // (0) ★ PHASE 7 round 10 — THE SLV FIXTURE MODE: exactly ONE of the two variants is enabled.
-  //   `vmu.v5r.fixtureMode` ∈ { 'no-tools' (default), 'tools' }. Read HERE, at call time (the pipeline consults this
+  //   `vmu.v5r.fixtureMode` ∈ { 'tools' (default), 'no-tools' }. Read HERE, at call time (the pipeline consults this
   //   policy per assembly with the CALL's settings), so the value layer is enough. An unknown value is REFUSED by name
   //   rather than defaulted — guessing which fixture the operator meant would put the wrong instruction in the prompt.
-  const fixtureMode = s['vmu.v5r.fixtureMode'] === undefined ? 'no-tools' : s['vmu.v5r.fixtureMode']
+  // ★ RUN-87 P0: the DEFAULT IS 'tools'. A REAL deployment's seats DO have tools; 'no-tools' is a SIMULATION mode and
+  // must be requested EXPLICITLY. The old default put 「本回合你没有任何工具可用」 into a real run, seats stopped using
+  // tools, cross-review never reached two reviewers and `final` deadlocked (finalized:false).
+  const fixtureMode = s['vmu.v5r.fixtureMode'] === undefined ? 'tools' : s['vmu.v5r.fixtureMode']
   if (fixtureMode !== 'no-tools' && fixtureMode !== 'tools') {
     errors.push({
       code: 'VMU_INVALID_ARGUMENT',
       message: 'unknown vmu.v5r.fixtureMode: ' + String(fixtureMode),
-      hint: "one of: 'no-tools', 'tools' (default 'no-tools' keeps historical runs comparable)",
+      hint: "one of: 'no-tools', 'tools' (default 'tools': a real deployment's seats have tools; 'no-tools' is an EXPLICIT simulation mode)",
     })
   }
   decisions.push({ name: 'v5r-fixture-constraint', enabled: fixtureMode !== 'tools' })
   decisions.push({ name: 'v5r-fixture-tools', enabled: fixtureMode === 'tools' })
+  // ★ RUN-87 P1: the fixture mode must switch the TOOL CATALOGUES with it, not only the fixture sentence.
+  // no-tools ⇒ every catalogue OFF (zero injection); tools ⇒ ON (the per-role scopes decide who sees which).
+  for (const name of TOOL_CATALOGUE_SECTIONS) decisions.push({ name, enabled: fixtureMode === 'tools' })
 
   // (1) The three gated blocks.
   for (const [key, section] of OFF_SWITCHES) {

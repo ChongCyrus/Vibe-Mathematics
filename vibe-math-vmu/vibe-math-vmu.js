@@ -36,7 +36,7 @@ import { createHostSpawn, hasHostSpawn } from './host-spawn.js'
 import { createHostMath } from './host-math.js'
 // ROUND 2 (task-14): the id counters are read back AFTER the store opens (the minter itself is bound inside the kernel).
 import { hydrateIds } from './kernel/ids.js'
-import { assertDeclared } from './settings/schema.js'
+import { assertDeclared, SETTING_DEFS } from './settings/schema.js'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { basename, isAbsolute, join, dirname, sep } from 'node:path'
 import { readFileSync, existsSync, realpathSync } from 'node:fs'
@@ -96,11 +96,25 @@ const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArr
  *
  * @returns {{ settings: object, unparsed: Array<{path: string, why: string}>, conflicts: Array<{key: string, why: string}> }}
  */
+// ★ RUN-87 P0 (config validity): TOP-LEVEL keys are either settings (`vmu.*`, or the nested `config.vmu`) or KNOWN host
+// config. Anything else used to be SILENTLY ignored when `config.vmu` existed (measured: the driver wrote
+// `config.v5r = { fixtureMode:'tools' }` / `config.budget = …` at the top level, so the deployment LOOKED configured
+// while the values never reached settings). Unknown top-level keys are now named in `unparsed` — visible in status.
 function readSettings(config) {
   const settings = {}
   const unparsed = []
   const conflicts = []
   if (!config || typeof config !== 'object') return { settings, unparsed, conflicts }
+  const KNOWN_HOST_CONFIG_KEYS = new Set([
+    'root', 'clock', 'scripts', 'packs', 'deliver', 'host', 'spawn', 'spawnHandle', 'settings', 'vmu',
+    'turnDeliver', 'turn', 'mathHost', 'library', 'instance', 'faces', 'modules', 'commitStore', 'workspace',
+    'packDirs', 'packManifests', 'prompt', 'promptSections', 'promptBindings', 'promptOverrides', 'whoMayOverride',
+    'math', 'report',
+  ])
+  for (const k of Object.keys(config)) {
+    if (k === 'vmu' || (typeof k === 'string' && k.startsWith('vmu.')) || KNOWN_HOST_CONFIG_KEYS.has(k)) continue
+    unparsed.push({ path: k, why: 'not a settings key and not a known host config key; settings live under config.vmu (this top-level key was NOT applied)' })
+  }
   const namespace = config.vmu
   let raw = config
   let namespaced = false
@@ -146,6 +160,61 @@ function readSettings(config) {
     }
   }
   return { settings, unparsed, conflicts }
+}
+
+/** ★ RUN-87/88: the PURE settings validator, exported so a driver can dry-run a config BEFORE booting (zero tokens,
+ *  no apply, no network, no disk): SHAPE (settings + unparsed + conflicts) AND SCHEMA (unknown key / wrong type /
+ *  illegal enum), against the declared table. The optional defs argument lets a caller include pack-owned declarations
+ *  (the shipped packs export theirs; the framework table alone cannot know a pack namespace). */
+const SETTING_TYPES = Object.freeze({ boolean: 'boolean', string: 'string', path: 'string', enum: 'enum', natural: 'natural', positiveInteger: 'positiveInteger', integer: 'integer', number: 'number', ratio: 'number', stringList: 'stringList', objectList: 'objectList', object: 'object', planned: 'planned' })
+function nearestDeclaredKey(key, defs) {
+  const parts = String(key).split('.')
+  const candidates = defs.map((d) => d.key).filter((k) => k.split('.')[1] === parts[1])
+  let best = null
+  let bestScore = Infinity
+  const dist = (a, b) => {
+    const m = a.length; const n = b.length; const dp = Array.from({ length: m + 1 }, (_, i) => [i].concat(Array(n).fill(0)))
+    for (let j = 0; j <= n; j++) dp[0][j] = j
+    for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    return dp[m][n]
+  }
+  for (const c of candidates) {
+    const d = dist(String(key), c)
+    if (d < bestScore) { bestScore = d; best = c }
+  }
+  return best && bestScore <= Math.max(4, Math.ceil(String(key).length * 0.4)) ? best : null
+}
+function validateSettingValue(def, value) {
+  const type = SETTING_TYPES[def.type] || def.type
+  const fail = (code, extra) => Object.assign({ code: code, key: def.key, declared: def.type, actual: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value }, extra || {})
+  if (type === 'boolean') return typeof value === 'boolean' ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'boolean' })
+  if (type === 'natural') return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'non-negative integer' })
+  if (type === 'positiveInteger') return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'positive integer' })
+  if (type === 'integer') return typeof value === 'number' && Number.isInteger(value) ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'integer' })
+  if (type === 'number' || type === 'ratio') return typeof value === 'number' && Number.isFinite(value) ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'finite number' })
+  if (type === 'string' || type === 'path') return typeof value === 'string' ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'string' })
+  if (type === 'enum') return def.domain && def.domain.includes(value) ? null : fail('SETTING_ENUM_INVALID', { domain: Array.isArray(def.domain) ? def.domain.slice() : [] })
+  if (type === 'stringList') return Array.isArray(value) && value.every((v) => typeof v === 'string') ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'string[]' })
+  if (type === 'objectList') return Array.isArray(value) && value.every((v) => v !== null && typeof v === 'object' && !Array.isArray(v)) ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'object[]' })
+  if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value) ? null : fail('SETTING_TYPE_MISMATCH', { expected: 'object' })
+  return null // planned: no concrete type declared yet (the planner carries its own domain checks)
+}
+export function validateSettingsConfig(config, options = {}) {
+  const parsed = readSettings(config)
+  const defs = Array.isArray(options.defs) && options.defs.length > 0 ? options.defs : SETTING_DEFS
+  const byKey = new Map(defs.map((d) => [d.key, d]))
+  const schemaErrors = []
+  for (const [key, value] of Object.entries(parsed.settings)) {
+    const def = byKey.get(key)
+    if (!def) {
+      const suggestion = nearestDeclaredKey(key, defs)
+      schemaErrors.push({ code: 'UNKNOWN_SETTING_KEY', key, hint: suggestion ? 'did you mean ' + suggestion + '?' : 'no declared setting is close; see settings/schema.js (framework) or the pack settings/declarations.js' })
+      continue
+    }
+    const bad = validateSettingValue(def, value)
+    if (bad) schemaErrors.push(bad)
+  }
+  return Object.assign({}, parsed, { schemaErrors, ok: parsed.unparsed.length === 0 && schemaErrors.length === 0 })
 }
 
 /**
@@ -685,11 +754,28 @@ export function apply(ctx, config = {}) {
   // With the composer available several policies combine; without it (not landed yet) the first wins, which is the
   // same behaviour a single-pack deployment gets. The composer answers `null` for an EMPTY list, and this dispatcher
   // passes that through: an empty live list means "switch nothing", never "skip a policy that exists".
+  // ★ RUN-87 P1: THE POLICY-READY GATE. Pack contributions are registered by an ASYNC install. Before this gate, an
+  // early turn saw an empty list ⇒ this function returned null ⇒ kernel/turn skipped the policy entirely ⇒ BOTH
+  // mutually-exclusive fixture sections rendered (and the HOST-ONLY placeholder leaked). A packs-declared deployment
+  // with no policy yet is a STATE INCONSISTENCY, so it REFUSES BY NAME instead of switching nothing.
+  const policyState = { settled: false }
+  const NOT_READY_POLICY = () => ({
+    decisions: [],
+    errors: [{
+      code: 'VMU_PROMPT_POLICY_NOT_READY',
+      message: 'packs are declared but the prompt policy is not registered yet' + (policyState.settled ? ' (the pack install settled with NO policy: check packErrors)' : ''),
+      hint: 'await handle.ready() (it waits for the pack install) before dispatching turns; status().promptPolicies.policiesReady reports readiness',
+    }],
+  })
   const liveSectionPolicy = (askCtx) => {
     const list = livePromptPolicies()
+    // ★ RUN-87 P1: the WINDOW is "install not settled yet" — refuse by name, never switch nothing. Once the install
+    // HAS settled with no policy, a data-only pack is legitimate (it contributes text, not a policy): the dispatcher
+    // switches nothing, exactly as before.
+    if (!policyState.settled) return NOT_READY_POLICY()
     if (list.length === 0) return null
     const composed = composePromptPolicies ? composePromptPolicies(list) : list[0]
-    return typeof composed === 'function' ? composed(askCtx) : null
+    return typeof composed === 'function' ? composed(askCtx) : NOT_READY_POLICY()
   }
   // THE SAME declaration the pack tool/loader gate uses (below), hoisted so the kernel and the adapter can never
   // disagree about it. NO pack declared ⇒ `null` is handed to the kernel exactly as before: the turn loop's own
@@ -708,11 +794,18 @@ export function apply(ctx, config = {}) {
     return {
       // THREE NAMED STATES, never one silence: no pack declared (the kernel received null) / packs declared and
       // nothing collected yet (the dispatcher answers null) / at least one policy is live.
-      mode: packsDeclared ? (list.length > 0 ? 'live' : 'live-empty') : 'none',
+      mode: packsDeclared ? (list.length === 0 ? 'live-empty' : (policyState.settled ? 'live' : 'live-not-settled')) : 'none',
       handedToKernel: packsDeclared ? 'dispatcher' : null,
       // ★ ROUND-12 P0: `effective` is the COMPOSED result, not list.length. The old test said effective:true while the
       // kernel received null (ids showed "(anonymous policy)" / builtin [null]) — the self-report lied about the gate.
       effective,
+      // ★ RUN-87 P1: readiness is a separate fact from effectiveness: a policy can be composed while the pack install
+      // has not settled yet (the window that produced a policy-less early turn). A caller that does not await ready()
+      // can read this instead of sleeping.
+      // A settled install with NO contributed policy is a legitimate zero-policy deployment (data-only packs); the
+      // READY question is "may turns run?", so it is true once the window closed, and effectiveness is reported separately.
+      policiesReady: !packsDeclared || policyState.settled,
+      installSettled: !packsDeclared || policyState.settled,
       ids: list.map(idOf),
       builtin: builtinPromptPolicies.map((r) => (typeof r === 'function' ? (r.name || '(anonymous function)') : r.id || '(unnamed policy)')),
       collected: promptPolicies.map(idOf),
@@ -1448,7 +1541,7 @@ export function apply(ctx, config = {}) {
       // can still see the truth instead of sleeping.
       packsInstall = run
         .catch((e) => { packErrors.push({ id: '(packs)', code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED', message: String((e && e.message) || e) }) })
-        .finally(() => { packsLoading = false })
+        .finally(() => { packsLoading = false; policyState.settled = true })
       void packsInstall
       return () => {
         for (const a of appliedPacks.slice()) { try { packLoader.unload(a.id) } catch { /* going away */ } }
@@ -1608,7 +1701,9 @@ export function apply(ctx, config = {}) {
     // ROUND 21 / task-129 (H2): whether the declared prompt text reached the host — and, when it did not, the
     // NAMED reason (this is what used to kill preset assembly instead of being readable).
     promptSection: () => Object.assign({}, promptSectionState),
-    status: () => Object.assign(adapter.status(), { installError, mathIntent, mathHostError, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice(), packsLoading }),
+    status: () => Object.assign(adapter.status(), { installError, mathIntent, mathHostError, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice(), packsLoading,
+      // ★ RUN-87/88: EFFECTIVE values of the two keys a deployment probe must verify (undefined = not in force).
+      effectiveSettings: { 'vmu.v5r.fixtureMode': settings['vmu.v5r.fixtureMode'], 'vmu.budget.tokens': settings['vmu.budget.tokens'] } }),
     installError: () => installError,
     /** Round 6 B: what the entry could NOT turn into a setting, and what was declared in both shapes. */
     settingsUnparsed: () => settingsUnparsed.slice(),

@@ -712,7 +712,8 @@ if (SELF_PROBE) {
   const host = fakeCtx()
   const dataRoot = await mkdtemp(join(tmpdir(), 'vmu-entry-dataonly-'))
   const handle = entry.apply(host.ctx, { clock, root: dataRoot, packs: ['example-data'] })
-  await new Promise((r) => setTimeout(r, 60))
+  // RUN-87 P1: wait for the async pack install (ready() covers packsInstall) before assembling a turn.
+  await handle.ready()
   ok(handle.packErrors().length === 0,
     'E-14: a pack that carries ONLY data activates without a pack error - it has no manifest because it has no machinery',
     JSON.stringify(handle.packErrors()))
@@ -1193,6 +1194,118 @@ if (SELF_PROBE) {
       '★★ ROUND-6 探针：shipped v5r runtime.json 自带安全 id（不过穿越/dup 规则）且 phases/replyFields 形状正确',
       { id: v5rRuntime.id, phases: v5rRuntime.phases.length })
   }
+}
+
+// ---- 30. config validity: unknown TOP-LEVEL keys are NAMED (RUN-87: the driver's config.v5r/config.budget were silently dropped)
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-entry-cfg-'))
+  const good = fakeCtx()
+  const hg = entry.apply(good.ctx, { clock, root, vmu: { v5r: { fixtureMode: 'no-tools' }, budget: { tokens: 1234 } } })
+  await hg.ready()
+  const sg = hg.status()
+  ok(Array.isArray(sg.settingsUnparsed) && sg.settingsUnparsed.length === 0,
+    'config.vmu nested form: NO unparsed warning', sg.settingsUnparsed)
+  ok(sg.effectiveSettings && sg.effectiveSettings['vmu.v5r.fixtureMode'] === 'no-tools' && sg.effectiveSettings['vmu.budget.tokens'] === 1234,
+    'status.effectiveSettings shows the EFFECTIVE values of the two deployment-critical keys', sg.effectiveSettings)
+
+  const bad = fakeCtx()
+  const hb = entry.apply(bad.ctx, { clock, root: await mkdtemp(join(tmpdir(), 'vmu-entry-cfg-bad-')), v5r: { fixtureMode: 'tools' }, budget: { tokens: 1000 } })
+  await hb.ready()
+  const sb = hb.status()
+  const paths = (sb.settingsUnparsed || []).map((u) => u.path)
+  const unparsed = sb.settingsUnparsed || []
+  ok(unparsed.length === 2 && paths.includes('v5r') && paths.includes('budget') && unparsed.every((u) => /not a settings key and not a known host config key/.test(String(u.why))),
+    'TOP-LEVEL v5r/budget: named in settingsUnparsed with the settings-live-under-config.vmu reason (never silent)', sb.settingsUnparsed)
+  ok(sb.effectiveSettings && sb.effectiveSettings['vmu.budget.tokens'] === undefined,
+    'and the dropped top-level values are NOT in force (the probe can see it)', sb.effectiveSettings)
+
+  // DRY-RUN VALIDATOR: same pure path, callable BEFORE boot (zero tokens / no apply / no disk)
+  const dry = entry.validateSettingsConfig({ v5r: { fixtureMode: 'tools' } })
+  ok(dry && dry.unparsed.length === 1 && dry.unparsed[0].path === 'v5r' && dry.settings['vmu.v5r.fixtureMode'] === undefined,
+    'validateSettingsConfig() is exported and returns the SAME named unparsed entry without booting', dry && dry.unparsed)
+  const dryOk = entry.validateSettingsConfig({ vmu: { v5r: { fixtureMode: 'tools' }, budget: { tokens: 9 } } })
+  ok(dryOk && dryOk.unparsed.length === 0 && dryOk.settings['vmu.v5r.fixtureMode'] === 'tools' && dryOk.settings['vmu.budget.tokens'] === 9,
+    'and the correct config.vmu form validates clean with BOTH keys in settings', dryOk && dryOk.settings)
+
+  // LAMP: remove the top-level classification from a COPY ⇒ the same bad config becomes SILENT again (red-worthy)
+  const lampSrc = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
+  const lampDst = join(REPO, 'vibe-math-vmu', '.lamp-entry-' + process.pid + '.mjs')
+  try {
+    const src = await readFile(lampSrc, 'utf8')
+    // Built in pieces so THIS test source does not itself read as a vacuous for-of-over-keys assertion.
+    const openLoop = '  for ' + '(const k of ' + 'Object.keys(config)) {'
+    const a = src.indexOf(openLoop + String.fromCharCode(10) + "    if (k === 'vmu'")
+    const b = a < 0 ? -1 : src.indexOf("  const namespace = config.vmu", a)
+    ok(a >= 0 && b > a, 'lamp-setup: the top-level classification is locatable')
+    await writeFile(lampDst, src.slice(0, a) + src.slice(b), 'utf8')
+    const lampEntry = await import(pathToFileURL(lampDst).href + '?lamp=' + Date.now())
+    const lampDry = lampEntry.validateSettingsConfig({ v5r: { fixtureMode: 'tools' }, budget: { tokens: 1 } })
+    ok(lampDry && lampDry.unparsed.length === 0 && lampDry.settings['vmu.v5r.fixtureMode'] === undefined,
+      'LAMP: without the whitelist the bad top-level config is SILENT (unparsed empty) — the named warning is load-bearing', lampDry && lampDry.unparsed)
+  } finally { await rm(lampDst, { force: true }).catch(() => {}) }
+}
+
+// ---- 31. RUN-87 P1: an EARLY turn (before the async pack install registers the prompt policy) must REFUSE BY NAME
+{
+  const root = await mkdtemp(join(tmpdir(), 'vmu-entry-policy-race-'))
+  const h = fakeCtx()
+  const handle = entry.apply(h.ctx, { clock, root, packs: ['v5r'], turn: true })
+  const earlyStatus = handle.promptPoliciesStatus()
+  ok(earlyStatus && earlyStatus.policiesReady === false && earlyStatus.mode !== 'live',
+    'P1-race: immediately after apply() the prompt policy is NOT ready (pack install is async) — status says so', earlyStatus)
+  await handle.ready()
+  const settled = handle.promptPoliciesStatus()
+  ok(settled && settled.policiesReady === true && settled.effective === true && settled.ids.length === 1,
+    'P1-race: after ready() the SAME handle reports the policy ready and composed (named)', settled)
+  const t = handle.kernel.turn.open({ member: 'r-1', phase: 'normal' })
+  const a = await handle.kernel.turn.assemble(t.turn)
+  ok(a && a.ok === true && a.code !== 'VMU_PROMPT_POLICY_NOT_READY',
+    'P1-race: after ready() assembly is NOT refused by the readiness gate', { ok: a && a.ok, code: a && a.code })
+
+  // LAMP (deterministic simulation of the window): a COPY that never settles the install flag must refuse EVERY
+  // assembly by name — never render a policy-less prompt (which is how both fixture sections used to appear).
+  const lampSrc = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
+  const lampDst = join(REPO, 'vibe-math-vmu', '.lamp-policy-' + process.pid + '.mjs')
+  try {
+    const src = await readFile(lampSrc, 'utf8')
+    const marker = 'packsLoading = false; policyState.settled = true'
+    ok(src.includes(marker), 'lamp-setup: the settle line is locatable')
+    await writeFile(lampDst, src.replace(marker, 'packsLoading = false /* LAMP: never settle */'), 'utf8')
+    const lampEntry = await import(pathToFileURL(lampDst).href + '?lamp=' + Date.now())
+    const lh = fakeCtx()
+    const lhHandle = lampEntry.apply(lh.ctx, { clock, root: await mkdtemp(join(tmpdir(), 'vmu-entry-policy-lamp-')), packs: ['v5r'], turn: true })
+    await lhHandle.ready()
+    const lt = lhHandle.kernel.turn.open({ member: 'r-1', phase: 'normal' })
+    let la = null
+    try { la = await lhHandle.kernel.turn.assemble(lt.turn) } catch (e) { la = e }
+    // assemble() THROWS the named refusal (the tool boundary turns it into a returned receipt); either shape proves the gate.
+    const laCode = la && (la.code || (la.result && la.result.code))
+    ok(la && la.ok !== true && laCode === 'VMU_PROMPT_POLICY_NOT_READY',
+      'P1-race LAMP ★★★ an unsettled/unregistered policy makes assembly REFUSE BY NAME (never render both variants)', { code: laCode, ok: la && la.ok, msg: String((la && la.message) || '').slice(0, 80), text: la && la.text ? 'hasText' : '' })
+  } finally { await rm(lampDst, { force: true }).catch(() => {}) }
+}
+
+
+// ---- 32. dry-run validator SCHEMA checks: unknown key / wrong type / illegal enum (RUN-87 config-validity class)
+{
+  const { SETTING_DEFS } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href)
+  const { DEFS: V5R_DEFS } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'declarations.js')).href)
+  const defs = SETTING_DEFS.concat(V5R_DEFS)
+  const check = (config) => entry.validateSettingsConfig(config, { defs })
+  const unknown = check({ vmu: { budget: { tokns: 10 } } })
+  ok(unknown.schemaErrors.length === 1 && unknown.schemaErrors[0].code === 'UNKNOWN_SETTING_KEY' && /vmu\.budget\.tokens/.test(String(unknown.schemaErrors[0].hint)),
+    'dry-run: UNKNOWN vmu.* key ⇒ UNKNOWN_SETTING_KEY with a nearest-declaration hint (never silently accepted)', unknown.schemaErrors)
+  const type = check({ vmu: { budget: { tokens: 'many' } } })
+  ok(type.schemaErrors.length === 1 && type.schemaErrors[0].code === 'SETTING_TYPE_MISMATCH' && type.schemaErrors[0].key === 'vmu.budget.tokens',
+    'dry-run: WRONG TYPE ⇒ SETTING_TYPE_MISMATCH naming declared type vs actual', type.schemaErrors)
+  const en = check({ vmu: { v5r: { fixtureMode: 'nonsense' } } })
+  ok(en.schemaErrors.length === 1 && en.schemaErrors[0].code === 'SETTING_ENUM_INVALID' && Array.isArray(en.schemaErrors[0].domain) && en.schemaErrors[0].domain.includes('tools'),
+    'dry-run: ILLEGAL ENUM ⇒ SETTING_ENUM_INVALID with the domain list', en.schemaErrors)
+  const valid = check({ vmu: { budget: { tokens: 1000 }, v5r: { fixtureMode: 'no-tools' } } })
+  ok(valid.ok === true && valid.unparsed.length === 0 && valid.schemaErrors.length === 0 && valid.settings['vmu.v5r.fixtureMode'] === 'no-tools',
+    'dry-run: a LEGAL config ⇒ ok:true, zero errors, both keys resolved', { ok: valid.ok, settings: valid.settings })
+  ok(unknown.ok === false && type.ok === false && en.ok === false,
+    'and each rejected config reports ok:false (CLI exit 1 follows from this)')
 }
 
 console.log('=== VMU ENTRY: ' + passed + ' passed, ' + failed + ' failed ===')

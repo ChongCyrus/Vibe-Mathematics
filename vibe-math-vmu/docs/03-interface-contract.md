@@ -942,6 +942,7 @@
 | `VMU_TURN_PARKED_NEEDS_OWNER` | ★ **RUN 256 / TB-2616（task-97）**：★ **调用方交回了一条答复，但本次会话没有停着的成员提示词可回答它**（`op:"step"` 带 `reply` 之前没有 `awaiting:true` 的派发）—— ★ 收下它就会被交给**下一个**回合：写者名义对、回合错（run 73 实测的静默错归属），★ 所以具名拒、★ 并把已暂存的答复**丢弃**（`parkedReplyDiscarded:true`），★ 拒绝本身**不新开回合**。★ 同一守卫的三个 `parkedReason`：`no-parked-prompt`（本就没有停着的提示词）、`no-turn-id`（停着的提示词没有回合 id）、`turn-not-open`（它指的回合已不在开着的台账里） | 轮次编排 26（`kernel/turn/index.js` 的 `step` 守卫 `refuseParkedNeedsOwner`；工具面 `vibe_vmu_turn { op:"step", reply }` 以回执形式返回这三个事实） | ✅（★ 先 `op:"drive"`（或一次返回 `awaiting:true` 的 `op:"step"`）拿到 `memberPrompt`，★ 再用**同一 member** 的 `op:"step"` 带 `reply` 回答那个 prompt；★ 回执带 `parkedFacts:{turnId,member,promptId,parkedSince,parkedForMs,releaseBy,parkedReason}`、`parkedReason`、`parkedReplyDiscarded`） |
 | `VMU_PROMPT_BINDING_CONFLICT` | **同一段、同一维度上有两条绑定并列** ⇒ 拒（不再静默取其一） | 提示管线 06 | ✗（给其中一条更具体的维度；优先级 `role < phase < member < task`） |
 | `VMU_PROMPT_VARIABLE_MISSING` | **占位符无人供值**（`vmu.prompts.missingVariable=refuse` 时） | 提示管线 06 | ✗（在装配上下文或 settings 里补值；默认 `report` 只记录不拒） |
+| `VMU_PROMPT_POLICY_NOT_READY` | ★ **RUN-87 P1 / final30b**：★ **pack 已声明，但 prompt 策略贡献还没注册完**（异步 pack install 尚未 settle 就装配 prompt）—— ★ 旧行为是返回 `null` = 「什么都不开关」，让互斥的夹具段同时渲染；现在**具名拒** | 插件入口 `vibe-math-vmu.js` 的 `liveSectionPolicy`（pack 安装未 settle 的窗口） | ✅（先 `await handle.ready()`（它等 pack install）再发回合；`status().promptPolicies.policiesReady` 报同一就绪度；★ install **_settled_** 后无策略是合法的（纯数据 pack），那时才是「不开关」而非拒 |
 | `VMU_TURN_BAD_JSON` | 围栏内容**不是合法 JSON**，或不是对象 | 轮次编排 26 | ✗（与"没有围栏"是**两种**失败 ✗） |
 | `VMU_TURN_UNKNOWN_FIELD` | 回复字段**不在已宣告目录**里，且 `vmu.turn.unknownReplyFieldMode='refuse'`（默认 `ignore-named` 不抛此码，改为 `ignoredFields`＋notice） | 轮次编排 26 | ✗（须**点名**该字段并列出已知字段，**绝不猜** ✗） |
 | `VMU_TURN_ASSEMBLY_FAILED` | **管线拒绝了本轮装配** | 轮次编排 26 | ✗（须转述管线的拒因） |
@@ -1541,7 +1542,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **535** 个码，**逐行**给出状态 ✓：其中 **489** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **536** 个码，**逐行**给出状态 ✓：其中 **490** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **46** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1916,6 +1917,7 @@
 | `VMU_PARAM_RENAMED` | **已实现 ✓** | `vibe-math-vmu/settings/schema.js` | 代码里有该码字符串 ✓ |
 | `VMU_PATH_ESCAPE_REFUSED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_PROMPT_BINDING_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/prompt/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_PROMPT_POLICY_NOT_READY` | **已实现 ✓** | `vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_PROMPT_VARIABLE_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/prompt/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_PROXY_CHAIN_TOO_DEEP` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_PROXY_NOT_ALLOWED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |

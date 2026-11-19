@@ -883,7 +883,7 @@ vmu.packs.active: [v5r]
 | `vmu.custody.destroyKeepsReference` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 销毁后保留引用（true ⇒ 记录留存并说明样本已灭失） |
 | `vmu.anonymity.pseudonymStyle` | — | enum | `pseudonym` | `pseudonym`∣`code` | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 主体引用风格（pseudonym ⇒ 看起来像明文标识的引用具名拒） |
 | `vmu.anonymity.mappingIrreversible` | — | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/custody.js` | 映射不可逆（内核强制：true 时【拒绝】存入主体↔引用的可逆映射，而不是加密后寄望） |
-| `vmu.budget.tokens` | ★ minimal | int ≥0 | `1000000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 令牌总量。★ C#15：框架默认是【有限值 1,000,000】——不再是隐式的「0＝不限」；要无限必须【显式写 0】（0 仍是合法的不限字面量，但它是被写出来的决定，不是默认）。未设（source=default）与显式无限（value 0）与有限值在 status.settings.resolved 里可区分 |
+| `vmu.budget.tokens` | ★ minimal | int ≥0 | `1000000` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 令牌总量。★ C#15：框架默认是【有限值 1,000,000】——不再是隐式的「0＝不限」；要无限必须【显式写 0】（0 仍是合法的不限字面量，但它是被写出来的决定，不是默认）。未设（source=default）与显式无限（value 0）与有限值在 status.settings.resolved 里可区分 |
 | `vmu.budget.turns` | — | int ≥0 | `500` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 回合总量。★ C#15：默认有限 500；显式 0＝不限（写出来才算数） |
 | `vmu.budget.toolCalls` | — | int ≥0 | `10000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 工具调用总量。★ C#15：默认有限 10000；显式 0＝不限；与单回合上限 vmu.limits.toolCallsPerTurnCap 分工不同 |
 | `vmu.budget.subagents` | — | int ≥0 | `50` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 子代理总量。★ C#15：默认有限 50；显式 0＝不限 |
@@ -1563,7 +1563,7 @@ vmu.packs.active: [v5r]
 | `vmu.v3.reportIntervalMs` | — | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/reports.js` | v3 复刻：汇报节流毫秒；0＝每个 tick 一次；>0 未到点具名 report-not-due。读者＝`packs/v3/middleware/reports.js` ✓ |
 | `vmu.v3.promoteValueThreshold` | — | number | `0.7` | — | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/planner.js` | v3 复刻：命题「价值/关键性」 ≥ 该值且未定论时自动晋升为问题（每 tick 至多一个）。读者＝`packs/v3/middleware/planner.js`；范围 [0,1]，越界/NaN 回落 0.7 ✓ |
 | `vmu.v3.verdictMode` | — | enum | `forced` | `forced`∣`natural` | 会话 | H1 | office | ✅ 已接线 | `packs/v3/middleware/verify.js` | v3 复刻：连续概率票如何折叠成裁决（forced＝夹到 [0.01,0.99] 后按阈值；natural＝原值）。读者＝`packs/v3/middleware/verify.js`。 ★ capability-default: 这不是框架政策，而是【v3 复刻包的机构选择值】（原始 vibe-math-v3 的默认），读者是 packs/v3/middleware/*；把它当框架默认看会误判，所以按本门禁的具名标记登记 |
-| `vmu.v5r.fixtureMode` | — | enum | `no-tools` | `no-tools`∣`tools` | 会话 | H1 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | PHASE 7：SLV 夹具模式开关。no-tools（默认）＝本轮不调用工具（保持历史 run 可比）；tools＝本轮可以且应该调用工具。由 pack 的 prompt 策略在【调用期】按回合 settings 读取，因此值层即足够；未知取值按具名拒处理，不猜默认。 |
+| `vmu.v5r.fixtureMode` | — | enum | `tools` | `no-tools`∣`tools` | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | PHASE 7：SLV 夹具模式开关。tools（默认）＝本轮可以且应该调用工具（真实部署正确）；no-tools＝**显式仿真模式**，本轮不调用工具（历史 run 可比时必须显式声明）。由 pack 的 prompt 策略在【调用期】按回合 settings 读取，因此值层即足够；未知取值按具名拒处理，不猜默认。 |
 
 **三条硬纪律（本表的门禁）**：① 表内键集合 ≡ schema 键集合（无多无少）；② 每个键都有回显＋非法拒＋热改＋审计四类断言；③ **本表不得手写第二份** —— 已由 **`scripts/generate-vmu-settings-table.mjs`** 落实 ✓✓：`--check` 未通过即红 ✗（**并已接入 T0 预检** ✓），任何人工改动都会被下一次检查抹平 ✓；④ "时间/随机"类**一律不接受用户输入**（`vmu.limits.wallClockMs` 是**框架侧上限**，不是用户可设的截止时刻 ✓）。
 
