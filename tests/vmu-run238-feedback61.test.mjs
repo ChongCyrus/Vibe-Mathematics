@@ -25,6 +25,20 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const BP_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'blueprint.js'), 'utf8')
+const BP_FIELDS = Object.freeze({
+  evaluationNow: '当下评价',
+  initialPlan: { plan: '初始计划', inspiration: '启发来源', initialTargets: '初始目标' },
+  relatedPlans: ['相关计划'],
+  feasibility: { assessment: '可行', reasons: '理由' },
+  value: { assessment: '有价值', reasons: '理由' },
+  findings: [{ kind: '命题', note: '发现' }],
+  obstacles: [{ what: '障碍', why: '原因' }],
+  obstacleSolutions: [{ obstacleRef: '1', plan: '解决方案' }],
+  implementation: { status: '进行中', effects: '效果', lessons: '经验' },
+  pastExperience: ['过去经验'],
+})
+const BP_FIELD_EXTRA = Object.freeze({ fields: BP_FIELDS, fieldsSchema: 'vmu.blueprint.fields@1' })
+
 const REC_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'records.js'), 'utf8')
 const TOOLS_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
 const MEET_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'meetings.js'), 'utf8')
@@ -222,14 +236,14 @@ try {
   console.log('=== D. two outline nodes may not share an id ===')
   const dup = await b.call('vibe_v5_blueprint', {
     action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad',
-    text: '- r2：分层。', outline: [{ id: '1', title: '粗', depth: 1 }, { id: '1', title: '细', depth: 2 }],
+    text: '- r2：分层。', outline: [{ id: '1', title: '粗', depth: 1, ...BP_FIELD_EXTRA }, { id: '1', title: '细', depth: 2, ...BP_FIELD_EXTRA }],
   })
   ok(dup && dup.ok === false && dup.code === 'VMU_INVALID_ARGUMENT', '★★ D1 a repeated outline id is refused', dup && dup.code)
   has(dup && dup.message, 'repeats an id', 'D1 the refusal says WHICH rule it broke')
   // legacy path: kernel-materialized only when materialize:true is explicit (RUN 255 default flipped to fs-first)
   const okOutline = await b.call('vibe_v5_blueprint', {
     action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad',
-    text: '- r2：分层。', outline: [{ id: '1', title: '粗', depth: 1 }, { id: '1.1', title: '细', depth: 2 }], materialize: true,
+    text: '- r2：分层。', outline: [{ id: '1', title: '粗', depth: 1, ...BP_FIELD_EXTRA }, { id: '1.1', title: '细', depth: 2, ...BP_FIELD_EXTRA }], materialize: true,
   })
   ok(okOutline && okOutline.ok === true && okOutline.outlineCount === 2, 'D2 distinct ids still pass (the fix is not a ban on outlines)', okOutline && okOutline.code)
 

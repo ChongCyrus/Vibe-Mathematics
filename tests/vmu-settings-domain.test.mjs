@@ -213,8 +213,11 @@ console.log('=== 5. ★ REGRESSION WITNESS (the blind spot that let the 319-key 
   // ★★ ROUND-9 (measured on the CURRENT docs, not relaxed): docs volumes 07/16/20/24 gained 25 documented-but-unwired
   // design keys during the paper/migration documentation pass (namespaces vmu.archive.* / vmu.avail.* / vmu.license.* /
   // vmu.publish.* / vmu.records.treatNegativeAsFirstClass / vmu.replication.* / vmu.review.* / vmu.reviewers.*). The
-  // generator mints from the docs, so the honest measurement is 116 + 25 = 141; pinning 116 would be a stale claim.
-  ok(planned === undefined || planned.count === 141, 'W10. the `planned` count is the measured 141 keys (113 + 3 paper keys + 25 newly documented planned keys from docs 07/16/20/24)', planned && planned.count)
+  // generator mints from the docs, so the honest measurement was 116 + 25 = 141.
+  // ★★ ROUND-10 (measured diff against HEAD, not a blanket bump): exactly ONE more documented planned key entered the
+  // registry — `vmu.blueprint.fields`, the TB-2795 blueprint field declaration (fields@1). 141 + 1 = 142; the diff is
+  // `added:['vmu.blueprint.fields'] / removed:[]`, so the +1 has a name and no entry was removed or swallowed.
+  ok(planned === undefined || planned.count === 142, 'W10. the `planned` count is the measured 142 keys (113 + 3 paper keys + 25 newly documented planned keys from docs 07/16/20/24 + 1 = TB-2795 blueprint field declaration vmu.blueprint.fields)', planned && planned.count)
 }
 
 console.log('=== 6. ★ COVERAGE GATE: every declared type is either JUDGED or NAMED (a new case-less type reddens this) ===')

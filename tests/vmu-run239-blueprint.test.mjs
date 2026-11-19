@@ -91,7 +91,20 @@ const attempt = async (fn) => {
 // read both, or every merge assertion silently compares "undefined,undefined" against the right ids (RUN 239 first run).
 const ids = (list) => (Array.isArray(list) ? list.map((e) => String(e !== null && typeof e === 'object' ? e.id : e)) : [])
 const countField = (text, key) => String(text).split('\n').filter((line) => line.indexOf('- ' + key + '：') === 0).length
-const node = (id, title, depth) => ({ id, title, depth })
+const BP_FIELDS = Object.freeze({
+  evaluationNow: '当下评价',
+  initialPlan: { plan: '初始计划', inspiration: '启发来源', initialTargets: '初始目标' },
+  relatedPlans: ['相关计划'],
+  feasibility: { assessment: '可行', reasons: '理由' },
+  value: { assessment: '有价值', reasons: '理由' },
+  findings: [{ kind: '命题', note: '发现' }],
+  obstacles: [{ what: '障碍', why: '原因' }],
+  obstacleSolutions: [{ obstacleRef: '1', plan: '解决方案' }],
+  implementation: { status: '进行中', effects: '效果', lessons: '经验' },
+  pastExperience: ['过去经验'],
+})
+const BP_FIELD_EXTRA = Object.freeze({ fields: BP_FIELDS, fieldsSchema: 'vmu.blueprint.fields@1' })
+const node = (id, title, depth) => Object.assign({ id, title, depth }, BP_FIELD_EXTRA)
 
 console.log('=== 0. THE SURFACES THIS SUITE DRIVES ARE PUBLISHED ===')
 ok(kernel !== null && kernel !== undefined, 'the pack applied and a kernel exists (a null handle would make every assertion vacuous)', kernel === null)

@@ -929,6 +929,7 @@
 | `VMU_PAPER_LATEX_TIMEOUT` | ★ **PHASE 7**：编译超过声明的预算（`vmu.paper.latexTimeoutMs` 或调用方 timeoutMs） | 论文/LaTeX | ✅（调大预算/简化文档） |
 | `VMU_PAPER_LATEX_INTERRUPTED` | ★ **PHASE 7**：编译被取消/中断（与 timeout 分开） | 论文/LaTeX | ✅（重跑；signal 在回执里） |
 | `VMU_PAPER_LATEX_NO_OUTPUT` | ★ **PHASE 7**：exit 0 但 outDir 里没有 PDF（或目录不可写）——不假成功 | 论文/LaTeX | ✗（检查 outDir/文档） |
+| **TB-2795 · `VMU_BLUEPRINT_FIELDS_MISSING`** | 蓝图 outline 的**方向/路线/节点缺声明的九个/十个结构化字段**（`vmu.blueprint.fields@1`）：`propose`/`update` 在声明 structured 模式时逐节点校验，缺字段 ⇒ 具名拒，`detail.missing` + `missingCn` + `nodes` + 合法形状；旧 revision 不补字段、读面 `fields:null/fieldsComplete:false`，不假装完整 | 蓝图（`packs/v5r/blueprint.js#blueprintFieldsStatusOf/proposeBlueprint`；字段集由 pack 声明；登记 `vibe-math-vmu/refusal-means.js`） | ✅（须列缺失字段 key + 中文名 + 合法形状 hint；旧记录 fields:null 是兼容，不是通过） |
 | **RUN-88 · `VMU_PAPER_CROSS_REVIEW_UNMET`** | 论文**互审门未达成**：`final` 要求两位 DISTINCT、非作者的成员对**当前正文**持有 count 的 deliverable 互审，未达到 ⇒ 具名拒（`gates[].name:"cross-review"` 带 `required:2`、`message`、`crossReviewers`、`staleReviews`）；此前复用 `VMU_INVALID_ARGUMENT`，报告无法按门检索 | 论文/互审（`packs/research-core/paper-flow.js` 的 `requireCrossReview`；码声明 `packs/v5r/paper.js`；登记 `vibe-math-vmu/refusal-means.js`） | ✅（须给 `crossReviewers/required/staleReviews` 与可达修法：让缺的成员对当前正文重投 deliverable 互审） |
 | **TB-2768/TB-2772 · `VMU_PAPER_GLYPH_UNCOVERED`** | **编译成功但 PDF 缺字 ⇒ `final` 具名拒并回滚**：编译 exit 0、PDF 已写出，但引擎日志有 `Missing character`（字体丢了正文里的 unicode 数学符号，如 ℤ/∀/∣/∩/∪/⋯/∉/⌊/⌋/①②③④⑤）⇒ `final` 返回 `ok:false`、`code:"VMU_PAPER_GLYPH_UNCOVERED"`、`finalized:false`，**stage 回滚到 `awaiting-editor`**（回执 `rolledBack:{from:"finalized",to:"awaiting-editor"}`、`reviseAvailable:true`、`keptEarlierFinal`），并带 `glyphLossDetected:true`/`missingCharacterCount`/`glyphsUnrepaired:[{char,u,count,font,where}]`/`logPath`/`logRead`；**没有 override——缺字的 PDF 不是可交付物**，修正文后重 `final`。★ TB-2785：`final` **一次评估全部门**并按优先级取顶层 code（`gates:[{name,ok,code,detail}]`，优先级 glyph-coverage > cross-review > evidence-grade-line > office-consult）——字符门与互审/等级行/所办门**同屏可见**，不再「遇第一个失败门就返回」；回执带 `primaryGate`/`gatePriority`，字符门失败时顶层同时给 `glyphLossDetected`/`glyphsUnrepaired`/`missingCharacterCount`/`logPath`。`compile`/`status` 仍以同一读数（`math` 与 `pdf` 块）报检测结果；`final`/`compile` 的 `pdf` 块另带 `pdfSha256` + `pdfSha256Means`（`null` = 本次无哈希，具名缺失） | 论文/LaTeX（`kernel/latex.js` 的 `glyphLossReading()`；`packs/research-core/paper-flow.js` 的 `final` 回滚闸与 `compile` 回执；pack 面 `vibe_v5_paper` 的 `final`/`compile`/`status`） | ✅（须给**缺哪个字形、各几次、字体与 .tex 行号**、`rolledBack.from/to`、`missingCharacterCount`；hint 必须可照抄） |
 | **TB-2786 · `VMU_PAPER_GRADE_LINE_MISSING`** | **每个 part 的正文必须有具名证据等级行**：`final` 在任一部分正文缺 `证据等级：draft｜verified-by-citation｜mechanically-checked｜lean-verified` 之一时具名拒（`ok:false`，`gates[].name:"evidence-grade-line"` 带 `missingSections:[{member,title,recordId}]`、`acceptedGrades`、`format`），hint 指出哪一节、四值词表与格式；卡片等级（`fromCards`）**不等于**正文等级（`fromBody`/`bodyGradeLine`），卡片永远不能替代正文行——这是第 84 次 V22 假 PASS（consult 声称「每节均带具名行」而正文没有）的产品侧防线 | 论文/证据等级（`packs/research-core/paper-flow.js` 的 `gradeLineOfText`/`gradeAuditOfState`/`final` 门；`packs/v5r/tools.js` 的 `status.evidenceGrades.fromBody`/`fromCards`/`bodyGradeLine`） | ✅（须给**缺哪个 section、四值词表与行格式**；正文补行后重 `final`） |
@@ -1544,7 +1545,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **538** 个码，**逐行**给出状态 ✓：其中 **492** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **539** 个码，**逐行**给出状态 ✓：其中 **493** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **46** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1600,6 +1601,7 @@
 | `VMU_BALLOT_RULE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_BALLOT_SECRECY_LOCKED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_BALLOT_TIE_UNRESOLVED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
+| `VMU_BLUEPRINT_FIELDS_MISSING` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/blueprint.js` | 代码里有该码字符串 ✓ |
 | `VMU_BODY_TRUNCATED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js` | 代码里有该码字符串 ✓ |
 | `VMU_BUDGET_RESERVE_EXHAUSTED` | **已实现 ✓** | `vibe-math-vmu/kernel/budget.js` | 代码里有该码字符串 ✓ |
 | `VMU_BUDGET_SCOPE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/budget.js` | 代码里有该码字符串 ✓ |

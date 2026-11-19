@@ -30,7 +30,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const RULE_DOC = process.env.MACRO_RULES_DOC || 'D:/wd/vibemath开发/宏观层面v5r运行规则.md'
+// The rule document lives OUTSIDE the repository in the author's workspace; a clean clone/CI has no D:/ path, so the
+// gate falls back to the VENDORED copy committed with the acceptance docs (same bytes, same sentence split). The env
+// override stays first for a reviewer pointing at another snapshot.
+const DEV_RULE_DOC = 'D:/wd/vibemath开发/宏观层面v5r运行规则.md'
+const VENDORED_RULE_DOC = join(REPO, 'docs/acceptance/macro-rules-source.md')
+const RULE_DOC = process.env.MACRO_RULES_DOC || (existsSync(DEV_RULE_DOC) ? DEV_RULE_DOC : VENDORED_RULE_DOC)
 const MATRIX = join(REPO, 'docs/acceptance/macro-rules-conformance-matrix.md')
 const CIRC = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'
 

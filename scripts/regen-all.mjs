@@ -56,14 +56,21 @@ const STEPS = [
   // generated for the same reason every other registry here is: a hand-written second copy drifts, while the ledger's
   // claims are re-resolved by scripts/check-rules-coverage.mjs (structural always, --check as the closing gate).
   ['rule conformance matrix (docs/acceptance/rule-conformance-matrix.md)', 'scripts/generate-rule-matrix.mjs', '--write'],
+  // TB-2795: the macro-rules matrix is a VERIFIER-owned artefact (sentence conservation / verbatim quotes / evidence
+  // floors / CONFORMS-needs-behaviour-evidence). It is in the chain so a drifted matrix is a closing-gate failure, and
+  // --strict-real is passed because a section with no real RUN evidence must be named, not assumed.
+  ['macro rules matrix (docs/acceptance/macro-rules-conformance-matrix.md)', 'scripts/audit-macro-rules.mjs', '--strict-real'],
   // these two now check by default, so they are safe to run as part of regen-all's bare passes too
   ['pack prompts (packs/v5r-prompts.js) [check]', 'scripts/generate-pack-prompts.mjs'],
   ['pack persona (packs/v5r-persona.js) [check]', 'scripts/generate-pack-persona.mjs'],
 ]
 
 let failed = 0
-for (const [label, script] of STEPS) {
-  const args = [join(REPO, script), STEP_FLAG]
+for (const [label, script, ...extra] of STEPS) {
+  // A step's third element is an EXTRA NON-MODE flag (e.g. --strict-real). Mode flags are owned by STEP_FLAG only:
+  // spreading a step's own '--write' alongside STEP_FLAG's --write is CONFLICTING_MODES (a generator CLI refusal).
+  const extraSafe = extra.filter((a) => a !== '--write' && a !== '--check')
+  const args = [join(REPO, script), STEP_FLAG, ...extraSafe]
   const r = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8' })
   const out = String(r.stdout || '') + String(r.stderr || '')
   const last = out.trim().split('\n').filter(Boolean).slice(-1)[0] || ''

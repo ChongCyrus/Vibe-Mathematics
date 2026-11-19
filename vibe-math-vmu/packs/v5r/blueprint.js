@@ -497,6 +497,49 @@ export const BLUEPRINT_MD_FORMAT = 'vmu-blueprint-md/1'
  *  store, and a reader never has to reconcile an outline with a text. Attached at the END of the field order (append-only
  *  rule: an older row has no such field and still parses). */
 export const BLUEPRINT_OUTLINE_KEY = 'outline'
+/** ★ TB-2795 (MAIN.4–MAIN.13): the TEN named fields every direction/route/node must record. This list is the PACK's
+ * declaration (the framework only records/validates/renders): name, Chinese label from the rule text, and kind. */
+export const BLUEPRINT_FIELDS_SCHEMA = 'vmu.blueprint.fields@1'
+export const BLUEPRINT_REQUIRED_FIELDS = Object.freeze([
+  { key: 'evaluationNow', cn: '当下评价', kind: 'string' },
+  { key: 'initialPlan', cn: '初始计划、源于什么启发、初始相关目标', kind: 'initialPlan' },
+  { key: 'relatedPlans', cn: '相关计划', kind: 'stringList' },
+  { key: 'feasibility', cn: '当下可行性评估及原因', kind: 'assessment' },
+  { key: 'value', cn: '当下价值性评估及原因', kind: 'assessment' },
+  { key: 'findings', cn: '已发现的相关结论、命题、认知、经验反馈、发现', kind: 'recordList' },
+  { key: 'obstacles', cn: '遇到的障碍及原因', kind: 'obstacleList' },
+  { key: 'obstacleSolutions', cn: '障碍的解决方案', kind: 'solutionList' },
+  { key: 'implementation', cn: '该方案的实施情况与效果或经验', kind: 'implementation' },
+  { key: 'pastExperience', cn: '过去的经验经历', kind: 'stringList' },
+])
+const isNonEmptyText = (v) => typeof v === 'string' && v.trim() !== ''
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+const isNonEmptyStringList = (v) => Array.isArray(v) && v.length > 0 && v.every(isNonEmptyText)
+/** Validate the ten fields of ONE outline node. Returns {ok, missing:[keys], missingCn:[labels], problems, schema}. */
+export function blueprintFieldsStatusOf(entry = {}) {
+  const fields = entry && isPlainObject(entry.fields) ? entry.fields : null
+  if (fields === null) return { ok: false, present: false, schema: BLUEPRINT_FIELDS_SCHEMA, missing: BLUEPRINT_REQUIRED_FIELDS.map((f) => f.key), missingCn: BLUEPRINT_REQUIRED_FIELDS.map((f) => f.cn), problems: ['fields is absent: this node carries no structured record'] }
+  const missing = []
+  const problems = []
+  const has = (key) => Object.prototype.hasOwnProperty.call(fields, key)
+  for (const def of BLUEPRINT_REQUIRED_FIELDS) {
+    const value = fields[def.key]
+    if (!has(def.key)) { missing.push(def.key); continue }
+    let ok = true
+    if (def.kind === 'string') ok = isNonEmptyText(value)
+    else if (def.kind === 'stringList') ok = isNonEmptyStringList(value)
+    else if (def.kind === 'initialPlan') ok = isPlainObject(value) && isNonEmptyText(value.plan) && isNonEmptyText(value.inspiration) && isNonEmptyText(value.initialTargets)
+    else if (def.kind === 'assessment') ok = isPlainObject(value) && isNonEmptyText(value.assessment) && isNonEmptyText(value.reasons)
+    else if (def.kind === 'implementation') ok = isPlainObject(value) && isNonEmptyText(value.status) && isNonEmptyText(value.effects) && isNonEmptyText(value.lessons)
+    else if (def.kind === 'recordList') ok = Array.isArray(value) && value.length > 0 && value.every((x) => isPlainObject(x) && isNonEmptyText(x.kind) && isNonEmptyText(x.note))
+    else if (def.kind === 'obstacleList') ok = Array.isArray(value) && value.length > 0 && value.every((x) => isPlainObject(x) && isNonEmptyText(x.what) && isNonEmptyText(x.why))
+    else if (def.kind === 'solutionList') ok = Array.isArray(value) && value.length > 0 && value.every((x) => isPlainObject(x) && isNonEmptyText(x.obstacleRef) && isNonEmptyText(x.plan))
+    if (!ok) { if (missing.indexOf(def.key) < 0) missing.push(def.key); problems.push(def.key + ' is present but empty/malformed (' + def.cn + ')') }
+  }
+  return { ok: missing.length === 0 && problems.length === 0, present: true, schema: BLUEPRINT_FIELDS_SCHEMA, missing, missingCn: missing.map((k) => (BLUEPRINT_REQUIRED_FIELDS.filter((f) => f.key === k)[0] || {}).cn || k), problems }
+}
+/** The shape sentence every refusal prints, so a caller can copy the legal object. */
+export const BLUEPRINT_FIELDS_SHAPE = '{ fields: { evaluationNow:string, initialPlan:{plan,inspiration,initialTargets}, relatedPlans:string[], feasibility:{assessment,reasons}, value:{assessment,reasons}, findings:[{kind,note}], obstacles:[{what,why}], obstacleSolutions:[{obstacleRef,plan}], implementation:{status,effects,lessons}, pastExperience:string[] } }'
 /** ★ RUN 236 — G11「据实践细化并更新对象」: an OPTIONAL one-line reason for THIS revision, stored in the header (and the
  *  md) instead of only in a conversation, so "why the revision exists" is readable from the document itself. */
 export const BLUEPRINT_REASON_KEY = 'revisionReason'
@@ -692,7 +735,10 @@ function serializeOutline(outline) {
     .filter((e) => e && txt(e.id) !== '')
     .map((e) => {
       const depth = Number(e.depth)
-      return { id: txt(e.id), title: txt(e.title), depth: Number.isInteger(depth) ? depth : 1 }
+      const out = { id: txt(e.id), title: txt(e.title), depth: Number.isInteger(depth) ? depth : 1 }
+      if (isPlainObject(e.fields)) out.fields = e.fields
+      if (isNonEmptyText(e.fieldsSchema)) out.fieldsSchema = txt(e.fieldsSchema)
+      return out
     })
   return list.length === 0 ? '' : JSON.stringify(list)
 }
@@ -731,7 +777,10 @@ function parseOutlineField(value) {
       problems.push('outline entry ' + id + ' has depth "' + txt(item.depth) + '", not one of ' + BLUEPRINT_OUTLINE_DEPTHS.join('|'))
       continue
     }
-    outline.push({ id, title: txt(item.title), depth })
+    const entry = { id, title: txt(item.title), depth }
+    if (isPlainObject(item.fields)) entry.fields = item.fields
+    if (isNonEmptyText(item.fieldsSchema)) entry.fieldsSchema = txt(item.fieldsSchema)
+    outline.push(entry)
   }
   return { outline, problems, provided: true }
 }
@@ -773,14 +822,14 @@ export function outlineSourceMeansOf(source) {
 function mergeOutline(base = [], incoming = []) {
   const baseList = Array.isArray(base) ? base : []
   const incomingList = Array.isArray(incoming) ? incoming : []
-  const outline = baseList.map((e) => ({ id: txt(e.id), title: txt(e.title), depth: Number(e.depth) }))
+  const outline = baseList.map((e) => Object.assign({ id: txt(e.id), title: txt(e.title), depth: Number(e.depth) }, isPlainObject(e.fields) ? { fields: e.fields } : {}, isNonEmptyText(e.fieldsSchema) ? { fieldsSchema: txt(e.fieldsSchema) } : {}))
   const added = []
   const updated = []
   const kept = []
   for (const item of incomingList) {
     const id = txt(item && item.id)
     const index = outline.findIndex((e) => e.id === id)
-    const next = { id, title: txt(item && item.title), depth: Number(item && item.depth) }
+    const next = Object.assign({ id, title: txt(item && item.title), depth: Number(item && item.depth) }, isPlainObject(item && item.fields) ? { fields: item.fields } : {}, isNonEmptyText(item && item.fieldsSchema) ? { fieldsSchema: txt(item.fieldsSchema) } : {})
     if (index >= 0) { outline[index] = next; updated.push(id) } else { outline.push(next); added.push(id) }
   }
   for (const entry of outline) {
@@ -812,7 +861,8 @@ function outlineMergedReading({ merged, continued, provided }) {
  * structure is missing, the write still landed.
  */
 export function outlineReading({ outline = null, requireOutline = false, source = 'request' } = {}) {
-  const list = (Array.isArray(outline) ? outline : []).map((e) => ({ id: txt(e && e.id), title: txt(e && e.title), depth: Number.isInteger(e && e.depth) ? e.depth : 1 }))
+  // ★ TB-2795: the ten structured fields travel WITH the node (never a second store); a legacy node carries neither.
+  const list = (Array.isArray(outline) ? outline : []).map((e) => Object.assign({ id: txt(e && e.id), title: txt(e && e.title), depth: Number.isInteger(e && e.depth) ? e.depth : 1 }, e && isPlainObject(e.fields) ? { fields: e.fields } : {}, e && isNonEmptyText(e.fieldsSchema) ? { fieldsSchema: txt(e.fieldsSchema) } : {}))
   const required = requireOutline === true
   const depthMax = list.reduce((max, e) => Math.max(max, e.depth), 0)
   // ★★★ RUN 239-B: ONE enum for every face. An empty list is `none` regardless of who passed it; a non-empty list names
@@ -1579,7 +1629,7 @@ export function readBlueprint({ records, id }) {
  * not on disk is refused by code (`VMU_PACK_V5R_BLUEPRINT_MD_MISSING`) with that path and the reachable fix — never silently
  * replaced by an empty draft.
  */
-export function proposeBlueprint({ records, path, text, by, draft = '', at = null, atKernel = false, note = '', seat = '', outline = null, revisionReason = '', requireOutline = false, mdPath = '', materialize = false, inOwnTurn = null }) {
+export function proposeBlueprint({ records, path, text, by, draft = '', at = null, atKernel = false, note = '', seat = '', outline = null, revisionReason = '', requireOutline = false, mdPath = '', materialize = false, inOwnTurn = null, fieldsSchema = '' }) {
   const track = refuseIfNoRecords(records)
   // ★★★ RUN 255 / TB-2613: the DEFAULT flipped to fs-first. Omitting `mdPath` no longer means "the kernel writes the
   // draft": it means the member still owes that file, and the receipt asks for it (`draftMdMissing`). Kernel
@@ -1611,6 +1661,32 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   if (outlineParsed.provided && outlineParsed.problems.length > 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'the outline is malformed: ' + outlineParsed.problems.join('; '),
       'pass outline:[{id,title,depth}] — one entry per outline node, depth one of ' + BLUEPRINT_OUTLINE_DEPTHS.join('|') + ' (1=粗, 2=细)')
+  }
+  // ★ TB-2795 (MAIN.4–MAIN.13): the PACK declares the structured-field schema. Strict validation is requested by the
+  // caller declaring fieldsSchema (or by any node carrying a fields object): EVERY node must then record all ten named
+  // fields, and a missing one is REFUSED by name (never silently dropped). A legacy outline that predates this schema
+  // still writes (readers report fields:null / fieldsComplete:false) — that is backward compatibility, not a new gate.
+  const declaredSchema = txt(fieldsSchema)
+  const nodesWithFields = outlineParsed.outline.some((e) => isPlainObject(e.fields) || isNonEmptyText(e.fieldsSchema))
+  // Strict by DEFAULT whenever an outline is proposed: the pack declares the schema, so a node without its ten fields is
+  // an empty record (legacy ROWS still read fields:null; only NEW proposals are gated).
+  const strictFields = outlineParsed.provided || declaredSchema !== '' || nodesWithFields
+  if (strictFields) {
+    const bad = []
+    for (const entry of outlineParsed.outline) {
+      const status = blueprintFieldsStatusOf(entry)
+      if (!status.ok) bad.push({ id: entry.id, missing: status.missing, missingCn: status.missingCn, problems: status.problems })
+    }
+    if (bad.length > 0) {
+      const missingAll = [...new Set(bad.reduce((acc, b) => acc.concat(b.missing), []))]
+      const missingCnAll = [...new Set(bad.reduce((acc, b) => acc.concat(b.missingCn), []))]
+      const e = refuse('VMU_BLUEPRINT_FIELDS_MISSING',
+        'blueprint outline node(s) miss the declared structured fields (' + BLUEPRINT_FIELDS_SCHEMA + '): ' + bad.map((b) => b.id + ' → ' + b.missing.join(',')).join('; '),
+        'every direction/route/node must record all ten fields: ' + BLUEPRINT_FIELDS_SHAPE + '. Pass fieldsSchema:"' + BLUEPRINT_FIELDS_SCHEMA + '" only when you mean the strict shape; legacy outlines read fields:null.')
+      // Refusals in this module carry code/hint only; the structured facts ride `detail` (code/message keep the contract).
+      e.detail = { schema: BLUEPRINT_FIELDS_SCHEMA, missing: missingAll, missingCn: missingCnAll, nodes: bad, shape: BLUEPRINT_FIELDS_SHAPE }
+      throw e
+    }
   }
   const reasonGiven = oneLine(revisionReason)
   const before = listBlueprints({ records, path: wantedPath })

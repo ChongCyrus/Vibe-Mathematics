@@ -93,6 +93,11 @@ export const REFUSAL_MEANS = Object.freeze({
     short: 'The text uses a glyph the declared fonts cannot cover.',
     reachable: 'Replace the uncovered glyph (the receipt names it) or add a font that covers it, then render again.',
   }),
+  VMU_BLUEPRINT_FIELDS_MISSING: Object.freeze({
+    means: 'A blueprint outline node does not record the ten declared structured fields (vmu.blueprint.fields@1): the rule says every direction/route/node records all of them, so the proposal is refused instead of filing an empty record.',
+    short: 'The blueprint node is missing one or more of the ten declared fields.',
+    reachable: 'Add every missing field named in detail.missing (with its Chinese label) on each outline node, then propose again; a legacy outline may omit the schema and reads fields:null instead.',
+  }),
   VMU_PAPER_CROSS_REVIEW_UNMET: Object.freeze({
     means: 'The paper cannot pass the cross-review gate: fewer than two DISTINCT non-author reviewers hold a counted deliverable verdict on the current text (the receipt names crossReviewers/required/staleReviews).',
     short: 'The paper still lacks the required distinct non-author cross-reviews.',

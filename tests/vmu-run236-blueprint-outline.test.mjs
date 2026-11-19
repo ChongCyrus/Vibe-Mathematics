@@ -91,7 +91,20 @@ const call = async (args) => {
 const attempt = async (fn) => {
   try { return { ok: true, parsed: await fn() } } catch (e) { return { ok: false, err: e, code: codeOf(e), message: textOf(e), hint: hintOf(e) } }
 }
-const outlineOf = (extra = []) => [{ id: 'o1', title: '总体路线', depth: 1 }, { id: 'o2', title: '第一阶段', depth: 2 }].concat(extra)
+const BP_FIELDS = Object.freeze({
+  evaluationNow: '当下评价',
+  initialPlan: { plan: '初始计划', inspiration: '启发来源', initialTargets: '初始目标' },
+  relatedPlans: ['相关计划'],
+  feasibility: { assessment: '可行', reasons: '理由' },
+  value: { assessment: '有价值', reasons: '理由' },
+  findings: [{ kind: '命题', note: '发现' }],
+  obstacles: [{ what: '障碍', why: '原因' }],
+  obstacleSolutions: [{ obstacleRef: '1', plan: '解决方案' }],
+  implementation: { status: '进行中', effects: '效果', lessons: '经验' },
+  pastExperience: ['过去经验'],
+})
+const BP_FIELD_EXTRA = Object.freeze({ fields: BP_FIELDS, fieldsSchema: 'vmu.blueprint.fields@1' })
+const outlineOf = (extra = []) => [Object.assign({ id: 'o1', title: '总体路线', depth: 1 }, BP_FIELD_EXTRA), Object.assign({ id: 'o2', title: '第一阶段', depth: 2 }, BP_FIELD_EXTRA)].concat(extra)
 const isOutline = (v) => Array.isArray(v) && v.length === 2 && v[0].id === 'o1' && v[0].depth === 1 && v[1].id === 'o2' && v[1].depth === 2 && v[1].title === '第一阶段'
 const countField = (text, key) => text.split('\n').filter((line) => line.indexOf('- ' + key + '：') === 0).length
 

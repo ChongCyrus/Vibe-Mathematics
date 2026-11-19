@@ -41,6 +41,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { copyCorpus } from './corpus-copy.mjs'
+import { tmpRoot } from '../../lib/tmp-root.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..', '..', '..')
@@ -508,8 +509,20 @@ function corpusDigest(files) {
 }
 
 // ── gate invocation ──────────────────────────────────────────────────────────────────────────────────────────────
-function gateEnv() {
-  return { ...process.env, VMU_RICH_REAL: RICH }
+// ★ final33b / A13b: THE GATE'S CORPUS ROOT MUST BE THE FIXTURE'S OWN, NOT THIS MACHINE'S LIVE SIM ROOT.
+// release-ready resolves its corpus root from VMU_SIM_ROOT / tmpRoot()/sim; a machine whose T1 keeps writing fresh
+// audit layers under the workspace's live sim root therefore mixed a LIVE layer pointer into a FIXTURE report and reported an extra
+// AUDIT_CORPUS_STALE (deterministic, zero retries — it was not a race). Every spawn now carries:
+//   VMU_SIM_ROOT  = the fixture's own layer root (honest() vectors fall back to the shared fixture pointer root)
+//   VMU_TMP_ROOT  = a dedicated isolation dir, so ANY tmpRoot()-derived default cannot reach the live workspace sim root
+//   VMU_RICH_REAL = the committed fixture rich corpus
+// The gate still receives --root=<fixture root>; this makes the environment agree with it instead of relying on the
+// flag alone (a second, disagreeing default is exactly how the extra code got in).
+const GATE_ISO_ROOT = path.join(tmpRoot(), 'redteam-gate-iso')
+function gateEnv(built) {
+  try { fs.mkdirSync(GATE_ISO_ROOT, { recursive: true }) } catch { /* the gate's own refusal names an unwritable root */ }
+  const fixtureRoot = (built && (built.root || built.rootDefault)) || GATE_ISO_ROOT
+  return { ...process.env, VMU_RICH_REAL: RICH, VMU_SIM_ROOT: fixtureRoot, VMU_TMP_ROOT: GATE_ISO_ROOT }
 }
 
 function runGate(vector, built) {
@@ -518,7 +531,7 @@ function runGate(vector, built) {
   else args.push('--root=' + built.root)
   for (const extra of vector.cliArgs || []) args.push(String(extra).replace('@root', built.root || built.rootDefault))
   const started = process.hrtime.bigint()
-  const res = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8', timeout: 300000, maxBuffer: 64 * 1024 * 1024, env: gateEnv() })
+  const res = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8', timeout: 300000, maxBuffer: 64 * 1024 * 1024, env: gateEnv(built) })
   const wallMs = Number(process.hrtime.bigint() - started) / 1e6
   let payload = null
   let parseError = null
@@ -716,16 +729,26 @@ async function main() {
       if (vector.reportDir) builtFor.dir = vector.reportDir
       let got = runGate({ ...fx, cliArgs: vector.cliArgs || fx.cliArgs || [] }, builtFor)
       let attempts = 1
-      while (retryable(got, vector.expects) && attempts < 6) {
+      // ── TREE-CHANGED RETRY, HARDENED FOR CONCURRENT LANES ────────────────────────────────────────────────────────
+      // final33b: under T1 (k gates + lanes still editing) a fixture could exhaust six fast retries and settle on a run
+      // whose codes carried an EXTRA `AUDIT_TREE_CHANGED` (it is retried precisely because it is not the vector's
+      // declared consequence), which then judged WRONG-CODE/MASKED. The retry now (a) waits for the tree to HOLD STILL
+      // (stableTree: two consecutive equal samples) instead of one 400 ms sleep, (b) verifies the stamp is still the
+      // live tree IMMEDIATELY before spawning, skipping the spawn instead of emitting a report it already knows is
+      // stale, and (c) allows more attempts because the others are cheap (~0.5 s each). The corpus side is already
+      // pinned by every fixture (`loadContext` copies the committed fixture corpus and writes its own pointer; the gate
+      // is spawned with `--root=<fixture root>` and `VMU_RICH_REAL=<committed RICH>`), so the ONLY cross-run variable is
+      // the live tree hash this loop re-settles.
+      while (retryable(got, vector.expects) && attempts < 24) {
         attempts += 1
-        // Re-stamp with the tree as it is NOW: the retry exists because another lane moved the tree, so rebuilding from
-        // the old ctx would stamp the same stale hash and fail again for exactly the same reason. A short settle gap
-        // keeps a commit-in-progress from being sampled half-applied.
-        sleep(400)
-        const now = treeNow(gate)
-        if (now.ok) ctx.tree = now
+        sleep(300)
+        const settled = stableTree(gate, { tries: 12, gapMs: 300 })
+        if (!settled.ok) continue // the tree is still moving: do not spawn a report that will be stale again
+        ctx.tree = settled
         const rebuilt = BUILD[fx.id](ctx, tmp)
         Object.assign(builtFor, rebuilt)
+        const justBefore = treeNow(gate)
+        if (!justBefore.ok || justBefore.hash !== ctx.tree.hash) continue // moved between stamp and spawn: restamp
         got = runGate({ ...fx, cliArgs: vector.cliArgs || fx.cliArgs || [] }, builtFor)
       }
       const verdict = judge({ ...fx, expects: vector.expects }, got)

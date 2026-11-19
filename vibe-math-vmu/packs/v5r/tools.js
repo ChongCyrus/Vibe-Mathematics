@@ -48,7 +48,7 @@ import { leadershipReading, leadershipWarning, LEADER_SLOT } from './leadership.
 // ★ R18-B2: the public blueprint carrier. `vmu.turn.protocolPath` had two prompt interpolations and no writer, so the
 // blueprint was a path with no edit right attached. `./blueprint.js` is the data face (a records track + propose/adopt);
 // this import is its REACHABLE consumer (red line ④).
-import { BLUEPRINT_MD_PATH_KEY, BLUEPRINT_ADOPT_SLOT, BLUEPRINT_OUTLINE_REQUIRE_KEY, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintMdProvenanceOf, blueprintState, listBlueprints, mdOwnerOf, outlineRequireOf, proposeBlueprint, readBlueprint, staleWindowOf } from './blueprint.js'
+import { BLUEPRINT_MD_PATH_KEY, BLUEPRINT_ADOPT_SLOT, BLUEPRINT_OUTLINE_REQUIRE_KEY, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRINT_TRACK, BLUEPRINT_FIELDS_SCHEMA, BLUEPRINT_FIELDS_SHAPE, adoptBlueprint, blueprintMdProvenanceOf, blueprintFieldsStatusOf, blueprintState, listBlueprints, mdOwnerOf, outlineRequireOf, proposeBlueprint, readBlueprint, staleWindowOf } from './blueprint.js'
 // ★ A7 (round 31 follow-up): WHO IS CALLING, read from the one non-forgeable source there is. `vibe_v5_fire` has to
 // know whether the caller is a member seat (whose dismissal right is scoped to its own temp worker) or the office /
 // a chair (unscoped), and the ONLY trustworthy answer is the agent→member resolution the seat face gate itself uses:
@@ -5563,6 +5563,20 @@ function kernelClockIsoOf(kernel) {
   return { iso: new Date().toISOString(), atSource: 'wall-clock' }
 }
 
+/** ★ TB-2795: render the fields on every outline node + an aggregate. Legacy nodes are NOT dressed up: fields:null and
+ *  fieldsComplete:false with the ten missing labels, so a reader can tell "old record" from "complete record". */
+function outlineFieldsReading(outline) {
+  const list = Array.isArray(outline) ? outline : []
+  const rows = list.map((entry) => {
+    const status = blueprintFieldsStatusOf(entry)
+    return Object.assign({}, entry, { fields: entry && entry.fields !== undefined ? entry.fields : null, fieldsComplete: status.ok, fieldsMissing: status.missing, fieldsMissingCn: status.missingCn })
+  })
+  const incomplete = rows.filter((r) => !r.fieldsComplete)
+  return { outline: rows, fieldsSchema: BLUEPRINT_FIELDS_SCHEMA, outlineFieldsComplete: incomplete.length === 0 && rows.length > 0,
+    outlineFieldsMissing: [...new Set(incomplete.reduce((acc, r) => acc.concat(r.fieldsMissing), []))],
+    fieldsShape: BLUEPRINT_FIELDS_SHAPE,
+    fieldsMeans: 'each outline node carries the ten declared fields; a node from an OLD revision reports fields:null + fieldsComplete:false + fieldsMissing (all ten labels) — never a fake complete' }
+}
 function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   const action = str(args.action || 'state').trim()
   const staleWindow = blueprintStaleWindowOf(kernel)
@@ -5573,6 +5587,7 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   // teaches (propose a revision with its 由粗到细 outline) could not record one. A field the row keeps and the face
   // cannot write is a promise told by omission, which is the defect class RUN 219 fixed for `draft`.
   const outlineArg = has(args.outline) ? args.outline : null
+  const fieldsSchemaArg = str(args.fieldsSchema || args.fields_schema || '').trim()
   const reasonArg = str(args.revisionReason || args.revision_reason || '').trim()
   // The SETTING decides whether a missing outline is worth a named line in the receipt; it is a hint, never a gate
   // (schema.js `vmu.blueprint.requireOutline`, default false) - so this is read here, not enforced here.
@@ -5596,7 +5611,7 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     : (action === 'adopt' && adoptDraftArg !== '' ? 'draft' : 'setting:' + BLUEPRINT_PATH_KEY)
   if (action === 'state') {
     const state = blueprintState({ records, path, now: clockMs, nowFromKernel: true, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
-    return Object.assign({}, state, {
+    return Object.assign({}, state, outlineFieldsReading(state.outline), {
       tool: 'vibe_v5_blueprint', action, pathSource, staleAfterMsSource: staleWindow.source,
       readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
       // ★★ RUN 205 (run 43 / FEEDBACK42 1.6, MEASURED): a task brief asked for `nodes`/`count` and this reading has neither —
@@ -5639,6 +5654,7 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       // when it reports back — stayed silent about it. Same source, both surfaces: the readings come from `readBlueprint`,
       // never recomputed here.
       outline: read.outline === undefined ? null : read.outline,
+      ...outlineFieldsReading(read.outline),
       outlineCount: read.outlineCount === undefined ? null : read.outlineCount,
       outlineDepthMax: read.outlineDepthMax === undefined ? null : read.outlineDepthMax,
       outlineSource: read.outlineSource === undefined ? null : read.outlineSource,
@@ -5684,7 +5700,7 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       at: clockMs,
       atKernel: true,
       records, path, text, by: String(member.id), seat: authorSeat, note: str(args.note || ''), draft: namedDraft,
-      outline: outlineArg, revisionReason: reasonArg, requireOutline, mdPath: mdPathArg,
+      outline: outlineArg, fieldsSchema: fieldsSchemaArg, revisionReason: reasonArg, requireOutline, mdPath: mdPathArg,
       // ★★★ RUN 255 / TB-2613: the ownership the row will record. `inOwnTurn` is a fact of THIS CALL: the kernel resolves
       // which member turn is speaking, and only a call made from the member own turn claims wroteInOwnTurn:true. An office
       // call naming the member is not the member acting (false is still unknown-in-a-direction: the caller was not that
@@ -5698,7 +5714,7 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     })
     const state = blueprintState({ records, path, now: clockMs, nowFromKernel: true, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     const filed = proposed.filed !== false
-    return Object.assign({}, proposed, {
+    return Object.assign({}, proposed, outlineFieldsReading(state.outline), {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
       inForce: state.current,
       staleAfterMs: state.staleAfterMs,
@@ -8344,7 +8360,7 @@ const RAW_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_read_library',
-    description: 'Read anyone\'s library (read-only): id reads one card; the list form reads EVERY declared track (vmu.records.tracks — so a member\'s state panel, obstacles, rejected routes and feedback are all readable) and filters by kind, by the card\'s author, and by `track`/`tracks`. '
+    description: 'Read the library cards YOUR SEAT may read (read-only; a cross-seat read the seat policy denies is refused by name VMU_NOT_PERMITTED, never returned as an empty list): id reads one card; the list form reads EVERY declared track (vmu.records.tracks — so a member\'s state panel, obstacles, rejected routes and feedback are all readable) and filters by kind, by the card\'s author, and by `track`/`tracks`. '
       + '★ An undeclared track name is refused by name with the declared set in `declared`; a declared track the records face itself refuses is reported in `skippedTracks`, never silently dropped. '
       + '★ TWO NOUNS, TWO SHAPES (round 42): a RECORD id is minted as `rec-<n>` and a MEMBER id as `r-<n>` — `id` reads a RECORD, `member` reads a PERSON’s library. Passing a member id as `id` is refused by name and the hint tells you to pass `member:"<id>"`; legacy `r-<n>` records still read (ids are names, nothing was migrated).',
     parameters: { member: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, list: { type: 'boolean' }, limit: { type: 'integer' }, track: { type: 'string' }, tracks: { type: 'array' }, withWriter: { type: 'boolean' } },
@@ -8440,7 +8456,8 @@ const RAW_PACK_TOOLS = Object.freeze([
       mdPath: { type: 'string', description: 'OPTIONAL: the draft md YOU wrote with the fs tool, workspace relative (e.g. Members/<seat>/Drafts/<slug>-r<N>.md). The kernel reads it back, records its sha256 and WHO wrote it (mdOwner), and the row prose becomes the file text. OMIT it: fs-first returns draftMdMissing + nextActions naming the file and writes nothing. A path not on disk is refused by name (VMU_PACK_V5R_BLUEPRINT_MD_MISSING); an empty file too.' },
       materialize: { type: 'boolean', description: 'OPTIONAL (default false): true = the kernel writes the draft md for you (receipt writtenBy:"kernel-materialized"). The default never writes a file.' },
       refreshFingerprint: { type: 'boolean', description: 'OPTIONAL (adopt only): true = take the draft file CURRENT bytes when it changed after indexing (receipt mdDrift names both sha256s).' },
-      outline: { type: 'array', description: 'OPTIONAL ordered outline of this revision: [{id,title,depth}] with depth 1 (粗) or 2 (细). Read back as outline/outlineCount/outlineDepthMax on state, read and every propose/adopt receipt; a malformed entry is refused by name, never dropped.' },
+      outline: { type: 'array', description: 'OPTIONAL ordered outline of this revision: [{id,title,depth,fields?}] with depth 1 (粗) or 2 (细). ★ TB-2795: each direction/route/node must record the TEN fields (fieldsSchema vmu.blueprint.fields@1) when structured mode is requested; read back as fields/fieldsComplete/fieldsMissing per node plus outlineFieldsComplete on state/read/propose receipts. A node from an old revision reads fields:null, never a fake complete; a malformed entry is refused by name, never dropped.' },
+      fieldsSchema: { type: 'string', description: 'OPTIONAL: declare the structured-field schema for this proposal, e.g. "vmu.blueprint.fields@1". With it, EVERY outline node must carry all ten named fields; missing ones are refused with VMU_BLUEPRINT_FIELDS_MISSING (receipt detail.missing + Chinese labels + legal shape). Omit for legacy outlines (fields:null on read).' },
       revision_reason: { type: 'string', description: 'OPTIONAL one line: WHY this revision exists (G11). Read back as revisionReason/revisionReasonSource. An alias of revisionReason.' } },
     handler: toolBlueprint,
   },
@@ -8511,7 +8528,9 @@ const RAW_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_lean_archive',
     description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored). ★ pass `statement` (the proposition this file formalises) so the library can answer what the file proves - live run 59 archived a lemma and the entry came back with an empty statement because the argument did not exist. ★ The entry ALSO records the COMPILE RESULT of that file: it is read from a Lean job this kernel already ran on the same file (nothing is re-run) and comes back as `outcome`/`exitCode`/`diagnosticsTail`/`jobId`/`compileAt`/`outcomeMeans`; with no such job the entry says `outcome:"not-measured"` instead of pretending the proof compiled.',
-    parameters: { kind: { type: 'string', required: true, enum: ['def', 'lemma', 'proof', 'blocked'], description: 'the kind of thing the file holds; the library maps these onto its own face kinds (proof -> theorem) and has no fifth word — a THEOREM goes in as kind:"proof" (the receipt then reports kind/mappedKind "theorem")' }, name: { type: 'string', required: true }, statement: { type: 'string', description: 'the proposition text this file formalises (recorded in the library entry)' }, target: { type: 'string', description: 'legacy alias for statement' }, content: { type: 'string' }, from: { type: 'string', description: 'the existing .lean file — the SAME parameter as `file` (it is not the author; pass one of the two, never two that disagree)' }, file: { type: 'string', description: 'the existing .lean file — the SAME parameter as `from` (the alias exists for older briefs; pass one of the two)' }, note: { type: 'string' }, run: { type: 'boolean' } },
+    parameters: { kind: { type: 'string', required: true, enum: ['def', 'lemma', 'proof', 'blocked'], description: 'the kind of thing the file holds; the library maps these onto its own face kinds (proof -> theorem) and has no fifth word — a THEOREM goes in as kind:"proof" (the receipt then reports kind/mappedKind "theorem")' }, name: { type: 'string', required: true }, statement: { type: 'string', description: 'the proposition text this file formalises (recorded in the library entry)' }, target: { type: 'string', description: 'legacy alias for statement' }, // ★ RUN-88 F-87-08: `content` is accepted for old callers but IGNORED (the archive registers existing files by
+    // hash; inline text was never stored). Marked deprecated so a signature reader does not believe it does something.
+    content: { type: 'string', description: 'DEPRECATED / IGNORED: archive registers an EXISTING .lean file by hash and never stores inline text. Accepted only so older callers do not error; it changes nothing.' }, from: { type: 'string', description: 'the existing .lean file — the SAME parameter as `file` (it is not the author; pass one of the two, never two that disagree)' }, file: { type: 'string', description: 'the existing .lean file — the SAME parameter as `from` (the alias exists for older briefs; pass one of the two)' }, note: { type: 'string' }, run: { type: 'boolean' } },
     handler: toolLeanArchive,
   },
   {

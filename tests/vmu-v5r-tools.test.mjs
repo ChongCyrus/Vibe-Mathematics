@@ -2076,6 +2076,20 @@ try {
   await rm(fRoot, { recursive: true, force: true, maxRetries: 10 }).catch(() => {})
 }
 
+// ── RUN-88 F-87-07/08: two signature/contract hygiene fixes are visible in the declarations.
+{
+  const byName = Object.fromEntries((v5r.PACK.tools || []).map((t) => [t.name, t]))
+  const readLib = byName['vibe_v5_read_library']
+  ok(readLib && /YOUR SEAT/.test(String(readLib.description)) && /VMU_NOT_PERMITTED/.test(String(readLib.description)) && !/Read anyone/.test(String(readLib.description)),
+    'F-87-07 ★★ read_library description no longer promises anyone library: it names the seat scope and the named refusal',
+    readLib && String(readLib.description).slice(0, 120))
+  const leanArch = byName['vibe_v5_lean_archive']
+  const contentParam = leanArch && leanArch.parameters && leanArch.parameters.content
+  ok(contentParam && String(contentParam.description).includes('DEPRECATED') && String(contentParam.description).includes('IGNORED'),
+    'F-87-08 ★★ lean_archive content is declared DEPRECATED / IGNORED (the archive registers existing files by hash)',
+    contentParam && String(contentParam.description).slice(0, 90))
+}
+
 console.log('\n=== VMU V5R TOOLS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { console.error('FAILURES:'); for (const f of failures) console.error('  - ' + f) }
 process.exit(failed > 0 ? 1 : 0)
