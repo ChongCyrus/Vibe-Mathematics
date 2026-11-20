@@ -196,17 +196,51 @@ export async function mainline(h, { log = () => {} } = {}) {
   if (!(fieldsState && fieldsState.action === 'state' && fieldsState.outlineFieldsComplete === true && fieldsState.fieldsSchema === 'vmu.blueprint.fields@1')) {
     failures.push({ code: 'SIM_BLUEPRINT_FIELDS_STATE_SURFACE', step: 'blueprint/fields/state', message: 'state 面没有给 outlineFieldsComplete:true 的聚合读数', means: '读面与提案面必须同源：只在一个面上对，等于另一个面上的读者仍盲', receipt: { action: fieldsState && fieldsState.action, outlineFieldsComplete: fieldsState && fieldsState.outlineFieldsComplete, fieldsSchema: fieldsState && fieldsState.fieldsSchema } })
   }
-  const fieldsLegacy = await step('blueprint/fields/legacy-read', () => h.call('vibe_v5_blueprint', { action: 'read', id: draftId }))
-  const legacyOutline = fieldsLegacy && Array.isArray(fieldsLegacy.outline) ? fieldsLegacy.outline : []
-  if (!(fieldsLegacy && fieldsLegacy.ok !== false && fieldsLegacy.outlineFieldsComplete === false && legacyOutline.length === 0 && fieldsLegacy.fieldsSchema === 'vmu.blueprint.fields@1' && typeof fieldsLegacy.fieldsMeans === 'string')) {
-    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_LEGACY_READ', step: 'blueprint/fields/legacy-read', message: 'schema 之前的 revision 读面没有如实报 outlineFieldsComplete:false（且没有把旧记录装扮成完整）', means: 'legacy 记录必须与完整记录可区分：读面把旧记录说成 complete 就是假读数', receipt: { outlineCount: fieldsLegacy && fieldsLegacy.outlineCount, outlineFieldsComplete: fieldsLegacy && fieldsLegacy.outlineFieldsComplete, fieldsSchema: fieldsLegacy && fieldsLegacy.fieldsSchema } })
+  // ★ round-18 blind spot 1: a legacy record with an OUTLINE NODE and no `fields` did not exist in the fresh corpus
+  // (only an outline-less revision was read, so `"fields":null` appeared 0 times). New proposals are strict whenever
+  // an outline is provided, so a pre-schema node cannot be produced through `propose` any more — the honest way to
+  // have one in the corpus is to seed the durable ledger with the row an older build really wrote (the records face is
+  // the same durable store the blueprint rows live in; md-ownership.mjs uses h.records the same way). The read/state
+  // steps below then prove the READ face distinguishes it from a complete node.
+  const legacyOutline = [{ id: 'legacy-node', title: '旧节点（schema 之前，无 fields）', depth: 1 }]
+  const legacyBody = [
+    '- path：Shared/Legacy.md',
+    '- status：current',
+    '- revision：1',
+    '- proposedBy：r-acad',
+    '- proposedAt：2026-11-19T00:00:00.000Z',
+    '- proposalId：legacy-1',
+    '- outline：' + JSON.stringify(legacyOutline),
+    '## 正文',
+    'schema 之前写下的旧蓝图正文（节点没有十字段）。',
+  ].join(NL)
+  const legacySeed = await step('blueprint/fields/legacy-seed', () => h.records.put({ track: 'blueprint', kind: 'blueprint', title: 'Legacy blueprint (schema 之前)', body: legacyBody }))
+  const legacyId = (legacySeed && (legacySeed.id || (legacySeed.record && legacySeed.record.id))) || null
+  const fieldsLegacy = await step('blueprint/fields/legacy-read', () => h.call('vibe_v5_blueprint', { action: 'read', id: legacyId }))
+  const legacyReadNode = fieldsLegacy && Array.isArray(fieldsLegacy.outline) ? fieldsLegacy.outline[0] || null : null
+  const legacyReadOk = Boolean(fieldsLegacy && fieldsLegacy.ok !== false
+    && fieldsLegacy.outlineFieldsComplete === false
+    && fieldsLegacy.fieldsSchema === 'vmu.blueprint.fields@1'
+    && legacyReadNode && legacyReadNode.fields === null && legacyReadNode.fieldsComplete === false
+    && Array.isArray(legacyReadNode.fieldsMissing) && legacyReadNode.fieldsMissing.length === 10)
+  if (!legacyReadOk) {
+    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_LEGACY_READ', step: 'blueprint/fields/legacy-read', message: 'schema 之前的 revision 读面没有如实报 fields:null / fieldsComplete:false / fieldsMissing 10 项', means: 'legacy 记录必须与完整记录可区分：读面把旧记录读成 complete、或只读回 outlineCount 0，都让「旧记录不伪装完整」无法在层内复核', receipt: { outlineCount: fieldsLegacy && fieldsLegacy.outlineCount, outlineFieldsComplete: fieldsLegacy && fieldsLegacy.outlineFieldsComplete, node: legacyReadNode && { fields: legacyReadNode.fields, fieldsComplete: legacyReadNode.fieldsComplete, fieldsMissing: legacyReadNode.fieldsMissing } } })
+  }
+  const fieldsLegacyState = await step('blueprint/fields/legacy-state', () => h.call('vibe_v5_blueprint', { action: 'state', path: 'Shared/Legacy.md' }))
+  const legacyStateNode = fieldsLegacyState && Array.isArray(fieldsLegacyState.outline) ? fieldsLegacyState.outline[0] || null : null
+  const legacyStateOk = Boolean(fieldsLegacyState && fieldsLegacyState.ok !== false
+    && fieldsLegacyState.outlineFieldsComplete === false
+    && legacyStateNode && legacyStateNode.fields === null && legacyStateNode.fieldsComplete === false
+    && Array.isArray(legacyStateNode.fieldsMissing) && legacyStateNode.fieldsMissing.length === 10)
+  if (!legacyStateOk) {
+    failures.push({ code: 'SIM_BLUEPRINT_FIELDS_LEGACY_STATE', step: 'blueprint/fields/legacy-state', message: 'state 面没有把 schema 之前的旧 revision 读成 fields:null / fieldsComplete:false / fieldsMissing 10 项', means: 'legacy 的区分必须在 state 与 read 两个读面同源成立；只在一个面对，另一个面的读者仍然盲', receipt: { outlineCount: fieldsLegacyState && fieldsLegacyState.outlineCount, outlineFieldsComplete: fieldsLegacyState && fieldsLegacyState.outlineFieldsComplete, node: legacyStateNode && { fields: legacyStateNode.fields, fieldsComplete: legacyStateNode.fieldsComplete, fieldsMissing: legacyStateNode.fieldsMissing } } })
   }
   const blueprintFields = {
     incomplete: { code: fieldsIncomplete && fieldsIncomplete.code, detail: fieldDetail && { schema: fieldDetail.schema, missing: fieldDetail.missing, missingCn: fieldDetail.missingCn, nodes: Array.isArray(fieldDetail.nodes) ? fieldDetail.nodes.length : null, shape: fieldDetail.shape } },
     complete: { id: completeId, ok: fieldsCompleteProposal && fieldsCompleteProposal.ok !== false, outlineCount: fieldsCompleteProposal && fieldsCompleteProposal.outlineCount },
     read: { outlineCount: fieldsRead && fieldsRead.outlineCount, outlineFieldsComplete: fieldsRead && fieldsRead.outlineFieldsComplete, perNode: outlineRows.map((r) => ({ id: r.id, fieldsComplete: r.fieldsComplete, keys: r.fields ? Object.keys(r.fields) : [], fieldsMissing: r.fieldsMissing })) },
     state: { outlineFieldsComplete: fieldsState && fieldsState.outlineFieldsComplete },
-    legacy: { outlineFieldsComplete: fieldsLegacy && fieldsLegacy.outlineFieldsComplete, outlineCount: fieldsLegacy && fieldsLegacy.outlineCount },
+    legacy: { id: legacyId, outlineCount: fieldsLegacy && fieldsLegacy.outlineCount, outlineFieldsComplete: fieldsLegacy && fieldsLegacy.outlineFieldsComplete, node: legacyReadNode && { fields: legacyReadNode.fields, fieldsComplete: legacyReadNode.fieldsComplete, fieldsMissing: legacyReadNode.fieldsMissing }, stateOutlineFieldsComplete: fieldsLegacyState && fieldsLegacyState.outlineFieldsComplete },
     means: 'MAIN.4–13 rule-step evidence: per-field refusal (missing/missingCn/nodes/shape), complete node writes, read/state aggregate true, legacy revision reads false (never dressed up)',
   }
   const reindex = await step('record/reindex', () => h.call('vibe_vmu_records', { action: 'reindex', track: 'blueprint' }))

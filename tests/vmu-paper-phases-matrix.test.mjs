@@ -1,20 +1,31 @@
 // ROUND-17 P1①: the paper phases were never rendered by any ruler (37 assemblies, 0 hits), so the B-1/B-2/B-5 fixes in
 // `v5r-paper-writing/review/final-guide` were BLIND to the audit. This test renders the three paper phases through the
-// same collector the section matrix uses and asserts the three repaired facts are really in the text a seat reads.
+// same collector the section matrix uses (which now applies `decideSections` for paper turns, exactly like the turn loop)
+// and asserts the three repaired facts AND the policy-filtered shape of each paper screen are what a seat reads.
 import { test } from 'node:test'
 import { strict as assert } from 'node:assert'
-const { collect, PAPER_PHASES } = await import(new URL('../scripts/sim/audit/prompt-sections.mjs', import.meta.url).href)
+const { collect, analyzeSections, PAPER_PHASES } = await import(new URL('../scripts/sim/audit/prompt-sections.mjs', import.meta.url).href)
 
 const got = await collect({ slots: ['chair', 'member', 'temp'], phases: ['paper-write', 'paper-review', 'paper-final'] })
+const analysis = analyzeSections(got.sections)
+const idsOf = (slot, phase) => got.sections.filter((s) => s.slot === slot && s.phase === phase).map((s) => s.sectionId)
 const textOf = (slot, phase) => got.sections.filter((s) => s.slot === slot && s.phase === phase).map((s) => s.text).join('\n')
 
-test('the paper phases are rendered by the matrix collector (not blind any more)', () => {
+test('the paper phases are rendered by the matrix collector AND filtered by the same section policy', () => {
   assert.deepEqual([...PAPER_PHASES], ['paper-write', 'paper-review', 'paper-final'])
-  assert.ok(got.combos.length > 0, 'precondition (RULE E shape A): at least one combo exists before the loop walks them — an empty list must not make the assertions vacuous')
-  assert.equal(got.combos.length, 9, 'three seats × three paper phases (literal 9: a positive-integer guard — RULE E cannot see `3 * 3` as a non-empty precondition for the loop below, and an empty combos list would make that loop vacuously pass)')
+  assert.equal(got.combos.length, 3 * 3, 'three seats × three paper phases')
+  assert.equal(analysis.assemblyRepeats.length, 0, 'no sentence renders twice inside one paper prompt')
+  assert.equal((analysis.assemblyDups || []).length, 0, 'no assembly-level duplicate left in a paper screen')
   for (const c of got.combos) {
-    assert.ok(c.chars > 1000, c.slot + '/' + c.phase + ' is a real assembly, not an empty slice')
-    assert.ok(c.headings > 10, c.slot + '/' + c.phase + ' has sections')
+    const cap = c.slot === 'chair' ? 36500 : 30100
+    assert.ok(c.chars > 20000 && c.chars <= cap, c.slot + '/' + c.phase + ' = ' + c.chars + ' is inside cap ' + cap)
+    const ids = idsOf(c.slot, c.phase)
+    // exactly ONE fixture variant, ONE reply catalogue, ONE formal status, ONE leader variant (policy picked it)
+    assert.deepEqual(ids.filter((x) => /^v5r-fixture-(constraint|tools)$/.test(x)), ['v5r-fixture-tools'], c.slot + '/' + c.phase + ': tools fixture only')
+    assert.deepEqual(ids.filter((x) => /reply-(spec|compact)/.test(x)), ['v5r-reply-compact'], c.slot + '/' + c.phase + ': compact catalogue only')
+    assert.deepEqual(ids.filter((x) => /formal-status/.test(x)), ['v5r-formal-status-none'], c.slot + '/' + c.phase + ': one formal status')
+    assert.equal(ids.filter((x) => /leaderless/.test(x)).length, 0, c.slot + '/' + c.phase + ': no leaderless variant on a leader-staffed paper turn')
+    assert.equal(ids.filter((x) => /v5r-charter-taskboard-leader$/.test(x)).length, 1, c.slot + '/' + c.phase + ': exactly one student-board leader variant')
   }
 })
 

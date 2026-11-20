@@ -465,9 +465,21 @@
           "step": "blueprint/fields/legacy-read",
           "side": "allow",
           "note": "schema 之前的旧 revision 读 outlineFieldsComplete:false（不装扮成完整）"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/legacy-seed",
+          "side": "allow",
+          "note": "round-18：把 schema 之前的旧 blueprint 行真实写进 durable ledger（新 propose 已严格校验，旧行只能来自存量），供 read/state 复核 fields:null"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/fields/legacy-state",
+          "side": "allow",
+          "note": "round-18：state 面同源读 fields:null / fieldsComplete:false / fieldsMissing 10 项"
         }
       ],
-      "notes": "record/reindex now carries a named refusal: since RUN 259 a reindex blocks on a member plain markdown draft (VMU_RECORDS_REINDEX_BLOCKED), so the rule is evidenced by blueprint/propose and blueprint/adopt; the refused step is kept (side=refuse) because deleting it would hide that the scenario still reindexes. ｜ round-17 B4：新增 fieldsSchema 的拒绝/允许/读面/旧 revision 规则步（VMU_BLUEPRINT_FIELDS_MISSING 逐字段 detail、fieldsComplete:true、legacy false），把 TB-2795 的十字段门从 test-only 提升到规则步可核。"
+      "notes": "record/reindex now carries a named refusal: since RUN 259 a reindex blocks on a member plain markdown draft (VMU_RECORDS_REINDEX_BLOCKED), so the rule is evidenced by blueprint/propose and blueprint/adopt; the refused step is kept (side=refuse) because deleting it would hide that the scenario still reindexes. ｜ round-17 B4：新增 fieldsSchema 的拒绝/允许/读面/旧 revision 规则步（VMU_BLUEPRINT_FIELDS_MISSING 逐字段 detail、fieldsComplete:true、legacy false），把 TB-2795 的十字段门从 test-only 提升到规则步可核。 ｜ round-18：legacy 行改为 durable seed + read/state 双面复核（fresh corpus 真的出现 fields:null/fieldsMissing 10）。"
     },
     "B5": {
       "rule": "蓝图由院士+常驻研究员共同设计",
@@ -1056,9 +1068,21 @@
           "step": "close/closure-count-window",
           "side": "allow",
           "note": "F-87-03：closure 读数在规则步回执里带 rowsRead/rowsCounted/rowsArchivedByWindow/countWindow，且 archived = read − counted（counted ≤ read）"
+        },
+        {
+          "scenario": "meetings",
+          "step": "close/closure-reopen-window",
+          "side": "allow",
+          "note": "F-87-03 archived-window：reopen-closure 推进 durable closure_window（旧窗口票变 archive，不静默丢）"
+        },
+        {
+          "scenario": "meetings",
+          "step": "close/closure-count-window-archived",
+          "side": "allow",
+          "note": "F-87-03 archived-window 读面：rowsRead>0、rowsArchivedByWindow=rowsRead-rowsCounted、countWindow=2"
         }
       ],
-      "notes": "证明投票板/动议表决与议题绑定，但不能证明「投票板不用于辩论」的反面用例（没有辩论中的投票板步骤）。 ｜ F-87-03：补 close/closure-count-window 规则步，计票窗口四元组可核（round-17）。"
+      "notes": "证明投票板/动议表决与议题绑定，但不能证明「投票板不用于辩论」的反面用例（没有辩论中的投票板步骤）。 ｜ F-87-03：补 close/closure-count-window 规则步，计票窗口四元组可核（round-17）。 ｜ round-18：补 archived-window 实例（reopen-closure→window2→rowsRead>0/archived>0 的 folded 形状）。"
     },
     "E20": {
       "rule": "任务板：设置与认领交派",
@@ -1111,9 +1135,21 @@
           "step": "close/closure-count-window",
           "side": "allow",
           "note": "F-87-03：closure 读数在规则步回执里带 rowsRead/rowsCounted/rowsArchivedByWindow/countWindow，且 archived = read − counted（counted ≤ read）"
+        },
+        {
+          "scenario": "meetings",
+          "step": "close/closure-reopen-window",
+          "side": "allow",
+          "note": "F-87-03 archived-window：reopen-closure 推进 durable closure_window（旧窗口票变 archive，不静默丢）"
+        },
+        {
+          "scenario": "meetings",
+          "step": "close/closure-count-window-archived",
+          "side": "allow",
+          "note": "F-87-03 archived-window 读面：rowsRead>0、rowsArchivedByWindow=rowsRead-rowsCounted、countWindow=2"
         }
       ],
-      "notes": "回执带 quorum，但投票板的 floor（min_votes）不是会议法定人数 m，两者不要混。 ｜ F-87-03：补 close/closure-count-window 规则步，计票窗口四元组可核（round-17）。"
+      "notes": "回执带 quorum，但投票板的 floor（min_votes）不是会议法定人数 m，两者不要混。 ｜ F-87-03：补 close/closure-count-window 规则步，计票窗口四元组可核（round-17）。 ｜ round-18：补 archived-window 实例（reopen-closure→window2→rowsRead>0/archived>0 的 folded 形状）。"
     },
     "E24": {
       "rule": "lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意",

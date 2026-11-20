@@ -9,7 +9,7 @@
   },
   "wildcard": "one * per segment matches exactly one path segment; used only for identifier-shaped segments (member ids, run ids, map keys measured as 3+ children)",
   "counts": {
-    "call-shape": 241,
+    "call-shape": 239,
     "host-surface": 29,
     "stale-corpus": 0,
     "pending-fix": 1
@@ -1161,15 +1161,6 @@
     {
       "class": "call-shape",
       "tool": "vibe_vmu_status",
-      "field": "closureVote.windowSourceMeans",
-      "owner": "TB-2643",
-      "why": "seen in the D-reharvested rich corpus (real-fields.jsonl:21229); the live call shape that produced it is not walked by any scenario receipt today (shape/args differ, not a missing product field)",
-      "wouldBeWrongIf": "a scenario receipt starts carrying this path (then this row is a stale claim and must be deleted)",
-      "evidence": "real-fields.jsonl:21229"
-    },
-    {
-      "class": "call-shape",
-      "tool": "vibe_vmu_status",
       "field": "usage.failure",
       "owner": "TB-2643",
       "why": "seen in the D-reharvested rich corpus (real-fields.jsonl:21229); the live call shape that produced it is not walked by any scenario receipt today (shape/args differ, not a missing product field)",
@@ -2123,15 +2114,6 @@
     },
     {
       "class": "call-shape",
-      "tool": "vibe_vmu_vote",
-      "field": "closureVote.windowSourceMeans",
-      "owner": "TB-2643",
-      "why": "seen in the D-reharvested rich corpus (real-fields.jsonl:21091); the live call shape that produced it is not walked by any scenario receipt today (shape/args differ, not a missing product field)",
-      "wouldBeWrongIf": "a scenario receipt starts carrying this path (then this row is a stale claim and must be deleted)",
-      "evidence": "real-fields.jsonl:21091"
-    },
-    {
-      "class": "call-shape",
       "tool": "vibe_v5_task_create",
       "field": "task.assignmentMeans",
       "owner": "TB-2643",
@@ -2461,7 +2443,7 @@
     "sessions": 960,
     "digest": "sha256:26610bbaf0a710ae01c9fd3d6b9c1cac3d5f9a0fd62127e7c85b47f2e21593da",
     "harvestedAt": "2026-11-19T13:53 (D-clean) -> re-harvested by Lead 18:32",
-    "note": "the D clean at 13:53 deleted the previous corpus; this ledger was re-pinned against the 24,530-row / 960-session re-harvest (digest above). counts=241 call-shape / 29 host-surface / 1 pending-fix",
+    "note": "the D clean at 13:53 deleted the previous corpus; this ledger was re-pinned against the 24,530-row / 960-session re-harvest (digest above). counts=241 call-shape / 29 host-surface / 1 pending-fix ｜ round-18：archived-window 实例（reopen-closure→window2）让 closureVote.windowSourceMeans 真正出现在回执里，删掉这 2 条已闭合的 baseline 行（stale claim）。",
     "sessionsByUniqueSessionId": 883,
     "sessionsNote": "Lead reported 960 sessions at re-harvest; a unique-sessionId pass over the file counts 883 — both recorded rather than one silently replacing the other."
   }

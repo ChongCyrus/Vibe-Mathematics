@@ -5714,7 +5714,9 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     })
     const state = blueprintState({ records, path, now: clockMs, nowFromKernel: true, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     const filed = proposed.filed !== false
-    return Object.assign({}, proposed, outlineFieldsReading(state.outline), {
+    // ★ R18-1: a DRAFT propose receipt must render the SAME fields projection as read/state — the draft's outline,
+    // not the current revision's (draft != current; using state.outline made outline:[] + fieldsComplete:false).
+    return Object.assign({}, proposed, outlineFieldsReading(proposed.outline), {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
       inForce: state.current,
       staleAfterMs: state.staleAfterMs,

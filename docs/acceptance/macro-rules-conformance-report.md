@@ -1,7 +1,7 @@
 # 「宏观层面 v5r 运行规则」逐句核对报告（TB-2795）
 
 - **范围**：`D:/wd/vibemath开发/宏观层面v5r运行规则.md`（73 行 / 9,105 B / 2026-11-03 版）→ **N=76 句**，一行一句（矩阵：`docs/acceptance/macro-rules-conformance-matrix.md`）。
-- **证据层**：sim `sim-audit-round-15`（17 场景 / 960 steps / 987 receipts / HEAD `20c2a496…`）；真机 RUN 88（13/13 PASS，HEAD 同）＋ RUN 87（失败面记录，用于反灯/对照）；**代码/测试证据 HEAD `a1a84559`（TB-2795 第二版：九字段 + 矩阵进闸）**。
+- **证据层**：sim `sim-audit-round-15`（17 场景 / 960 steps / 987 receipts / HEAD `20c2a496…`）；真机 RUN 88（13/13 PASS，HEAD 同）＋ RUN 87（失败面记录，用于反灯/对照）；**代码/测试证据 HEAD `42ac7923`（round-17 收口；转判落地 `a1a84559`）**。
 - **自检**：句数守恒 **76/76**；id 唯一；逐字引用 100%；sim/test 覆盖 **75/76（99%）**；纯 docs **1/76**；CONFORMS 行全部含 sim/test/real 行为证据。校验：`node scripts/audit-macro-rules.mjs --check`。
 
 ## 1. 判定总表
@@ -18,7 +18,7 @@
 | id | 判定 | 缺什么 | owner | 最小修法 | 来源 |
 | --- | --- | --- | --- | --- | --- |
 
-**说明**：16 条 HALF-BUILT 已在本批（commit `a1a84559`）全部转 CONFORMS（§8：MAIN.4–13 九字段 schema/propose 校验/读面；FSEAT.12 content 标 DEPRECATED/IGNORED）；§2 无残留，GAP=0。
+**说明**：16 条 HALF-BUILT 已在本批（round-17 收口 commit `42ac7923`；转判落地 `a1a84559`）全部转 CONFORMS（§8：MAIN.4–13 九字段 schema/propose 校验/读面；FSEAT.12 content 标 DEPRECATED/IGNORED）；§2 无残留，GAP=0。
 
 **NOT-APPLICABLE**：`FSEAT.11`（（就像群论的发明那样，在解决一个实际问题中发明出封装出有价值的一般化理论体系、技…；不适用 — 覆盖点：C9 方法库机制（rules-extra/c9-*））。
 
@@ -76,7 +76,7 @@
 
 ## 5. 盲区与残余（具名，不当 PASS）
 
-1. **蓝图九字段（MAIN.4–MAIN.13）**：已在 `a1a84559` 闭环（`BLUEPRINT_REQUIRED_FIELDS` 十字段 schema + `blueprintFieldsStatusOf` + propose strict `VMU_BLUEPRINT_FIELDS_MISSING` + outline 读面），矩阵行已转 CONFORMS；**残余盲区**：round-17 sim 层仍无 `outlineFieldsComplete:true`（0 条），九字段只能靠 test（`vmu-blueprint-fields` 11/0）+ 独立 replay 复核。
+1. **蓝图九字段（MAIN.4–MAIN.13）**：已在 `42ac7923` 闭环（转判落地 `a1a84559`）（`BLUEPRINT_REQUIRED_FIELDS` 十字段 schema + `blueprintFieldsStatusOf` + propose strict `VMU_BLUEPRINT_FIELDS_MISSING` + outline 读面），矩阵行已转 CONFORMS；**残余盲区**：round-17 sim 层仍无 `outlineFieldsComplete:true`（0 条），九字段只能靠 test（`vmu-blueprint-fields` 11/0）+ 独立 replay 复核。
 2. **脚本归档（FSEAT.17）**：机制与提示词均在（`vibe_v5_script` chair-only + `v5r-blocks-b:1208` 教学），RUN 87/88 的 `tool/call` 中 `vibe_v5_script` = 0 ⇒ 合法未行使，不是提示词缺口（结论与建议见 §7）。
 3. **RUN 87 的失败面**（V14/V17/V20）已在 RUN 88 闭环；RUN 87 的 P0（fixtureMode 同屏）在 RUN 88 以 `fixture-constraint` 全文 0 关闭；本轮 impl 批次把 RUN 88 的全部 P1/P2/P3 与 6 条提示词问题修掉（commit `f2972c0d`，T1 891/891/0、152 gates 绿）。
 4. **切分口径的边界**：`（…）` 内标点不切（如 MEM.1 括号内句号）；冒号引言行不计句（已在矩阵 §0 说明）；若规则文档更新，N 与 id 由校验器重算，矩阵须同 commit 重生成。
@@ -97,7 +97,7 @@
 - 真机：RUN 87（`full-1119-122740.jsonl`）与 RUN 88（`full-1119-235611.jsonl`）的 `tool/call` 事件里 `vibe_v5_script` 均 **0 次**（工具在 header 可用，只是任务未用到脚本归档）⇒ 不需要补提示词；若要消掉这唯一一个「机制有 real 无」的盲区，只需下一 RUN 的任务书写一个「把临时脚本归档到 scripts 轨」的动作（可选，非阻塞）。
 - 建议（可选）：在 report/任务模板的 smoke 清单加一条 `vibe_v5_script{op:"archive"}` 的真实调用，作为 FSEAT.17 的 real 灯；提示词无需改。
 
-## 8. impl 批次落地后的转判（commit `a1a84559` · The macro rules are now a machine-checked matrix, and the blueprint can no longer record a direction with no fields）
+## 8. impl 批次落地后的转判（round-17 收口 commit `42ac7923`；转判落地 `a1a84559`）
 
 ### 8.1 由 HALF-BUILT 转 CONFORMS（16 条）
 
@@ -124,4 +124,4 @@
 
 （无：16 条全部转 CONFORMS）
 
-> 说明：本批 `a1a84559` 把 16 条 HALF-BUILT 全部闭环（MAIN.4–13：九字段 schema/propose 校验/读面；FSEAT.12：content 标 DEPRECATED/IGNORED）；§2 无残留。
+> 说明：本批 `42ac7923`（转判落地 `a1a84559`）把 16 条 HALF-BUILT 全部闭环（MAIN.4–13：九字段 schema/propose 校验/读面；FSEAT.12：content 标 DEPRECATED/IGNORED）；§2 无残留。

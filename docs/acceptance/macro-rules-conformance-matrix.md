@@ -2,7 +2,7 @@
 
 > **自动校验**：`node scripts/audit-macro-rules.mjs --check`（句数守恒 / id 唯一 / 逐字引用 / 证据非空 / CONFORMS 必须有行为证据 / **§0 counts == rows（SOC_COUNTS_MISMATCH）** / sim·test 覆盖率 ≥60% / docs-only ≤25%）。
 > **规则原文**：`D:/wd/vibemath开发/宏观层面v5r运行规则.md`（73 行 / 9,105 B / 2026-11-03 版，逐句切分后 **N=76** 句）。
-> **证据层**：sim 冻结层 `D:/_tmp/proc-lane/sim-audit-round-15`（17 场景 / 960 steps / 987 receipts / 640 sections，HEAD `20c2a496…`）；真机 RUN 88（`run91-evidence/`，HEAD `20c2a496…`，13/13 验点 PASS；RUN 87 失败面见报告）；**代码/测试证据 HEAD `a1a84559`（TB-2795 第二版：九字段 + 矩阵进闸）**。
+> **证据层**：sim 冻结层 `D:/_tmp/proc-lane/sim-audit-round-15`（17 场景 / 960 steps / 987 receipts / 640 sections，HEAD `20c2a496…`）；真机 RUN 88（`run91-evidence/`，HEAD `20c2a496…`，13/13 验点 PASS；RUN 87 失败面见报告）；**代码/测试证据 HEAD `42ac7923`（round-17 收口；转判落地 `a1a84559`）**。
 > **切分口径**：按中文句号/分号/感叹/问号与 ①②③④ 条目编号切；`#` 标题、`---`、空行、冒号结尾的引言行是结构行（不计句）；`（…）` 与 `**…**` 内的标点不切；冒号尾片段并入其引导的句子。id=`段.句序`（段：MEM/FPUB/FSEAT/MAIN/ROUT/MEET/DEBATE/PAPER/EXTRA），不依赖行号。
 
 ## 0. 计数与三类统计

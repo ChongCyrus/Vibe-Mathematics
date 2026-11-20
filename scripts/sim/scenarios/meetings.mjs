@@ -446,6 +446,34 @@ export async function meetings(h, { log = () => {} } = {}) {
     failures.push({ code: 'SIM_F87_03_COUNT_WINDOW', step: 'close/closure-count-window', message: 'closure reading does not carry a readable count window', means: 'the F-87-03 four-tuple (rowsRead/rowsCounted/rowsArchivedByWindow/countWindow) must be present and explained: either folded arithmetic or the named session-only shape; a missing/NaN window leaves the rule step non-auditable', receipt: countWindowReading })
   }
   highlights.closureCountWindow = { reading: countWindowReading, shape: foldedShape ? 'folded' : (sessionOnlyShape ? 'session-only' : 'unreadable'), consistent: foldedShape || sessionOnlyShape, means: 'F-87-03 in a RULE step: the closure reading reports the counting window (rowsRead/rowsCounted/rowsArchivedByWindow/countWindow); in-process closes are session-only (read=0, archived=0) while folded sessions keep counted<=read and archived=read-counted — both are read, neither is guessed' }
+
+  // ★ round-18 blind spot 2: the first reading above is the SESSION-ONLY shape (fold rows are still in flight, so
+  // rowsRead=0). The ARCHIVED shape (rowsRead>0, rowsArchivedByWindow>0) needs a real older window: `reopen-closure`
+  // is the named root-only entry that advances the durable `closure_window` AND flushes the in-flight fold write, so
+  // the rows just cast become an archive under window 1 while the reading counts window 2. One new-window vote then
+  // proves the two numbers move independently (counted=1, archived=read-1).
+  const reopened = await step('close/closure-reopen-window', () => h.call('vibe_vmu_turn', { op: 'reopen-closure', why: 'F-87-03 archived-window instance: the votes cast this meeting stay on file under the old window' }))
+  if (!(reopened && reopened.ok !== false && Number(reopened.window) === 2)) {
+    failures.push({ code: 'SIM_F87_03_REOPEN', step: 'close/closure-reopen-window', message: 'reopen-closure did not advance the durable window to 2', means: 'the archived-window instance requires a real second window; a step that cannot advance it leaves rowsArchivedByWindow unexercised in the layer', receipt: reopened })
+  }
+  const newWindowVote = await step('close/closure-window-2-vote', () => h.call('vibe_vmu_vote', { member: 'r-acad', solved: true, why: '机制剧本：新窗口内的一票（旧窗口票应被 archived，不计入）' }))
+  const archivedWindow = await step('close/closure-count-window-archived', () => h.call('vibe_vmu_status', { detail: 'closure' }))
+  const archivedCv = archivedWindow && archivedWindow.closureVote ? archivedWindow.closureVote : null
+  const archivedReading = archivedCv ? {
+    rowsRead: num(archivedCv.rowsRead), rowsCounted: num(archivedCv.rowsCounted),
+    rowsArchivedByWindow: num(archivedCv.rowsArchivedByWindow), countWindow: archivedCv.countWindow,
+    rowsByWindow: archivedCv.rowsByWindow || null, votersWindows: archivedCv.votersWindows || null,
+  } : null
+  const archivedConsistent = Boolean(archivedReading
+    && Number.isFinite(archivedReading.rowsRead) && archivedReading.rowsRead > 0
+    && Number.isFinite(archivedReading.rowsCounted)
+    && Number.isFinite(archivedReading.rowsArchivedByWindow) && archivedReading.rowsArchivedByWindow > 0
+    && archivedReading.rowsArchivedByWindow === archivedReading.rowsRead - archivedReading.rowsCounted
+    && archivedReading.countWindow === 2)
+  if (!archivedConsistent) {
+    failures.push({ code: 'SIM_F87_03_ARCHIVED_WINDOW', step: 'close/closure-count-window-archived', message: 'no archived-window instance: the reading does not show rowsRead>0 with rowsArchivedByWindow=rowsRead-rowsCounted under window 2', means: 'F-87-03 folded shape must be triggered by a REAL old window, not only asserted in prose; rowsArchivedByWindow>0 is the field the rule exists for', receipt: archivedReading })
+  }
+  highlights.closureCountWindowArchived = { reopenedWindow: reopened && reopened.window, newWindowVote: pick(newWindowVote, ['ok', 'member', 'solved', 'persistedToFold', 'foldKey']), reading: archivedReading, consistent: archivedConsistent, means: 'F-87-03 archived-window instance: votes from the previous window are kept on file (rowsRead>0, rowsArchivedByWindow>0) and excluded by name; a new-window vote counts (rowsCounted=1) while archived stays rowsRead-1' }
   highlights.close = {
     closureVotes: closureVotes.map((r) => pick(r, ['ok', 'member', 'solved', 'persistedToFold', 'foldKey'])),
     motion: pick(motion, ['ok', 'meeting', 'motion', 'motionQualified', 'status']),

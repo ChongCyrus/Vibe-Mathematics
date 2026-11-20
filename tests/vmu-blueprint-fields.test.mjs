@@ -78,6 +78,20 @@ console.log('=== 3. FULL FIELDS OK; READ FACE; LEGACY HONEST ===')
     'legacy node: fields:null + fieldsComplete:false + 10 missing (compat, not fake complete)', lrow && { f: lrow.fields, c: lrow.fieldsComplete, n: lrow.fieldsMissing && lrow.fieldsMissing.length })
 }
 
+console.log('=== 3b. R18-1: a DRAFT propose receipt carries fields + aggregate (same source as read) ===')
+{
+  const d1 = await call({ action: 'propose', path: 'Shared/Draft.md', member: 'r-1', text: '草稿正文', materialize: true, outline: [node('d1'), node('d2')] })
+  const dr = d1.parsed && Array.isArray(d1.parsed.outline) ? d1.parsed.outline : []
+  ok(d1.ok && dr.length === 2 && dr.every((r) => r.fields && Object.keys(r.fields).length === 10 && r.fieldsComplete === true),
+    'R18-1 draft receipt: outline[].fields + fieldsComplete:true (NOT outline:[])', { rows: dr.length, complete: d1.parsed && d1.parsed.outlineFieldsComplete })
+  ok(d1.parsed && d1.parsed.outlineFieldsComplete === true && Array.isArray(d1.parsed.outlineFieldsMissing) && d1.parsed.outlineFieldsMissing.length === 0,
+    'R18-1 draft receipt: aggregate outlineFieldsComplete/outlineFieldsMissing present and correct', d1.parsed && { c: d1.parsed.outlineFieldsComplete, m: d1.parsed.outlineFieldsMissing })
+  const d2 = await call({ action: 'propose', path: 'Shared/Draft.md', member: 'r-1', text: '续写正文', materialize: true, outline: [node('d3')] })
+  const dr2 = d2.parsed && Array.isArray(d2.parsed.outline) ? d2.parsed.outline : []
+  ok(d2.ok && dr2.length === 3 && dr2.every((r) => r.fields && r.fieldsComplete === true) && d2.parsed.outlineFieldsComplete === true,
+    'R18-1 continuation (merged) receipt ALSO carries fields for every merged node', { rows: dr2.length, ids: dr2.map((r) => r.id) })
+}
+
 console.log('=== 4. LAMP: deleting validation accepts missing fields ===')
 {
   const dir = await mkdtemp(join(tmpdir(), 'vmu-bpf-lamp-'))
@@ -91,6 +105,29 @@ console.log('=== 4. LAMP: deleting validation accepts missing fields ===')
   let lampErr = null
   try { lamp.proposeBlueprint({ records: kernel.records, path: 'Shared/Lamp.md', text: 'lamp', by: 'r-1', seat: 'member', at: T0, materialize: true, fieldsSchema: B.BLUEPRINT_FIELDS_SCHEMA, outline: [node('o1', { fields: { evaluationNow: 'only one' } })] }) } catch (e) { lampErr = e }
   ok(lampErr === null, 'LAMP RED-worthy: without validation a 1/10-field node is ACCEPTED', lampErr && lampErr.code)
+}
+
+console.log('=== 5. LAMP(R18-1): deleting the DRAFT receipt projection makes outline:[] again ===')
+{
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-bpf-draftlamp-'))
+  cpSync(VMU, join(dir, 'vibe-math-vmu'), { recursive: true })
+  const file = join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')
+  const src = readFileSync(file, 'utf8')
+  const marker = 'outlineFieldsReading(proposed.outline)'
+  ok(src.includes(marker), 'R18-1 lamp-setup: the draft projection is locatable')
+  writeFileSync(file, src.replace(marker, 'outlineFieldsReading([])'), 'utf8')
+  const lampEntry = await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'vibe-math-vmu.js')).href + '?draftlamp=' + Date.now())
+  const specs2 = []
+  const ctx2 = { effect: (fn) => fn(), on: () => () => {}, tools: { register: async (s) => { specs2.push(s); return () => {} } } }
+  const h2 = lampEntry.apply(ctx2, { root: join(dir, 'root'), packs: ['v5r'], clock: () => T0 })
+  await h2.ready()
+  await h2.kernel.members.hire({ id: 'acad', slot: 'chair' })
+  await h2.kernel.members.hire({ id: 'r-1', slot: 'member' })
+  const spec2 = specs2.find((s) => s.name === 'vibe_v5_blueprint')
+  const raw = await spec2.execute({ action: 'propose', path: 'Shared/LampDraft.md', member: 'r-1', text: 'lamp', materialize: true, outline: [{ id: 'l1', title: 'lamp', depth: 1, ...{ fields: shape(), fieldsSchema: B.BLUEPRINT_FIELDS_SCHEMA } }] })
+  const lp = JSON.parse(raw)
+  ok(lp && lp.ok === true && Array.isArray(lp.outline) && lp.outline.length === 0 && lp.outlineFieldsComplete === false,
+    'R18-1 LAMP RED-worthy: without the draft projection the propose receipt reverts to outline:[] / fieldsComplete:false', { outline: lp && lp.outline && lp.outline.length, complete: lp && lp.outlineFieldsComplete })
 }
 
 console.log('=== VMU BLUEPRINT FIELDS: ' + passed + ' passed, ' + failures.length + ' failed ===')

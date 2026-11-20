@@ -281,10 +281,29 @@ export async function measure(options = {}) {
     settings,
   })
 
+  // ★ round-18 lane-B P1: THE PAPER SCREENS WERE OUTSIDE EVERY BUDGET CRITERION. The turn loop only accepts seven
+  // turn phases, so this ruler measured four and the three paper phases (32–40k before the policy fix) were never
+  // compared with any cap. The paper screens are rendered by `scripts/sim/audit/prompt-sections.mjs` through the
+  // pack's `decideSections` policy (the same text a seat receives), so their FULL texts are merged into the same
+  // per-seat phase map and judged by the same caps/duplicate/prose checks as the turn phases.
+  const { collect: collectPaperScreens, PAPER_PHASES: PAPER_GATE_PHASES } = await import('./sim/audit/prompt-sections.mjs')
+  const paperScreens = await collectPaperScreens({ slots: ['chair', 'member', 'temp'], phases: PAPER_GATE_PHASES })
+  const paperTextOf = new Map((paperScreens.texts || []).map((row) => [row.slot + '/' + row.phase, row.text]))
   const seats = {}
   for (const role of ['chair', 'member', 'temp']) {
     const byPhase = {}
-    for (const phase of ['normal', 'meeting', 'checkpoint', 'verify']) {
+    for (const phase of [...['normal', 'meeting', 'checkpoint', 'verify'], ...PAPER_GATE_PHASES]) {
+      if (PAPER_GATE_PHASES.includes(phase)) {
+        const text = String(paperTextOf.get(role + '/' + phase) || '')
+        byPhase[phase] = {
+          phase,
+          chars: text.length,
+          duplicates: duplicateFacts(text),
+          proseParams: proseParamFacts(text),
+          uncallable: uncallableNames(text, declaredNames),
+        }
+        continue
+      }
       const loop = loopOf()
       const asm = await loop.assemble(loop.open(ctxOf(role, phase)).turn)
       const text = String(asm.text || '')

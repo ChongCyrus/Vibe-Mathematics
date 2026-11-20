@@ -117,6 +117,14 @@ export async function collect({ slots = DEFAULT_SLOTS, phases = DEFAULT_PHASES }
   const harness = await boot({ root, withPrompt: true })
   let paperPipeline = null
   let paperSettings = null
+  // ★ round-18 lane-B P0: THE PAPER PHASES MUST GO THROUGH THE PACK'S SECTION POLICY, EXACTLY LIKE A TURN.
+  // Before this, paperText called `pipeline.assemble` directly, so every paper screen carried BOTH fixture variants
+  // (constraint + tools = contradictory instructions, measured), BOTH reply catalogues (7 026 + 2 861 chars, 11
+  // verbatim duplicate lines), every formal-status and every leader variant, and all of them above the seat caps.
+  // A screen that bypassed `decideSections` is not "the text a seat reads"; it is a second, larger prompt nobody
+  // receives. The policy call below uses the SAME function, the SAME settings layer and the SAME turn facts the
+  // kernel turn loop uses (`kernel/turn/index.js`: `sectionPolicy({ settings: turnSettings, turn })` then
+  // `setSectionEnabled`), so the collector's slice is the real screen by construction.
   const paperText = async (slot, phase) => {
     if (!paperPipeline) {
       const { createPromptPipeline } = await import('../../../vibe-math-vmu/kernel/prompt/index.js')
@@ -127,13 +135,34 @@ export async function collect({ slots = DEFAULT_SLOTS, phases = DEFAULT_PHASES }
     }
     const holder = slot === 'chair' ? 'r-acad' : slot === 'temp' ? 't-1' : 'r-1'
     const label = slot === 'chair' ? '院士' : slot === 'temp' ? '临时工' : '常驻研究员'
+    // The paper turn's facts: the phase is the paper phase itself, the seat is the caller's own, and the roster
+    // carries the chair so the leader pair resolves to ONE variant (a paper turn is not leaderless).
+    const turn = {
+      phase,
+      role: slot,
+      member: holder,
+      roleLabel: label,
+      round: 3,
+      rosterIds: ['r-acad', 'r-1', 'r-2', 't-1'],
+      chairId: 'r-acad',
+      leaderOnStaff: true,
+    }
+    const { decideSections } = await import('../../../vibe-math-vmu/packs/v5r/middleware/prompt-switches.js')
+    const decided = decideSections({ settings: paperSettings, turn })
+    for (const e of (decided && decided.errors) || []) throw new Error('paper section policy refused ' + slot + '/' + phase + ': ' + e.code + ' ' + e.message)
+    const setSectionEnabled = (name, on) => {
+      try { if (on) paperPipeline.enable(name); else paperPipeline.disable(name) } catch (e) { if (!e || e.code !== 'VMU_NO_SUCH_OBJECT') throw e }
+    }
+    for (const d of (decided && decided.decisions) || []) setSectionEnabled(d.name, d.enabled !== false)
     return String((await paperPipeline.assemble({ member: holder, role: slot, roleLabel: label, phase, round: 3, settings: paperSettings })).text)
   }
   const sections = []
   const combos = []
+  const texts = []
   for (const slot of slots) {
     for (const phase of phases) {
       const text = PAPER_PHASES.includes(phase) ? await paperText(slot, phase) : await harness.prompts.assembleFor({ seat: slot, phase })
+      texts.push({ slot, phase, text })
       const parts = splitSections(text)
       const empty = parts.filter((p) => p.text.replace(/\s/g, '') === '').length
       combos.push({ slot, phase, chars: text.length, headings: parts.length, empty })
@@ -143,7 +172,7 @@ export async function collect({ slots = DEFAULT_SLOTS, phases = DEFAULT_PHASES }
     }
   }
   try { rmSync(root, { recursive: true, force: true }) } catch { /* throwaway */ }
-  return { combos, sections }
+  return { combos, sections, texts }
 }
 
 /** Analyse a set of slices (mutants too — that is why this is a pure function of the slice list). */

@@ -1021,7 +1021,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ phase: Object.freeze(['meeting']) }),
     texts: {
       academician: [
-        '【开会与预约：按事件时机的顺序（你的手册）】六种类型：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型。**`ordinary` 故意不给推荐骨架**；上面这些动词**只是常用手段，不是穷举**。结题表决用 `vote_solved`。**会议进行中**的内容与节奏由你的命令决定。',
+        '【开会与预约：按事件时机的顺序（你的手册）】六种类型：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型。**`ordinary` 故意不给推荐骨架**；上面列的**命令动词**只是常用手段，不是穷举。结题表决用 `vote_solved`。**会议进行中**的内容与节奏由你的命令决定。',
         '  · 回读提示词：`vibe_vmu_turn { op:"prompt", turn }` 只保留最近若干回合（回执 `retention` 给窗口），**超窗不可取**；交付回合结束就立即取。回执的 `promptSources` 两键＋脱敏说明来源。',
         '  · ① 议程：`agenda` 是议程文本（`open` 时给）；`agendaitems` 读条目、`agendaclose` 按 `target` 关闭（必须 `reason`）——这两个动词只认**内核原语会**；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`procedureNote` 是**建议**（`binding:"recommendation"`）。`formal_agenda` 传数组才逐条落库；传 `true` 只是声明（`formalAgendaItems:null`）',
         '  · ② 召集/关闭只对 chair（`conveneRequiresChair`/`closeRequiresChair`，其他席位拒 `VMU_NOT_PERMITTED`；未到场者先看 `status.present`）。召集发 `meeting-appointment` 耐久邮件；回执 `notified`/`notifyRows`/`notifyFailed`，`notifyFailed` 里的人要补发。被邀者仍须自己 `attend`',
@@ -1130,6 +1130,16 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       shared: [
         "【形式化开关 `vmu.math.formalVerify`】`off`＝零策略（默认）｜`encourage`＝鼓励（做了归档；没做用 `vibe_v5_lean_archive { kind:\"blocked\", name, note:\"<难点>\" }` 登记，回执 `formal` **只收 {statement, proof}**）｜`require`＝强制（缺结果或 blocked 记录则裁定不生效、对象留原轨进待办）。键由**所办**改。",
       ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-paper-consult-warning',
+    order: 609.5,
+    range: 'pack',
+    kind: 'shared',
+    scope: Object.freeze({ role: Object.freeze(['chair']), phase: Object.freeze(['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'resume']) }),
+    texts: {
+      shared: '★ 论文流程 **advance 后可能撞门**：`final` 被 `VMU_OFFICE_CONSULT_REQUIRED` 拦时，先让所办 `vibe_v5_paper { action:"consult", … }` 答复，再重试 `final`（paper 相位的两段式说明在 paper-final guide 里）。',
     },
   },
   {
