@@ -1021,7 +1021,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ phase: Object.freeze(['meeting']) }),
     texts: {
       academician: [
-        '【开会与预约：按事件时机的顺序（你的手册）】六种类型：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型。**`ordinary` 故意不给推荐骨架**；上面列的**命令动词**只是常用手段，不是穷举。结题表决用 `vote_solved`。**会议进行中**的内容与节奏由你的命令决定。',
+        '【开会与预约：按事件时机的顺序（你的手册）】六种类型：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`。**`ordinary` 故意不给推荐骨架**；**本节 ①②③⑦⑧⑨ 里的命令动词**只是常用手段，不是穷举。结题表决用 `vote_solved`。**会议进行中**的内容与节奏由你的命令决定。',
         '  · 回读提示词：`vibe_vmu_turn { op:"prompt", turn }` 只保留最近若干回合（回执 `retention` 给窗口），**超窗不可取**；交付回合结束就立即取。回执的 `promptSources` 两键＋脱敏说明来源。',
         '  · ① 议程：`agenda` 是议程文本（`open` 时给）；`agendaitems` 读条目、`agendaclose` 按 `target` 关闭（必须 `reason`）——这两个动词只认**内核原语会**；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`procedureNote` 是**建议**（`binding:"recommendation"`）。`formal_agenda` 传数组才逐条落库；传 `true` 只是声明（`formalAgendaItems:null`）',
         '  · ② 召集/关闭只对 chair（`conveneRequiresChair`/`closeRequiresChair`，其他席位拒 `VMU_NOT_PERMITTED`；未到场者先看 `status.present`）。召集发 `meeting-appointment` 耐久邮件；回执 `notified`/`notifyRows`/`notifyFailed`，`notifyFailed` 里的人要补发。被邀者仍须自己 `attend`',
