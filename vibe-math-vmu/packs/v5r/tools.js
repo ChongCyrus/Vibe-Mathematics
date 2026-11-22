@@ -6969,7 +6969,7 @@ export function evidenceGradeFreshness({ parts = [], audit = [] } = {}) {
   }
   return { parts: out, recordIdMatchesParts: out.every((r) => r.recordIdMatchesParts !== false), gradeReadingStale: out.some((r) => r.gradeReadingStale === true) }
 }
-function evidenceGradesOf (kernel, state, paper) {
+export function evidenceGradesOf (kernel, state, paper) {
   const st = state && typeof state === 'object' ? state : null
   const target = st && st.target !== undefined && st.target !== null ? String(st.target) : null
   const rawParts = st && st.parts && typeof st.parts === 'object' ? st.parts : {}
@@ -6980,24 +6980,38 @@ function evidenceGradesOf (kernel, state, paper) {
   const auditOf = (member) => (Array.isArray(audit) ? audit.filter((a) => a && String(a.member) === String(member))[0] : null) || null
   let heads = []
   try { const got = kernel && kernel.records && typeof kernel.records.list === 'function' ? kernel.records.list({ track: 'paper', limit: 0 }) : null; heads = Array.isArray(got && got.items) ? got.items : [] } catch (e) { heads = [] }
-  const partEvidenceOf = (member) => {
-    const suffix = '|part|' + String(member)
-    const rows = heads.filter((h) => h && String(h.kind || '') === 'paper-part' && String(h.title || '').endsWith(suffix))
-    if (rows.length === 0) return []
-    const idNum = (v) => Number(String(v || '').split('-').pop() || 0)
-    const newest = rows.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0]
-    try {
-      const got = kernel.records.get({ id: newest.id })
-      const row = got && got.record ? got.record : got
-      const body = JSON.parse(String((row && row.body) || '{}'))
-      return Array.isArray(body.evidence) ? body.evidence.map(String) : []
-    } catch (e) { return [] }
+  // ★ RUN-90 F-87-02: read the evidence list from the PART SLOT's live recordId first (paper.parts publishes that id).
+  // The old code asked a list() snapshot for the newest row; when that snapshot lagged, a body with evidence:["rec-8"]
+  // projected evidenceCount:0/source:no-evidence-pointer and a reviewer voted false on nothing.
+  const partEvidenceOf = (member, slot) => {
+    const slotRecordId = slot && slot.recordId !== undefined && slot.recordId !== null ? String(slot.recordId) : null
+    const newestFromList = (() => {
+      const suffix = '|part|' + String(member)
+      const rows = heads.filter((h) => h && String(h.kind || '') === 'paper-part' && String(h.title || '').endsWith(suffix))
+      if (rows.length === 0) return null
+      const idNum = (v) => Number(String(v || '').split('-').pop() || 0)
+      return rows.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0]
+    })()
+    const readEvidence = (id) => {
+      try {
+        const got = kernel.records.get({ id })
+        const row = got && got.record ? got.record : got
+        const body = JSON.parse(String((row && row.body) || '{}'))
+        return Array.isArray(body.evidence) ? body.evidence.map(String) : []
+      } catch (e) { return [] }
+    }
+    const source = slotRecordId !== null ? 'row-slot' : (newestFromList ? 'list-newest' : 'none')
+    const evidence = slotRecordId !== null ? readEvidence(slotRecordId) : (newestFromList ? readEvidence(newestFromList.id) : [])
+    const listNewestId = newestFromList && newestFromList.id !== undefined && newestFromList.id !== null ? String(newestFromList.id) : null
+    const projectionStale = slotRecordId !== null && listNewestId !== null && slotRecordId !== listNewestId
+    return { evidence, evidenceSourceOfTruth: source, evidenceRecordId: slotRecordId || listNewestId, listNewestId, projectionStale }
   }
   const parts = []
   const props = new Map()
   for (const member of Object.keys(rawParts)) {
     const slot = rawParts[member]
-    const evidence = partEvidenceOf(member)
+    const evidenceRead = partEvidenceOf(member, slot)
+    const evidence = evidenceRead.evidence
     const graded = evidence.map((pointer) => evidenceGradeOfPointer(kernel, pointer))
     for (const g of graded) {
       if (g.cardId === null) continue
@@ -7023,6 +7037,11 @@ function evidenceGradesOf (kernel, state, paper) {
       gradeReadingStale,
       ...(gradeReadingStale ? { gradeReadingStaleMeans: 'gradeReadingStale:true — evidenceGrades read record ' + String(gradeRecordId) + ' but paper.parts holds ' + String(slotRecordId) + ': the grade reading is ONE VERSION BEHIND. Re-read paper.parts is current; do not rely on this grade row until the next status after a part write.' } : {}),
       evidenceCount: evidence.length,
+      evidenceSourceOfTruth: evidenceRead.evidenceSourceOfTruth,
+      evidenceRecordId: evidenceRead.evidenceRecordId,
+      listNewestPartRecordId: evidenceRead.listNewestId,
+      projectionStale: evidenceRead.projectionStale,
+      ...(evidenceRead.projectionStale ? { projectionStaleMeans: 'projectionStale:true — the list() snapshot named part ' + String(evidenceRead.listNewestId) + ' while the live slot is ' + String(evidenceRead.evidenceRecordId) + ': evidenceCount comes from the LIVE slot (the body that exists now)' } : {}),
       bodyGradeLine,
       fromBody: bodyGradeLine === null ? null : bodyGradeLine.grade,
       fromCards,
@@ -7033,9 +7052,14 @@ function evidenceGradesOf (kernel, state, paper) {
         ? 'the part BODY carries no named grade line (bodyGradeLine:null) — the cards may carry grades (see fromCards), but a card grade is NOT a body line and cannot stand in for one'
         : null })
   }
+  const evidenceProjectionStale = parts.some((p) => p.projectionStale === true)
+  const evidenceSourceOfTruth = evidenceProjectionStale ? parts.map((p) => ({ member: p.member, source: p.evidenceSourceOfTruth, liveRecordId: p.evidenceRecordId, listNewestPartRecordId: p.listNewestPartRecordId })) : parts.map((p) => ({ member: p.member, source: p.evidenceSourceOfTruth }))
   const freshness = evidenceGradeFreshness({ parts, audit })
   return { grades: ['draft', 'verified-by-citation', 'mechanically-checked', 'lean-verified'], target,
     parts, propositions: Array.from(props.values()),
+    evidenceProjectionStale,
+    evidenceSourceOfTruth,
+    ...(evidenceProjectionStale ? { evidenceProjectionStaleMeans: 'projectionStale:true on at least one part — evidenceCount was read from the LIVE slot; see evidenceSourceOfTruth for live-vs-list ids' } : {}),
     recordIdMatchesParts: freshness.recordIdMatchesParts,
     gradeReadingStale: freshness.gradeReadingStale,
     ...(freshness.gradeReadingStale ? { gradeReadingStaleMeans: freshness.parts.filter((r) => r.gradeReadingStale).map((r) => r.gradeReadingStaleMeans).join(' ' ) } : {}),

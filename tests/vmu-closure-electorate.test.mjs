@@ -102,6 +102,18 @@ const perms = (id) => (Array.isArray(slotOf(id).permissions) ? slotOf(id).permis
   const lamp = closureVoteOf({ votes: new Map([['r-1', true], ['r-2', true], ['r-3', false]]), roster, rows: rowsAll, rowsAll, window: 2 })
   ok(lamp.votesCast === 3 && lamp.rowsArchivedByWindow === 1 && lamp.rowsByWindow['1'] === 1,
     'W5. LAMP RED-worthy: raw rows expose the archived window (rowsByWindow); a pre-fix merge counted it, the current rows do not', { byWindow: lamp.rowsByWindow })
+  // ★ RUN-90 F-87-04: the derived window map is computed from the SAME post-fold rows the tally counted.
+  const sumWindows = Object.values(view.rowsByWindow || {}).reduce((a, b) => a + b, 0)
+  ok(sumWindows === view.rowsCounted && view.rowsCounted === view.votesCast && view.derivedBeforeFold === false,
+    'W6. ★★★ sum(rowsByWindow) === rowsCounted === votesCast, and derivedBeforeFold:false when the fold is current',
+    { sum: sumWindows, counted: view.rowsCounted, votesCast: view.votesCast, beforeFold: view.derivedBeforeFold })
+  ok(view.votersWindows && view.votersWindows['r-3'] === 2,
+    'W7. ★ votersWindows includes every counted member (r-3 present) — no lagging map', view.votersWindows)
+  // LAMP: a frozen/archived snapshot that lacks one current row must SAY the derivation ran before the fold.
+  const beforeFold = closureVoteOf({ votes, roster, rows: current, rowsAll: rowsAll.filter((r) => r.member !== 'r-2'), window: 2 })
+  ok(beforeFold.derivedBeforeFold === true && beforeFold.rowsCounted === 3 && Object.values(beforeFold.rowsByWindow).reduce((a, b) => a + b, 0) === 3,
+    'W8. LAMP RED-worthy: a rowsAll snapshot missing a counted row sets derivedBeforeFold:true (named) while the sum still equals rowsCounted',
+    { beforeFold: beforeFold.derivedBeforeFold, counted: beforeFold.rowsCounted, byWindow: beforeFold.rowsByWindow })
 }
 
 console.log('\n=== VMU CLOSURE ELECTORATE: ' + passed + ' passed, ' + failed + ' failed ===')

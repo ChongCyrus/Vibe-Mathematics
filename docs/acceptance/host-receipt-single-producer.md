@@ -1,4 +1,4 @@
-# Host receipt single producer (TB-2668) — criterion, exception tables, the 40 bounded elisions, and the Phase 2 refusal facts
+# Host receipt single producer (TB-2668) — criterion, exception tables, the 42 bounded elisions, and the Phase 2 refusal facts
 
 Gate: `tests/audit-host-receipt-superset.mjs` (Phase 1 mode: default `--faces explicit`; Phase 2 mode: `--faces spec`)
 Board: `task-148` / `task-150` (Phase 1, §1–§4), Phase 2 = `task-155` / TB-2673 (recording Proxy over the factory faces, §5–§7).
@@ -33,7 +33,7 @@ is silently skipped: kernel-less points are named as `HOST-VALIDATED` (refused b
 
 `HOST_HIDDEN_KEYS` is empty today: every key measured missing is a loss, not a deliberately hidden reading.
 
-## 3. The 40 bounded elisions on the default `vibe_vmu_status` receipt
+## 3. The 42 bounded elisions on the default `vibe_vmu_status` receipt
 
 The default (no `detail`) status receipt is the **ROUND-22 bounded summary** asserted by `tests/vmu-host.test.mjs`
 (< 8000 B): bulky kernel sections are replaced by small summaries that each carry a pointer to the full reading. This
@@ -44,7 +44,7 @@ is a deliberate, named view — not a key-picking bug — and is declared in `NO
 Who decided: the ROUND-22 readability contract; approved as a declared bounded view by the Lead's ruling on
 2026-11-09 (`task-150` acceptance, constraint 1). The elided keys are:
 
-| section | elided kernel keys (40 total) |
+| section | elided kernel keys (42 total) |
 | --- | --- |
 | `settings` (11) | `detail`, `resolvedDetail`, `resolved`, `hotGrading`, `applies`, `liveReaders`, `runtimeWrites`, `lastRuntimeWrite`, `settingsRejected`, `settingsRejectedCount`, `settingsUnenforced` |
 | `bus` (4) | `dryRun`, `hookTimeoutMs`, `breakerThreshold`, `hooks` |
@@ -52,7 +52,7 @@ Who decided: the ROUND-22 readability contract; approved as a declared bounded v
 | `loader` (3) | `frameworkApiVersion`, `dryRun`, `stats` |
 | `bridge` (6) | `dryRun`, `defaultTimeoutMs`, `stats`, `recent`, `promptSurface`, `note` |
 | `math` (4) | `spawnSeamKindMeans`, `toolsPublished`, `publicationReuse`, `publicationMeans` |
-| `closureVote` (7) | `windowMeans`, `countWindowMeans`, `rulingReading`, `castMeaning`, `notEligibleMeans`, `votersWindowsMeans`, `reason` |
+| `closureVote` (9) | `windowMeans`, `derivedBeforeFoldMeans`, `rowsByWindowMeans`, `countWindowMeans`, `rulingReading`, `castMeaning`, `notEligibleMeans`, `votersWindowsMeans`, `reason` |
 
 **If you are a reader and need one of these keys:** call the same tool with `detail:"full"` (the full status receipt is
 forwarded whole; that path is asserted by the same gate). For sections with a note, the receipt itself names the door

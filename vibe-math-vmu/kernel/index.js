@@ -3251,11 +3251,42 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     if (live && typeof live.forEach === 'function') live.forEach((v, k) => out.set(String(k), v === true))
     return out
   }
+  // ★ RUN-90 F-87-04: ONE merged-row builder (current window: local row wins over the asynchronous fold) reused by
+  // `rows` and `rowsAll`, so the derived maps and the tally are computed from the SAME post-fold state.
+  const closureVoteMergedRows = () => {
+    const fold = closureVoteFoldRows()
+    let local = []
+    try { local = turn && typeof turn.status === 'function' ? (turn.status().closureVoteLocalRows || []) : [] } catch { local = [] }
+    if (!Array.isArray(local) || local.length === 0) return fold
+    const byMember = new Map()
+    for (const row of Array.isArray(fold) ? fold : []) if (row && typeof row.member === 'string') byMember.set(row.member, row)
+    for (const row of local) {
+      if (!row || typeof row.member !== 'string') continue
+      const prev = byMember.get(row.member)
+      const atNew = Number(row.at)
+      const atOld = prev === undefined ? NaN : Number(prev.at)
+      const newer = prev === undefined || !Number.isFinite(atOld) || (Number.isFinite(atNew) && atNew >= atOld)
+      if (!newer) continue
+      byMember.set(row.member, { member: row.member, solved: row.solved === true,
+        at: Number.isFinite(atNew) ? atNew : (prev && Number.isFinite(atOld) ? atOld : null),
+        session: row.session === undefined || row.session === null ? null : String(row.session),
+        voterSession: row.voterSession === undefined || row.voterSession === null ? null : String(row.voterSession),
+        window: row.window !== undefined && row.window !== null ? row.window : (prev && prev.window !== undefined ? prev.window : undefined) })
+    }
+    return Array.from(byMember.values())
+  }
   const closureVoteInput = () => ({
     votes: closureVotesMerged(),
     // ★ RUN-88 F-87-03: the raw fold rows (ALL windows) travel beside the current-window rows, and the window number is
     // explicit, so closureVoteOf can report rowsRead/rowsCounted/rowsArchivedByWindow instead of leaving a reader to guess.
-    rowsAll: closureVoteRawRows(),
+    // ★ RUN-90 F-87-04: rowsAll = the SAME merged current rows + archived-window fold rows; the fold can no longer
+    // make rowsByWindow lag behind the votes this receipt counted.
+    rowsAll: (() => {
+      const win = closureWindowValue()
+      const merged = closureVoteMergedRows()
+      const archived = closureVoteRawRows().filter((r) => r && (r.window === undefined || r.window === null ? 1 : Number(r.window)) !== win)
+      return archived.concat(merged)
+    })(),
     window: closureWindowValue(),
     // ★★★ TB-2782 (RUN 83 attempt-1): the finalisation instant the vote-staleness reading compares against. It is READ,
     // never invented: the paper track's newest row whose body says status:"finalized" dates that finalisation (the row was
@@ -3307,28 +3338,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // `writes:1` next to a voter row still naming the PREVIOUS session (measured twice, once per voting member). The
     // loop keeps the row it just wrote (`closureVoteLocalRows`); merging it over the fold row for the same member makes
     // the receipt and `status` read the same instant, without a second ledger and without waiting on the store.
-    rows: (() => {
-      const fold = closureVoteFoldRows()
-      let local = []
-      try { local = turn && typeof turn.status === 'function' ? (turn.status().closureVoteLocalRows || []) : [] } catch { local = [] }
-      if (!Array.isArray(local) || local.length === 0) return fold
-      const byMember = new Map()
-      for (const row of Array.isArray(fold) ? fold : []) if (row && typeof row.member === 'string') byMember.set(row.member, row)
-      for (const row of local) {
-        if (!row || typeof row.member !== 'string') continue
-        const prev = byMember.get(row.member)
-        const atNew = Number(row.at)
-        const atOld = prev === undefined ? NaN : Number(prev.at)
-        const newer = prev === undefined || !Number.isFinite(atOld) || (Number.isFinite(atNew) && atNew >= atOld)
-        if (!newer) continue
-        byMember.set(row.member, { member: row.member, solved: row.solved === true,
-          at: Number.isFinite(atNew) ? atNew : (prev && Number.isFinite(atOld) ? atOld : null),
-          session: row.session === undefined || row.session === null ? null : String(row.session),
-          voterSession: row.voterSession === undefined || row.voterSession === null ? null : String(row.voterSession),
-          window: row.window !== undefined && row.window !== null ? row.window : (prev && prev.window !== undefined ? prev.window : undefined) })
-      }
-      return Array.from(byMember.values())
-    })(),
+    rows: closureVoteMergedRows(),
     // ★★★ LIVE RUN 26 defect 3 (the institute's own report, and the worst of the three): A DEPARTED MEMBER STAYED IN THE
     // ELECTORATE. The roster was passed WHOLE, so a fired member counted as enfranchised: closure could be BLOCKED by its
     // silence (`missing:["<id>"]`, `cast:false`) and then "unblocked" by voting on its behalf — the run's `cast:true` was

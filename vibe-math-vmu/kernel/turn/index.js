@@ -269,8 +269,10 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       if (w === null || !Number.isFinite(w)) return 0
       return all.filter((r) => r && (r.window === undefined || r.window === null ? 1 : Number(r.window)) !== w).length
     })(),
+    // ★ RUN-90 F-87-04: derive from the MERGED current-window rows (the same rows voted/counted), so
+    // sum(rowsByWindow) === rowsCounted ALWAYS; archived windows are reported separately by rowsArchivedByWindow.
     rowsByWindow: (() => {
-      const all = Array.isArray(rowsAll) ? rowsAll : (Array.isArray(rows) ? rows : [])
+      const all = Array.isArray(rows) ? rows : []
       const out = {}
       for (const r of all) {
         const w = r && r.window !== undefined && r.window !== null ? Number(r.window) : 1
@@ -279,6 +281,17 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       }
       return out
     })(),
+    // ★ RUN-90 F-87-04: if the caller supplied rowsAll but the CURRENT-window rows in it are fewer than the
+    // merged rows this tally counted, the derived map was built before the fold landed — NAMED, never silent.
+    derivedBeforeFold: (() => {
+      if (!Array.isArray(rowsAll)) return false
+      const w = window === null || window === undefined ? null : Number(window)
+      if (w === null || !Number.isFinite(w)) return false
+      const currentAll = rowsAll.filter((r) => r && (r.window === undefined || r.window === null ? 1 : Number(r.window)) === w).length
+      return currentAll < (Array.isArray(rows) ? rows.length : 0)
+    })(),
+    derivedBeforeFoldMeans: 'derivedBeforeFold:true = the durable fold did not yet contain every vote this merged tally counted (a read that raced the fold); rowsByWindow is derived from the MERGED rows so sum(rowsByWindow) still equals rowsCounted',
+    rowsByWindowMeans: 'rowsByWindow counts the CURRENT-window row per member (merged local row wins over the fold); its sum equals rowsCounted; archived windows are excluded here and named by rowsArchivedByWindow',
     countWindow: window === null || window === undefined ? null : Number(window),
     countWindowMeans: 'rowsCounted = rows whose window equals countWindow (the live closure_window); rowsArchivedByWindow are kept on file but excluded BY NAME; a repeated vote does not raise the count because the writer keeps ONE row per member in the window',
     cast,
@@ -367,7 +380,7 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     votersMeans: 'who voted, one row per member, the LATEST judgement wins',
     votersWindows: (() => {
       const out = {}
-      for (const row of Array.isArray(rowsAll) ? rowsAll : []) {
+      for (const row of Array.isArray(rows) ? rows : []) {
         if (!row || typeof row.member !== 'string') continue
         const w = row.window === undefined || row.window === null ? 1 : Number(row.window)
         if (!Number.isFinite(w)) continue

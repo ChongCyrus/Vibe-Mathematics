@@ -70,6 +70,16 @@ test('per-screen distribution: review carries the cross-review self-check, write
   }
 })
 
+test('RUN-90: first final may be refused as gates=[] by office-consult, and the cap path is gated by VMU_REVIEW_STALE', () => {
+  for (const slot of ['chair', 'member', 'temp']) {
+    const t = textOf(slot, 'paper-final')
+    assert.ok(t.includes('`gates` 为空 `[]`'), slot + ': the empty gates[] reading is named')
+    assert.ok(t.includes('四门尚未评估') || t.includes('四门未评估'), slot + ': the four gates are explicitly NOT evaluated')
+    assert.ok(t.includes('VMU_REVIEW_STALE'), slot + ': the stale-vote gate is named')
+    assert.ok(t.includes('只对当前指纹的票生效'), slot + ': cap only applies to current-fingerprint votes')
+  }
+})
+
 test('B-2 (advance→reviewing precondition) is in the paper-review prompt', () => {
   for (const slot of ['chair', 'member', 'temp']) {
     const t = textOf(slot, 'paper-review')

@@ -493,7 +493,7 @@ if (SELF_PROBE) {
   // why it does not count), because that row became an OBJECT ({member, solved, why}) instead of a bare id and a reader
   // can no longer infer it. The face still returns ONLY the closing reading (no turns, no board, no live readings); this
   // ceiling exists to catch runaway growth, so it is re-pinned above the measured value with the measurement written down.
-  ok(closureText.length < 2400, '★ detail:"closure" 是专门的小读数面，实测 1603 < 2400 字符（TB-2724 后 +723，全部是 notEligible 的 Means 句）', closureText.length)
+  ok(closureText.length < 2800, '★ detail:"closure" 是专门的小读数面，实测 2790 < 2800 字符（旧→新→为什么：旧钉 2400，F-87-04 把计票读数合并成 rows 四元组 rowsRead/rowsCounted/rowsArchivedByWindow/countWindow（+ countedSolutions 等合并字段）并补 notEligible Means 句，约 +700 字符；字段一个没删，只抬上限）', closureText.length)
   const parsed = JSON.parse(closureText)
   ok(parsed.closureVote && parsed.closureVote.eligible.includes('member-a'),
     '★ closure 小面回的就是统一后的 reading（与 kernel 同一份输入）', parsed.closureVote)
@@ -529,7 +529,10 @@ if (SELF_PROBE) {
   // "no provider" from "declared but no subprocess seam" (measured 11013, was 10557). Same runaway guard.
   // ★ RUN-88 P2 re-pin (measured + cause): status.settings now carries conflict provenance/reason text (and servicesDeclined
   // from the previous batch); measured 11160. Same runaway guard.
-  ok(text.length <= 11160, '★ 真装配（v5r pack）下 status 默认 summary ≤ 11160 字节（P2 实测 11160：settings 摘要携带 conflict 的 resolved/origin 读数；C#15 块不在 summary）', 'bytes=' + text.length)
+  // ★ FINAL38 P2 re-pin (measured + cause): 11160 -> 11231 = +71 bytes, and it is the BOUNDED-COMBO PROSE, not a field leak:
+  // F-87-04 added two closureVote readings to the bounded section (derivedBeforeFoldMeans / rowsByWindowMeans), so the
+  // summary's `proseOmitted` list names two more keys (the elision itself is unchanged). Same runaway guard.
+  ok(text.length <= 11231, '★ 真装配（v5r pack）下 status 默认 summary ≤ 11231 字节（旧→新→为什么：11160→11231 = +71，F-87-04 在已限定的 closureVote 段多了两个被隐去的读数，summary 的 proseOmitted 名单因此多两个键名；settings conflict provenance 仍在；C#15 不在 summary）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),

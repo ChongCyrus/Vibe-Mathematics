@@ -310,6 +310,31 @@ console.log('§7 RUN-89 F-2: recordIdMatchesParts / gradeReadingStale guard')
     'RUN-89 F-2 LAMP RED-worthy: without slotRecordId the stale projection is SILENT (old shape reads matching) — the slot id is load-bearing', oldShape)
 }
 
+// ── RUN-90 F-87-02: evidenceCount reads the LIVE part slot, and a lagging list projection is NAMED
+console.log('§8 RUN-90 F-87-02: evidence projection vs live slot')
+{
+  const toolsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')).href)
+  const bodyWith = JSON.stringify({ title: 't', solution: 's', evidence: ['rec-8'] })
+  const bodyWithout = JSON.stringify({ title: 't', solution: 's', evidence: [] })
+  const makeKernel = (bodies, updated = {}) => ({ records: { list: () => ({ items: Object.keys(bodies).map((id, n) => ({ id, kind: 'paper-part', title: 'P|paper|part|r-1', updatedAt: updated[id] === undefined ? n + 1 : updated[id] })) }), get: ({ id }) => ({ record: { body: bodies[id] } }) } })
+  const paperStub = { gradeLinesOfState: () => [{ member: 'r-1', recordId: 'row-2', bodyGradeLine: null }] }
+  const state = { target: 'paper', parts: { 'r-1': { recordId: 'row-2', title: 't' } } }
+  // the list snapshot's newest row is the OLD row-1 (higher updatedAt in this frozen snapshot); the live slot is row-2.
+  const kernelLive = makeKernel({ 'row-1': bodyWithout, 'row-2': bodyWith }, { 'row-1': 10, 'row-2': 1 })
+  const live = toolsMod.evidenceGradesOf(kernelLive, state, paperStub)
+  const lp = live.parts[0]
+  ok(lp && lp.evidenceCount === 1 && lp.evidenceSourceOfTruth === 'row-slot' && lp.evidenceRecordId === 'row-2' && lp.projectionStale === true && lp.listNewestPartRecordId === 'row-1',
+    'RUN-90 F-87-02 ★★★ body(rec-2) has evidence while the list projection is rec-1 ⇒ evidenceCount:1 from the LIVE slot + projectionStale:true (both ids named)',
+    lp && { count: lp.evidenceCount, source: lp.evidenceSourceOfTruth, stale: lp.projectionStale, live: lp.evidenceRecordId, list: lp.listNewestPartRecordId })
+  // LAMP: the OLD shape (no slot recordId) falls back to the lagging list row and reads 0 — the exact silent zero measured.
+  const oldState = { target: 'paper', parts: { 'r-1': { title: 't' } } }
+  const oldRead = toolsMod.evidenceGradesOf(makeKernel({ 'row-1': bodyWithout }), oldState, paperStub)
+  const op = oldRead.parts[0]
+  ok(op && op.evidenceCount === 0 && op.evidenceSourceOfTruth === 'list-newest',
+    'RUN-90 F-87-02 LAMP RED-worthy: without the slot id the old list fallback reports evidenceCount:0 (the silent zero) — the live-slot read is load-bearing',
+    op && { count: op.evidenceCount, source: op.evidenceSourceOfTruth })
+}
+
 console.log('=== VMU F3/F4 PAPER INTEGRITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) {
   console.error('FAILURES:')
