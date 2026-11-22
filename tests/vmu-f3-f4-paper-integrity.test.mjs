@@ -273,6 +273,43 @@ console.log('§4 recordFinal 恰好和 render 同时拒绝：同一个门、一�
 }
 
 console.log('')
+// ── RUN-89 F-1/F-2: the grade reader must read the PART SLOT's live recordId, not a lagging list snapshot
+console.log('§6 RUN-89 F-1/F-2: evidence-grade line is read from paper.parts current slot')
+{
+  const { flow } = boot()
+  const T = 'RUN89 等级活槽'
+  flow.start({ target: T, participants: ['r-1', 'r-2'] })
+  const first = flow.recordPart({ target: T, member: 'r-1', title: '第一节', solution: '第一版没有等级行', evidence: ['e1'] })
+  ok(first && first.ok === true && typeof first.recordId === 'string', 'fixture: first part written (no grade line)', first && first.recordId)
+  const second = flow.recordPart({ target: T, member: 'r-1', title: '第一节', solution: '第二版正文' + String.fromCharCode(10) + '证据等级：draft', evidence: ['e1'] })
+  ok(second && second.ok === true && second.recordId !== first.recordId, 'fixture: the same member slot was REPLACED (new recordId)', second && { old: first.recordId, now: second.recordId })
+  const st = flow.state(T).state
+  const slot = st.parts['r-1']
+  const audit = flow.gradeLinesOfState(st)
+  const row = audit.filter((a) => a.member === 'r-1')[0] || null
+  ok(slot && row && row.recordId === slot.recordId && row.recordId === second.recordId,
+    'RUN-89 F-1 ★★★ the grade reader names the LIVE slot recordId (same as paper.parts), not the older part row',
+    { slot: slot && slot.recordId, grade: row && row.recordId, latestWritten: second.recordId })
+  ok(row && row.bodyGradeLine && row.bodyGradeLine.grade === 'draft' && row.recordIdSource === 'part-slot',
+    'RUN-89 F-1 ★★ the CURRENT body thanks to that id — the grade line the final gate will read is present', row && { grade: row.bodyGradeLine && row.bodyGradeLine.grade, source: row.recordIdSource })
+}
+
+// ── RUN-89 F-2: the two recordId projections in one status are compared BY NAME, and a stale projection is not silent
+console.log('§7 RUN-89 F-2: recordIdMatchesParts / gradeReadingStale guard')
+{
+  const toolsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')).href)
+  const fresh = toolsMod.evidenceGradeFreshness({ parts: [{ member: 'r-1', slotRecordId: 'rec-25' }], audit: [{ member: 'r-1', recordId: 'rec-25' }] })
+  ok(fresh.recordIdMatchesParts === true && fresh.gradeReadingStale === false,
+    'RUN-89 F-2 ★★ same slot/grade recordId ⇒ recordIdMatchesParts:true, no stale flag')
+  const stale = toolsMod.evidenceGradeFreshness({ parts: [{ member: 'r-1', slotRecordId: 'rec-25' }], audit: [{ member: 'r-1', recordId: 'rec-15' }] })
+  ok(stale.recordIdMatchesParts === false && stale.gradeReadingStale === true && stale.parts[0].slotRecordId === 'rec-25' && stale.parts[0].gradeRecordId === 'rec-15' && /ONE VERSION BEHIND/.test(String(stale.parts[0].gradeReadingStaleMeans)),
+    'RUN-89 F-2 ★★★ parts rec-25 vs grades rec-15 ⇒ recordIdMatchesParts:false + gradeReadingStale:true + both ids named', stale)
+  // LAMP: the OLD shape (a part entry that only carries the grade-side recordId) cannot express the mismatch — it reads as matching.
+  const oldShape = toolsMod.evidenceGradeFreshness({ parts: [{ member: 'r-1', recordId: 'rec-15' }], audit: [{ member: 'r-1', recordId: 'rec-15' }] })
+  ok(oldShape.recordIdMatchesParts === true && oldShape.gradeReadingStale === false,
+    'RUN-89 F-2 LAMP RED-worthy: without slotRecordId the stale projection is SILENT (old shape reads matching) — the slot id is load-bearing', oldShape)
+}
+
 console.log('=== VMU F3/F4 PAPER INTEGRITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) {
   console.error('FAILURES:')

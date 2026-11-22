@@ -38,6 +38,38 @@ test('B-1 (office-consult two-stage) is in the paper-final prompt', () => {
   }
 })
 
+test('RUN-89: final-success chain (render → compile → reopen-closure) is taught, with the V14 consequence', () => {
+  for (const slot of ['chair', 'member', 'temp']) {
+    const t = textOf(slot, 'paper-final')
+    assert.ok(t.includes('action:"render"'), slot + ': the render call is named')
+    assert.ok(t.includes('recordIds'), slot + ': the render receipt is named')
+    assert.ok(t.includes('V14 直接判 FAIL'), slot + ': the consequence of skipping render is explicit')
+    assert.ok(t.includes('reopen-closure'), slot + ': the closing window comes AFTER render in the chain')
+  }
+})
+
+test('RUN-89: the pre-final SELF-CHECK names cross-review, grade line, glyph and revise-recheck', () => {
+  for (const slot of ['chair', 'member', 'temp']) {
+    const t = textOf(slot, 'paper-final')
+    assert.ok(t.includes('调用 final 前的自检清单'), slot + ': the checklist is a named block')
+    assert.ok(t.includes('VMU_PAPER_CROSS_REVIEW_UNMET'), slot + ': cross-review refusal is named')
+    assert.ok(t.includes('证据等级：'), slot + ': the per-section grade line is named')
+    assert.ok(t.includes('glyphsUnrepaired'), slot + ': the glyph reading is named')
+    assert.ok(t.includes('必须重审并重新 final'), slot + ': revise forces re-review + re-final')
+  }
+})
+
+test('per-screen distribution: review carries the cross-review self-check, write carries the grade-line rule', () => {
+  for (const slot of ['chair', 'member', 'temp']) {
+    const rev = textOf(slot, 'paper-review')
+    assert.ok(rev.includes('crossReviewers'), slot + '/review: crossReviewers read face is named')
+    assert.ok(rev.includes('VMU_PAPER_CROSS_REVIEW_UNMET'), slot + '/review: the refusal code is named')
+    const wr = textOf(slot, 'paper-write')
+    assert.ok(wr.includes('证据等级：'), slot + '/write: the per-section grade line is named')
+    assert.ok(wr.includes('VMU_PAPER_GRADE_LINE_MISSING'), slot + '/write: the missing-grade refusal is named')
+  }
+})
+
 test('B-2 (advance→reviewing precondition) is in the paper-review prompt', () => {
   for (const slot of ['chair', 'member', 'temp']) {
     const t = textOf(slot, 'paper-review')

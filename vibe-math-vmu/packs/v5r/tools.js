@@ -6953,6 +6953,22 @@ function evidenceGradeOfPointer (kernel, pointer) {
   return { evidence: raw, cardId: id, track: facts.track, grade: 'draft', source: 'no-grade-source', facts,
     why: 'no verified row, no machine-check verdict and no Lean pass on file: this card is DRAFT until one of those mechanisms writes a grade (an unverified p/proofState is not a grade)' }
 }
+/** ★ RUN-89 F-2: pure freshness comparison between the two projections in ONE status receipt. A mismatch is NAMED,
+ *  never silent; the reader is told which id is stale and what to do (re-read after the next part write). */
+export function evidenceGradeFreshness({ parts = [], audit = [] } = {}) {
+  const byMember = new Map((Array.isArray(audit) ? audit : []).map((a) => [String(a && a.member), a]))
+  const out = []
+  for (const p of Array.isArray(parts) ? parts : []) {
+    const member = String(p && p.member)
+    const slotRecordId = p && p.slotRecordId !== undefined && p.slotRecordId !== null ? String(p.slotRecordId) : (p && p.recordId !== undefined && p.recordId !== null ? String(p.recordId) : null)
+    const a = byMember.get(member) || null
+    const gradeRecordId = a && a.recordId !== undefined && a.recordId !== null ? String(a.recordId) : null
+    const recordIdMatchesParts = slotRecordId === null || gradeRecordId === null ? null : slotRecordId === gradeRecordId
+    out.push({ member, slotRecordId, gradeRecordId, recordIdMatchesParts, gradeReadingStale: recordIdMatchesParts === false,
+      ...(recordIdMatchesParts === false ? { gradeReadingStaleMeans: 'gradeReadingStale:true — evidenceGrades read record ' + String(gradeRecordId) + ' but paper.parts holds ' + String(slotRecordId) + ': the grade reading is ONE VERSION BEHIND; paper.parts is current, re-read after the next part write' } : {}) })
+  }
+  return { parts: out, recordIdMatchesParts: out.every((r) => r.recordIdMatchesParts !== false), gradeReadingStale: out.some((r) => r.gradeReadingStale === true) }
+}
 function evidenceGradesOf (kernel, state, paper) {
   const st = state && typeof state === 'object' ? state : null
   const target = st && st.target !== undefined && st.target !== null ? String(st.target) : null
@@ -6994,8 +7010,18 @@ function evidenceGradesOf (kernel, state, paper) {
     const fromCards = strongest === null
       ? { grade: 'draft', source: 'no-evidence-pointer', evidenceCount: evidence.length }
       : { grade: strongest.grade, source: strongest.source, cardId: strongest.cardId, evidenceCount: evidence.length }
+    // ★ RUN-89 F-2: the grade reading and paper.parts must name the SAME row. When they do not, say so BY NAME
+    // (a reader who only opened evidenceGrades would otherwise take the lagging id as current).
+    const slotRecordId = slot && slot.recordId !== undefined && slot.recordId !== null ? String(slot.recordId) : null
+    const gradeRecordId = auditEntry && auditEntry.recordId !== undefined && auditEntry.recordId !== null ? String(auditEntry.recordId) : null
+    const recordIdMatchesParts = slotRecordId === null || gradeRecordId === null ? null : slotRecordId === gradeRecordId
+    const gradeReadingStale = recordIdMatchesParts === false
     parts.push({ member: String(member), part: slot && slot.title !== undefined ? slot.title : null,
-      recordId: auditEntry && auditEntry.recordId !== undefined ? auditEntry.recordId : null,
+      recordId: gradeRecordId,
+      slotRecordId,
+      recordIdMatchesParts,
+      gradeReadingStale,
+      ...(gradeReadingStale ? { gradeReadingStaleMeans: 'gradeReadingStale:true — evidenceGrades read record ' + String(gradeRecordId) + ' but paper.parts holds ' + String(slotRecordId) + ': the grade reading is ONE VERSION BEHIND. Re-read paper.parts is current; do not rely on this grade row until the next status after a part write.' } : {}),
       evidenceCount: evidence.length,
       bodyGradeLine,
       fromBody: bodyGradeLine === null ? null : bodyGradeLine.grade,
@@ -7007,8 +7033,12 @@ function evidenceGradesOf (kernel, state, paper) {
         ? 'the part BODY carries no named grade line (bodyGradeLine:null) — the cards may carry grades (see fromCards), but a card grade is NOT a body line and cannot stand in for one'
         : null })
   }
+  const freshness = evidenceGradeFreshness({ parts, audit })
   return { grades: ['draft', 'verified-by-citation', 'mechanically-checked', 'lean-verified'], target,
     parts, propositions: Array.from(props.values()),
+    recordIdMatchesParts: freshness.recordIdMatchesParts,
+    gradeReadingStale: freshness.gradeReadingStale,
+    ...(freshness.gradeReadingStale ? { gradeReadingStaleMeans: freshness.parts.filter((r) => r.gradeReadingStale).map((r) => r.gradeReadingStaleMeans).join(' ' ) } : {}),
     bodyLineFormat: 'one line in each part body: 证据等级：draft（or verified-by-citation / mechanically-checked / lean-verified）',
     means: EVIDENCE_GRADES_MEANS }
 }

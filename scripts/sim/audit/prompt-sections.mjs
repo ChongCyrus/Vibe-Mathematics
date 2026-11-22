@@ -111,6 +111,42 @@ export function classifyDuplicate(sentence, ids, textOf) {
   return 'avoidable'
 }
 
+/** ★ RUN 89: the paper screens' AUDIT READINGS, exposed beside the slices so an audit can read the teaching facts
+ *  without re-scanning prose. The RUN-89 root cause was a final guide that never taught `render`, so the seat finished
+ *  a paper and opened the closing window without ever producing `recordIds{md,tex,meta}` (V14/V20 red). The detector is
+ *  deliberately literal: a hit means the SCREEN carries the fact, not that the pack source mentions it somewhere. */
+export function paperScreenHighlights(texts = []) {
+  const bySlot = {}
+  for (const row of texts) {
+    if (!/^paper-(write|review|final)$/.test(row.phase)) continue
+    const t = String(row.text || '')
+    const renderAction = /action\s*:\s*["']render["']/.test(t) && /vibe_v5_paper/.test(t)
+    const recordIds = /recordIds/.test(t) && /md/.test(t) && /tex/.test(t) && /meta/.test(t)
+    const skipRender = /不\s*render|标准链未走完/.test(t) && /(FAIL|V14|未绿)/.test(t)
+    const crossReview = /互审/.test(t) && /(两位|2\s*位)/.test(t) && /不同/.test(t) && /deliverable/.test(t)
+    const crossReviewCode = /VMU_PAPER_CROSS_REVIEW_UNMET|crossReviewers/.test(t)
+    const gradeLine = /证据等级：/.test(t) && /(每一节|每节|缺失|MISSING)/.test(t)
+    const gradeLineCode = /VMU_PAPER_GRADE_LINE_MISSING/.test(t)
+    bySlot[row.slot] = bySlot[row.slot] || {}
+    bySlot[row.slot][row.phase] = { renderAction, recordIds, skipRender, crossReview, crossReviewCode, gradeLine, gradeLineCode }
+  }
+  return {
+    bySlot,
+    final: {
+      slots: Object.keys(bySlot).filter((slot) => bySlot[slot]['paper-final'] && bySlot[slot]['paper-final'].renderAction && bySlot[slot]['paper-final'].recordIds && bySlot[slot]['paper-final'].skipRender),
+      means: 'paper-final must teach the render call, its recordIds{md,tex,meta} receipt, and the consequence of skipping it (standard chain incomplete / V14 FAIL)',
+    },
+    review: {
+      slots: Object.keys(bySlot).filter((slot) => bySlot[slot]['paper-review'] && bySlot[slot]['paper-review'].crossReview),
+      means: 'paper-review must teach the cross-review self-check (two DIFFERENT members, neither the part author, deliverable:true)',
+    },
+    write: {
+      slots: Object.keys(bySlot).filter((slot) => bySlot[slot]['paper-write'] && bySlot[slot]['paper-write'].gradeLine),
+      means: 'paper-write must teach that every section body carries a 「证据等级：」 line (missing one is VMU_PAPER_GRADE_LINE_MISSING)',
+    },
+  }
+}
+
 /** Collect real assemblies for slots × phases. Returns {combos, sections}. */
 export async function collect({ slots = DEFAULT_SLOTS, phases = DEFAULT_PHASES } = {}) {
   const root = tmpRoot('p240-sections-')
@@ -172,7 +208,7 @@ export async function collect({ slots = DEFAULT_SLOTS, phases = DEFAULT_PHASES }
     }
   }
   try { rmSync(root, { recursive: true, force: true }) } catch { /* throwaway */ }
-  return { combos, sections, texts }
+  return { combos, sections, texts, highlights: { paper: paperScreenHighlights(texts), means: 'readings of the REAL, policy-filtered paper screens (RUN 89: render/recordIds/cross-review/grade-line)' } }
 }
 
 /** Analyse a set of slices (mutants too — that is why this is a pure function of the slice list). */

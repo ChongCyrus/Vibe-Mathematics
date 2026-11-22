@@ -1860,7 +1860,8 @@ export function createPaperFlow({
       // the row is the body: read the NEWEST paper-part row for this member (same-instant writes tie on updatedAt, so the
       // id number breaks the tie — ids are minted strictly increasing).
       let bodyText = ''
-      let recordId = slot && slot.recordId !== undefined ? slot.recordId : null
+      const readFrom = slot && slot.recordId !== undefined && slot.recordId !== null ? 'part-slot' : 'list-newest'
+      let recordId = slot && slot.recordId !== undefined && slot.recordId !== null ? String(slot.recordId) : null
       try {
         const got = records.list({ track: TRACK, limit: 0 })
         const heads = Array.isArray(got && got.items) ? got.items : []
@@ -1868,7 +1869,13 @@ export function createPaperFlow({
         const rows = heads.filter((h) => h && String(h.kind || '') === 'paper-part' && String(h.title || '').endsWith(suffix))
         const idNum = (v) => Number(String(v || '').split('-').pop() || 0)
         const newest = rows.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0]
-        if (newest) {
+        if (recordId !== null) {
+          // RUN-89 F-1/F-2: the SLOT id is the live part; read THAT row (not a list snapshot).
+          const full = records.get({ id: recordId })
+          const row = full && full.record ? full.record : full
+          const body = JSON.parse(String((row && row.body) || '{}'))
+          bodyText = [body.title, body.solution, body.methods, body.rules, body.limits].map((x) => String(x === undefined || x === null ? '' : x)).join(String.fromCharCode(10))
+        } else if (newest) {
           recordId = newest.id
           const full = records.get({ id: newest.id })
           const row = full && full.record ? full.record : full
@@ -1876,7 +1883,7 @@ export function createPaperFlow({
           bodyText = [body.title, body.solution, body.methods, body.rules, body.limits].map((x) => String(x === undefined || x === null ? '' : x)).join('\n')
         }
       } catch (e) { bodyText = '' }
-      out.push({ member: String(member), title: slot && slot.title !== undefined ? slot.title : null, recordId,
+      out.push({ member: String(member), title: slot && slot.title !== undefined ? slot.title : null, recordId, recordIdSource: readFrom,
         bodyGradeLine: gradeLineOfText(bodyText), bodyChars: bodyText.length,
         means: 'bodyGradeLine:null means the PART BODY carries no named grade line — the cards may still have grades, but a card grade is NOT a body line' })
     }
