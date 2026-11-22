@@ -701,5 +701,38 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
     'C4: recording the obstacle UPDATES the same card (history kept, no second card)', [card.revision, card.previousRevisions])
 }
 
+
+// ── RUN-90 F-2: superseded is computed over ALL paper-part rows of the title, not just the page
+{
+  const c = fakeClock(1000)
+  const r = createRecords({ clock: c.clock, settings: S({ 'vmu.records.tracks': ['paper'], 'vmu.records.allowedKinds': ['paper-part'] }) })
+  const title = 'P|paper|part|r-1'
+  const a = r.put({ track: 'paper', kind: 'paper-part', title, body: JSON.stringify({ v: 1 }), settled: true }); c.advance(10)
+  const b = r.put({ track: 'paper', kind: 'paper-part', title, body: JSON.stringify({ v: 2 }), settled: true }); c.advance(10)
+  const d = r.put({ track: 'paper', kind: 'paper-part', title, body: JSON.stringify({ v: 3 }), settled: true })
+  ok(a && b && d && a.id !== b.id && b.id !== d.id, 'fixture: three editions of ONE paper-part title are written', { a: a.id, b: b.id, d: d.id })
+  const page = r.list({ track: 'paper', limit: 2 })
+  const full = r.list({ track: 'paper', limit: 0 })
+  const pageById = new Map(page.items.map((x) => [x.id, x]))
+  const fullById = new Map(full.items.map((x) => [x.id, x]))
+  ok(page.items.length === 2 && full.items.length === 3, 'fixture: page is truncated (2 of 3) while full reads all', { page: page.items.length, full: full.items.length })
+  ok(pageById.get(a.id) && pageById.get(a.id).supersededBy === d.id && pageById.get(b.id) && pageById.get(b.id).supersededBy === d.id,
+    'RUN-90 F-2 ★★★ even on a TRUNCATED page, every older edition points at the NEWEST edition (off-page), not a middle edition',
+    { a: pageById.get(a.id) && pageById.get(a.id).supersededBy, b: pageById.get(b.id) && pageById.get(b.id).supersededBy, newest: d.id })
+  ok(fullById.get(a.id).supersededBy === pageById.get(a.id).supersededBy && fullById.get(b.id).supersededBy === pageById.get(b.id).supersededBy,
+    'RUN-90 F-2 ★★ default page and full limit:0 agree for the same part (no page-scoped contradiction)',
+    { page: [pageById.get(a.id).supersededBy, pageById.get(b.id).supersededBy], full: [fullById.get(a.id).supersededBy, fullById.get(b.id).supersededBy] })
+  ok(pageById.get(d.id) === undefined && fullById.get(d.id).status === 'live',
+    'the newest edition is LIVE on the full read (and absent from the page), which is why the page-scoped old algorithm was wrong')
+  // LAMP: reproduce the OLD page-scoped algorithm over this page and show its contradiction (red-worthy).
+  const oldMap = new Map()
+  const byTitle = new Map()
+  for (const x of page.items) { if (!byTitle.has(x.title)) byTitle.set(x.title, []); byTitle.get(x.title).push(x) }
+  for (const rows of byTitle.values()) { if (rows.length < 2) continue; const sorted = rows.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0))); for (const older of sorted.slice(1)) oldMap.set(older.id, sorted[0].id) }
+  ok(oldMap.get(a.id) === b.id && oldMap.get(a.id) !== d.id,
+    'RUN-90 F-2 LAMP RED-worthy: the OLD page-scoped algorithm points the middle edition at the page-newest (b→a), not at the real newest d — self-contradictory (red)',
+    { oldSays: oldMap.get(a.id), realNewest: d.id })
+}
+
 console.log('=== VMU RECORDS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) process.exit(1)

@@ -1091,6 +1091,18 @@ function toolHelp(args = {}, exec = {}) {
     wireOnlyMeans: wireOnly.means,
     declarationOnly,
     declarationOnlyMeans: declarationOnly.means,
+    // ★ RUN-90 P2 F-3: the prompt text teaches `本轮装配工具清单`, but that block is produced by the HOST root system
+    // prompt (the 【本轮你实际能调用的工具｜…】 placeholders), not by a turn-prompt section. This receipt is the named
+    // READBACK for a member that cannot see the block: it says where the block lives and which two sets to compare.
+    assemblyBlock: {
+      name: '本轮装配工具清单',
+      presentInTurnPrompt: false,
+      hostOnlyPlaceholder: '【本轮你实际能调用的工具｜占位段】',
+      readback: 'vibe_v5_tool_help {member}',
+      readbackFields: ['declarationSet.tools', 'measuredSet.tools'],
+      means: 'the assembly-tool block is rendered by the HOST into the root system prompt (one placeholder per role), NOT by a turn-prompt section; inside a member turn this receipt is the readback: declarationSet = what the institute says the seat may call, measuredSet = what the live wire exposes. presentInTurnPrompt:false is a FACT, not a missing block in this pack',
+    },
+    assemblyBlockMeans: 'if a turn-prompt reader expected 【本轮你实际能调用的工具】 verbatim, this field says why it is not there (host root prompt vs turn prompt) and gives the readback call instead of leaving the absence unexplained',
     refusal: sessionRefusal === null ? (view && view.refusal ? view.refusal : null) : sessionRefusal,
     providerRefusal,
     // ★★★ RUN 254 (F-73-02): ALWAYS present (true/false), so "was the provider code translated" is answerable on all three
@@ -1176,7 +1188,14 @@ async function toolAssign(args = {}, { kernel } = {}) {
         alreadyBriefed = false
       }
     }
-    if (!alreadyBriefed && typeof tasks.brief === 'function') await tasks.brief(taskId, assignmentBrief(), {})
+    // ★ RUN-90 P2 F-1: the two doors must agree. This face no longer SILENTLY synthesizes a brief for an existing
+    // task (readyWhy says assign REFUSES an unbriefed take): it refuses by the SAME name and names the two reachable
+    // routes. For a NEW subject the face still composes create+brief explicitly (why/acceptance are required args).
+    if (!alreadyBriefed) {
+      throw refuse('VMU_TASK_BRIEF_MISSING',
+        'task ' + taskId + ' carries no brief: the task face REFUSES to assign it, and this face does not invent the work text silently',
+        'two same-criterion routes: (1) attach the brief first (tasks.brief / the task face brief action) with what to do and what counts as done, then call assign with this task_id; or (2) omit task_id and pass subject/why/acceptance — this face then creates the task AND writes that brief in one explicit act')
+    }
     await tasks.assign(taskId, to)
   }
   let notice = null

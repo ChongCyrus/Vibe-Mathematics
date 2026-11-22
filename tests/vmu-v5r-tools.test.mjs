@@ -303,6 +303,14 @@ try {
     Array.isArray(help.parsed.seatFilter && help.parsed.seatFilter.present) && help.parsed.seatFilter.present.length > 0,
     '★★ tool_help: 反（fixture has no live Agent）— 实测集仍是 tools:null + 具名拒字段（未抛异常），声明集另列（RUN 251：不再返回空的“无清单”）',
     help.parsed && { ok: help.parsed.ok, tools: help.parsed.tools, source: help.parsed.source, code: help.parsed.refusal && help.parsed.refusal.code, declaredCount: help.parsed.declaredCount })
+  // ★ RUN-90 P2 F-3: the prompt block taught as 本轮装配工具清单 is HOST-ROOT-PROMPT material; tool_help names that
+  // fact explicitly and gives the readback fields instead of leaving a reader to infer a missing block.
+  ok(help.parsed && help.parsed.assemblyBlock && help.parsed.assemblyBlock.presentInTurnPrompt === false && help.parsed.assemblyBlock.readback === 'vibe_v5_tool_help {member}' && Array.isArray(help.parsed.assemblyBlock.readbackFields) && help.parsed.assemblyBlock.readbackFields.includes('measuredSet.tools') && help.parsed.assemblyBlockMeans,
+    'F-3 ★★ tool_help names where the 装配工具清单 block lives (host root prompt, not a turn-prompt section) and gives the readback fields',
+    help.parsed && help.parsed.assemblyBlock)
+  ok(help.parsed && help.parsed.measuredSet && help.parsed.measuredSet.available === false && help.parsed.refusal && typeof help.parsed.refusal.code === 'string',
+    'F-3 ★ when tool_help CANNOT read a live wire, the receipt carries a NAMED refusal instead of an empty list',
+    help.parsed && { available: help.parsed.measuredSet && help.parsed.measuredSet.available, code: help.parsed.refusal && help.parsed.refusal.code })
   // ★★★ POSITIVE by a DIRECT handler call with a stub kernel: the forwarder must return EXACTLY the toolsView result, and
   // purpose:null must survive — null means "the host registered no description", NOT a missing field.
   const helpSpec = PACK.tools.filter((t) => t.name === 'vibe_v5_tool_help')[0]
@@ -330,9 +338,9 @@ try {
   const assignedList = await v5rBoot.handle.kernel.tasks.list()
   const assignedRows = Array.isArray(assignedList) ? assignedList : (assignedList && Array.isArray(assignedList.tasks) ? assignedList.tasks : [])
   const assignedRowAfter = assignedRows.filter((r) => r && r.id === rawTask.id)[0] || null
-  ok(assignedExisting.parsed && assignedExisting.parsed.ok === true && assignedRowAfter && assignedRowAfter.ready === true && assignedRowAfter.hasBrief === true && assignedRowAfter.readyCode === null,
-    'F-87-01 ★★★ assign an EXISTING unbriefed task: the face writes the brief, and the task row it leaves behind is ready:true with readyWhy agreeing (one criterion source)',
-    { assigned: assignedExisting.parsed && assignedExisting.parsed.ok, row: assignedRowAfter && { ready: assignedRowAfter.ready, hasBrief: assignedRowAfter.hasBrief, readyCode: assignedRowAfter.readyCode } })
+  ok(assignedExisting.parsed && assignedExisting.parsed.ok === false && assignedExisting.parsed.code === 'VMU_TASK_BRIEF_MISSING' && assignedRowAfter && assignedRowAfter.owner === null && assignedRowAfter.hasBrief === false,
+    'F-87-01 ★★★ assign an EXISTING unbriefed task REFUSES with the task face own VMU_TASK_BRIEF_MISSING — no silent synthesized brief (readyWhy and the face agree)',
+    { assigned: assignedExisting.parsed && assignedExisting.parsed.code, row: assignedRowAfter && { owner: assignedRowAfter.owner, hasBrief: assignedRowAfter.hasBrief, readyCode: assignedRowAfter.readyCode } })
 
   const nudgeNoWhy = await receipt(v5rBoot, 'vibe_v5_nudge', { to: 'r-1' })
   ok(nudgeNoWhy.parsed && nudgeNoWhy.parsed.ok === false && nudgeNoWhy.parsed.code === 'VMU_INVALID_ARGUMENT', 'nudge: 反 — a nudge without a reason is refused by name', nudgeNoWhy.parsed)

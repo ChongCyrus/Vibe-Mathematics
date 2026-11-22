@@ -80,6 +80,17 @@ test('RUN-90: first final may be refused as gates=[] by office-consult, and the 
   }
 })
 
+test('RUN-91: reachableMoves is read BEFORE acting, and reviewing+false uses the chair four-step loop (no author self-edit)', () => {
+  for (const slot of ['chair', 'member', 'temp']) {
+    const rev = textOf(slot, 'paper-review')
+    assert.ok(rev.includes('reachableMoves'), slot + '/review: reachableMoves is named')
+    assert.ok(rev.includes('不能改 part'), slot + '/review: the unreachable self-edit is denied')
+    assert.ok(rev.includes('打回 `writing`'), slot + '/review: the chair advance-back step is named')
+    const fin = textOf(slot, 'paper-final')
+    assert.ok(fin.includes('reachableMoves') && fin.includes('唯一可达动作清单'), slot + '/final: read the moves before acting')
+  }
+})
+
 test('B-2 (advance→reviewing precondition) is in the paper-review prompt', () => {
   for (const slot of ['chair', 'member', 'temp']) {
     const t = textOf(slot, 'paper-review')

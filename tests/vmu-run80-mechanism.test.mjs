@@ -349,12 +349,16 @@ console.log('=== VMU RUN80 MECHANISM ===')
   // has none (VMU_NO_SUCH_OBJECT); an existing brief is NOT overwritten, and any OTHER read failure is rethrown.
   const ex = await b.kernel.tasks.create({ title: '既有任务' })
   const exAssigned = await call(b, 'vibe_v5_assign', { task_id: ex.id, to: 'r-1', why: '理由原文', acceptance: '验收原文' })
-  eq(exAssigned.ok, true, '§6n the existing-task branch assigns the task', exAssigned && { ok: exAssigned.ok, code: exAssigned.code, message: exAssigned.message })
+  // RUN-90 P2 F-1: the EXISTING-task branch now REFUSES an unbriefed task with the task face own code instead of silently
+  // synthesizing a brief; creating with subject/why/acceptance (above) remains the explicit one-act composition.
+  eq(exAssigned.ok, false, '§6n the existing-task branch REFUSES an unbriefed task', exAssigned && { ok: exAssigned.ok, code: exAssigned.code })
+  eq(exAssigned.code, 'VMU_TASK_BRIEF_MISSING', '§6n2 …by the same code the task face publishes (VMU_TASK_BRIEF_MISSING)')
   const exRow = b.kernel.tasks.list().filter((r) => r.id === ex.id)[0]
-  eq(exRow && exRow.owner, 'r-1', '§6o …and it is owned')
-  eq(exRow && exRow.hasBrief, true, '§6p …and it became READABLE (no assigned-but-unreadable row)')
-  const exBrief = b.kernel.tasks.briefOf(ex.id)
-  ok(/理由原文/.test(exBrief.brief) && /验收原文/.test(exBrief.brief), "§6q …the brief is the caller's own why+acceptance", exBrief && exBrief.brief)
+  eq(exRow && exRow.owner, null, '§6o …and NO owner was planted (refused before anything moved)')
+  eq(exRow && exRow.hasBrief, false, '§6p …and it is still unreadable (no silent synthesized brief)')
+  let exBriefAbsent = null
+  try { b.kernel.tasks.briefOf(ex.id) } catch (e) { exBriefAbsent = e }
+  eq(exBriefAbsent && exBriefAbsent.code, 'VMU_NO_SUCH_OBJECT', '§6q …the board still has NO brief for it')
   const keepId = (await b.kernel.tasks.create({ title: '已有 brief' })).id
   b.kernel.tasks.brief(keepId, '原创：这才是正文', { by: 'office' })
   await b.kernel.tasks.assign(keepId, 'r-1')

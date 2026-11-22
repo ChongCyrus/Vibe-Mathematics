@@ -1653,7 +1653,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const supersededBy = new Map()
       if (track === 'paper') {
         const groups = new Map()
-        for (const r of kept) {
+        // ★ RUN-90 F-2: compute over ALL matching rows (live), not just this page: a supersededBy that points at a
+        // middle edition because the newest row fell off the page is a self-contradictory reading.
+        for (const r of live) {
           if (!r || String(r.kind) !== 'paper-part') continue
           const key = String(r.title)
           if (!groups.has(key)) groups.set(key, [])
