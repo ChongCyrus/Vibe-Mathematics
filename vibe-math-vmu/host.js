@@ -2998,6 +2998,9 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
           effectiveWireSource: wireSource,
           effectiveCacheWrite: cacheWrite,
           wireStaleRisk: true,
+          // ★ RUN-92 F-87-09: the field EXISTS and has semantics; this sentence is its receipt meaning (the taskbook had
+          // wrongly recorded it as deleted).
+          wireStaleRiskMeans: 'wireStaleRisk:true = this rendered tool-face block can be CARRIED by a later `resume` request without a fresh assemble (measured 14/70 on run 84); the current request wire may be wider than the block, so read request/header.tools + the following tool-addition rows before trusting the block. false means no block was rendered yet.',
           // ★ CLOCK PURITY (TB-2784 follow-up, final11): the stamp comes from the INJECTED clock
           // (`kernel.clockguard.now()`, the guarded accessor the kernel exposes — the same seam `packs/v5r/tools.js`
           // `kernelClockMsOf` uses), never from `Date.now()`: a product module that reads the wall clock is a finding in

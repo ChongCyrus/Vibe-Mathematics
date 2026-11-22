@@ -179,6 +179,11 @@ const T = 'p-md'
 const started = await receipt(v5r, 'vibe_v5_paper', { action: 'start', target: T, participants: [ACAD, R1], format: 'md' })
 ok(started.parsed && started.parsed.ok === true && started.parsed.started && started.parsed.started.status === 'writing',
   '★ 正：start format:"md" 建出论文并进入 writing', started.parsed && started.parsed.started)
+  // ★ RUN-92 F-87-08: a PRE-GATE refusal (paper still writing) must say the four finalisation gates were NOT evaluated.
+  const earlyFinal = await receipt(v5r, 'vibe_v5_paper', { action: 'final', target: T, member: ACAD, decision: 'deliverable' })
+  ok(earlyFinal.parsed && earlyFinal.parsed.ok === false && earlyFinal.parsed.gatesEvaluated === false && Array.isArray(earlyFinal.parsed.gates) && earlyFinal.parsed.gates.length === 0 && /NOT evaluated/.test(String(earlyFinal.parsed.gatesMeans)),
+    'F-87-08 ★★★ a pre-gate final refusal carries gatesEvaluated:false + gates:[] + means (four gates NOT evaluated, not a green empty list)',
+    earlyFinal.parsed && { code: earlyFinal.parsed.code, gatesEvaluated: earlyFinal.parsed.gatesEvaluated, gates: earlyFinal.parsed.gates, means: earlyFinal.parsed.gatesMeans && String(earlyFinal.parsed.gatesMeans).slice(0, 60) })
 const st0 = (await receipt(v5r, 'vibe_v5_paper', { action: 'status', target: T })).parsed
 eq(st0 && st0.paper && st0.paper.format, 'md',
   '★ 读回：格式真的是 md（status.paper.format —— 这不是一份会写 tex 行的稿子，正是 F72-7 的现场）')
@@ -316,6 +321,9 @@ ok(fin && fin.final && (typeof fin.final.finalizedAt === 'number' || typeof fin.
 ok(stAfter && stAfter.pdfCompiled && (stAfter.pdfCompiled.compiledAt !== undefined && stAfter.pdfCompiled.compiledAt !== null) && stAfter.pdfCompiled.finalizedAt !== undefined,
   'F-87-04 ★★ status.pdfCompiled carries BOTH compiledAt and finalizedAt (the two clocks, one reading)',
   stAfter && stAfter.pdfCompiled && { compiledAt: stAfter.pdfCompiled.compiledAt, finalizedAt: stAfter.pdfCompiled.finalizedAt })
+ok(stAfter && stAfter.requiredLines && stAfter.requiredLines.requiredLinesTiming && stAfter.requiredLines.requiredLinesTiming.finalized === true && stAfter.requiredLines.requiredLinesTiming.requiredLinesSetAtFinal === null && /TIMING/.test(String(stAfter.requiredLines.requiredLinesTiming.means)),
+  'F-87-07 ★★★ status.requiredLines carries REQUIRED-LINES TIMING: finalized:true, requiredLinesSetAtFinal:null (not captured at final), post-final promote is disclosed as TIMING',
+  stAfter && stAfter.requiredLines && stAfter.requiredLines.requiredLinesTiming)
 // F72-9 — the live run read `paper.status:"finalized"` and the teaching said published/complete. Two different questions,
 // and now both are visible on ONE receipt: the state is finalized, and the archive row reading says NOT complete.
 eq(stAfter && stAfter.paper && stAfter.paper.status, 'finalized', '★★ 正(F72-9)：状态机的终态叫 finalized')
@@ -1225,9 +1233,9 @@ console.log('=== 15. TB-2788：status 披露 roundsCap/atCap/forcedAfterCapAvail
   cpSync(join(REPO, 'vibe-math-vmu'), join(lampRoot, 'vibe-math-vmu'), { recursive: true })
   const kitP = join(lampRoot, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
   const kitS = await readFile(kitP, 'utf8')
-  const facts = "{ currentStage: state.status, nextMoves: nextMovesOf(state), ...capNow }"
+  const facts = 'currentStage: state.status, nextMoves: nextMovesOf(state), '
   ok(kitS.includes(facts), 'lamp-setup：状态门拒的 facts 可定位')
-  await writeFile(kitP, kitS.split(facts).join('{}'), 'utf8')
+  await writeFile(kitP, kitS.split(facts).join(''), 'utf8')
   const L15 = await bootOf(pathToFileURL(join(lampRoot, 'vibe-math-vmu', 'vibe-math-vmu.js')).href, { root: join(lampRoot, 'v5r'), packs: ['v5r'], 'vmu.paper.officeConsult': 'off' })
   const lk = L15.handle.kernel
   for (const [id, slot] of [[ACAD, 'chair'], [R1, 'member'], [OFFICE, 'member']]) await lk.members.hire({ id, slot })

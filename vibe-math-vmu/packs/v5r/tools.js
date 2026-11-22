@@ -7317,7 +7317,23 @@ async function toolPaper(args = {}, { kernel, exec = null } = {}) {
           try {
             if (typeof paper.requiredLines !== 'function') return null
             const r = paper.requiredLines()
-            return r && typeof r === 'object' ? r : null
+            if (!r || typeof r !== 'object') return null
+            const st = got && got.state ? got.state : (paperView || null)
+            const paperStatus = st && st.status !== undefined && st.status !== null ? String(st.status) : null
+            const finalized = paperStatus === 'finalized'
+            const finalizedAt = st && st.finalizedAt !== undefined && st.finalizedAt !== null ? st.finalizedAt : (st && st.final && st.final.finalizedAt !== undefined ? st.final.finalizedAt : null)
+            return Object.assign({}, r, {
+              // ★ RUN-92 F-87-07: requiredLines is a LIVE ledger reading, not a snapshot taken at final. A card promoted
+              // AFTER the paper was finalized adds a line the finalized body cannot contain — TIMING, not a missing citation.
+              requiredLinesReadAt: kernelClockMsOf(kernel),
+              requiredLinesTiming: {
+                paperStatus, finalized, finalizedAt,
+                postFinalPromoteRisk: finalized,
+                requiredLinesSetAtFinal: null,
+                requiredLinesSetAtFinalMeans: 'not captured at final in this build (null is the NAMED absence): the list below is read NOW; compare requiredLinesReadAt with finalizedAt, and if finalized is true and a card was promoted later the line is TIMING, not a missing citation',
+                means: 'when finalized:true, a card promoted after finalizedAt makes a required line the finished body cannot contain; this is a TIMING fact. Read satisfiedInBody/capturedAtFinal when present, otherwise compare requiredLinesReadAt > finalizedAt + the promote time; the repair is final{decision:"revise"} to reopen and add the line, never a new final of the old body',
+              },
+            })
           } catch (e) { return { ok: false, count: 0, items: [], message: 'reading the verified requirements threw: ' + String((e && e.message) || e) } }
         })(),
         reachableMoves: (() => {
@@ -7656,7 +7672,10 @@ async function toolPaper(args = {}, { kernel, exec = null } = {}) {
             missingMeans: 'every pointer here is a PROSE citation that resolved to no record — this gate answered "does the record exist?" (`missing` names the paths); the next check is the evidence gate (>=1 entry per part)',
           })
       }
+      const partCaller = resolveTurnMember(kernel, exec)
+      const partWrittenFrom = partCaller === null ? 'relayed' : (String(partCaller) === String(args.member) ? 'own-turn' : 'relayed')
       const part = paper.recordPart({
+        writtenFrom: partWrittenFrom,
         target,
         member: str(args.member),
         title: str(args.part || args.title || ''),
@@ -7731,13 +7750,28 @@ async function toolPaper(args = {}, { kernel, exec = null } = {}) {
       return { ok: true, tool, action, advance: paper.advance({ target, member: advanceCaller || null }) }
     }
     case 'final': {
-      const finalized = await paper.recordFinal({
+      let finalized = null
+      try {
+        finalized = await paper.recordFinal({
         target,
         member: str(args.member),
         decision: str(args.decision || ''),
         note: str(args.note || ''),
         conclusion: str(args.conclusion || args.body || ''),
-      })
+        })
+      } catch (e) {
+        // Only a PRE-GATE refusal (the flow marks it gatesEvaluated:false) gets this receipt; a gate failure that THROWS
+        // must keep travelling unchanged (the one-pass gates[] receipt is the kit own shape).
+        if (!(e && e.gatesEvaluated === false)) throw e
+        // ★ RUN-92 F-87-08: a PRE-GATE refusal (state/seat/decision) rejects the call BEFORE the four finalisation gates
+        // run. The receipt must say that, not leave `gates` absent or silently empty: gatesEvaluated:false + gates:[] + means.
+        const facts = {}
+        if (e && typeof e === 'object') for (const k of Object.keys(e)) if (['code', 'message', 'hint', 'stack', 'name'].indexOf(k) < 0) facts[k] = e[k]
+        return Object.assign({ ok: false, tool, action, code: (e && e.code) || 'VMU_STATE', message: String((e && e.message) || e), hint: e && e.hint ? String(e.hint) : null },
+          facts,
+          { gatesEvaluated: false, gates: [], primaryGate: null, gatePriority: null,
+            gatesMeans: 'the four finalisation gates (cross-review / evidence-grade-line / glyph-coverage / office-consult) were NOT evaluated: a PRE-GATE refused this call first (state/seat/decision). gates:[] here does not mean all gates passed' })
+      }
       // ★★★ TB-2785 / TB-2786 (RUN 84 attempt-1, audit7 N2/N3): FINAL EVALUATES EVERY GATE AND REPORTS THEM TOGETHER.
       // The kit now returns { ok:false, gates:[{name,ok,code,detail}], primaryGate, code } instead of stopping at the first
       // failing gate — so the character gate is visible on the same receipt as the cross-review/grade/consult gates. This

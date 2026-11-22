@@ -1536,6 +1536,8 @@ if (SELF_PROBE) {
     first.receipt.blockAssembledForAgent === 'member-tb2784',
     '★★★ 判据 1（回执）：wireStaleRisk:true + blockAssembledAtMs + blockAssembledForAgent（读得到，不用推断）',
     { wireStaleRisk: first.receipt.wireStaleRisk, at: first.receipt.blockAssembledAtMs, forAgent: first.receipt.blockAssembledForAgent })
+  ok(typeof first.receipt.wireStaleRiskMeans === 'string' && String(first.receipt.wireStaleRiskMeans).includes('resume') && String(first.receipt.wireStaleRiskMeans).includes('14/70'),
+    'F-87-09 ★★ wireStaleRisk EXISTS and its receipt means says WHY (resume can carry a wider wire; the taskbook deletion note was wrong)', first.receipt.wireStaleRiskMeans && String(first.receipt.wireStaleRiskMeans).slice(0, 70))
   // ★ THE RESUMED REQUEST: the next turn's first request reuses the LAST rendered block WITHOUT calling this hook. The
   // block in force is the narrow one (58/48) while the resume wire is 79/69 — exactly the 14 run-84 samples. The point of
   // this assertion is that the product tells the truth about that state, not that it pretends equality.

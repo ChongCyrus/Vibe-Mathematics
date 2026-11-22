@@ -83,15 +83,31 @@ const ok = (cond, msg, extra) => {
 
 const sha256Of = (file) => 'sha256:' + createHash('sha256').update(readFileSync(file)).digest('hex')
 
+// ★ FINAL40 FLAKE FIX (T1 k=3): two mutation drivers write their MUTANT COPY as a dot-sibling under `scripts/`
+// (`tests/temp-hygiene.mutants.mjs`, `tests/release-check.mutants.mjs`) and delete it in `finally`; when this suite's
+// §0 enumeration walks the real tree while another worker is deleting one, `statSync`/`readFileSync` threw ENOENT and
+// the whole suite crashed for a file that was never code. The transient artifacts are named `.tmp-*` ON PURPOSE
+// (they are test-only mutants, removed by their own driver), so the scanner:
+//   · skips `.tmp-*` names at ANY depth (they are not shipped code and are not evidence);
+//   · tolerates a directory/file that vanishes between enumeration and read (a named diagnostic, never a silent
+//     pass: the FINAL enumeration is what the assertions judge, and a real file that vanishes is reported by §0's
+//     re-run when it persists).
+// No assertion is relaxed: every REAL file under scripts/ or vibe-math-vmu/ is still read and scanned.
+const TRANSIENT_MUTANT = /(^|[\/])\.tmp-/
+const isTransientMutant = (name) => TRANSIENT_MUTANT.test(String(name)) || String(name).startsWith('.tmp-')
 function allFilesUnder(root) {
   const out = []
   const stack = SCAN_DIRS.map((d) => join(root, d)).filter((p) => existsSync(p))
   while (stack.length > 0) {
     const dir = stack.pop()
-    for (const name of readdirSync(dir)) {
+    let names = []
+    try { names = readdirSync(dir) } catch (e) { if (e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')) continue; throw e }
+    for (const name of names) {
       if (name === 'node_modules' || name === '.git') continue
+      if (isTransientMutant(name)) continue
       const p = join(dir, name)
-      const st = statSync(p)
+      let st = null
+      try { st = statSync(p) } catch (e) { if (e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')) continue; throw e }
       if (st.isDirectory()) stack.push(p)
       else if (st.isFile()) out.push(p)
     }
@@ -105,7 +121,8 @@ function scanForLegacy(root) {
   const scriptsEvidence = []
   const product = []
   for (const file of allFilesUnder(root)) {
-    const text = readFileSync(file, 'utf8')
+    let text = null
+    try { text = readFileSync(file, 'utf8') } catch (e) { if (e && (e.code === 'ENOENT' || e.code === 'EISDIR')) continue; throw e }
     if (!LEGACY_RE.test(text)) continue
     const rel = relative(root, file).split(sep).join('/')
     if (rel.startsWith('scripts/')) {

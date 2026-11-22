@@ -41,7 +41,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { copyCorpus } from './corpus-copy.mjs'
-import { tmpRoot } from '../../lib/tmp-root.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..', '..', '..')
@@ -518,20 +517,62 @@ function corpusDigest(files) {
 //   VMU_RICH_REAL = the committed fixture rich corpus
 // The gate still receives --root=<fixture root>; this makes the environment agree with it instead of relying on the
 // flag alone (a second, disagreeing default is exactly how the extra code got in).
-const GATE_ISO_ROOT = path.join(tmpRoot(), 'redteam-gate-iso')
-function gateEnv(built) {
-  try { fs.mkdirSync(GATE_ISO_ROOT, { recursive: true }) } catch { /* the gate's own refusal names an unwritable root */ }
-  const fixtureRoot = (built && (built.root || built.rootDefault)) || GATE_ISO_ROOT
-  return { ...process.env, VMU_RICH_REAL: RICH, VMU_SIM_ROOT: fixtureRoot, VMU_TMP_ROOT: GATE_ISO_ROOT }
+// ★ final40b (A13b returned under T1 k=3): EVERY SPAWN GETS ITS OWN LAYER ROOT, CREATED FROM NOTHING AND DESTROYED AFTER.
+// A shared `redteam-gate-iso` under the workspace temp root was still one directory every worker could see: when T1 ran
+// k=3 with other suites writing layers into the workspace sim root, the gate child could inherit a live
+// `current-layer.json` (via VMU_TMP_ROOT / VMU_SIM_ROOT / the default) and mix a LIVE pointer into a FIXTURE report —
+// a deterministic extra `AUDIT_CORPUS_STALE`, not a race. So:
+//   · each spawn creates `mkdtemp(os.tmpdir()/vmu-redteam-gate-)` and writes its OWN `current-layer.json` there
+//     (plus `<iso>/sim/current-layer.json`) pointing at the fixture layer the report names;
+//   · VMU_TMP_ROOT = that dir, VMU_SIM_ROOT = `<iso>/sim`, VMU_RICH_REAL = the committed fixture corpus, and
+//     `--root=<fixture root>` is still passed; the child can no longer resolve ANY lane root outside its own copy;
+//   · the spawn is REFUSED (skipped, then retried by the caller) when `treeNow` is not the hash the report was
+//     stamped with, or when the isolation root is not under os.tmpdir()/is not a fresh directory.
+function corpusIdOfReport(auditPath) {
+  try {
+    const text = fs.readFileSync(auditPath, 'utf8')
+    const m = /"corpusId"\s*:\s*"([^"]+)"/.exec(text)
+    return m ? m[1] : null
+  } catch { return null }
+}
+function makeGateIsoRoot() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vmu-redteam-gate-'))
+  fs.mkdirSync(path.join(root, 'sim'), { recursive: true })
+  return root
+}
+function gateEnv(built, isoRoot) {
+  const fixtureRoot = built && (built.root || built.rootDefault) ? (built.root || built.rootDefault) : isoRoot
+  const pointer = { dir: fixtureRoot, corpusId: corpusIdOfReport(built.audit), auditId: null, generatedAt: new Date().toISOString(), pid: process.pid, at: new Date().toISOString(), by: 'scripts/sim/redteam/run.mjs fixture (isolated gate root)' }
+  for (const file of [path.join(isoRoot, 'current-layer.json'), path.join(isoRoot, 'sim', 'current-layer.json')]) {
+    try { fs.writeFileSync(file, JSON.stringify(pointer, null, 2) + NL) } catch (e) { /* the gate's own refusal names an unwritable root */ }
+  }
+  return { ...process.env, VMU_RICH_REAL: RICH, VMU_SIM_ROOT: path.join(isoRoot, 'sim'), VMU_TMP_ROOT: isoRoot }
 }
 
-function runGate(vector, built) {
+/** Spawn the gate inside a brand-new layer root. Returns `{ skipped:true, why }` when the pre-spawn proof fails. */
+function runGateIsolated(vector, built, expectedTreeHash, gateModule) {
+  const isoRoot = makeGateIsoRoot()
+  try {
+    const resolvedIso = path.resolve(isoRoot) + path.sep
+    const tmpBase = path.resolve(os.tmpdir()) + path.sep
+    if (!resolvedIso.startsWith(tmpBase)) return { skipped: true, why: 'isolation root escaped os.tmpdir(): ' + isoRoot, exit: null, payload: null, codes: [] }
+    if (expectedTreeHash) {
+      const now = treeNow(gateModule)
+      if (!now.ok || now.hash !== expectedTreeHash) return { skipped: true, why: 'tree moved before spawn (want ' + expectedTreeHash + ', now ' + (now && now.hash) + ')', exit: null, payload: null, codes: [] }
+    }
+    return runGate(vector, built, isoRoot)
+  } finally {
+    try { fs.rmSync(isoRoot, { recursive: true, force: true }) } catch (e) { /* best effort; a leaked tmp dir is not a gate finding */ }
+  }
+}
+
+function runGate(vector, built, isoRoot) {
   const args = [GATE, '--json', '--audit=' + built.audit, '--gate-script=' + STUB, '--open-items=' + built.ledgerPath, '--declared=' + DECLARED]
   if (!built.root) args.push('--root=' + built.rootDefault)
   else args.push('--root=' + built.root)
   for (const extra of vector.cliArgs || []) args.push(String(extra).replace('@root', built.root || built.rootDefault))
   const started = process.hrtime.bigint()
-  const res = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8', timeout: 300000, maxBuffer: 64 * 1024 * 1024, env: gateEnv(built) })
+  const res = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8', timeout: 300000, maxBuffer: 64 * 1024 * 1024, env: gateEnv(built, isoRoot) })
   const wallMs = Number(process.hrtime.bigint() - started) / 1e6
   let payload = null
   let parseError = null
@@ -727,7 +768,7 @@ async function main() {
       if (vector.ledgerItem) for (const item of items.items || []) Object.assign(item, vector.ledgerItem)
       fs.writeFileSync(base.ledgerPath, JSON.stringify(items, null, 2) + NL)
       if (vector.reportDir) builtFor.dir = vector.reportDir
-      let got = runGate({ ...fx, cliArgs: vector.cliArgs || fx.cliArgs || [] }, builtFor)
+      let got = runGateIsolated({ ...fx, cliArgs: vector.cliArgs || fx.cliArgs || [] }, builtFor, ctx.tree.hash, gate)
       let attempts = 1
       // ── TREE-CHANGED RETRY, HARDENED FOR CONCURRENT LANES ────────────────────────────────────────────────────────
       // final33b: under T1 (k gates + lanes still editing) a fixture could exhaust six fast retries and settle on a run
@@ -739,7 +780,7 @@ async function main() {
       // pinned by every fixture (`loadContext` copies the committed fixture corpus and writes its own pointer; the gate
       // is spawned with `--root=<fixture root>` and `VMU_RICH_REAL=<committed RICH>`), so the ONLY cross-run variable is
       // the live tree hash this loop re-settles.
-      while (retryable(got, vector.expects) && attempts < 24) {
+      while ((got.skipped === true || retryable(got, vector.expects)) && attempts < 24) {
         attempts += 1
         sleep(300)
         const settled = stableTree(gate, { tries: 12, gapMs: 300 })
@@ -749,12 +790,21 @@ async function main() {
         Object.assign(builtFor, rebuilt)
         const justBefore = treeNow(gate)
         if (!justBefore.ok || justBefore.hash !== ctx.tree.hash) continue // moved between stamp and spawn: restamp
-        got = runGate({ ...fx, cliArgs: vector.cliArgs || fx.cliArgs || [] }, builtFor)
+        const attempt = runGateIsolated({ ...fx, cliArgs: vector.cliArgs || fx.cliArgs || [] }, builtFor, ctx.tree.hash, gate)
+        if (attempt.skipped) continue // pre-spawn proof failed inside the isolation step: do not count it as a verdict
+        got = attempt
+      }
+      // A spawn refused by the pre-spawn proof is an ENVIRONMENT result, never a verdict: if every attempt was skipped
+      // the vector is reported as an error (the suite goes red by name) instead of being judged on a payload that does
+      // not exist. `codes` is always an array so the row/report shape cannot crash on an empty result.
+      if (!got || got.skipped === true || typeof got.exit !== 'number') {
+        got = { exit: null, skipped: false, payload: null, codes: [], wallMs: 0, why: (got && got.why) || 'the gate spawn was skipped by the pre-spawn proof' }
       }
       const verdict = judge({ ...fx, expects: vector.expects }, got)
-      rows.push({ id: vector.id, fixture: fx.id, status: verdict.status, why: verdict.why, codes: verdict.codes, exit: got.exit, wallMs: Math.round(got.wallMs), attempts, expected: vector.expects })
+      const codes = Array.isArray(verdict.codes) ? verdict.codes : []
+      rows.push({ id: vector.id, fixture: fx.id, status: verdict.status, why: verdict.why, codes, exit: got.exit, wallMs: Math.round(Number(got.wallMs) || 0), attempts, expected: vector.expects })
       const label = verdict.status.toUpperCase().padEnd(11)
-      console.log(fx.id.padEnd(9) + label + ' exit ' + String(got.exit).padEnd(3) + ' ' + String(Math.round(got.wallMs)).padStart(5) + ' ms  codes=[' + verdict.codes.join(',') + ']')
+      console.log(fx.id.padEnd(9) + label + ' exit ' + String(got.exit).padEnd(3) + ' ' + String(Math.round(Number(got.wallMs) || 0)).padStart(5) + ' ms  codes=[' + codes.join(',') + ']')
       if (hasFlag('--verbose') || verdict.status !== 'named' && verdict.status !== 'neutralized') console.log('         why: ' + verdict.why)
     }
   } finally {

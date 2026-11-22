@@ -19,6 +19,9 @@
 // Run: node tests/vmu-f3-f4-paper-integrity.test.mjs
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { mkdtemp } from 'node:fs/promises'
+import { cpSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '..')
@@ -333,6 +336,39 @@ console.log('§8 RUN-90 F-87-02: evidence projection vs live slot')
   ok(op && op.evidenceCount === 0 && op.evidenceSourceOfTruth === 'list-newest',
     'RUN-90 F-87-02 LAMP RED-worthy: without the slot id the old list fallback reports evidenceCount:0 (the silent zero) — the live-slot read is load-bearing',
     op && { count: op.evidenceCount, source: op.evidenceSourceOfTruth })
+}
+
+// ── RUN-92 F-87-06: paper part rows carry the ACT provenance from the writing seat (own-turn vs relayed)
+console.log('§9 RUN-92 F-87-06: paper-part writtenFrom follows the acting seat')
+{
+  const { flow, rows } = boot()
+  const T = 'RUN92 归属'
+  flow.start({ target: T, participants: ['r-1', 'r-2'] })
+  const own = flow.recordPart({ target: T, member: 'r-1', title: '自己写的', solution: 'own', evidence: ['e'], writtenFrom: 'own-turn' })
+  const relay = flow.recordPart({ target: T, member: 'r-2', title: '代写的', solution: 'relayed', evidence: ['e'], writtenFrom: 'relayed' })
+  const rowOf = (id) => [...rows.values()].filter((r) => r && r.id === id)[0] || null
+  const ownRow = rowOf(own.recordId)
+  const relayRow = rowOf(relay.recordId)
+  ok(ownRow && ownRow.writtenFrom === 'own-turn' && relayRow && relayRow.writtenFrom === 'relayed',
+    'F-87-06 ★★★ a paper-part row carries the SAME own-turn/relayed provenance as the act (no channel-specific second answer)',
+    { own: ownRow && ownRow.writtenFrom, relayed: relayRow && relayRow.writtenFrom })
+  // LAMP: drop the explicit writtenFrom argument in a COPY ⇒ the records face falls back to its caller derivation (null here)
+  // and the same own-turn write is recorded as relayed/unknown — the exact mis-attribution RUN 92 measured.
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-f8706-lamp-'))
+  cpSync(join(REPO, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), { recursive: true })
+  const pf = join(dir, 'vibe-math-vmu', 'packs', 'research-core', 'paper-flow.js')
+  const src = readFileSync(pf, 'utf8')
+  const marker = 'by: author, writtenFrom })'
+  ok(src.includes(marker), 'F-87-06 lamp-setup: the explicit writtenFrom pass is locatable')
+  writeFileSync(pf, src.split(marker).join('by: author })'), 'utf8')
+  const lampPack = await import(pathToFileURL(join(dir, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href + '?f8706=' + Date.now())
+  const lampBoot = boot()
+  const lampFlow = lampPack.createPaperSubsystem({ kernel: lampBoot.kernel, clock: () => 1 })
+  lampFlow.start({ target: 'LAMP', participants: ['r-1'] })
+  const lampPart = lampFlow.recordPart({ target: 'LAMP', member: 'r-1', title: 't', solution: 's', evidence: ['e'], writtenFrom: 'own-turn' })
+  const lampRow = [...lampBoot.rows.values()].filter((r) => r && r.id === lampPart.recordId)[0] || null
+  ok(lampRow && lampRow.writtenFrom !== 'own-turn',
+    'F-87-06 LAMP RED-worthy: without the explicit pass the same own-turn write is recorded relayed/unknown (mis-attribution returns)', lampRow && lampRow.writtenFrom)
 }
 
 console.log('=== VMU F3/F4 PAPER INTEGRITY: ' + passed + ' passed, ' + failed + ' failed ===')

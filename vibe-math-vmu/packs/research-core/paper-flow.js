@@ -950,7 +950,7 @@ export function createPaperFlow({
 
   /** ② a part: written by a PARTICIPANT, in the WRITING stage; it is archived as its own record and its kernel-computed
    *  fingerprint is remembered in the state (that is what rule ① compares against later). */
-  function recordPart({ target, member, title = '', solution = '', methods = '', rules = '', limits = '', evidence = [] } = {}) {
+  function recordPart({ target, member, title = '', solution = '', methods = '', rules = '', limits = '', evidence = [], writtenFrom = null } = {}) {
     const { state } = requireState(target)
     // ★★ RUN 152: the hint used to say "advance it back to writing", which is a call the flow cannot make (advance
     // only moves writing→reviewing→awaiting-editor and returns moved:false at awaiting-editor). The reachable repair is
@@ -983,7 +983,9 @@ export function createPaperFlow({
     if (!part.title && !part.solution && !part.methods && !part.rules && !part.limits) {
       throw refuse('VMU_INVALID_ARGUMENT', 'the part carries no content', 'give at least a title and one contribution field (solution/methods/rules/limits)')
     }
-    const put = records.put({ track: TRACK, kind: 'paper-part', title: recordName(state.target, 'part|' + part.member), body: JSON.stringify(part), by: author })
+    // ★ RUN-92 F-87-06: the ACT provenance travels with the write (own-turn when the named seat ran it; relayed when a
+    // caller names the seat without running as it) — one criterion with progress rows, not second-guessed at read time.
+    const put = records.put({ track: TRACK, kind: 'paper-part', title: recordName(state.target, 'part|' + part.member), body: JSON.stringify(part), by: author, writtenFrom })
     const previous = state.parts[part.member] || null
     // ★★ RUN 174 (run 19 FEEDBACK19 F4): the slot said `at: <round number>` — a field named like a timestamp carrying a
     // round. Run 19 read `{"round":1,"at":1}` and a reviewer counted "at 1" as an epoch. The round IS the time this
@@ -1396,7 +1398,7 @@ export function createPaperFlow({
   }
 
   /** ③ a review: deliverable must be a real boolean ("未表态不算可交付", the original's wording). */
-  function recordReview({ target, member, deliverable, comments = '', of = null } = {}) {
+  function recordReview({ target, member, deliverable, comments = '', of = null, writtenFrom = null } = {}) {
     const { state } = requireState(target)
     if (state.status !== 'reviewing') throw refuse(CODES.STATE, 'the paper is not in its cross-review stage (now: ' + state.status + ')', '`vibe_v5_paper { action: "advance", target: "' + str(state.target) + '" }` moves writing → reviewing (a seat calls the tool, not a bare function name)')
     if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a review participant of this paper', 'participants: ' + state.participants.join(', '))
@@ -1445,7 +1447,7 @@ export function createPaperFlow({
     const staleAtVote = false
     const review = { target: str(state.target), member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000),
       judgedPartFingerprint, judgedPartRound }
-    const put = records.put({ track: TRACK, kind: 'paper-review', title: recordName(state.target, 'review|' + review.member), body: JSON.stringify(review), by: author })
+    const put = records.put({ track: TRACK, kind: 'paper-review', title: recordName(state.target, 'review|' + review.member), body: JSON.stringify(review), by: author, writtenFrom })
     state.reviews[review.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, deliverable: review.deliverable, of: review.of, round: state.round,
       judgedPartFingerprint, judgedPartRound, stalePart: staleAtVote }
     state.updatedRound = state.round
@@ -1906,7 +1908,9 @@ export function createPaperFlow({
       const capNow = capReadingOf(state)
       throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')' + (capNow.atCap ? ' — NOTE: round ' + String(capNow.round) + ' is AT the cap ' + String(capNow.roundsCap) + ', so from "reviewing" an advance() reaches the editor WITHOUT unanimity (forcedAfterCap)' : ''),
         nextMoveFor(state) + (capNow.atCap ? ' — AT CAP: an advance() from "reviewing" moves to awaiting-editor without unanimity (forcedAfterCap:true), and final is legal only there.' : ''),
-        { currentStage: state.status, nextMoves: nextMovesOf(state), ...capNow })
+        { currentStage: state.status, nextMoves: nextMovesOf(state), ...capNow,
+          // ★ RUN-92 F-87-08: this is a PRE-GATE refusal: the four finalisation gates were not evaluated.
+          gatesEvaluated: false, gatesMeans: 'the four finalisation gates were NOT evaluated: the state gate refused this call before they ran' })
     }
     // ★★ RUN 152: this refusal used to be ONE sentence for two different facts, and it printed
     // "this paper is not the academician's to finalise" even when the academician WAS the signer (the paper had been

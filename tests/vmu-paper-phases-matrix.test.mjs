@@ -91,6 +91,16 @@ test('RUN-91: reachableMoves is read BEFORE acting, and reviewing+false uses the
   }
 })
 
+test('RUN-92: gatesEvaluated:false is the four-gates-not-run reading, and requiredLines is taught as a TIMING fact', () => {
+  for (const slot of ['chair', 'member', 'temp']) {
+    const t = textOf(slot, 'paper-final')
+    assert.ok(t.includes('gatesEvaluated:false'), slot + ': the receipt field is named')
+    assert.ok(t.includes('四门尚未评估'), slot + ': the four gates are explicitly not run')
+    assert.ok(t.includes('promote 与 `requiredLines` 的时序'), slot + ': promote-after-final is named as timing')
+    assert.ok(t.includes('satisfiedInBody') && t.includes('capturedAtFinal'), slot + ': the timing read fields are named')
+  }
+})
+
 test('B-2 (advance→reviewing precondition) is in the paper-review prompt', () => {
   for (const slot of ['chair', 'member', 'temp']) {
     const t = textOf(slot, 'paper-review')
