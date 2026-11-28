@@ -376,6 +376,13 @@ function hostChildLimitHint(limit) {
 
 export function apply(ctx) {
   const subagents = ctx.subagents
+  let childLifecycle
+  const startChild = spec => typeof subagents.startContinuable === 'function'
+    ? subagents.startContinuable(spec)
+    : import('../shared/subagent-compat.js').then(module => {
+      childLifecycle ||= module.createChildLifecycle(ctx, { owns: id => childOwner.has(id), start: routeMemberStart, end: routeMemberEnd })
+      return childLifecycle.start(spec)
+    })
   const agents = ctx.agents
   const fs = ctx.fs
   const tools = ctx.tools
@@ -2270,14 +2277,16 @@ export function apply(ctx) {
       let started
       try {
         started = await startWithToolFilter(tf, function (f) {
+          // Modern activation has no persona override: persist the same frozen identity
+          // with the initial content. Legacy hosts keep their system-prefix path.
+          const legacyPersona = typeof subagents.startContinuable === 'function'
           return {
             provider,
             label: 'vibe5 ' + member.id + ' (' + kindLabel(member.kind) + ')',
             request: Object.assign({
-              prompt: [textBlock(prompt)],
+              prompt: legacyPersona ? [textBlock(prompt)] : [textBlock(persona), textBlock(prompt)],
               parent: rootAgent,
-              persona,
-            }, Object.keys(ao).length ? { agentOptions: ao } : {}, f ? { toolFilter: f } : {}),
+            }, legacyPersona ? { persona } : {}, Object.keys(ao).length ? { agentOptions: ao } : {}, f ? { toolFilter: f } : {}),
             signal: makeSignal(params.activityTimeoutMs),
           }
         })
@@ -2313,6 +2322,7 @@ export function apply(ctx) {
       // the member would be re-woken with a heartbeat prompt instead of a brainstorm.
       inflight.set(started.childId, shortId())
       await putMember(member)
+      childLifecycle?.claim(started.childId)
       return member
     }
     // Deliver one prompt to a member. MUST use `subagents.sendMessage` — the
@@ -6547,9 +6557,9 @@ export function apply(ctx) {
       const cascaded = target.kind === 'temp' ? [] : await dismissTempsOf(id, callerId, '雇主 ' + id + ' 被解雇（级联）')
       if (target.childId) {
         try { if (typeof subagents.interrupt === 'function') subagents.interrupt(target.childId, { kind: 'ancestor', agent: rootAgent }) } catch (e) { /* fire-and-return */ }
-        try {
-          if (typeof subagents.drainContinuableChildren === 'function') await subagents.drainContinuableChildren(rootAgent, [target.childId])
-        } catch (e) { console.error('vibe-math-v5: drain ' + id + ': ' + String((e && e.message) || e)) }
+        if (typeof subagents.drainContinuableChildren === 'function') await subagents.drainContinuableChildren(rootAgent, [target.childId])
+        else if (typeof subagents.drainChildren === 'function') await subagents.drainChildren(rootAgent, [target.childId])
+        else throw v5err('UNSUPPORTED_CAPABILITY', 'Host has no selected-child drain operation')
         childOwner.delete(target.childId)
         inflight.delete(target.childId)
         liveAgents.delete(target.childId)
@@ -7186,7 +7196,7 @@ export function apply(ctx) {
     // make every member spawn fail silently. The host names the registered tools in its rejection.
     async function startWithToolFilter(toolFilter, makeSpec){
       try {
-        return await subagents.startContinuable(makeSpec(toolFilter))
+        return await startChild(makeSpec(toolFilter))
       } catch(e){
         const message = String((e && e.message) || e)
         const retry = sanitizeToolFilter(toolFilter, registeredToolsFromError(message))
@@ -7197,7 +7207,7 @@ export function apply(ctx) {
         if(JSON.stringify(retry) === JSON.stringify(toolFilter)) throw e
         console.error('vibe-math-v5: 工具过滤里有本宿主未注册的名字，已只保留已注册的名字重试。dropped=' + JSON.stringify(toolFilter) + ' kept=' + JSON.stringify(retry))
         // a FRESH spec (and a fresh timeout signal) for the retry
-        return await subagents.startContinuable(makeSpec(retry))
+        return await startChild(makeSpec(retry))
       }
     }
 
@@ -8541,16 +8551,16 @@ export function apply(ctx) {
   // registry, so an end-time agents.get(childId) can never resolve (real /compact was
   // dead code in v4 for exactly this reason). A WeakRef means a missed release merely
   // delays collection rather than pinning the Agent.
-  ctx.on('subagent/start', function (info) {
+  function routeMemberStart(info, capturedAgent) {
     if (!info || !info.id) return
     const sid = childOwner.get(info.id)
     const s = sid !== undefined ? sessions.get(sid) : undefined
     if (!s) return
     let agent
-    try { agent = agents.get(info.id) } catch (e) { agent = undefined }
+    try { agent = capturedAgent || agents.get(info.id) } catch (e) { agent = capturedAgent }
     if (agent) s.rememberAgent(info.id, agent)
-  })
-  ctx.on('subagent/end', function (info) {
+  }
+  function routeMemberEnd(info) {
     if (!info || !info.id) return
     const sid = childOwner.get(info.id)
     const s = sid !== undefined ? sessions.get(sid) : undefined
@@ -8563,7 +8573,9 @@ export function apply(ctx) {
         s.kick()
       })
       .finally(() => s.forgetAgent(info.id))
-  })
+  }
+  ctx.on('subagent/start', info => childLifecycle ? childLifecycle.startEvent(info) : routeMemberStart(info))
+  ctx.on('subagent/end', info => childLifecycle ? childLifecycle.endEvent(info) : routeMemberEnd(info))
 }
 
 const now = () => Date.now()

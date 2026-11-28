@@ -286,6 +286,14 @@ import {
 // Session instance below via makeSession(rootAgent, sessionId).
 export function apply(ctx) {
   const subagents = ctx.subagents
+  // Keep the legacy seam intact; load the modern admission bridge only when needed.
+  let childLifecycle
+  const startChild = spec => typeof subagents.startContinuable === 'function'
+    ? subagents.startContinuable(spec)
+    : import('../shared/subagent-compat.js').then(module => {
+      childLifecycle ||= module.createChildLifecycle(ctx, { owns: id => childOwner.has(id), end: routeChildEnd })
+      return childLifecycle.start(spec)
+    })
   const agents = ctx.agents
   const fs = ctx.fs
   const tools = ctx.tools
@@ -1599,7 +1607,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     const tf = buildToolFilter(role)
     if (tf) request.toolFilter = tf
     let started
-    try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
+    try { started = await startChild({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
     catch (e) {
       const message = String((e && e.message) || e)
       // The host rejected the filter because it names tools this deployment does
@@ -1627,7 +1635,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
       console.error('vibe-math-v3: tool permission filter named tools this host does not register; retrying with only registered names (denied-tool intent preserved). dropped=' + JSON.stringify(request.toolFilter) + ' kept=' + JSON.stringify(retryFilter))
       const retryRequest = Object.assign({}, request)
       retryRequest.toolFilter = retryFilter
-      try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: retryRequest, signal: makeSignal(30000) }) }
+      try { started = await startChild({ provider: pickProvider(), label: label, request: retryRequest, signal: makeSignal(30000) }) }
       catch (e2) {
         console.error('vibe-math-v3: startContinuable retry with sanitized toolFilter also failed: ' + String((e2 && e2.message) || e2))
         throw e2
@@ -1637,6 +1645,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     childOwner.set(started.childId, sessionId)
     // 并发计数由 agentRegistry 推导，无需手工 +1。
     await saveAll()
+    childLifecycle?.claim(started.childId)
     return started.childId
   }
   // DSH continuable-wake API is subagents.sendMessage(sender, targetId, content, {signal}); subagents.followup
@@ -5528,7 +5537,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
   }))
 
   // subagent/end (registered once; routed to the owning session via childOwner)
-  ctx.on('subagent/end', function (info) {
+  function routeChildEnd(info) {
     // 记下最近一次 end 的时间：childOwner 的宽限期从这里算（见 pruneChildOwner）。
     lastChildEndAt.set(info.id, now())
     const sid = childOwner.get(info.id)
@@ -5537,7 +5546,9 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     // 注意：这里**不要**立即回收 childOwner 条目（与 v2 同一结论）。该映射在子代理 end 之后仍会
     // 被后续事件路由用到；在 v2 上实测过"事件回调里回收"与"onChildEnd 末尾回收"两种写法，
     // 都会让 verdict 收口失效。回收交给引用 + 宽限期的 pruneChildOwner（审计 L1）。
-  })
+  }
+  ctx.on('subagent/start', info => childLifecycle?.startEvent(info))
+  ctx.on('subagent/end', info => childLifecycle ? childLifecycle.endEvent(info) : routeChildEnd(info))
 
   // Project-lock LEASE renewal timer (Round C, HIGH): renewal must NOT live in tick().
   //

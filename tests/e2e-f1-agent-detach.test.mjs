@@ -14,48 +14,44 @@
  *
  * Usage: node tests/e2e-f1-agent-detach.test.mjs
  */
-import { createRequire } from 'node:module'
-import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
+import {
+  formatElectronRelaunchFailure,
+  formatHostPrerequisiteFailure,
+  resolveHostEnvironment,
+} from './helpers/host-environment.mjs'
 
-/**
- * Where the installed DSH host packages live.
- *
- * This used to be a hardcoded `C:/Users/<author>/...` path, which meant the suite silently could
- * not run anywhere else. DSH is a globally installed npm package, and the host packages this
- * suite drives (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-agent`) sit INSIDE its own
- * `node_modules` — so the one portable answer is to ask npm for the global root. The earlier
- * candidates stay as cheap fallbacks for workspaces that vendor the host next to the checkout.
- */
-const NM = (() => {
-  const candidates = []
-  if (process.env.DSH_NODE_MODULES) candidates.push(process.env.DSH_NODE_MODULES)
-  try {
-    candidates.push(join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json')), 'node_modules', '@deepseek-ai'))
-  } catch (e) { /* not resolvable from this checkout — the global install is the normal case */ }
-  for (const execDir of [dirname(process.execPath), join(dirname(process.execPath), 'bin')]) {
-    candidates.push(join(execDir, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'))
-    candidates.push(join(execDir, 'node_modules', '@deepseek-ai'))
+/** Resolve installed host packages; ASAR packages require Electron's Node mode. */
+const host = resolveHostEnvironment()
+if (!host.ok) throw new Error(formatHostPrerequisiteFailure(host))
+if (host.requiresElectron) {
+  if (process.env.DSH_E2E_F1_RELAUNCHED === '1') {
+    throw new Error(formatElectronRelaunchFailure(host) + ' Relaunch did not enter Electron Node mode.')
   }
-  // `npm root -g`, through npm's own CLI so no shell (and no quoting) is involved
-  const npmCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
-  const root = existsSync(npmCli)
-    ? spawnSync(process.execPath, [npmCli, 'root', '-g'], { encoding: 'utf8' })
-    : spawnSync('npm', ['root', '-g'], { encoding: 'utf8', shell: true })
-  const globalRoot = String((root && root.stdout) || '').trim()
-  if (globalRoot) {
-    candidates.push(join(globalRoot, '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'))
-    candidates.push(join(globalRoot, '@deepseek-ai'))
-  }
-  const hit = candidates.find((d) => existsSync(join(d, 'cordis')) && existsSync(join(d, 'dsh-agent')))
-  if (hit === undefined) throw new Error('e2e-f1-agent-detach: cannot locate the installed DSH host packages; looked in:\n  ' + candidates.join('\n  '))
-  return pathToFileURL(hit).href
-})()
+  if (!host.electronExecutable) throw new Error(formatElectronRelaunchFailure(host))
+  const relaunched = spawnSync(host.electronExecutable, [fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+    encoding: 'utf8',
+    shell: false,
+    timeout: 30000,
+    env: {
+      ...process.env,
+      DSH_NODE_MODULES: host.modulesDir,
+      DSH_HOST_EXECUTABLE: host.electronExecutable,
+      DSH_E2E_F1_RELAUNCHED: '1',
+      ELECTRON_RUN_AS_NODE: '1',
+    },
+    windowsHide: true,
+  })
+  if (relaunched.stdout) process.stdout.write(relaunched.stdout)
+  if (relaunched.stderr) process.stderr.write(relaunched.stderr)
+  if (relaunched.error) throw new Error('e2e-f1-agent-detach: Electron relaunch failed: ' + relaunched.error.message)
+  process.exit(relaunched.status === null ? 1 : relaunched.status)
+}
 
-const { Context } = await import(`${NM}/cordis/lib/index.js`);
-const { AgentRegistry } = await import(`${NM}/dsh-agent/lib/index.js`);
+const NM = host.modulesUrl
+const { Context } = await import(`${NM}cordis/lib/index.js`);
+const { AgentRegistry } = await import(`${NM}dsh-agent/lib/index.js`);
 
 const root = new Context();
 const agents = new AgentRegistry(root);

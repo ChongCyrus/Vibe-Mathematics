@@ -16,8 +16,12 @@
 #
 # Composition source of truth: each preset's frozen vibe-math-vN/agent.cordis.yml. The only
 # differences applied to it here:
+#   · DSH 0.2.x registers list_agents from the subagent-control main entry; the separate /list-agents subpath is no longer exported
 #   · @deepseek-ai/dsh-workflow-worker-thread was removed after 0.1.6; @deepseek-ai/dsh-workflow-ptc replaces it
 #   · the legacy `persona.text` key (kept in the frozen file for DSH <= 0.1.2) is unknown from 0.1.3 on — `prefix` carries the same text
+#   · DSH 0.2.x publishes cwd through required runtime context, not a prompt variable; project paths stay session-relative
+#   · the current working directory is reported by the latest required runtime context rather than a static persona suffix
+#   · path guidance follows the latest runtime cwd context instead of a value printed in the persona
 #   · the framework row must name an installed package subpath: a declaration row's `name` is NOT rewritten to a file URL by app-boot (it only recurses into group configs), so a relative path would be resolved against the profile directory
 #   · comment follows the row above (`./vibe-math-vN.js` → the package subpath)
 #   · `command-goal` (the human's /goal) is part of every shipped full preset and must be declared in-preset to reach the agent's scoped command registry
@@ -91,7 +95,7 @@
                 automatic run). /vibe paper [lang=zh|en] [format=both|md|tex] [force] writes or rewrites it by hand. md/tex follow
                 paperFormat; a PDF is produced only when a LaTeX engine is detected and paperCompilePdf is true.
                 A /vibe slash command mirrors the main controls (/vibe start|resume|pause|abort|status|report|mode <auto|manual>|setup|save|template [global|project]|add <id> <desc>|add-proposition <id> <概述>|list-propositions|project [list|new <name>|<name>]|decisions|agents|paper [lang=zh|en] [format=both|md|tex] [force]).
-                Data lives under {{cwd}}/VibeMath/Projects/<project>/
+                Data lives under VibeMath/Projects/<project>/
                 (qs/qs.json, Propos/<分类>_Propos.json, Reliable/, Verified/, Verification_logs/, Progress_Logs/, VibeMath_State/)
                 and survives restarts via vibe_math_resume.
 
@@ -143,7 +147,7 @@
                     recorded as 未定论 with reason formal-required until the object is Lean-passed or carries an
                     explicit, reasoned blocker record; the scheduler is never wedged by it).
                   - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
-                    printed at the end of this prompt; the project root is the `Data lives under …`
+                    reported in the latest runtime context; the project root is the `Data lives under …`
                     directory above):
                     institute work file `<project root>/Formal/<id>.lean`;
                     archived proof `<project root>/Verified/Lean/<id>.lean`;
@@ -157,7 +161,7 @@
                   - vibe_math_status / vibe_math_report show the mode, the per-object formal status and the
                     formalization TODO (Formal/TODO.md). The framework never installs Lean and never judges
                     fidelity for you.
-              suffix: Your working directory is {{cwd}}.
+              suffix: Resolve relative paths against the current session working directory reported in the latest runtime context.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -260,9 +264,6 @@
             config:
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'
@@ -359,7 +360,7 @@
                 interrupt, promote, wait), then the code validates and executes them. You do NOT schedule
                 manually — you only issue the control tools below and read status.
 
-                Data is a PAPER-STYLE MARKDOWN knowledge base under {{cwd}}/VibeMath/Projects/<project>/:
+                Data is a PAPER-STYLE MARKDOWN knowledge base under VibeMath/Projects/<project>/:
                 Problems/ (问题清单, one md per problem: 陈述/状态/依赖/被依赖/来源与动机/计划/解法候选),
                 Progress/ (研究日志, per-direction round narratives), Propos/ (结论/命题库, one md per
                 proposition), Methods/ (通用理论发明库: 理论体系/框架/工具/方法/思想 invented during
@@ -431,7 +432,7 @@
                     withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
                     explicit, reasoned blocker record; the scheduler is never wedged by it).
                   - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
-                    printed at the end of this prompt; the project root is the `Data lives under …`
+                    reported in the latest runtime context; the project root is the `Data lives under …`
                     directory above):
                     institute work file `<project root>/Formal/<id>.lean`;
                     archived proof `<project root>/Verified/Lean/<id>.lean`;
@@ -471,7 +472,7 @@
                     not mentioned in prompts at all); mathMode = typed | typed+shell (typed refuses the shell
                     fallback); mathEngines (cli / python / …); mathTimeoutMs; mathPackages + mathInstallScope
                     for preflight package installs (missing packages are reported with an install plan only).
-              suffix: Your working directory is {{cwd}}.
+              suffix: Resolve relative paths against the current session working directory reported in the latest runtime context.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -574,9 +575,6 @@
             config:
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'
@@ -700,7 +698,7 @@
                 is visibly deadlocked (all idle & nothing progressing for a long time) — and even then,
                 only relay/nudge the group to decide, never decide for them.
 
-                Data lives under {{cwd}}/VibeMath/Projects/<project>/:
+                Data lives under VibeMath/Projects/<project>/:
                   Problems/ (original problem card), Progress/<resident>/ (each resident's progress),
                   Propos/<resident>/ (each resident's propositions, "- ID: p-<id>" / "- 概率:" / "- 价值程度:" ...),
                   Methods/<resident>/ (theories/tools), Subproblems/<resident>/, Shared/ (meeting transcripts /
@@ -758,7 +756,7 @@
                     withheld as 未定论 with reason formal-required until the object is Lean-passed or carries an
                     explicit, reasoned blocker record; the run is never wedged by it).
                   - Paths (every path here is resolved against the SESSION WORKING DIRECTORY, i.e. the cwd
-                    printed at the end of this prompt; the project root is the `Data lives under …`
+                    reported in the latest runtime context; the project root is the `Data lives under …`
                     directory above):
                     institute work file `<project root>/Formal/<id>.lean`;
                     archived proof `<project root>/Verified/Lean/<id>.lean`;
@@ -794,7 +792,7 @@
                   - DISCLOSURE (existing behaviour): after a real context compaction the framework injects
                     a short core-rules recap ("[核心规则重申] …") into your next round — it is the framework
                     re-anchoring the rules, not a new instruction from the office.
-              suffix: Your working directory is {{cwd}}.
+              suffix: Resolve relative paths against the current session working directory reported in the latest runtime context.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -897,9 +895,6 @@
             config:
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'
@@ -1058,7 +1053,7 @@
                 them; `finalize_paper`'s `note` is a PARAPHRASE of the institute's own
                 conclusion, not a verdict of yours.
 
-                Data lives under {{cwd}}/VibeMath/Projects/<project>/Institutes/<institute>/:
+                Data lives under VibeMath/Projects/<project>/Institutes/<institute>/:
                   Members/<id>/Progress/progress.md, Members/<id>/Propos/<id>.md,
                   Members/<id>/Methods/<id>.md, Members/<id>/Subproblems/<id>.md,
                   Shared/TaskBoard.md (human view), Shared/Chat/<day>.md,
@@ -1098,7 +1093,7 @@
                     gate: a true/false verdict is withheld as 未定论 until the object is Lean-passed
                     or carries an explicit, reasoned blocker record).
                   - Paths (every path here is resolved against the SESSION WORKING DIRECTORY,
-                    i.e. the cwd printed at the end of this prompt; the institute root is the
+                    i.e. the cwd reported in the latest runtime context; the institute root is the
                     `Data lives under …` directory above):
                     institute work file `<institute root>/Formal/<id>.lean`;
                     archived proof `<institute root>/Verified/Lean/<id>.lean`;
@@ -1133,7 +1128,7 @@
 
                 When the user asks about progress, call vibe_v5_report and summarise in
                 plain language. Never present an unverified claim as established.
-              suffix: Your working directory is {{cwd}}.
+              suffix: Resolve relative paths against the current session working directory reported in the latest runtime context.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -1236,9 +1231,6 @@
             config:
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'

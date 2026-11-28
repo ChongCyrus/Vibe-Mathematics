@@ -216,8 +216,8 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
       ② 建一个 `git worktree` 拿改动前的检出，同一套件在两种布局各跑一遍，归一化路径/临时目录/耗时后
       **逐行比对**（`_oneoff/layout-invariance.mjs`）；③ 相对链接扫描 0 失效（`_oneoff/scan-links.mjs`）。
 - [ ] 讲"全套件 / 门禁 / 多少次全绿"时，是否区分了**随包发布面**与**仓库**？`package.json` 的 `files`
-      只发 `tests/` 的 **71** 项（**文件计数**；其中 `.test.mjs` **18** 个），完整门禁（`node tests/run-tests.mjs`，
-      当前 **106 项作业（job count）= 44 套件 + 62 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
+      只发 `tests/` 的 **79** 项（**文件计数**；其中 `.test.mjs` **24** 个），完整门禁（`node tests/run-tests.mjs`，
+      当前 **115 项作业（job count）= 49 套件 + 66 探针/变体**，由 `node tests/run-tests.mjs --counts` 派生）只在开发检出里成立。两边的清单见
       `docs/test-timing.md` §1.1；发布物里的 runner 会把缺失/跳过项**打印出来**（不会静默少跑），
       所以"安装用户照文档跑得到全套件"这类说法必须避免。
 - [ ] **runner 本身也要跑一遍**：直接跑套件通过 ≠ 并行 runner 通过（2.3.13 就出现过
@@ -302,6 +302,15 @@ v2/v3/v4/v5 是**同构实现**（同一份契约、四份独立代码，刻意�
 ---
 
 ## 4. 第三优先：其余（沿用既有做法）
+
+- [ ] **预设装配必须匹配当前宿主的导出面**：DSH 0.2.2-rc.1 的
+      `@deepseek-ai/dsh-tool-subagent-control` 主入口已注册 `list_agents`；现代 v2/v3/v4/v5
+      装配保留主入口、去掉未导出的 `/list-agents` 子入口，旧目录式 frozen YAML 保持原样。
+      守卫：`node tests/audit-preset-rows.test.mjs`。具名红：在副本上撤销生成器的对应转换并
+      重建产物，四套“does not mount”断言及重建断言应失败；本次实测为 47 passed / 5 failed，
+      修正后为 52 passed / 0 failed。另以同一真实宿主、隔离 profile 比较原包与修复包：
+      原包四套均报 `agent-preset/invalid`，修复包四套均可创建空会话（0 次模型请求）。
+      此验收只证明加载与建会话，不外推成员调度、数学求解或其他宿主版本。
 
 - [ ] 静态自检：调用了但未定义的函数、未声明的参数键、不存在的会话 API 方法、
       已文档化但从未抛出的错误码、遗留的开发标记。
@@ -726,7 +735,7 @@ DSH 的 **agent preset 交付方式**在 0.1.6 → 0.1.7 之间换过一次，�
 ### README/计数一致性（D1）：数字必须**派生**，不许手打
 
 - **权威来源**：`node tests/run-tests.mjs --counts`（门禁自己那份 job 列表）+ `package.json#files`（随包 `tests/*.mjs` 数）。文档里的数字由 **`node scripts/update-doc-counts.mjs`** 生成（`--check` 只检查不改）；新增测试文件会让守卫变红，**修法是跑一次 updater**，因此数字再也不可能被手打。
-- **计数（实测）**：`TOTAL 106`（44 套件 + 62 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 71（**文件计数**：18 个套件 + 53 个探针/脚本）。
+- **计数（实测）**：`TOTAL 115`（49 套件 + 66 探针/变体，**作业计数/job count**，不是文件计数）；随包 `tests/*.mjs` = 79（**文件计数**：24 个套件 + 55 个探针/脚本）。
 - **怎么让它红一次（in-repo）**：`tests/audit-readme-counts.mutants.mjs` —— 基线：守卫绿；**★ 篡改 README 里被引用的派生总数**（走 `COUNTS_README` seam，指向**绝对路径**的副本）⇒ 守卫**具名红**（"README.md quotes the DERIVED totals"）。守卫本体：`tests/audit-readme-counts.mjs`（**19+** 条断言：README/EN/test-timing/checklist 的派生形状、旧读数的消失，以及 **F-C 的全 `docs/**`（live 文档）`TOTAL <n>` 扫描** —— 每个 occurrence 必须等于 `--counts` 的派生值，冻结的 `docs/release-notes/**` 按名排除并在输出里报数）。
 - **touch-anchor（claim-vs-tree 用）**：`--counts`、`update-doc-counts.mjs`、`README COUNTS:`、`README.md quotes the DERIVED totals`。
 

@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibe-math",
   "description": "Multi-agent mathematical problem-solving & verification frameworks for DeepSeek Harness — FOUR agent presets in one install: vibe-math-v2 (probability-driven, classic: qs.json + Propos knowledge base + explorer→solver→review/debate verdict), vibe-math-v3 (THIRD-generation, classic: paper-style Markdown knowledge base with Problems/Progress/Propos/Methods/Verified + planner-agent scheduling that decides the next N actions + universal theory/method invention library + agents write their own Markdown directly via a per-file write lock), and vibe-math-v4 (FOURTH-generation: persistent self-organizing resident subagents that message & meet to decide all tasks, verify only by unanimous consensus, /compact at a context threshold, and stop only when all agree the problem is solved), and vibe-math-v5 (FIFTH-generation research institute: an academician as the organizational centre who decomposes and ASSIGNS work and chairs meetings; permanent researchers who hold the vote and may hire/fire their own temp workers; temp workers with no vote; a group chat and meetings; a durable per-recipient mailbox; a compare-and-set task DAG; and a boolean m-vote consensus rule where an object enters Verified/ only when at least m voting members agree AND every one of them returns exactly 1 or exactly 0). Installing this bundle auto-installs all four presets (v1 was removed at v2.0.0). Each preset also writes a FINAL PAPER by default when its run concludes — and does so BEFORE the run is marked complete: on v4/v5 the team co-authors its parts, merges them, cross-reviews, and the editor named by paperEditor finalises; the output is Paper/<run or institute id>/{paper.md,paper.tex,paper.pdf when a LaTeX engine is detected,paper.meta.json,paper.log.md} (params finalPaper/paperFormat/paperLanguage/paperCompilePdf/paperLatexCommand, plus paperEditor on v4/v5; see docs/final-paper.md).",
-  "version": "2.8.5",
+  "version": "2.8.6-local.2",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
@@ -215,7 +215,21 @@
     "docs/release-notes/RELEASE-NOTES-2.8.4.md",
     "docs/release-notes/RELEASE-NOTES-2.8.4.en.md",
     "docs/release-notes/RELEASE-NOTES-2.8.5.md",
-    "docs/release-notes/RELEASE-NOTES-2.8.5.en.md"
+    "docs/release-notes/RELEASE-NOTES-2.8.5.en.md",
+    "shared/subagent-compat.js",
+    "tests/subagent-compat.test.mjs",
+    "tests/subagent-cleanup.test.mjs",
+    "tests/prompt-template-compat.test.mjs",
+    "tests/e2e-activation-compat.test.mjs",
+    "tests/helpers/activation-host-fixture.mjs",
+    "tests/helpers/host-environment.mjs",
+    "tests/host-environment.test.mjs",
+    "tests/e2e-f1-agent-detach.test.mjs",
+    "docs/HOST-COMPAT-0.2.2.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.6-local.1.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.6-local.1.en.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.6-local.2.md",
+    "docs/release-notes/RELEASE-NOTES-2.8.6-local.2.en.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -245,7 +259,7 @@
     },
     "minVersion": "0.1.2-alpha.4",
     "testedVersion": "0.2.0-rc.2",
-    "compatNote": "v2.8.5 补丁版：修 Lean 形式化通道（此前默认无法编译）、TeX 引擎发现与若干提示词问题，并新增一个纯增量的工作经验反馈库。① Lean：注入的搜索根旗标改用 Lean 4 的 -R（此前用 Lean 3 的 --search-path，编译器在参数解析阶段即以 rc=1 失败、文件从未被读取）——真机实测最小证明编译通过、归档到 Verified/Lean/，并被另一名成员复用。② TeX：「装了但不在 PATH」的引擎现在能在**有界**的文档化候选根里找到（仍只查文档化位置、不扫全盘、绝不自动安装、绝不写工作区之外；未检测到时 triedPaths 具名列出实际探测过的路径）。③ 提示词：缺引擎不再要求成员「向用户询问」而改为「如实上报所办」，LaTeX 指引标注适用范围，「回执」概念首次出现处补背景，空引擎列表改为「可用引擎 无」，面向成员的回执标题改为【研究所提示】，面向代理文本不再含盘符字面量。④ 新增 v5 工具 vibe_v5_feedback 与参数 feedback（默认 on）：self/team 路由自己调整即可、interpersonal 需评估＋事后回填；off 时不注入提示词且每次写入具名拒绝。⑤ 安装/升级：dsh plugin 需要一个可用的 pnpm；安装与升级请给显式版本（dsh plugin --profile <profile> add dsh-vibe-math@2.8.5）——不带版本可能装到旧版。参数名与默认值、数据格式与目录结构均未变；DSH 支撑窗口不变；无需迁移。",
+    "compatNote": "v2.8.6-local.2 本地兼容补丁（基于 2.8.5，未发布 npm）：继承已验证的预设加载修复；增加 startActivation 能力检测入口、Activation 收据清理和测试环境可移植性。当前宿主不消费旧 toolFilter；显式配置此限制时会具名停止派发。V5 在现代入口将冻结身份文本置于首轮用户消息前部；旧入口保持原 persona。首次 caller 投递与冷恢复 parent 投递的差异详见 docs/HOST-COMPAT-0.2.2.md。上游支持窗口及 testedVersion 历史元数据保留，实际本地验收以交付报告为准。",
     "compatibility": {
       "dshReleases": {
         "0.1.2-alpha.4": "compatible",

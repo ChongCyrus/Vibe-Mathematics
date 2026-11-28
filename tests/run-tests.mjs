@@ -252,12 +252,18 @@ if (process.argv.includes('--self-check')) {
 // command a human must run) instead of being omitted quietly: an entry that no longer exists
 // aborts the run, so a rename cannot turn into a silent gap.
 const NEEDS_ARGS = {
-  'audit-tool-exec.mjs': 'node tests/audit-tool-exec.mjs <preset-js> <tool-name>   (calls one real tool through the host path)',
+  'audit-tool-exec.mjs': 'node tests/audit-tool-exec.mjs <preset-js> <tool-name>   (bare probe needs arguments; four isolated status variants run automatically)',
 }
 // Argument variants, run IN ADDITION to the bare run unless `replaceBare` says the bare run is a
 // strict subset of them. `expectExit` documents a probe whose SUCCESS is a non-zero exit (it
 // mutates the source and requires the guarded check to fail): anything else is a FAIL here.
 const VARIANTS = [
+  // This probe supplies a fake host context and its own scratch workspace. Exercise only
+  // status queries here: no installed host, model call, or child activation is involved.
+  { file: 'audit-tool-exec.mjs', args: ['vibe-math-v2/vibe-math-v2.js', 'vibe_math_status'] },
+  { file: 'audit-tool-exec.mjs', args: ['vibe-math-v3/vibe-math-v3.js', 'vibe_math_status'] },
+  { file: 'audit-tool-exec.mjs', args: ['vibe-math-v4/vibe-math-v4.js', 'vibe_v4_status'] },
+  { file: 'audit-tool-exec.mjs', args: ['vibe-math-v5/vibe-math-v5.js', 'vibe_v5_status'] },
   // A bare `audit-registration.mjs` audits ONLY v3 (its `process.argv[2] || v3` default), so the
   // four presets are run explicitly and the redundant bare run is replaced.
   { file: 'audit-registration.mjs', args: ['vibe-math-v2/vibe-math-v2.js'], replaceBare: true },

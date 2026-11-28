@@ -255,6 +255,13 @@ import {
 // Session instance below via makeSession(rootAgent, sessionId).
 export function apply(ctx) {
   const subagents = ctx.subagents
+  let childLifecycle
+  const startChild = spec => typeof subagents.startContinuable === 'function'
+    ? subagents.startContinuable(spec)
+    : import('../shared/subagent-compat.js').then(module => {
+      childLifecycle ||= module.createChildLifecycle(ctx, { owns: id => childOwner.has(id), end: routeChildEnd })
+      return childLifecycle.start(spec)
+    })
   const agents = ctx.agents
   const fs = ctx.fs
   const tools = ctx.tools
@@ -2421,7 +2428,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     const request = { prompt: [textBlock(promptText)], parent: rootAgent, agentOptions: childAgentOptions() }
     const tf = buildToolFilter(meta && meta.role); if (tf) request.toolFilter = tf
     let started
-    try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
+    try { started = await startChild({ provider: pickProvider(), label: label, request: request, signal: makeSignal(30000) }) }
     catch (e) {
       const message = String((e && e.message) || e)
       // The host rejected the filter because it names tools this deployment does
@@ -2449,7 +2456,7 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
       console.error('vibe-math-v2: tool permission filter named tools this host does not register; retrying with only registered names (denied-tool intent preserved). dropped=' + JSON.stringify(request.toolFilter) + ' kept=' + JSON.stringify(retryFilter))
       const retryRequest = Object.assign({}, request)
       retryRequest.toolFilter = retryFilter
-      try { started = await subagents.startContinuable({ provider: pickProvider(), label: label, request: retryRequest, signal: makeSignal(30000) }) }
+      try { started = await startChild({ provider: pickProvider(), label: label, request: retryRequest, signal: makeSignal(30000) }) }
       catch (e2) {
         console.error('vibe-math-v2: startContinuable retry with sanitized toolFilter also failed: ' + String((e2 && e2.message) || e2))
         throw e2
@@ -2461,7 +2468,9 @@ try { const t = await fs.resolve('current.' + safeId(sessionId) + '.json', { cwd
     agentRegistry[started.childId] = registered
     childOwner.set(started.childId, sessionId)
     // 并发计数由 agentRegistry 推导，此处无需手工 +1（见 activeCount()）。
-    await saveAll(); return started.childId
+    await saveAll()
+    childLifecycle?.claim(started.childId)
+    return started.childId
   }
   // DSH continuable-wake API is subagents.sendMessage(sender, targetId, content, {signal}); subagents.followup
   // does NOT exist on the subagents service (it is only Agent.followup). Calling the missing method threw
@@ -4637,7 +4646,7 @@ function verifyTasksView(tasks) {
   }))
 
   // subagent/end (registered once; routed to the owning session via childOwner)
-  ctx.on('subagent/end', function (info) {
+  function routeChildEnd(info) {
     // 记下"这个 child 最近一次 end"的时间：裁剪 childOwner 的宽限期从这里算（见 pruneChildOwner）。
     // **不要**在这里直接回收那条映射：同一个 child 会因辩论/续轮再次 end，丢了映射这次事件就没人路由，
     // 实测后果是 verdict 收口失效（"problem solved after verdict 1"）。回收交给 pruneChildOwner 的
@@ -4646,7 +4655,9 @@ function verifyTasksView(tasks) {
     const sid = childOwner.get(info.id)
     const s = sid !== undefined ? sessions.get(sid) : undefined
     if (s) s.onChildEnd(info).catch(function (e) { console.error('vibe-math-v2 onChildEnd reject: ' + String((e && e.stack) || e)) })
-  })
+  }
+  ctx.on('subagent/start', info => childLifecycle?.startEvent(info))
+  ctx.on('subagent/end', info => childLifecycle ? childLifecycle.endEvent(info) : routeChildEnd(info))
 
   // tick timer (registered once; ticks every running session at its own pace)
   ctx.effect(() => {

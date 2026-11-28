@@ -130,8 +130,10 @@ const probes = [
     name: 'fire-does-not-release',
     ref: 'selfdrive-v5.mjs',
     guarantee: '⑨ firing must really release the resident child',
-    from: "          if (typeof subagents.drainContinuableChildren === 'function') await subagents.drainContinuableChildren(rootAgent, [target.childId])",
-    to: "          if (false) await subagents.drainContinuableChildren(rootAgent, [target.childId])",
+    // Both host API branches implement the same release guarantee. Remove both awaits
+    // so neither fallback masks the break, retaining the unsupported-capability guard.
+    from: "        if (typeof subagents.drainContinuableChildren === 'function') await subagents.drainContinuableChildren(rootAgent, [target.childId])\n        else if (typeof subagents.drainChildren === 'function') await subagents.drainChildren(rootAgent, [target.childId])\n        else throw v5err('UNSUPPORTED_CAPABILITY', 'Host has no selected-child drain operation')",
+    to: "        if (typeof subagents.drainContinuableChildren === 'function') {}\n        else if (typeof subagents.drainChildren === 'function') {}\n        else throw v5err('UNSUPPORTED_CAPABILITY', 'Host has no selected-child drain operation')",
   },
   {
     name: 'solve-vote-not-unanimous',

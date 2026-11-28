@@ -31,6 +31,11 @@ const ORDER = { v2: 20, v3: 21, v4: 22, v5: 23 }
  */
 const TRANSFORMS = [
   {
+    why: 'DSH 0.2.x registers list_agents from the subagent-control main entry; the separate /list-agents subpath is no longer exported',
+    find: "    - id: tool-subagent-list-agents\n      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'\n\n",
+    replace: '',
+  },
+  {
     why: '@deepseek-ai/dsh-workflow-worker-thread was removed after 0.1.6; @deepseek-ai/dsh-workflow-ptc replaces it',
     find: "    - id: workflow-worker-thread\n      name: '@deepseek-ai/dsh-workflow-worker-thread'\n      config:\n        provider: spawn",
     replace: "    - id: workflow-ptc\n      name: '@deepseek-ai/dsh-workflow-ptc'\n      config:\n        provider: spawn",
@@ -39,6 +44,21 @@ const TRANSFORMS = [
     why: 'the legacy `persona.text` key (kept in the frozen file for DSH <= 0.1.2) is unknown from 0.1.3 on — `prefix` carries the same text',
     find: /\n    text: \|-\n[\s\S]*?\n(?=- id: agent-instructions)/,
     replace: '\n',
+  },
+  {
+    why: 'DSH 0.2.x publishes cwd through required runtime context, not a prompt variable; project paths stay session-relative',
+    find: '{{cwd}}/',
+    replace: '',
+  },
+  {
+    why: 'the current working directory is reported by the latest required runtime context rather than a static persona suffix',
+    find: '    suffix: Your working directory is {{cwd}}.',
+    replace: '    suffix: Resolve relative paths against the current session working directory reported in the latest runtime context.',
+  },
+  {
+    why: 'path guidance follows the latest runtime cwd context instead of a value printed in the persona',
+    find: 'printed at the end of this prompt',
+    replace: 'reported in the latest runtime context',
   },
   {
     why: "the framework row must name an installed package subpath: a declaration row's `name` is NOT rewritten to a file URL by app-boot (it only recurses into group configs), so a relative path would be resolved against the profile directory",

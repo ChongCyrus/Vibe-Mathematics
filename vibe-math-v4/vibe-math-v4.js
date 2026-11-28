@@ -186,6 +186,13 @@ export function apply(ctx) {
   // was only safe while calls could not overlap, and serialising cost cross-session parallelism.)
   let mathToolFace = null
   const subagents = ctx.subagents
+  let childLifecycle
+  const startChild = spec => typeof subagents.startContinuable === 'function'
+    ? subagents.startContinuable(spec)
+    : import('../shared/subagent-compat.js').then(module => {
+      childLifecycle ||= module.createChildLifecycle(ctx, { owns: id => childOwner.has(id), start: routeResidentStart, end: routeResidentEnd })
+      return childLifecycle.start(spec)
+    })
   const agents = ctx.agents
   const fs = ctx.fs
   const tools = ctx.tools
@@ -2039,6 +2046,7 @@ async function writeCurrentProject(){ try { const ok=await writeTextAbs(vibeRoot
       r.childId=started.childId; r.status='brainstorm'; r.lastActiveAt=now()
       childOwner.set(started.childId,sessionId); busy.add(r.rId); wakeKind.set(r.rId,'normal'); currentResident=r.rId
       residents.set(r.rId,r); await saveAll(); logActivity('spawn',r.rId+' ('+(r.direction||'brainstorm')+')')
+      childLifecycle?.claim(started.childId)
       return true
     }
     /**
@@ -2731,7 +2739,7 @@ async function writeCurrentProject(){ try { const ok=await writeTextAbs(vibeRoot
     // spawning WITHOUT one (that would grant exactly what the operator denied).
     async function startWithToolFilter(toolFilter, makeSpec){
       try {
-        return await subagents.startContinuable(makeSpec(toolFilter))
+        return await startChild(makeSpec(toolFilter))
       } catch(e){
         const message = String((e && e.message) || e)
         const retry = sanitizeToolFilter(toolFilter, registeredToolsFromError(message))
@@ -2742,7 +2750,7 @@ async function writeCurrentProject(){ try { const ok=await writeTextAbs(vibeRoot
         if(JSON.stringify(retry) === JSON.stringify(toolFilter)) throw e
         console.error('vibe-math-v4: 工具过滤里有本宿主未注册的名字，已只保留已注册的名字重试。dropped=' + JSON.stringify(toolFilter) + ' kept=' + JSON.stringify(retry))
         // a FRESH spec (and a fresh timeout signal) for the retry
-        return await subagents.startContinuable(makeSpec(retry))
+        return await startChild(makeSpec(retry))
       }
     }
 
@@ -4457,10 +4465,10 @@ frozenParticipants: (activeRosterSnapshot()||{}).rosterSnapshot||null,   // depr
   // `spawnResident` claims that stash the moment its call resolves. For a host that embeds the spawn
   // label in the id, `ownsChild` can be decided from the payload alone — that path is used when no
   // spawn window is open, so a `subagent/start` for a child we did not spawn is never recorded.
-  ctx.on('subagent/start', function(info){
+  function routeResidentStart(info, capturedAgent){
     if(!info || !info.id) return
     let agent
-    try { agent = agents.get(info.id) } catch(e){ agent = undefined }
+    try { agent = capturedAgent || agents.get(info.id) } catch(e){ agent = capturedAgent }
     if(!agent) return
     let s
     try {
@@ -4474,9 +4482,9 @@ frozenParticipants: (activeRosterSnapshot()||{}).rosterSnapshot||null,   // depr
     // No owner yet — the spawn this child belongs to is still inside `startContinuable`. Stash it for
     // the first session whose spawn window is open, so the claim after the resolve can find it.
     for(const [,ss] of sessions){ if(ss.stashStartAgent){ ss.stashStartAgent(info.id, agent); return } }
-  })
+  }
 
-  ctx.on('subagent/end', function(info){
+  function routeResidentEnd(info){
     const sid=childOwner.get(info.id); const s=sid!==undefined?sessions.get(sid):undefined
     if(s) s.onResidentEnd(info.id, info)
       .catch(e=>{ console.error('vibe-v4 end: '+String((e&&e.stack)||e)); if(s.nudge) s.nudge() })
@@ -4484,7 +4492,9 @@ frozenParticipants: (activeRosterSnapshot()||{}).rosterSnapshot||null,   // depr
       // real /compact inside onResidentEnd still sees it. The WeakRef means a missed
       // release only delays collection rather than leaking the Agent.
       .finally(()=>{ if(s.forgetAgent) s.forgetAgent(info.id) })
-  })
+  }
+  ctx.on('subagent/start', info => childLifecycle ? childLifecycle.startEvent(info) : routeResidentStart(info))
+  ctx.on('subagent/end', info => childLifecycle ? childLifecycle.endEvent(info) : routeResidentEnd(info))
 }
 
 // ---- test seam: pure, stateless helpers --------------------------------

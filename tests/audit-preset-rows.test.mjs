@@ -94,6 +94,23 @@ for (const v of VERSIONS) {
   ok(!body.includes('workflow-worker-thread'), v + ': the removed worker-thread engine is not referenced')
 }
 
+// DSH 0.2.2-rc.1 registers list_agents from the control main entry.
+// Emitting the removed subpath makes the real Loader mark each preset broken.
+for (const v of VERSIONS) {
+  const start = patch.indexOf('- id: preset-vibe-math-' + v)
+  const next = patch.indexOf('\n- insert:', start)
+  const body = patch.slice(start, next === -1 ? undefined : next)
+  ok(!body.includes("name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'"),
+    v + ': emitted composition avoids the non-exported list-agents entrypoint')
+  ok(body.includes("name: '@deepseek-ai/dsh-tool-subagent-control'"),
+    v + ': emitted composition retains messaging, interruption and child discovery')
+  const frozen = readFileSync(at('vibe-math-' + v + '/agent.cordis.yml'), 'utf8')
+  ok(frozen.includes("name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'"),
+    v + ': legacy composition remains intact for older hosts')
+}
+ok(!buildPatch().includes("name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'"),
+  'the generator also excludes the removed entrypoint on the next rebuild')
+
 // ---- 4b. the declaration module itself ---------------------------------------------------------
 // It is the only piece of code in this mechanism, so its two behaviours are pinned directly:
 // register exactly the row's declaration where the service exists, and do NOTHING (no throw, no call)

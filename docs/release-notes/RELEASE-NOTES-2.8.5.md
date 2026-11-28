@@ -55,6 +55,23 @@ dsh plugin --profile <你的 profile> add dsh-vibe-math@2.8.5
   - 若升级后仍是**旧版**：先确认 `pnpm` 可用——`dsh plugin …` 的插件管理需要一个可用的 `pnpm`；缺失时安装会失败，且**插件市场可能不显示原因**（可附 `~/.dsh/profiles/<profile>/hub.log` 定位）。
   - 再检查该 profile 的 `package.json` / `pnpm-lock.yaml` 是否仍指向旧版本：它们**优先**于 `latest` 标签，**不带版本可能装到旧版**；必要时显式指定版本重试。
 
+### 本地兼容补丁（2026-11-28，非 npm 发布）
+
+本节记录基于原 2.8.5 的本地补丁；前文属于原版历史发布记录，不代表本次全量验收结果。
+
+- **症状与原因**：DSH 0.2.2-rc.1 上四套预设加载失败，报
+  `tool-subagent-list-agents (@deepseek-ai/dsh-tool-subagent-control/list-agents): never started`。
+  当前宿主不再导出该子入口，主 control 入口已统一注册 `list_agents`。
+- **修正**：在生成器中去掉现代装配的四处旧子入口，保留主入口和旧目录式 frozen YAML；
+  原有配置、四套框架实现、数据目录与版本号均保持原样。
+- **复核**：`node scripts/build-preset-rows.mjs --check` 与
+  `node tests/audit-preset-rows.test.mjs`；新增具名红先得到 47 passed / 5 failed，
+  修正后得到 52 passed / 0 failed。同一实际 Electron 宿主的隔离 profile 中，原包四套
+  建会话均返回 `agent-preset/invalid`，修复包四套均成功；未发送模型请求。
+- **生效与边界**：本地安装目录应用补丁后需重启既有 DSH 进程，重新挂载预设。
+  本次加载补丁不等同于完整求解链验收；旧框架仍使用当前宿主已移除的
+  `subagents.startContinuable`，成员派发兼容性需另行适配。此补丁未发布到 npm。
+
 ## 已知限制
 
 - LaTeX 引擎仍只探**文档化位置**：装在非标准目录时不会被自动发现；请用参数 `paperLatexCommand` 指定引擎命令的绝对路径（提示词会引导"写入后再次探测"）。
